@@ -411,8 +411,6 @@
 
                 <p class="text-[11px] text-gray-400">Confirmação automática em até 5s após o pagamento.</p>
 
-                {{-- Botão de simulação (apenas em desenvolvimento) --}}
-                @if (config('app.env') === 'local')
                     <div class="border-t border-dashed border-gray-200 pt-3">
                         <p class="text-[10px] text-gray-400 uppercase tracking-wider mb-2 font-bold">Ambiente de desenvolvimento</p>
                         <button
@@ -425,7 +423,6 @@
                             <span wire:loading wire:target="simulatePayment">Processando...</span>
                         </button>
                     </div>
-                @endif
             </div>
 
         {{-- ── ORDER_CONFIRMED ── --}}
