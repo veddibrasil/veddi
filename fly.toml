@@ -1,0 +1,46 @@
+# fly.toml — configuração do Fly.io
+# Documentação: https://fly.io/docs/reference/configuration/
+
+app = "mistercoxinha"
+primary_region = "gru" # São Paulo
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  APP_ENV = "production"
+  APP_DEBUG = "false"
+  LOG_CHANNEL = "stderr"
+  LOG_LEVEL = "error"
+  DB_CONNECTION = "sqlite"
+  DB_DATABASE = "/var/www/html/database/database.sqlite"
+  CACHE_STORE = "redis"
+  QUEUE_CONNECTION = "redis"
+  SESSION_DRIVER = "redis"
+  REDIS_CLIENT = "phpredis"
+  REDIS_HOST = "mistercoxinha-redis.flycast"
+  REDIS_PORT = "6379"
+  MAIL_MAILER = "log"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 200
+    soft_limit = 150
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+# Volume persistente para o SQLite
+[[mounts]]
+  source = "mistercoxinha_data"
+  destination = "/var/www/html/database"
+  initial_size = "1gb"

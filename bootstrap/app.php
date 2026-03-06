@@ -15,6 +15,15 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             'webhooks/*',
         ]);
+        // Resolve tenant on every web request (including Livewire AJAX calls)
+        $middleware->web(append: [
+            \App\Http\Middleware\IdentifyCompany::class,
+        ]);
+        $middleware->alias([
+            'identify.company' => \App\Http\Middleware\IdentifyCompany::class,
+            'company.role'     => \App\Http\Middleware\CheckCompanyRole::class,
+            'super.admin'      => \App\Http\Middleware\RequireSuperAdmin::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

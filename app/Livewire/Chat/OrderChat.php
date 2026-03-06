@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Chat;
 
+use App\Jobs\ProcessOrder;
 use App\Models\Branch;
 use App\Models\Customer;
 use App\Models\Order;
@@ -9,9 +10,8 @@ use App\Models\OrderItem;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\ProductCategory;
-use App\Services\AbacatePayService;
 use Exception;
-use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Livewire\Component;
@@ -52,7 +52,26 @@ class OrderChat extends Component
 
     public function mount(): void
     {
-        $this->addMessage('bot', 'Olá! Bem-vindo ao Mister Coxinha 🤤 Para começar, informe seu número de telefone com DDD.');
+        $company = app()->bound('current.company') ? app('current.company') : null;
+        $companyName = $company?->name ?? config('app.name');
+
+        $companyId = $company?->id;
+        
+        $hasOpenBranch = Cache::remember("open_branches:company:{$companyId}", now()->addMinutes(1), fn () =>
+            Branch::where('active', true)
+                ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
+                ->where('opens_at', '<=', now()->format('H:i:s'))
+                ->where('closes_at', '>=', now()->format('H:i:s'))
+                ->exists()
+        );
+
+        if (! $hasOpenBranch) {
+            $this->addMessage('bot', "Olá! Bem-vindo ao {$companyName}! No momento estamos fora do horário de atendimento. Consulte os horários de cada filial e volte mais tarde. 😊");
+            $this->transitionTo('CLOSED');
+            return;
+        }
+
+        $this->addMessage('bot', "Olá! Bem-vindo ao {$companyName}! Para começar, informe seu número de telefone com DDD.");
     }
 
     // --- Validation rules per step ---
@@ -66,7 +85,12 @@ class OrderChat extends Component
                 'name' => ['required', 'string', 'min:3', 'max:100'],
             ],
             'REGISTER_EMAIL' => [
-                'email' => ['required', 'email', 'max:200', Rule::unique('customers', 'email')],
+                'email' => [
+                    'required', 'email', 'max:200',
+                    app()->bound('current.company')
+                        ? Rule::unique('customers', 'email')->where('company_id', app('current.company')->id)
+                        : Rule::unique('customers', 'email'),
+                ],
             ],
             'REGISTER_ADDRESS' => [
                 'address'      => ['required', 'string', 'min:5', 'max:255'],
@@ -169,6 +193,12 @@ class OrderChat extends Component
     public function selectBranch(int $branchId): void
     {
         $branch = Branch::where('id', $branchId)->where('active', true)->firstOrFail();
+
+        if (! $branch->isOpen()) {
+            $this->addMessage('bot', "A filial {$branch->name} está fechada no momento. Horário: {$branch->opens_at} às {$branch->closes_at}. Escolha outra filial ou tente mais tarde.");
+            return;
+        }
+
         $this->selectedBranchId = $branch->id;
         $this->addMessage('user', $branch->name);
         $this->addMessage('bot', "Ótimo! Aqui está o cardápio da {$branch->name}. Adicione os itens que quiser!");
@@ -271,58 +301,15 @@ class OrderChat extends Component
         });
 
         $this->orderId = $order->id;
-        $this->initiatePayment($order);
-    }
 
-    private function initiatePayment(Order $order): void
-    {
-        try {
-            // --- PIX real via AbacatePay (comentado temporariamente) ---
-            // $customer = Customer::findOrFail($this->customerId);
-            // $billing  = app(AbacatePayService::class)->createBilling($order, $customer);
-            //
-            // Payment::create([
-            //     'order_id'              => $order->id,
-            //     'abacatepay_billing_id' => $billing['id'],
-            //     'abacatepay_url'        => $billing['url'],
-            //     'pix_qr_code'           => $billing['pixQrCode'],
-            //     'pix_copy_paste'        => $billing['pixCopyPaste'],
-            //     'amount'                => $order->total,
-            //     'status'                => 'pending',
-            // ]);
-            //
-            // $order->update(['status' => 'awaiting_payment']);
-            //
-            // $this->pixQrCode    = $billing['pixQrCode'];
-            // $this->pixCopyPaste = $billing['pixCopyPaste'];
-            // $this->paymentId    = $billing['id'];
+        $customer = Customer::findOrFail($this->customerId);
+        $company  = app()->bound('current.company') ? app('current.company') : null;
 
-            // --- Simulação de pagamento (modo desenvolvimento) ---
-            $payment = Payment::create([
-                'order_id'              => $order->id,
-                'abacatepay_billing_id' => 'sim_' . uniqid(),
-                'abacatepay_url'        => '#',
-                'pix_qr_code'           => null,
-                'pix_copy_paste'        => '00020126580014br.gov.bcb.pix0136SIMULACAO-PAGAMENTO-DESENVOLVIMENTO52040000530398654' . number_format($order->total, 2, '', '') . '5802BR5924Mister Coxinha Simulado6009SAO PAULO62070503***6304ABCD',
-                'amount'                => $order->total,
-                'status'                => 'pending',
-            ]);
+        ProcessOrder::dispatch($order, $customer, $company);
 
-            $order->update(['status' => 'awaiting_payment']);
-
-            $this->pixQrCode    = null;
-            $this->pixCopyPaste = $payment->pix_copy_paste;
-            $this->paymentId    = $payment->abacatepay_billing_id;
-
-            $this->addMessage('bot', "Pedido {$order->order_number} criado! [SIMULAÇÃO] Pague via PIX abaixo ou clique em \"Simular Pagamento\" para confirmar.");
-            $this->transitionTo('PAYMENT_PIX');
-        } catch (\Throwable $e) {
-            $order->update(['status' => 'cancelled']);
-            $this->addMessage('bot', '⚠️ Houve um problema ao gerar o pagamento. Por favor, tente novamente ou entre em contato conosco.');
-            $this->transitionTo('ORDER_FAILED');
-        } finally {
-            $this->isLoading = false;
-        }
+        $this->addMessage('bot', "Pedido {$order->order_number} recebido! Gerando PIX...");
+        $this->transitionTo('PAYMENT_PIX');
+        $this->isLoading = false;
     }
 
     public function simulatePayment(): void
@@ -358,9 +345,28 @@ class OrderChat extends Component
 
         $order = Order::find($this->orderId);
 
-        if ($order?->status === 'paid') {
-            $this->addMessage('bot', "✅ Pagamento confirmado! Seu pedido {$order->order_number} está sendo preparado. Obrigado!");
+        if (! $order) {
+            return;
+        }
+
+        // Busca dados do PIX assim que o Job processar
+        if ($order->status === 'awaiting_payment' && ! $this->pixCopyPaste) {
+            $payment = $order->payment;
+            if ($payment) {
+                $this->pixQrCode    = $payment->pix_qr_code;
+                $this->pixCopyPaste = $payment->pix_copy_paste;
+                $this->paymentId    = $payment->abacatepay_billing_id;
+            }
+        }
+
+        if ($order->status === 'paid') {
+            $this->addMessage('bot', "Pagamento confirmado! Seu pedido {$order->order_number} está sendo preparado. Obrigado!");
             $this->transitionTo('ORDER_CONFIRMED');
+        }
+
+        if ($order->status === 'cancelled') {
+            $this->addMessage('bot', 'Houve um problema ao processar seu pagamento. Por favor, tente novamente.');
+            $this->transitionTo('ORDER_FAILED');
         }
     }
 
@@ -418,18 +424,26 @@ class OrderChat extends Component
 
     public function getBranchesProperty()
     {
-        return Branch::where('active', true)->orderBy('name')->get();
+        $companyId = app()->bound('current.company') ? app('current.company')->id : null;
+        return Cache::remember("branches:company:{$companyId}", now()->addMinutes(10), fn () =>
+            Branch::where('active', true)
+                ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
+                ->orderBy('name')
+                ->get()
+        );
     }
 
     public function getMenuProperty()
     {
-        return ProductCategory::with(['products' => function ($q) {
-            $q->whereHas('branches', fn ($b) => $b
-                ->where('branches.id', $this->selectedBranchId)
-                ->where('branch_product.available', true))
-                ->where('active', true)
-                ->orderBy('sort_order');
-        }])->where('active', true)->orderBy('sort_order')->get();
+        return Cache::remember("menu:branch:{$this->selectedBranchId}", now()->addMinutes(5), fn () =>
+            ProductCategory::with(['products' => function ($q) {
+                $q->whereHas('branches', fn ($b) => $b
+                    ->where('branches.id', $this->selectedBranchId)
+                    ->where('branch_product.available', true))
+                    ->where('active', true)
+                    ->orderBy('sort_order');
+            }])->where('active', true)->orderBy('sort_order')->get()
+        );
     }
 
     public function render()

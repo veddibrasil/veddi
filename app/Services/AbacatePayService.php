@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Order;
 use Illuminate\Support\Facades\Http;
@@ -11,10 +12,12 @@ class AbacatePayService
 {
     private string $baseUrl = 'https://api.abacatepay.com/v1';
     private string $token;
+    private ?string $webhookSecret;
 
-    public function __construct()
+    public function __construct(?Company $company = null)
     {
-        $this->token = config('services.abacatepay.token');
+        $this->token         = $company?->abacatepay_token ?? config('services.abacatepay.token');
+        $this->webhookSecret = $company?->abacatepay_webhook_secret ?? config('services.abacatepay.webhook_secret');
     }
 
     public function createBilling(Order $order, Customer $customer): array
@@ -62,8 +65,11 @@ class AbacatePayService
 
     public function validateWebhookSignature(string $payload, string $signature): bool
     {
-        $secret   = config('services.abacatepay.webhook_secret');
-        $expected = hash_hmac('sha256', $payload, $secret);
+        if (! $this->webhookSecret) {
+            return false;
+        }
+
+        $expected = hash_hmac('sha256', $payload, $this->webhookSecret);
 
         return hash_equals($expected, $signature);
     }

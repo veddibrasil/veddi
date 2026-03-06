@@ -1,12 +1,12 @@
 <div class="max-w-lg space-y-6">
     <div class="flex items-center gap-3">
-        <a href="{{ route('admin.branches.index') }}" class="text-neutral-400 hover:text-neutral-600">←</a>
-        <h1 class="text-2xl font-bold text-neutral-800">
+        <a href="{{ route('admin.branches.index') }}" class="text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300">←</a>
+        <h1 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100">
             {{ $isEditing ? 'Editar Filial' : 'Nova Filial' }}
         </h1>
     </div>
 
-    <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4">
+    <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
         <flux:input wire:model="name" label="Nome da filial" placeholder="Ex: Filial Centro" />
         @error('name') <p class="text-red-500 text-xs -mt-2">{{ $message }}</p> @enderror
 
@@ -37,7 +37,7 @@
                 {{ $isEditing ? 'Salvar alterações' : 'Criar filial' }}
             </flux:button>
             <a href="{{ route('admin.branches.index') }}"
-                class="inline-flex items-center px-4 py-2 text-sm text-neutral-600 hover:text-neutral-800">
+                class="inline-flex items-center px-4 py-2 text-sm text-neutral-600 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200">
                 Cancelar
             </a>
         </div>

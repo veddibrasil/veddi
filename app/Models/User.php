@@ -4,6 +4,7 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Str;
@@ -23,6 +24,7 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'is_super_admin',
     ];
 
     /**
@@ -46,8 +48,43 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
-            'password' => 'hashed',
+            'password'          => 'hashed',
+            'is_super_admin'    => 'boolean',
         ];
+    }
+
+    public function companies(): BelongsToMany
+    {
+        return $this->belongsToMany(Company::class, 'company_user')
+            ->withPivot(['role', 'branch_id'])
+            ->withTimestamps();
+    }
+
+    public function isSuperAdmin(): bool
+    {
+        return (bool) $this->is_super_admin;
+    }
+
+    public function roleForCompany(Company $company): ?string
+    {
+        $pivot = $this->companies()->where('companies.id', $company->id)->first()?->pivot;
+        return $pivot?->role;
+    }
+
+    public function branchIdForCompany(Company $company): ?int
+    {
+        $pivot = $this->companies()->where('companies.id', $company->id)->first()?->pivot;
+        return $pivot?->branch_id;
+    }
+
+    public function isCompanyAdmin(Company $company): bool
+    {
+        return $this->isSuperAdmin() || $this->roleForCompany($company) === 'company_admin';
+    }
+
+    public function isBranchManager(Company $company): bool
+    {
+        return $this->roleForCompany($company) === 'branch_manager';
     }
 
     /**

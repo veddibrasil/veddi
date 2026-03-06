@@ -59,7 +59,8 @@ class Form extends Component
         if ($product?->exists) {
             $this->product    = $product;
             $this->isEditing  = true;
-            $this->fill($product->only('product_category_id', 'name', 'description', 'active', 'sort_order'));
+            $this->fill($product->only('product_category_id', 'name', 'active', 'sort_order'));
+            $this->description = $product->description ?? '';
             $this->price            = (string) $product->price;
             $this->selectedBranches = $product->branches->pluck('id')->map(fn ($id) => (string) $id)->toArray();
         }

@@ -3,6 +3,7 @@
 namespace App\Livewire\Admin\Branches;
 
 use App\Models\Branch;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Component;
 
 class Form extends Component
@@ -63,6 +64,11 @@ class Form extends Component
             Branch::create($validated);
             session()->flash('status', 'Filial criada.');
         }
+
+        // Invalida cache de branches e horários para a empresa atual
+        $companyId = app()->bound('current.company') ? app('current.company')->id : null;
+        Cache::forget("branches:company:{$companyId}");
+        Cache::forget("open_branches:company:{$companyId}");
 
         $this->redirect(route('admin.branches.index'));
     }

@@ -13,32 +13,38 @@
 >
 
     {{-- ═══════════════════════════════ HEADER ══════════════════════════════ --}}
-    <div class="shrink-0" style="background: linear-gradient(135deg, #7F1D1D 0%, #B91C1C 60%, #C2410C 100%);">
+    <div class="shrink-0" style="background: linear-gradient(135deg, var(--mc-red-dark) 0%, var(--mc-red) 60%, var(--mc-red-light) 100%);">
 
         {{-- Brand bar --}}
         <div class="flex items-center gap-3 px-4 py-3">
 
             {{-- Avatar / Logo --}}
-            <div style="background: #c0181c" class="w-11 h-11 rounded-full bg-white/15 border-2 border-white/30 flex items-center justify-center shrink-0 shadow-lg">
-                <span class="text-white font-black text-sm tracking-tighter leading-none">
-                    <img src="{{ '/logo.png' }}" alt="">
-                </span>
+            <div style="background: var(--mc-red)" class="w-11 h-11 rounded-full bg-white/15 border-2 border-white/30 flex items-center justify-center shrink-0 shadow-lg overflow-hidden">
+                @if(isset($currentCompany) && $currentCompany->logo_path)
+                    <img src="{{ asset('storage/' . $currentCompany->logo_path) }}" alt="{{ $currentCompany->name }}" class="w-full h-full object-cover">
+                @else
+                    <img src="{{ asset('logo.png') }}" alt="{{ $currentCompany->name ?? config('app.name') }}" class="w-full h-full object-cover">
+                @endif
             </div>
 
             {{-- Brand info --}}
             <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-1.5">
-                    <p class="text-white font-bold text-base leading-tight">Mister Coxinha</p>
-                    <span class="text-lg leading-none">🎩</span>
+                    <p class="text-white font-bold text-base leading-tight">{{ $currentCompany->name ?? config('app.name') }}</p>
                 </div>
                 <div class="flex items-center gap-1.5 mt-0.5">
-                    <span class="w-2 h-2 rounded-full bg-green-400 shadow-sm shadow-green-300"></span>
-                    <p class="text-white/75 text-xs">Online • Pedidos abertos</p>
+                    @if ($step === 'CLOSED')
+                        <span class="w-2 h-2 rounded-full bg-red-400 shadow-sm shadow-red-300"></span>
+                        <p class="text-white/75 text-xs">Fechado no momento</p>
+                    @else
+                        <span class="w-2 h-2 rounded-full bg-green-400 shadow-sm shadow-green-300"></span>
+                        <p class="text-white/75 text-xs">Online • Pedidos abertos</p>
+                    @endif
                 </div>
             </div>
 
             {{-- Restart button --}}
-            @if ($step !== 'IDENTIFY_PHONE' && $step !== 'ORDER_CONFIRMED')
+            @if ($step !== 'IDENTIFY_PHONE' && $step !== 'ORDER_CONFIRMED' && $step !== 'CLOSED')
                 <button
                     wire:click="startNewOrder"
                     class="text-white/70 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
@@ -440,6 +446,28 @@
                 </button>
             </div>
 
+        {{-- ── CLOSED ── --}}
+        @elseif ($step === 'CLOSED')
+            <div class="text-center space-y-3 py-2">
+                <div class="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mx-auto text-3xl">
+                    🕐
+                </div>
+                <div>
+                    <p class="font-bold text-gray-700 text-base">Estamos fechados</p>
+                    <p class="text-xs text-gray-500 mt-1">No momento não estamos recebendo pedidos. Confira os horários de cada filial e volte em breve!</p>
+                </div>
+                @if($this->branches->isNotEmpty())
+                    <div class="space-y-1.5 text-left">
+                        @foreach($this->branches as $branch)
+                            <div class="bg-gray-50 rounded-xl px-3 py-2 border border-gray-100 flex items-center justify-between">
+                                <span class="text-sm font-medium text-gray-700">{{ $branch->name }}</span>
+                                <span class="text-xs text-gray-500">{{ $branch->opens_at }} – {{ $branch->closes_at }}</span>
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
+            </div>
+
         {{-- ── ORDER_FAILED ── --}}
         @elseif ($step === 'ORDER_FAILED')
             <div class="text-center space-y-3 py-1">
@@ -461,10 +489,11 @@
 
     {{-- Footer branding --}}
     <div class="bg-gray-50 border-t border-gray-100 px-4 py-1.5 shrink-0 flex items-center justify-center gap-1">
-        <span class="text-[10px] text-gray-400 font-medium">Mister Coxinha</span>
-        <span class="text-[10px] text-gray-300">•</span>
-        <span class="text-[10px] text-gray-400">A Casa do Salgado que Conquista!</span>
-        <span class="text-[10px]">🎩</span>
+        <span class="text-[10px] text-gray-400 font-medium">{{ $currentCompany->name ?? config('app.name') }}</span>
+        @if(isset($currentCompany) && $currentCompany->tagline)
+            <span class="text-[10px] text-gray-300">•</span>
+            <span class="text-[10px] text-gray-400">{{ $currentCompany->tagline }}</span>
+        @endif
     </div>
 
 </div>

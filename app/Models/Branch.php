@@ -2,13 +2,16 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToCompany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Branch extends Model
 {
-    protected $fillable = ['name', 'address', 'city', 'phone', 'active', 'opens_at', 'closes_at'];
+    use BelongsToCompany;
+
+    protected $fillable = ['company_id', 'name', 'address', 'city', 'phone', 'active', 'opens_at', 'closes_at'];
 
     protected $casts = ['active' => 'boolean'];
 

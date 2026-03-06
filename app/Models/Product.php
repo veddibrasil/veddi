@@ -2,14 +2,17 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToCompany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Product extends Model
 {
+    use BelongsToCompany;
+
     protected $fillable = [
-        'product_category_id', 'name', 'description', 'price', 'image_path', 'active', 'sort_order',
+        'company_id', 'product_category_id', 'name', 'description', 'price', 'image_path', 'active', 'sort_order',
     ];
 
     protected $casts = [

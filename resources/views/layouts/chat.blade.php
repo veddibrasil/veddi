@@ -3,8 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-    <title>Mister Coxinha — A Casa do Salgado que Conquista!</title>
+    <title>{{ isset($currentCompany) ? $currentCompany->name . ($currentCompany->tagline ? ' — ' . $currentCompany->tagline : '') : config('app.name') }}</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    @if(isset($currentCompany))
+        <x-company-theme :company="$currentCompany" />
+    @endif
     @livewireStyles
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,7 +20,7 @@
         {{-- ═══════ Painel esquerdo — branding (somente desktop) ═══════ --}}
         <div
             class="hidden lg:flex flex-1 flex-col items-center justify-center relative overflow-hidden px-16 py-12 select-none"
-            style="background: linear-gradient(145deg, #450a0a 0%, #7F1D1D 35%, #B91C1C 70%, #C2410C 100%);"
+            style="background: linear-gradient(145deg, color-mix(in srgb, var(--mc-red-dark) 60%, black) 0%, var(--mc-red-dark) 35%, var(--mc-red) 70%, color-mix(in srgb, var(--mc-red) 70%, orange) 100%);"
         >
             {{-- Círculos decorativos de fundo --}}
             <div class="absolute -top-24 -left-24 w-80 h-80 rounded-full bg-white/5"></div>
@@ -28,18 +31,20 @@
             <div class="relative z-10 text-center max-w-md">
 
                 {{-- Logo / Avatar --}}
-                <di style="background: #c0181c" class="w-28 h-28 rounded-full bg-white/15 border-4 border-white/30 flex items-center justify-center mx-auto mb-8 shadow-2xl">
-                    <span class="text-white font-black text-4xl tracking-tighter">
-                        <img src="{{ '/logo.png' }}" alt="">
-                    </span>
-                </di>
+                <div style="background: var(--mc-red-light)" class="w-28 h-28 rounded-full border-4 border-white/30 flex items-center justify-center mx-auto mb-8 shadow-2xl overflow-hidden">
+                    @if(isset($currentCompany) && $currentCompany->logo_path)
+                        <img src="{{ asset('storage/' . $currentCompany->logo_path) }}" alt="{{ $currentCompany->name }}" class="w-full h-full object-cover">
+                    @else
+                        <img src="{{ '/logo.png' }}" alt="{{ $currentCompany->name ?? config('app.name') }}" class="w-full h-full object-cover">
+                    @endif
+                </div>
 
                 {{-- Marca --}}
                 <h1 class="text-white font-black text-5xl leading-tight mb-2">
-                    Mister<br>Coxinha
+                    {{ isset($currentCompany) ? $currentCompany->name : config('app.name') }}
                 </h1>
                 <p class="text-white/70 text-lg font-medium mb-10">
-                    A Casa do Salgado que Conquista! 🎩
+                    {{ isset($currentCompany) && $currentCompany->tagline ? $currentCompany->tagline : '' }}
                 </p>
 
                 {{-- Diferenciais --}}
@@ -60,7 +65,7 @@
                 </div>
 
                 {{-- Rodapé branding --}}
-                <p class="text-white/30 text-xs mt-10">© {{ date('Y') }} Mister Coxinha · Todos os direitos reservados</p>
+                <p class="text-white/30 text-xs mt-10">{{ isset($currentCompany) && $currentCompany->footer_text ? $currentCompany->footer_text : '© ' . date('Y') . ' ' . config('app.name') }}</p>
             </div>
         </div>
 

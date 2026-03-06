@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToCompany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -9,8 +10,10 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Order extends Model
 {
+    use BelongsToCompany;
+
     protected $fillable = [
-        'order_number', 'customer_id', 'branch_id', 'subtotal', 'total', 'status', 'notes',
+        'company_id', 'order_number', 'customer_id', 'branch_id', 'subtotal', 'total', 'status', 'notes',
     ];
 
     protected static function booted(): void
@@ -22,9 +25,10 @@ class Order extends Model
 
     private static function generateOrderNumber(): string
     {
-        $year  = now()->year;
-        $count = static::whereYear('created_at', $year)->count() + 1;
-        return sprintf('MXC-%d-%05d', $year, $count);
+        $year   = now()->year;
+        $prefix = app()->bound('current.company') ? app('current.company')->order_prefix : 'ORD';
+        $count  = static::whereYear('created_at', $year)->count() + 1;
+        return sprintf('%s-%d-%05d', $prefix, $year, $count);
     }
 
     public function customer(): BelongsTo

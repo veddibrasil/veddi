@@ -1,18 +1,18 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="dark">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
     <head>
         @include('partials.head')
     </head>
     <body class="min-h-screen bg-white dark:bg-zinc-800">
         <flux:sidebar sticky collapsible="mobile" class="border-e border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900">
             <flux:sidebar.header>
-                <x-app-logo :sidebar="true" href="{{ route('dashboard') }}" wire:navigate />
+                <x-app-logo :sidebar="true" href="{{ route('admin.dashboard') }}" wire:navigate />
                 <flux:sidebar.collapse class="lg:hidden" />
             </flux:sidebar.header>
 
             <flux:sidebar.nav>
                 <flux:sidebar.group :heading="__('Platform')" class="grid">
-                    <flux:sidebar.item icon="home" :href="route('dashboard')" :current="request()->routeIs('dashboard')" wire:navigate>
+                    <flux:sidebar.item icon="home" :href="route('admin.dashboard')" :current="request()->routeIs('admin.dashboard')" wire:navigate>
                         {{ __('Dashboard') }}
                     </flux:sidebar.item>
                 </flux:sidebar.group>
@@ -37,19 +37,37 @@
                         Produtos
                     </flux:sidebar.item>
                 </flux:sidebar.group>
+
+                @if(auth()->user()?->isCompanyAdmin(app()->bound('current.company') ? app('current.company') : new \App\Models\Company))
+                    <flux:sidebar.group heading="Configurações" class="grid">
+                        <flux:sidebar.item icon="cog-6-tooth" :href="route('admin.settings')" :current="request()->routeIs('admin.settings')" wire:navigate>
+                            Empresa
+                        </flux:sidebar.item>
+                    </flux:sidebar.group>
+                @endif
+
+                @if(auth()->user()?->isSuperAdmin())
+                    <flux:sidebar.group heading="Super Admin" class="grid">
+                        <flux:sidebar.item icon="building-office-2" :href="route('superadmin.companies.index')" :current="request()->routeIs('superadmin.companies.*')" wire:navigate>
+                            Empresas
+                        </flux:sidebar.item>
+                        <flux:sidebar.item icon="users" :href="route('superadmin.users.index')" :current="request()->routeIs('superadmin.users.*')" wire:navigate>
+                            Usuários
+                        </flux:sidebar.item>
+                    </flux:sidebar.group>
+                @endif
             </flux:sidebar.nav>
 
             <flux:spacer />
 
-            <flux:sidebar.nav>
-                <flux:sidebar.item icon="folder-git-2" href="https://github.com/laravel/livewire-starter-kit" target="_blank">
-                    {{ __('Repository') }}
-                </flux:sidebar.item>
-
-                <flux:sidebar.item icon="book-open-text" href="https://laravel.com/docs/starter-kits#livewire" target="_blank">
-                    {{ __('Documentation') }}
-                </flux:sidebar.item>
-            </flux:sidebar.nav>
+            {{-- Theme toggle --}}
+            <div x-data class="px-3 pb-2">
+                <flux:radio.group variant="segmented" x-model="$flux.appearance" class="w-full">
+                    <flux:radio value="light" icon="sun" />
+                    <flux:radio value="dark" icon="moon" />
+                    <flux:radio value="system" icon="computer-desktop" />
+                </flux:radio.group>
+            </div>
 
             <x-desktop-user-menu class="hidden lg:block" :name="auth()->user()->name" />
         </flux:sidebar>
