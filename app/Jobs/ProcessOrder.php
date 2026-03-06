@@ -22,14 +22,17 @@ class ProcessOrder implements ShouldQueue
         public Order $order,
         public Customer $customer,
         public ?Company $company,
+        public string $paymentMethod = 'pix',
     ) {}
 
     public function handle(): void
     {
         try {
-            if (app()->environment('production') && $this->company?->abacatepay_token) {
+            $hasToken = $this->company?->abacatepay_token || config('services.abacatepay.token');
+
+            if ($hasToken) {
                 $billing = (new AbacatePayService($this->company))
-                    ->createBilling($this->order, $this->customer);
+                    ->createBilling($this->order, $this->customer, $this->paymentMethod);
 
                 Payment::create([
                     'order_id'              => $this->order->id,

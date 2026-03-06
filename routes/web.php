@@ -8,7 +8,7 @@ Route::get('/', \App\Livewire\Chat\OrderChat::class)->name('chat.index');
 Route::get('/{company}', \App\Livewire\Chat\OrderChat::class)->name('chat.company');
 
 // --- Webhook (no auth, no CSRF, no company scope) ---
-Route::post('/webhooks/abacatepay', [WebhookController::class, 'abacatepay'])
+Route::match(['get', 'post'], '/webhooks/abacatepay', [WebhookController::class, 'abacatepay'])
     ->name('webhook.abacatepay');
 
 // --- Company Admin Panel ---

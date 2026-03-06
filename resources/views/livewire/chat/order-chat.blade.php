@@ -43,17 +43,77 @@
                 </div>
             </div>
 
-            {{-- Restart button --}}
-            @if ($step !== 'IDENTIFY_PHONE' && $step !== 'ORDER_CONFIRMED' && $step !== 'CLOSED')
-                <button
-                    wire:click="startNewOrder"
-                    class="text-white/70 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
-                    title="Recomeçar"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                </button>
+            {{-- Restart + End chat buttons --}}
+            @if ($step !== 'IDENTIFY_PHONE' && $step !== 'CLOSED')
+                <div class="flex items-center gap-1" x-data="{ confirmEnd: false }">
+                    {{-- Edit profile --}}
+                    @if ($customerId && !in_array($step, ['ORDER_CONFIRMED', 'EDIT_PROFILE']))
+                        <button
+                            wire:click="openEditProfile"
+                            class="text-white/70 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
+                            title="Editar perfil"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                            </svg>
+                        </button>
+                    @endif
+
+                    {{-- Restart --}}
+                    @if ($step !== 'ORDER_CONFIRMED')
+                        <button
+                            wire:click="startNewOrder"
+                            class="text-white/70 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
+                            title="Recomeçar"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                        </button>
+                    @endif
+
+                    {{-- End chat --}}
+                    <button
+                        x-on:click="confirmEnd = true"
+                        class="text-white/70 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
+                        title="Encerrar conversa"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+
+                    {{-- Confirmation dialog --}}
+                    <div
+                        x-show="confirmEnd"
+                        x-transition
+                        class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+                        style="display: none;"
+                    >
+                        <div class="bg-white rounded-2xl shadow-2xl p-6 max-w-xs w-full text-center space-y-4">
+                            <div class="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto text-2xl">⚠️</div>
+                            <div>
+                                <p class="font-bold text-gray-800 text-base">Encerrar conversa?</p>
+                                <p class="text-sm text-gray-500 mt-1">Você perderá todo o histórico desta conversa. Esta ação não pode ser desfeita.</p>
+                            </div>
+                            <div class="flex gap-2">
+                                <button
+                                    x-on:click="confirmEnd = false"
+                                    class="flex-1 px-4 py-2.5 rounded-xl border-2 border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    wire:click="endChat"
+                                    x-on:click="confirmEnd = false"
+                                    class="flex-1 px-4 py-2.5 rounded-xl bg-red-600 text-sm font-bold text-white hover:bg-red-700 transition-colors"
+                                >
+                                    Encerrar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             @endif
         </div>
 
@@ -61,7 +121,7 @@
         @php
             $steps = ['IDENTIFY_PHONE','BRANCH_SELECT','MENU_BROWSE','CART_REVIEW','PAYMENT_PIX'];
             $currentIdx = array_search($step, $steps);
-            if ($currentIdx === false) $currentIdx = in_array($step, ['REGISTER_NAME','REGISTER_EMAIL','REGISTER_ADDRESS']) ? 0 : ($step === 'CHECKOUT_NOTES' ? 3 : ($step === 'ORDER_CONFIRMED' ? 5 : $currentIdx));
+            if ($currentIdx === false) $currentIdx = in_array($step, ['REGISTER_NAME','REGISTER_EMAIL','REGISTER_ADDRESS']) ? 0 : (in_array($step, ['CHECKOUT_NOTES','CHECKOUT_CPF','CHECKOUT_PAYMENT_METHOD']) ? 3 : ($step === 'ORDER_CONFIRMED' ? 5 : $currentIdx));
         @endphp
         <div class="flex items-center justify-center gap-1.5 pb-3 px-4">
             @for ($i = 0; $i < 5; $i++)
@@ -349,25 +409,134 @@
                 </div>
 
                 <button
-                    wire:click="submitOrder"
+                    wire:click="proceedFromNotes"
                     class="mc-btn-primary flex items-center justify-center gap-2"
                     wire:loading.attr="disabled"
-                    wire:target="submitOrder"
+                    wire:target="proceedFromNotes"
                 >
-                    <span wire:loading.remove wire:target="submitOrder" class="flex items-center gap-2">
+                    <span wire:loading.remove wire:target="proceedFromNotes" class="flex items-center gap-2">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
                         </svg>
-                        Gerar PIX
+                        Continuar →
                     </span>
-                    <span wire:loading wire:target="submitOrder" class="flex items-center gap-2">
+                    <span wire:loading wire:target="proceedFromNotes" class="flex items-center gap-2">
                         <svg class="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                         </svg>
-                        Gerando pagamento...
+                        Aguarde...
                     </span>
                 </button>
+            </div>
+
+        {{-- ── CHECKOUT_CPF ── --}}
+        @elseif ($step === 'CHECKOUT_CPF')
+            <div wire:key="step-checkout-cpf" class="space-y-2.5">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">CPF</label>
+                    <input
+                        wire:model="taxId"
+                        type="text"
+                        placeholder="000.000.000-00"
+                        class="mc-input"
+                        wire:keydown.enter="submitCpf"
+                        maxlength="14"
+                        autocomplete="off"
+                    />
+                    @error('taxId') <p class="text-red-600 text-xs mt-1 flex items-center gap-1"><span>⚠</span> {{ $message }}</p> @enderror
+                </div>
+
+                <button
+                    wire:click="submitCpf"
+                    class="mc-btn-primary flex items-center justify-center gap-2"
+                    wire:loading.attr="disabled"
+                    wire:target="submitCpf"
+                >
+                    <span wire:loading.remove wire:target="submitCpf" class="flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                        </svg>
+                        Continuar →
+                    </span>
+                    <span wire:loading wire:target="submitCpf" class="flex items-center gap-2">
+                        <svg class="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                        </svg>
+                        Aguarde...
+                    </span>
+                </button>
+            </div>
+
+        {{-- ── CHECKOUT_PAYMENT_METHOD ── --}}
+        @elseif ($step === 'CHECKOUT_PAYMENT_METHOD')
+            <div wire:key="step-payment-method" class="space-y-3">
+                <p class="text-xs font-semibold text-gray-500 text-center uppercase tracking-wider">Forma de pagamento</p>
+
+                {{-- Dinheiro --}}
+                <button
+                    wire:click="selectPaymentMethod('CASH')"
+                    wire:loading.attr="disabled"
+                    class="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 border-yellow-200 bg-yellow-50 hover:bg-yellow-100 hover:border-yellow-400 transition-all text-left"
+                >
+                    <div class="w-9 h-9 rounded-full bg-yellow-500 flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="font-bold text-gray-800 text-sm">Dinheiro</p>
+                        <p class="text-xs text-gray-500">Pagamento na entrega</p>
+                    </div>
+                    <div class="ml-auto">
+                        <span class="text-xs font-bold text-yellow-700 bg-yellow-100 px-2 py-0.5 rounded-full">Na entrega</span>
+                    </div>
+                </button>
+
+                {{-- PIX --}}
+                <button
+                    wire:click="selectPaymentMethod('PIX')"
+                    wire:loading.attr="disabled"
+                    class="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 border-green-200 bg-green-50 hover:bg-green-100 hover:border-green-400 transition-all text-left"
+                >
+                    <div class="w-9 h-9 rounded-full bg-green-500 flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M11.85 3.15a.5.5 0 01.3 0l7 2.5A.5.5 0 0119.5 6v6c0 3.5-2.5 6.5-7 8.5-.12.05-.26.05-.38 0C7.5 18.5 5 15.5 5 12V6a.5.5 0 01.35-.47l7-2.5-.5-.88zm0 1.02L6 6.38V12c0 3 2.1 5.6 6 7.47 3.9-1.87 6-4.47 6-7.47V6.38l-6.15-2.21z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="font-bold text-gray-800 text-sm">PIX</p>
+                        <p class="text-xs text-gray-500">Pagamento instantâneo</p>
+                    </div>
+                    <div class="ml-auto">
+                        <span class="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full">Instantâneo</span>
+                    </div>
+                </button>
+
+                {{-- Cartão de Crédito --}}
+                <button
+                    wire:click="selectPaymentMethod('CARD')"
+                    wire:loading.attr="disabled"
+                    class="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 border-blue-200 bg-blue-50 hover:bg-blue-100 hover:border-blue-400 transition-all text-left"
+                >
+                    <div class="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="font-bold text-gray-800 text-sm">Cartão de Crédito</p>
+                        <p class="text-xs text-gray-500">Visa, Mastercard e outros</p>
+                    </div>
+                </button>
+
+                <div wire:loading class="flex justify-center pt-1">
+                    <svg class="animate-spin w-5 h-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                </div>
             </div>
 
         {{-- ── PAYMENT_PIX ── --}}
@@ -377,7 +546,13 @@
                 {{-- Status label --}}
                 <div class="flex items-center justify-center gap-2">
                     <span class="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></span>
-                    <p class="text-sm font-semibold text-gray-600">Aguardando pagamento PIX…</p>
+                    <p class="text-sm font-semibold text-gray-600">
+                        @if($paymentMethod === 'CARD')
+                            Aguardando pagamento no cartão…
+                        @else
+                            Aguardando pagamento PIX…
+                        @endif
+                    </p>
                 </div>
 
                 {{-- QR Code --}}
@@ -413,22 +588,40 @@
                             </button>
                         </div>
                     </div>
+                @elseif ($paymentUrl)
+                    <a
+                        href="{{ $paymentUrl }}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="inline-flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-bold text-white bg-[#B91C1C] hover:bg-red-700 transition-colors"
+                    >
+                        Pagar via AbacatePay
+                    </a>
                 @endif
 
-                <p class="text-[11px] text-gray-400">Confirmação automática em até 5s após o pagamento.</p>
-
+                {{-- Simular pagamento (apenas sandbox/debug) --}}
+                @if(config('app.debug') && $paymentId)
                     <div class="border-t border-dashed border-gray-200 pt-3">
-                        <p class="text-[10px] text-gray-400 uppercase tracking-wider mb-2 font-bold">Ambiente de desenvolvimento</p>
+                        <p class="text-[10px] font-bold text-orange-400 uppercase tracking-wider mb-2">Ambiente de Testes</p>
                         <button
                             wire:click="simulatePayment"
                             wire:loading.attr="disabled"
                             wire:target="simulatePayment"
-                            class="w-full py-2 px-4 rounded-xl text-sm font-bold border-2 border-dashed border-amber-400 text-amber-600 hover:bg-amber-50 transition-colors flex items-center justify-center gap-2"
+                            class="w-full px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-orange-500 hover:bg-orange-600 transition-colors flex items-center justify-center gap-2"
                         >
-                            <span wire:loading.remove wire:target="simulatePayment">⚡ Simular Pagamento</span>
-                            <span wire:loading wire:target="simulatePayment">Processando...</span>
+                            <span wire:loading.remove wire:target="simulatePayment">⚡ Simular pagamento aprovado</span>
+                            <span wire:loading wire:target="simulatePayment" class="flex items-center gap-2">
+                                <svg class="animate-spin w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                </svg>
+                                Simulando...
+                            </span>
                         </button>
                     </div>
+                @endif
+
+                <p class="text-[11px] text-gray-400">Confirmação automática em até 5s após o pagamento.</p>
             </div>
 
         {{-- ── ORDER_CONFIRMED ── --}}
@@ -441,9 +634,14 @@
                     <p class="font-black text-green-600 text-lg">Pedido confirmado!</p>
                     <p class="text-sm text-gray-500 mt-0.5">Seus salgados já estão sendo preparados. 🥟</p>
                 </div>
-                <button wire:click="startNewOrder" class="mc-btn-primary">
-                    Fazer novo pedido
-                </button>
+                <div class="space-y-2">
+                    <button wire:click="startNewOrderKeepHistory" class="mc-btn-primary w-full">
+                        Fazer novo pedido
+                    </button>
+                    <button wire:click="startNewOrder" class="mc-btn-secondary w-full text-xs">
+                        Novo pedido e apagar histórico
+                    </button>
+                </div>
             </div>
 
         {{-- ── CLOSED ── --}}
@@ -461,11 +659,47 @@
                         @foreach($this->branches as $branch)
                             <div class="bg-gray-50 rounded-xl px-3 py-2 border border-gray-100 flex items-center justify-between">
                                 <span class="text-sm font-medium text-gray-700">{{ $branch->name }}</span>
-                                <span class="text-xs text-gray-500">{{ $branch->opens_at }} – {{ $branch->closes_at }}</span>
+                                <span class="text-xs text-gray-500">{{ $branch->opens_at->format('H:i') }} – {{ $branch->closes_at->format('H:i') }}</span>
                             </div>
                         @endforeach
                     </div>
                 @endif
+            </div>
+
+        {{-- ── EDIT_PROFILE ── --}}
+        @elseif ($step === 'EDIT_PROFILE')
+            <div wire:key="step-edit-profile" class="space-y-2">
+                <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Editar cadastro</p>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Nome completo</label>
+                    <input wire:model="name" type="text" class="mc-input" autocomplete="name" />
+                    @error('name') <p class="text-red-600 text-xs mt-0.5 flex items-center gap-1"><span>⚠</span> {{ $message }}</p> @enderror
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Rua e número</label>
+                    <input wire:model="address" type="text" class="mc-input" autocomplete="street-address" />
+                    @error('address') <p class="text-red-600 text-xs mt-0.5 flex items-center gap-1"><span>⚠</span> {{ $message }}</p> @enderror
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Bairro</label>
+                        <input wire:model="neighborhood" type="text" class="mc-input" autocomplete="address-level2" />
+                        @error('neighborhood') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">CEP</label>
+                        <input wire:model="cep" type="text" placeholder="00000-000" class="mc-input" autocomplete="postal-code" />
+                        @error('cep') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
+                    </div>
+                </div>
+                <div class="flex gap-2 pt-1">
+                    <button wire:click="cancelEditProfile" class="mc-btn-secondary flex-1">Cancelar</button>
+                    <button wire:click="submitEditProfile" class="mc-btn-primary flex-1"
+                        wire:loading.attr="disabled" wire:target="submitEditProfile">
+                        <span wire:loading.remove wire:target="submitEditProfile">Salvar →</span>
+                        <span wire:loading wire:target="submitEditProfile">Salvando...</span>
+                    </button>
+                </div>
             </div>
 
         {{-- ── ORDER_FAILED ── --}}

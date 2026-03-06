@@ -37,26 +37,49 @@ class OrderChat extends Component
     public array $cart = [];
 
     // --- Order ---
-    public string $notes   = '';
-    public ?int $orderId   = null;
+    public string $notes         = '';
+    public string $taxId         = '';
+    public ?int $orderId         = null;
+    public string $paymentMethod = 'PIX';
+
+    // --- Edit profile ---
+    public ?string $previousStep = null;
 
     // --- Payment ---
     public ?string $pixQrCode    = null;
     public ?string $pixCopyPaste = null;
     public ?string $paymentId    = null;
+    public ?string $paymentUrl   = null;
 
     // --- UI ---
     public array $messages  = [];
     public bool $isLoading  = false;
     public ?string $cartError = null;
+    public bool $showEndConfirm = false;
 
     public function mount(): void
+    {
+        // Restaura sessão se existir
+        $savedState = session('chat_state');
+        if ($savedState) {
+            foreach ($savedState as $key => $value) {
+                if (property_exists($this, $key)) {
+                    $this->$key = $value;
+                }
+            }
+            return;
+        }
+
+        $this->initialize();
+    }
+
+    private function initialize(): void
     {
         $company = app()->bound('current.company') ? app('current.company') : null;
         $companyName = $company?->name ?? config('app.name');
 
         $companyId = $company?->id;
-        
+
         $hasOpenBranch = Cache::remember("open_branches:company:{$companyId}", now()->addMinutes(1), fn () =>
             Branch::where('active', true)
                 ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
@@ -100,6 +123,15 @@ class OrderChat extends Component
             'CHECKOUT_NOTES' => [
                 'notes' => ['nullable', 'string', 'max:500'],
             ],
+            'CHECKOUT_CPF' => [
+                'taxId' => ['required', 'string', 'regex:/^\d{3}\.?\d{3}\.?\d{3}-?\d{2}$/'],
+            ],
+            'EDIT_PROFILE' => [
+                'name'         => ['required', 'string', 'min:3', 'max:100'],
+                'address'      => ['required', 'string', 'min:5', 'max:255'],
+                'neighborhood' => ['required', 'string', 'max:100'],
+                'cep'          => ['required', 'regex:/^\d{5}-?\d{3}$/'],
+            ],
             default => [],
         };
     }
@@ -118,6 +150,8 @@ class OrderChat extends Component
             'neighborhood.required' => 'Informe o bairro.',
             'cep.required'          => 'Informe o CEP.',
             'cep.regex'             => 'CEP inválido. Use o formato 00000-000.',
+            'taxId.required'        => 'Informe seu CPF.',
+            'taxId.regex'           => 'CPF inválido. Use o formato 000.000.000-00.',
         ];
     }
 
@@ -131,8 +165,13 @@ class OrderChat extends Component
         $customer   = Customer::findByPhone($normalized);
 
         if ($customer) {
-            $this->customerId = $customer->id;
-            $this->name       = $customer->name;
+            $this->customerId   = $customer->id;
+            $this->name         = $customer->name;
+            $this->email        = $customer->email ?? '';
+            $this->address      = $customer->address ?? '';
+            $this->neighborhood = $customer->neighborhood ?? '';
+            $this->cep          = $customer->cep ?? '';
+            $this->taxId        = $customer->tax_id ?? '';
             $this->addMessage('user', $this->phone);
             $this->addMessage('bot', "Que bom te ver de volta, {$customer->name}! Escolha uma filial para continuar.");
             $this->transitionTo('BRANCH_SELECT');
@@ -186,6 +225,37 @@ class OrderChat extends Component
         $this->addMessage('user', "{$this->address}, {$this->neighborhood} — CEP {$this->cep}");
         $this->addMessage('bot', 'Cadastro criado com sucesso! Agora escolha uma filial.');
         $this->transitionTo('BRANCH_SELECT');
+    }
+
+    // --- Step: Edit Profile ---
+
+    public function openEditProfile(): void
+    {
+        $this->previousStep = $this->step;
+        $this->transitionTo('EDIT_PROFILE');
+    }
+
+    public function submitEditProfile(): void
+    {
+        $this->validate($this->rules(), $this->messages());
+
+        $customer = Customer::findOrFail($this->customerId);
+        $customer->update([
+            'name'         => $this->name,
+            'address'      => $this->address,
+            'neighborhood' => $this->neighborhood,
+            'cep'          => preg_replace('/\D/', '', $this->cep),
+        ]);
+
+        $this->addMessage('bot', "Cadastro atualizado com sucesso!");
+        $this->transitionTo($this->previousStep ?? 'BRANCH_SELECT');
+        $this->previousStep = null;
+    }
+
+    public function cancelEditProfile(): void
+    {
+        $this->transitionTo($this->previousStep ?? 'BRANCH_SELECT');
+        $this->previousStep = null;
     }
 
     // --- Step: Branch ---
@@ -269,21 +339,108 @@ class OrderChat extends Component
 
     // --- Step: Checkout ---
 
-    public function submitOrder(): void
+    public function proceedFromNotes(): void
     {
         $this->validate($this->rules(), $this->messages());
+
+        $this->addMessage('user', $this->notes ?: '(sem observações)');
+
+        if ($this->taxId !== '') {
+            $this->addMessage('bot', 'Escolha a forma de pagamento:');
+            $this->transitionTo('CHECKOUT_PAYMENT_METHOD');
+            return;
+        }
+
+        $this->addMessage('bot', 'Para gerar o pagamento precisamos do seu CPF. Por favor, informe.');
+        $this->transitionTo('CHECKOUT_CPF');
+    }
+
+    public function submitCpf(): void
+    {
+        $this->validate($this->rules(), $this->messages());
+
+        $this->addMessage('user', $this->taxId);
+        $this->addMessage('bot', 'Escolha a forma de pagamento:');
+        $this->transitionTo('CHECKOUT_PAYMENT_METHOD');
+    }
+
+    public function selectPaymentMethod(string $method): void
+    {
+        $this->paymentMethod = $method;
+
+        if ($method === 'CASH') {
+            $this->addMessage('user', 'Dinheiro');
+            $this->submitCashOrder();
+            return;
+        }
+
+        $label = $method === 'CARD' ? 'Cartão de Crédito' : 'PIX';
+        $this->addMessage('user', $label);
+        $this->submitOrder();
+    }
+
+    public function submitCashOrder(): void
+    {
         $this->isLoading = true;
 
         $subtotal = collect($this->cart)->sum(fn ($item) => $item['qty'] * $item['price']);
 
         $order = DB::transaction(function () use ($subtotal) {
             $order = Order::create([
-                'customer_id' => $this->customerId,
-                'branch_id'   => $this->selectedBranchId,
-                'subtotal'    => $subtotal,
-                'total'       => $subtotal,
-                'status'      => 'pending',
-                'notes'       => $this->notes,
+                'customer_id'    => $this->customerId,
+                'branch_id'      => $this->selectedBranchId,
+                'subtotal'       => $subtotal,
+                'total'          => $subtotal,
+                'status'         => 'paid',
+                'notes'          => $this->notes,
+                'payment_method' => 'cash',
+            ]);
+
+            foreach ($this->cart as $productId => $item) {
+                OrderItem::create([
+                    'order_id'     => $order->id,
+                    'product_id'   => $productId,
+                    'product_name' => $item['name'],
+                    'unit_price'   => $item['price'],
+                    'quantity'     => $item['qty'],
+                    'subtotal'     => $item['qty'] * $item['price'],
+                ]);
+            }
+
+            return $order;
+        });
+
+        $this->orderId = $order->id;
+
+        $customer = Customer::findOrFail($this->customerId);
+        if ($this->taxId && ! $customer->tax_id) {
+            $customer->update(['tax_id' => preg_replace('/\D/', '', $this->taxId)]);
+        }
+
+        $this->addMessage('bot', $this->buildOrderSummary($order->order_number) . "\n\nPagamento em dinheiro na entrega. Obrigado!");
+        $this->transitionTo('ORDER_CONFIRMED');
+        $this->isLoading = false;
+    }
+
+    public function submitOrder(): void
+    {
+        $rules = $this->rules();
+        if (! empty($rules)) {
+            $this->validate($rules, $this->messages());
+        }
+        $this->isLoading = true;
+
+        $subtotal = collect($this->cart)->sum(fn ($item) => $item['qty'] * $item['price']);
+
+        $order = DB::transaction(function () use ($subtotal) {
+            $order = Order::create([
+                'customer_id'    => $this->customerId,
+                'branch_id'      => $this->selectedBranchId,
+                'subtotal'       => $subtotal,
+                'total'          => $subtotal,
+                'status'         => 'pending',
+                'notes'          => $this->notes,
+                'payment_method' => strtolower($this->paymentMethod),
             ]);
 
             foreach ($this->cart as $productId => $item) {
@@ -305,34 +462,30 @@ class OrderChat extends Component
         $customer = Customer::findOrFail($this->customerId);
         $company  = app()->bound('current.company') ? app('current.company') : null;
 
-        ProcessOrder::dispatch($order, $customer, $company);
+        if ($this->taxId && ! $customer->tax_id) {
+            $customer->update(['tax_id' => preg_replace('/\D/', '', $this->taxId)]);
+            $customer->refresh();
+        }
 
-        $this->addMessage('bot', "Pedido {$order->order_number} recebido! Gerando PIX...");
+        ProcessOrder::dispatch($order, $customer, $company, $this->paymentMethod);
+
+        $label = $this->paymentMethod === 'CARD' ? 'cobrança no cartão' : 'PIX';
+        $this->addMessage('bot', $this->buildOrderSummary($order->order_number) . "\n\nGerando {$label}...");
         $this->transitionTo('PAYMENT_PIX');
         $this->isLoading = false;
     }
 
-    public function simulatePayment(): void
+    // --- Real-time listeners ---
+
+    public function getListeners(): array
     {
         if (! $this->orderId) {
-            return;
+            return [];
         }
 
-        $order = Order::find($this->orderId);
-
-        if (! $order || $order->status !== 'awaiting_payment') {
-            return;
-        }
-
-        $order->update(['status' => 'paid']);
-
-        Payment::where('order_id', $order->id)->update([
-            'status'  => 'paid',
-            'paid_at' => now(),
-        ]);
-
-        $this->addMessage('bot', "✅ Pagamento simulado com sucesso! Seu pedido {$order->order_number} está sendo preparado. Obrigado!");
-        $this->transitionTo('ORDER_CONFIRMED');
+        return [
+            "echo:order.{$this->orderId},OrderStatusUpdated" => 'checkPaymentStatus',
+        ];
     }
 
     // --- Step: Payment polling ---
@@ -350,12 +503,13 @@ class OrderChat extends Component
         }
 
         // Busca dados do PIX assim que o Job processar
-        if ($order->status === 'awaiting_payment' && ! $this->pixCopyPaste) {
+        if ($order->status === 'awaiting_payment' && ! $this->pixCopyPaste && ! $this->paymentUrl) {
             $payment = $order->payment;
             if ($payment) {
                 $this->pixQrCode    = $payment->pix_qr_code;
                 $this->pixCopyPaste = $payment->pix_copy_paste;
                 $this->paymentId    = $payment->abacatepay_billing_id;
+                $this->paymentUrl   = $payment->abacatepay_url;
             }
         }
 
@@ -370,27 +524,85 @@ class OrderChat extends Component
         }
     }
 
+    public function simulatePayment(): void
+    {
+        if (! app()->isLocal() && ! config('app.debug')) {
+            return;
+        }
+
+        $payment = Payment::where('order_id', $this->orderId)->first();
+
+        if (! $payment) {
+            return;
+        }
+
+        $payment->update(['status' => 'paid', 'paid_at' => now()]);
+        $payment->order->update(['status' => 'paid']);
+
+        $this->addMessage('bot', "Pagamento simulado! Pedido confirmado.");
+        $this->transitionTo('ORDER_CONFIRMED');
+    }
+
     public function retryOrder(): void
     {
-        $this->cart        = [];
-        $this->orderId     = null;
-        $this->pixQrCode   = null;
-        $this->pixCopyPaste = null;
-        $this->paymentId   = null;
-        $this->notes       = '';
+        $this->cart          = [];
+        $this->orderId       = null;
+        $this->pixQrCode     = null;
+        $this->pixCopyPaste  = null;
+        $this->paymentId     = null;
+        $this->paymentUrl    = null;
+        $this->notes         = '';
+        $this->paymentMethod = 'PIX';
         $this->transitionTo('MENU_BROWSE');
     }
 
     public function startNewOrder(): void
     {
-        $this->reset([
-            'step', 'customerId', 'phone', 'name', 'email',
-            'address', 'neighborhood', 'cep', 'selectedBranchId',
-            'cart', 'notes', 'orderId', 'pixQrCode', 'pixCopyPaste',
-            'paymentId', 'messages', 'isLoading', 'cartError',
-        ]);
-        $this->step = 'IDENTIFY_PHONE';
-        $this->mount();
+        $this->resetState();
+        $this->initialize();
+    }
+
+    public function startNewOrderKeepHistory(): void
+    {
+        $savedMessages = $this->messages;
+        $this->resetState();
+        $this->messages = $savedMessages;
+        $this->initialize();
+    }
+
+    public function endChat(): void
+    {
+        $this->resetState();
+        $this->initialize();
+    }
+
+    private function resetState(): void
+    {
+        session()->forget('chat_state');
+        $this->step            = 'IDENTIFY_PHONE';
+        $this->customerId      = null;
+        $this->phone           = '';
+        $this->name            = '';
+        $this->email           = '';
+        $this->address         = '';
+        $this->neighborhood    = '';
+        $this->cep             = '';
+        $this->selectedBranchId = null;
+        $this->cart            = [];
+        $this->notes           = '';
+        $this->taxId           = '';
+        $this->orderId         = null;
+        $this->pixQrCode       = null;
+        $this->pixCopyPaste    = null;
+        $this->paymentId       = null;
+        $this->paymentUrl      = null;
+        $this->paymentMethod   = 'PIX';
+        $this->previousStep    = null;
+        $this->messages        = [];
+        $this->isLoading       = false;
+        $this->cartError       = null;
+        $this->showEndConfirm  = false;
+        $this->resetErrorBag();
     }
 
     // --- Helpers ---
@@ -399,6 +611,7 @@ class OrderChat extends Component
     {
         $this->step = $step;
         $this->resetErrorBag();
+        $this->saveToSession();
     }
 
     private function addMessage(string $from, string $text): void
@@ -408,6 +621,48 @@ class OrderChat extends Component
             'text' => $text,
             'time' => now()->format('H:i'),
         ];
+        $this->saveToSession();
+    }
+
+    private function saveToSession(): void
+    {
+        session(['chat_state' => [
+            'step'             => $this->step,
+            'customerId'       => $this->customerId,
+            'phone'            => $this->phone,
+            'name'             => $this->name,
+            'email'            => $this->email,
+            'address'          => $this->address,
+            'neighborhood'     => $this->neighborhood,
+            'cep'              => $this->cep,
+            'selectedBranchId' => $this->selectedBranchId,
+            'cart'             => $this->cart,
+            'notes'            => $this->notes,
+            'taxId'            => $this->taxId,
+            'orderId'          => $this->orderId,
+            'paymentMethod'    => $this->paymentMethod,
+            'previousStep'     => $this->previousStep,
+            'pixQrCode'        => $this->pixQrCode,
+            'pixCopyPaste'     => $this->pixCopyPaste,
+            'paymentId'        => $this->paymentId,
+            'paymentUrl'       => $this->paymentUrl,
+            'messages'         => $this->messages,
+        ]]);
+    }
+
+    private function buildOrderSummary(string $orderNumber): string
+    {
+        $lines = ["Pedido {$orderNumber} recebido! Aqui está o resumo:"];
+
+        foreach ($this->cart as $item) {
+            $subtotal = $item['qty'] * $item['price'];
+            $lines[] = "• {$item['qty']}x {$item['name']} — R$ " . number_format($subtotal, 2, ',', '.');
+        }
+
+        $total = collect($this->cart)->sum(fn ($item) => $item['qty'] * $item['price']);
+        $lines[] = "\nTotal: R$ " . number_format($total, 2, ',', '.');
+
+        return implode("\n", $lines);
     }
 
     // --- Computed ---
