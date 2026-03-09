@@ -21,9 +21,6 @@
                 </flux:sidebar.group>
 
                 <flux:sidebar.group heading="Pedidos" class="grid">
-                    <flux:sidebar.item icon="layout-grid" :href="route('admin.dashboard')" :current="request()->routeIs('admin.dashboard')" wire:navigate>
-                        Admin Dashboard
-                    </flux:sidebar.item>
                     <flux:sidebar.item icon="list-bullet" :href="route('admin.orders.index')" :current="request()->routeIs('admin.orders.*')" wire:navigate>
                         Pedidos
                     </flux:sidebar.item>

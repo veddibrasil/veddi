@@ -20,6 +20,16 @@ class Customer extends Model
     public static function findByPhone(string $phone): ?self
     {
         $normalized = preg_replace('/\D/', '', $phone);
-        return static::where('phone', $normalized)->first();
+
+        // A CompanyScope (global scope do BelongsToCompany) já filtra por company_id quando
+        // current.company está vinculado. O filtro explícito abaixo é uma camada adicional
+        // de segurança para garantir isolamento mesmo se o scope for contornado.
+        $query = static::where('phone', $normalized);
+
+        if (app()->bound('current.company')) {
+            $query->where('company_id', app('current.company')->id);
+        }
+
+        return $query->first();
     }
 }

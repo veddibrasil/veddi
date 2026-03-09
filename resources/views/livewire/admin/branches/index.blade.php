@@ -37,6 +37,8 @@
                         </span>
                         <a href="{{ route('admin.branches.edit', $branch) }}"
                             class="text-xs text-amber-600 hover:underline dark:text-amber-400">Editar</a>
+                        <a href="{{ route('admin.branches.delivery', $branch) }}"
+                            class="text-xs text-blue-600 hover:underline dark:text-blue-400">Entrega</a>
 
                         <button wire:click="confirmDelete({{ $branch->id }})"
                             class="text-xs text-neutral-400 hover:text-red-600 dark:hover:text-red-300">Excluir</button>

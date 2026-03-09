@@ -3,18 +3,18 @@
 use App\Http\Controllers\WebhookController;
 use Illuminate\Support\Facades\Route;
 
-// --- Public Chat ---
+// --- Chat Público ---
 Route::get('/', \App\Livewire\Chat\OrderChat::class)->name('chat.index');
 Route::get('/{company}', \App\Livewire\Chat\OrderChat::class)->name('chat.company');
 
-// --- Webhook (no auth, no CSRF, no company scope) ---
+// --- Webhook (sem auth, sem CSRF, sem escopo de empresa) ---
 Route::match(['get', 'post'], '/webhooks/abacatepay', [WebhookController::class, 'abacatepay'])
     ->name('webhook.abacatepay');
 
-// --- Payment completion popup close ---
+// --- Fechar popup de conclusão de pagamento ---
 Route::get('/payment/complete', fn () => view('payment.complete'))->name('payment.complete');
 
-// --- Company Admin Panel ---
+// --- Painel Administrativo da Empresa ---
 Route::middleware(['auth', 'verified'])
     ->prefix('admin')
     ->name('admin.')
@@ -32,6 +32,7 @@ Route::middleware(['auth', 'verified'])
             Route::get('/branches', \App\Livewire\Admin\Branches\Index::class)->name('branches.index');
             Route::get('/branches/create', \App\Livewire\Admin\Branches\Form::class)->name('branches.create');
             Route::get('/branches/{branch}/edit', \App\Livewire\Admin\Branches\Form::class)->name('branches.edit');
+            Route::get('/branches/{branch}/delivery', \App\Livewire\Admin\Branches\DeliverySettings::class)->name('branches.delivery');
 
             Route::get('/categories', \App\Livewire\Admin\Categories\Index::class)->name('categories.index');
 

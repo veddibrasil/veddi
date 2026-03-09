@@ -435,6 +435,43 @@
                 </button>
             </div>
 
+        {{-- ── CHECKOUT_DELIVERY_FEE ── --}}
+        @elseif ($step === 'CHECKOUT_DELIVERY_FEE')
+            <div class="space-y-3">
+                <p class="text-sm font-semibold text-gray-700 text-center">Resumo da entrega</p>
+
+                <div class="bg-gray-50 rounded-xl p-4 space-y-2 border border-gray-100">
+                    <div class="flex justify-between text-sm text-gray-600">
+                        <span>Subtotal dos itens</span>
+                        <span>R$ {{ number_format($this->cartTotal, 2, ',', '.') }}</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600">Taxa de entrega</span>
+                        @if ($freeDelivery || $deliveryFee == 0)
+                            <span class="font-bold text-green-600">Grátis</span>
+                        @else
+                            <span class="font-bold text-gray-800">R$ {{ number_format($deliveryFee, 2, ',', '.') }}</span>
+                        @endif
+                    </div>
+                    <div class="flex justify-between text-base font-black border-t border-gray-200 pt-2 mt-1">
+                        <span class="text-gray-800">Total</span>
+                        <span class="text-[#B91C1C]">R$ {{ number_format($this->orderTotal, 2, ',', '.') }}</span>
+                    </div>
+                </div>
+
+                @if ($freeDelivery)
+                    <p class="text-xs text-green-600 text-center font-medium">Frete grátis para este pedido!</p>
+                @endif
+
+                <button wire:click="confirmDeliveryFee" class="mc-btn-primary">
+                    Confirmar e continuar →
+                </button>
+                <button wire:click="selectOrderType('pickup')"
+                    class="w-full text-xs text-center text-gray-500 hover:text-gray-700 py-1">
+                    Prefiro retirar no local (sem frete)
+                </button>
+            </div>
+
         {{-- ── CHECKOUT_NOTES ── --}}
         @elseif ($step === 'CHECKOUT_NOTES')
             <div class="space-y-2.5">
@@ -452,7 +489,7 @@
 
                 <div class="flex items-center justify-between bg-red-50 rounded-xl px-4 py-2.5">
                     <span class="text-sm text-gray-600 font-medium">Total a pagar</span>
-                    <span class="text-xl font-black text-[#B91C1C]">R$ {{ number_format($this->cartTotal, 2, ',', '.') }}</span>
+                    <span class="text-xl font-black text-[#B91C1C]">R$ {{ number_format($this->orderTotal, 2, ',', '.') }}</span>
                 </div>
 
                 <button

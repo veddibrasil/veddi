@@ -2,23 +2,22 @@
 
 namespace App\Livewire\Chat;
 
-use App\Events\CustomerMessageSent;
-use App\Jobs\ProcessOrder;
+use App\Exceptions\DeliveryException;
 use App\Models\Branch;
 use App\Models\ChatMessage;
 use App\Models\Customer;
 use App\Models\Order;
-use App\Models\OrderItem;
-use App\Models\Payment;
-use App\Models\Product;
 use App\Models\ProductCategory;
-use Exception;
+use App\Services\ChatService;
+use App\Services\DeliveryService;
+use App\Services\OrderService;
+use App\Services\PaymentService;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\Rule;
 use Livewire\Component;
+use RuntimeException;
 
 class OrderChat extends Component
 {
@@ -48,6 +47,8 @@ class OrderChat extends Component
     public ?int $orderId         = null;
     public string $paymentMethod = 'PIX';
     public string $orderType     = 'delivery'; // 'delivery' | 'pickup'
+    public float  $deliveryFee   = 0.0;
+    public bool   $freeDelivery  = false;
 
     // --- Edit profile ---
     public ?string $previousStep = null;
@@ -74,7 +75,6 @@ class OrderChat extends Component
 
     public function mount(): void
     {
-        // Restaura sessão se existir
         $savedState = session('chat_state');
         if ($savedState) {
             foreach ($savedState as $key => $value) {
@@ -90,10 +90,9 @@ class OrderChat extends Component
 
     private function initialize(): void
     {
-        $company = app()->bound('current.company') ? app('current.company') : null;
+        $company     = app()->bound('current.company') ? app('current.company') : null;
         $companyName = $company?->name ?? config('app.name');
-
-        $companyId = $company?->id;
+        $companyId   = $company?->id;
 
         $hasOpenBranch = Cache::remember("open_branches:company:{$companyId}", now()->addMinutes(1), fn () =>
             Branch::where('active', true)
@@ -180,11 +179,9 @@ class OrderChat extends Component
     public function submitPhone(): void
     {
         $this->phone = preg_replace('/\D/', '', $this->phone);
-
         $this->validate($this->rules(), $this->messages());
 
-        $normalized = $this->phone;
-        $customer   = Customer::findByPhone($normalized);
+        $customer = Customer::findByPhone($this->phone);
 
         if ($customer) {
             $this->customerId   = $customer->id;
@@ -196,12 +193,12 @@ class OrderChat extends Component
             $this->city         = $customer->city ?? '';
             $this->cep          = $customer->cep ?? '';
             $this->taxId        = $customer->tax_id ?? '';
-            Log::channel('chat')->info('Cliente identificado pelo telefone', ['customer_id' => $customer->id, 'phone' => $normalized]);
+            Log::channel('chat')->info('Cliente identificado pelo telefone', ['customer_id' => $customer->id, 'phone' => $this->phone]);
             $this->addMessage('user', $this->phone);
             $this->addMessage('bot', "Que bom te ver de volta, {$customer->name}! Escolha uma filial para continuar.");
             $this->transitionTo('BRANCH_SELECT');
         } else {
-            Log::channel('chat')->info('Telefone não encontrado — iniciando cadastro', ['phone' => $normalized]);
+            Log::channel('chat')->info('Telefone não encontrado — iniciando cadastro', ['phone' => $this->phone]);
             $this->addMessage('user', $this->phone);
             $this->addMessage('bot', 'Não encontrei seu cadastro. Vamos criar um rapidinho! Qual é o seu nome completo?');
             $this->transitionTo('REGISTER_NAME');
@@ -243,7 +240,7 @@ class OrderChat extends Component
                 'city'         => $this->city,
                 'cep'          => preg_replace('/\D/', '', $this->cep),
             ]);
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             $this->addMessage('bot', $e->getMessage());
             $this->transitionTo('REGISTER_EMAIL');
             return;
@@ -317,21 +314,19 @@ class OrderChat extends Component
     public function addToCart(int $productId, int $quantity = 1): void
     {
         $this->cartError = null;
-        $product = Product::findOrFail($productId);
+        $product = \App\Models\Product::findOrFail($productId);
 
-        if (isset($this->cart[$productId])) {
-            $cart = $this->cart;
+        $cart = $this->cart;
+        if (isset($cart[$productId])) {
             $cart[$productId]['qty'] += $quantity;
-            $this->cart = $cart;
         } else {
-            $cart = $this->cart;
             $cart[$productId] = [
                 'qty'   => $quantity,
                 'name'  => $product->name,
                 'price' => (float) $product->price,
             ];
-            $this->cart = $cart;
         }
+        $this->cart = $cart;
     }
 
     public function removeFromCart(int $productId): void
@@ -345,7 +340,6 @@ class OrderChat extends Component
     {
         if ($qty <= 0) {
             $this->removeFromCart($productId);
-
             return;
         }
         $cart                    = $this->cart;
@@ -357,7 +351,6 @@ class OrderChat extends Component
     {
         if (empty($this->cart)) {
             $this->cartError = 'Adicione pelo menos um produto ao carrinho.';
-
             return;
         }
         $this->cartError = null;
@@ -374,6 +367,49 @@ class OrderChat extends Component
         $this->orderType = $type;
         $label = $type === 'pickup' ? 'Retirada no local' : 'Entrega';
         $this->addMessage('user', $label);
+
+        if ($type === 'pickup') {
+            $this->deliveryFee  = 0.0;
+            $this->freeDelivery = false;
+            $this->addMessage('bot', 'Alguma observação sobre o pedido?');
+            $this->transitionTo('CHECKOUT_NOTES');
+            return;
+        }
+
+        $this->resolveDeliveryFee();
+    }
+
+    private function resolveDeliveryFee(): void
+    {
+        $branch   = Branch::find($this->selectedBranchId);
+        $settings = $branch?->deliverySetting;
+
+        if (! $settings || ! $settings->active) {
+            $this->deliveryFee  = 0.0;
+            $this->freeDelivery = false;
+            $this->addMessage('bot', 'Alguma observação sobre o pedido?');
+            $this->transitionTo('CHECKOUT_NOTES');
+            return;
+        }
+
+        try {
+            $result = app(DeliveryService::class)->validate(
+                $settings,
+                $this->neighborhood,
+                $this->cartTotal
+            );
+
+            $this->deliveryFee  = $result['fee'];
+            $this->freeDelivery = $result['free'];
+
+            $this->transitionTo('CHECKOUT_DELIVERY_FEE');
+        } catch (DeliveryException $e) {
+            $this->addMessage('bot', $e->getMessage());
+        }
+    }
+
+    public function confirmDeliveryFee(): void
+    {
         $this->addMessage('bot', 'Alguma observação sobre o pedido?');
         $this->transitionTo('CHECKOUT_NOTES');
     }
@@ -388,7 +424,6 @@ class OrderChat extends Component
     public function proceedFromNotes(): void
     {
         $this->validate($this->rules(), $this->messages());
-
         $this->addMessage('user', $this->notes ?: '(sem observações)');
 
         if ($this->taxId !== '') {
@@ -404,7 +439,6 @@ class OrderChat extends Component
     public function submitCpf(): void
     {
         $this->validate($this->rules(), $this->messages());
-
         $this->addMessage('user', $this->taxId);
         $this->addMessage('bot', 'Escolha a forma de pagamento:');
         $this->transitionTo('CHECKOUT_PAYMENT_METHOD');
@@ -416,110 +450,45 @@ class OrderChat extends Component
 
         if ($method === 'CASH') {
             $this->addMessage('user', 'Dinheiro');
-            $this->submitCashOrder();
+            $this->placeOrder('paid');
             return;
         }
 
         $label = $method === 'CARD' ? 'Cartão de Crédito' : 'PIX';
         $this->addMessage('user', $label);
-        $this->submitOrder();
+        $this->placeOrder('pending');
     }
 
-    public function submitCashOrder(): void
-    {
-        $this->isLoading = true;
-
-        $subtotal = collect($this->cart)->sum(fn ($item) => $item['qty'] * $item['price']);
-
-        $order = DB::transaction(function () use ($subtotal) {
-            $order = Order::create([
-                'customer_id'    => $this->customerId,
-                'branch_id'      => $this->selectedBranchId,
-                'subtotal'       => $subtotal,
-                'total'          => $subtotal,
-                'status'         => 'paid',
-                'notes'          => $this->notes,
-                'payment_method' => 'cash',
-                'order_type'     => $this->orderType,
-            ]);
-
-            foreach ($this->cart as $productId => $item) {
-                OrderItem::create([
-                    'order_id'     => $order->id,
-                    'product_id'   => $productId,
-                    'product_name' => $item['name'],
-                    'unit_price'   => $item['price'],
-                    'quantity'     => $item['qty'],
-                    'subtotal'     => $item['qty'] * $item['price'],
-                ]);
-            }
-
-            return $order;
-        });
-
-        $this->orderId = $order->id;
-
-        $customer = Customer::findOrFail($this->customerId);
-        if ($this->taxId && ! $customer->tax_id) {
-            $customer->update(['tax_id' => preg_replace('/\D/', '', $this->taxId)]);
-        }
-
-        Log::channel('orders')->info('Pedido em dinheiro criado', [
-            'order_id'     => $order->id,
-            'order_number' => $order->order_number,
-            'customer_id'  => $this->customerId,
-            'branch_id'    => $this->selectedBranchId,
-            'total'        => $order->total,
-            'order_type'   => $this->orderType,
-        ]);
-
-        \App\Events\NewOrderPlaced::dispatch($order->load('customer'));
-
-        $this->addMessage('bot', $this->buildOrderSummary($order->order_number) . "\n\nPagamento em dinheiro na entrega. Obrigado!");
-        $this->transitionTo('ORDER_CONFIRMED');
-        $this->isLoading = false;
-    }
-
-    public function submitOrder(): void
+    /**
+     * Cria o pedido com validação de preços no servidor e inicia o fluxo correto.
+     */
+    private function placeOrder(string $initialStatus): void
     {
         if ($this->submitting) {
             return;
         }
         $this->submitting = true;
+        $this->isLoading  = true;
 
-        $rules = $this->rules();
-        if (! empty($rules)) {
-            $this->validate($rules, $this->messages());
+        $orderService = app(OrderService::class);
+
+        try {
+            $order = $orderService->createOrder(
+                $this->customerId,
+                $this->selectedBranchId,
+                $this->cart,
+                $this->notes,
+                $this->paymentMethod,
+                $this->orderType,
+                $initialStatus,
+                $this->deliveryFee
+            );
+        } catch (RuntimeException $e) {
+            $this->addMessage('bot', 'Não foi possível criar o pedido: ' . $e->getMessage());
+            $this->submitting = false;
+            $this->isLoading  = false;
+            return;
         }
-        $this->isLoading = true;
-
-        $subtotal = collect($this->cart)->sum(fn ($item) => $item['qty'] * $item['price']);
-
-        $order = DB::transaction(function () use ($subtotal) {
-            $order = Order::create([
-                'customer_id'    => $this->customerId,
-                'branch_id'      => $this->selectedBranchId,
-                'subtotal'       => $subtotal,
-                'total'          => $subtotal,
-                'status'         => 'pending',
-                'notes'          => $this->notes,
-                'payment_method' => strtolower($this->paymentMethod),
-                'order_type'     => $this->orderType,
-            ]);
-
-            foreach ($this->cart as $productId => $item) {
-                OrderItem::create([
-                    'order_id'     => $order->id,
-                    'product_id'   => $productId,
-                    'product_name' => $item['name'],
-                    'unit_price'   => $item['price'],
-                    'quantity'     => $item['qty'],
-                    'subtotal'     => $item['qty'] * $item['price'],
-                ]);
-            }
-
-            return $order;
-        });
 
         $this->orderId = $order->id;
 
@@ -531,23 +500,20 @@ class OrderChat extends Component
             $customer->refresh();
         }
 
-        Log::channel('orders')->info('Pedido criado — aguardando pagamento eletrônico', [
-            'order_id'       => $order->id,
-            'order_number'   => $order->order_number,
-            'customer_id'    => $this->customerId,
-            'branch_id'      => $this->selectedBranchId,
-            'total'          => $order->total,
-            'payment_method' => $this->paymentMethod,
-            'order_type'     => $this->orderType,
-        ]);
-
         \App\Events\NewOrderPlaced::dispatch($order->load('customer'));
 
-        ProcessOrder::dispatch($order, $customer, $company, $this->paymentMethod);
+        $summary = $orderService->buildOrderSummaryFromOrder($order);
 
-        $label = $this->paymentMethod === 'CARD' ? 'cobrança no cartão' : 'PIX';
-        $this->addMessage('bot', $this->buildOrderSummary($order->order_number) . "\n\nGerando {$label}...");
-        $this->transitionTo('PAYMENT_PIX');
+        if ($initialStatus === 'paid') {
+            $this->addMessage('bot', $summary . "\n\nPagamento em dinheiro na entrega. Obrigado!");
+            $this->transitionTo('ORDER_CONFIRMED');
+        } else {
+            app(PaymentService::class)->dispatchPayment($order, $customer, $company, $this->paymentMethod);
+            $label = $this->paymentMethod === 'CARD' ? 'cobrança no cartão' : 'PIX';
+            $this->addMessage('bot', $summary . "\n\nGerando {$label}...");
+            $this->transitionTo('PAYMENT_PIX');
+        }
+
         $this->isLoading = false;
     }
 
@@ -576,13 +542,7 @@ class OrderChat extends Component
         $text = $this->supportMessage;
         $this->supportMessage = '';
 
-        $chatMessage = ChatMessage::create([
-            'order_id' => $this->orderId,
-            'sender'   => 'customer',
-            'message'  => $text,
-        ]);
-
-        CustomerMessageSent::dispatch($chatMessage);
+        app(ChatService::class)->sendCustomerMessage($this->orderId, $text);
         $this->addMessage('user', $text);
     }
 
@@ -595,7 +555,6 @@ class OrderChat extends Component
 
         $this->addMessage('bot', $message);
 
-        // Sincroniza o cursor do poll para não duplicar a mensagem recebida via Echo
         if ($this->orderId) {
             $latest = ChatMessage::where('order_id', $this->orderId)
                 ->where('sender', 'admin')
@@ -614,14 +573,7 @@ class OrderChat extends Component
             return;
         }
 
-        $query = ChatMessage::where('order_id', $this->orderId)
-            ->where('sender', 'admin');
-
-        if ($this->lastAdminMessageId) {
-            $query->where('id', '>', $this->lastAdminMessageId);
-        }
-
-        $newMessages = $query->orderBy('id')->get();
+        $newMessages = app(ChatService::class)->pollAdminMessages($this->orderId, $this->lastAdminMessageId);
 
         foreach ($newMessages as $msg) {
             $this->addMessage('bot', $msg->message);
@@ -637,7 +589,6 @@ class OrderChat extends Component
             return;
         }
 
-        // Rate limit separado: pagamento (poll 5s → max 30/min) vs entrega (poll 15s → max 10/min)
         $phase        = $this->step === 'PAYMENT_PIX' ? 'pay' : 'delivery';
         $rateLimitKey = "status-check:{$phase}:{$this->orderId}";
         $maxAttempts  = $phase === 'pay' ? 30 : 10;
@@ -648,24 +599,19 @@ class OrderChat extends Component
         RateLimiter::hit($rateLimitKey, 60);
 
         $order = Order::find($this->orderId);
-
         if (! $order) {
             return;
         }
 
-        // Busca dados do PIX assim que o Job processar
         if ($order->status === 'awaiting_payment' && ! $this->pixCopyPaste && ! $this->paymentUrl) {
             $payment = $order->payment;
             if ($payment) {
-                // Ownership verification via session (server-side, cannot be tampered by client)
-                $sessionKey = 'payment_token_' . $this->orderId;
+                $sessionKey  = 'payment_token_' . $this->orderId;
                 $storedToken = session($sessionKey);
 
                 if ($storedToken === null) {
-                    // First time loading: store token in session
                     session([$sessionKey => $payment->payment_token]);
                 } elseif (! hash_equals((string) $storedToken, (string) $payment->payment_token)) {
-                    // Token mismatch: reject silently
                     return;
                 }
 
@@ -684,9 +630,9 @@ class OrderChat extends Component
         }
 
         Log::channel('chat')->info('Status do pedido atualizado', [
-            'order_id'   => $this->orderId,
+            'order_id'    => $this->orderId,
             'customer_id' => $this->customerId,
-            'status'     => $status,
+            'status'      => $status,
         ]);
 
         $messages = [
@@ -714,46 +660,26 @@ class OrderChat extends Component
     public function handlePaymentExpired(): void
     {
         $order = Order::find($this->orderId);
-
         if (! $order) {
             return;
         }
 
-        // Mark current payment as expired
-        $order->payment?->update(['status' => 'expired']);
+        $this->pixQrCode    = null;
+        $this->pixCopyPaste = null;
+        $this->paymentUrl   = null;
+        $this->expiresAt    = null;
+        $this->paymentId    = null;
 
-        // Re-dispatch job to generate a new billing if order is still awaiting payment
-        if (in_array($order->status, ['pending', 'awaiting_payment'])) {
-            $this->pixQrCode    = null;
-            $this->pixCopyPaste = null;
-            $this->paymentUrl   = null;
-            $this->expiresAt    = null;
-            $this->paymentId    = null;
+        $customer = Customer::findOrFail($this->customerId);
+        $company  = app()->bound('current.company') ? app('current.company') : null;
 
-            // Clear ownership token so new one is accepted on next poll
-            session()->forget('payment_token_' . $this->orderId);
-
-            $customer = Customer::findOrFail($this->customerId);
-            $company  = app()->bound('current.company') ? app('current.company') : null;
-
-            ProcessOrder::dispatch($order, $customer, $company, $this->paymentMethod);
-            $this->addMessage('bot', 'O tempo para pagamento expirou. Gerando nova cobrança...');
-        }
+        app(PaymentService::class)->expireAndRenew($order, $customer, $company, $this->paymentMethod);
+        $this->addMessage('bot', 'O tempo para pagamento expirou. Gerando nova cobrança...');
     }
 
     public function simulatePayment(): void
     {
-        abort_unless(config('app.debug'), 403);
-
-        $payment = Payment::where('order_id', $this->orderId)->first();
-
-        if (! $payment) {
-            return;
-        }
-
-        $payment->update(['status' => 'paid', 'paid_at' => now()]);
-        $payment->order->update(['status' => 'paid']);
-
+        app(PaymentService::class)->simulatePayment($this->orderId);
         $this->addMessage('bot', "Pagamento simulado! Pedido confirmado.");
         $this->transitionTo('ORDER_CONFIRMED');
     }
@@ -771,21 +697,22 @@ class OrderChat extends Component
     public function confirmCancelOrder(): void
     {
         $order = Order::find($this->orderId);
-        if (! $order || ! in_array($order->status, ['paid', 'preparing'])) {
+        if (! $order) {
             $this->showCancelConfirm = false;
             $this->addMessage('bot', 'Não foi possível cancelar o pedido. Entre em contato com a loja.');
             return;
         }
 
-        $order->update(['status' => 'cancelled']);
-        $this->showCancelConfirm = false;
+        try {
+            app(OrderService::class)->cancelOrder($order, $this->customerId);
+        } catch (RuntimeException $e) {
+            $this->showCancelConfirm = false;
+            $this->addMessage('bot', 'Não foi possível cancelar o pedido. Entre em contato com a loja.');
+            return;
+        }
+
+        $this->showCancelConfirm  = false;
         $this->lastNotifiedStatus = 'cancelled';
-
-        Log::channel('orders')->info('Pedido cancelado pelo cliente', [
-            'order_id'    => $order->id,
-            'customer_id' => $this->customerId,
-        ]);
-
         $this->addMessage('bot', "❌ Pedido {$order->order_number} cancelado. Se precisar de ajuda, entre em contato com a loja.");
         $this->transitionTo('ORDER_FAILED');
     }
@@ -808,6 +735,8 @@ class OrderChat extends Component
         $this->notes         = '';
         $this->paymentMethod = 'PIX';
         $this->orderType     = 'delivery';
+        $this->deliveryFee   = 0.0;
+        $this->freeDelivery  = false;
         $this->transitionTo('MENU_BROWSE');
     }
 
@@ -834,34 +763,36 @@ class OrderChat extends Component
     private function resetState(): void
     {
         session()->forget('chat_state');
-        $this->step            = 'IDENTIFY_PHONE';
-        $this->customerId      = null;
-        $this->phone           = '';
-        $this->name            = '';
-        $this->email           = '';
-        $this->address         = '';
-        $this->complement      = '';
-        $this->neighborhood    = '';
-        $this->city            = '';
-        $this->cep             = '';
+        $this->step             = 'IDENTIFY_PHONE';
+        $this->customerId       = null;
+        $this->phone            = '';
+        $this->name             = '';
+        $this->email            = '';
+        $this->address          = '';
+        $this->complement       = '';
+        $this->neighborhood     = '';
+        $this->city             = '';
+        $this->cep              = '';
         $this->selectedBranchId = null;
-        $this->cart            = [];
-        $this->notes           = '';
-        $this->taxId           = '';
-        $this->orderId         = null;
-        $this->pixQrCode       = null;
-        $this->pixCopyPaste    = null;
-        $this->paymentId       = null;
-        $this->paymentUrl      = null;
-        $this->expiresAt       = null;
-        $this->paymentMethod   = 'PIX';
-        $this->orderType       = 'delivery';
-        $this->previousStep    = null;
-        $this->messages        = [];
-        $this->isLoading           = false;
-        $this->submitting          = false;
-        $this->cartError           = null;
-        $this->showEndConfirm      = false;
+        $this->cart             = [];
+        $this->notes            = '';
+        $this->taxId            = '';
+        $this->orderId          = null;
+        $this->pixQrCode        = null;
+        $this->pixCopyPaste     = null;
+        $this->paymentId        = null;
+        $this->paymentUrl       = null;
+        $this->expiresAt        = null;
+        $this->paymentMethod    = 'PIX';
+        $this->orderType        = 'delivery';
+        $this->deliveryFee      = 0.0;
+        $this->freeDelivery     = false;
+        $this->previousStep     = null;
+        $this->messages         = [];
+        $this->isLoading        = false;
+        $this->submitting       = false;
+        $this->cartError        = null;
+        $this->showEndConfirm   = false;
         $this->showCancelConfirm   = false;
         $this->lastNotifiedStatus  = null;
         $this->supportMessage      = '';
@@ -908,6 +839,8 @@ class OrderChat extends Component
             'orderId'          => $this->orderId,
             'paymentMethod'    => $this->paymentMethod,
             'orderType'        => $this->orderType,
+            'deliveryFee'      => $this->deliveryFee,
+            'freeDelivery'     => $this->freeDelivery,
             'previousStep'     => $this->previousStep,
             'pixQrCode'        => $this->pixQrCode,
             'pixCopyPaste'     => $this->pixCopyPaste,
@@ -921,26 +854,16 @@ class OrderChat extends Component
         ]]);
     }
 
-    private function buildOrderSummary(string $orderNumber): string
-    {
-        $lines = ["Pedido {$orderNumber} recebido! Aqui está o resumo:"];
-
-        foreach ($this->cart as $item) {
-            $subtotal = $item['qty'] * $item['price'];
-            $lines[] = "• {$item['qty']}x {$item['name']} — R$ " . number_format($subtotal, 2, ',', '.');
-        }
-
-        $total = collect($this->cart)->sum(fn ($item) => $item['qty'] * $item['price']);
-        $lines[] = "\nTotal: R$ " . number_format($total, 2, ',', '.');
-
-        return implode("\n", $lines);
-    }
-
     // --- Computed ---
 
     public function getCartTotalProperty(): float
     {
         return collect($this->cart)->sum(fn ($item) => $item['qty'] * $item['price']);
+    }
+
+    public function getOrderTotalProperty(): float
+    {
+        return $this->cartTotal + $this->deliveryFee;
     }
 
     public function getCartCountProperty(): int
