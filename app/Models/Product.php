@@ -20,6 +20,15 @@ class Product extends Model
         'active' => 'boolean',
     ];
 
+    public function getImageUrlAttribute(): ?string
+    {
+        if (! $this->image_path) {
+            return null;
+        }
+        $base = rtrim(config('filesystems.disks.s3.url', ''), '/');
+        return $base . '/' . ltrim($this->image_path, '/');
+    }
+
     public function category(): BelongsTo
     {
         return $this->belongsTo(ProductCategory::class, 'product_category_id');

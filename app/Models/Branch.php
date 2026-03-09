@@ -15,6 +15,17 @@ class Branch extends Model
 
     protected $casts = ['active' => 'boolean'];
 
+    public function getOpensAtAttribute($value): ?string
+    {
+        return $value ? substr($value, 0, 5) : null;
+    }
+
+    public function getClosesAtAttribute($value): ?string
+    {
+        return $value ? substr($value, 0, 5) : null;
+    }
+    
+
     public function products(): BelongsToMany
     {
         return $this->belongsToMany(Product::class)

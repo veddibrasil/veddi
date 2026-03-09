@@ -9,7 +9,7 @@
         w-full h-full
         sm:w-[420px] sm:h-[90vh] sm:max-h-[820px] sm:rounded-2xl sm:shadow-2xl
     "
-    x-data="{ copied: false }"
+    x-data="chatApp()"
 >
 
     {{-- ═══════════════════════════════ HEADER ══════════════════════════════ --}}
@@ -21,7 +21,7 @@
             {{-- Avatar / Logo --}}
             <div style="background: var(--mc-red)" class="w-11 h-11 rounded-full bg-white/15 border-2 border-white/30 flex items-center justify-center shrink-0 shadow-lg overflow-hidden">
                 @if(isset($currentCompany) && $currentCompany->logo_path)
-                    <img src="{{ asset('storage/' . $currentCompany->logo_path) }}" alt="{{ $currentCompany->name }}" class="w-full h-full object-cover">
+                    <img src="{{ $currentCompany->logo_url }}" alt="{{ $currentCompany->name }}" class="w-full h-full object-cover">
                 @else
                     <img src="{{ asset('logo.png') }}" alt="{{ $currentCompany->name ?? config('app.name') }}" class="w-full h-full object-cover">
                 @endif
@@ -121,7 +121,7 @@
         @php
             $steps = ['IDENTIFY_PHONE','BRANCH_SELECT','MENU_BROWSE','CART_REVIEW','PAYMENT_PIX'];
             $currentIdx = array_search($step, $steps);
-            if ($currentIdx === false) $currentIdx = in_array($step, ['REGISTER_NAME','REGISTER_EMAIL','REGISTER_ADDRESS']) ? 0 : (in_array($step, ['CHECKOUT_NOTES','CHECKOUT_CPF','CHECKOUT_PAYMENT_METHOD']) ? 3 : ($step === 'ORDER_CONFIRMED' ? 5 : $currentIdx));
+            if ($currentIdx === false) $currentIdx = in_array($step, ['REGISTER_NAME','REGISTER_EMAIL','REGISTER_ADDRESS']) ? 0 : (in_array($step, ['CHECKOUT_ORDER_TYPE','CHECKOUT_NOTES','CHECKOUT_CPF','CHECKOUT_PAYMENT_METHOD']) ? 3 : ($step === 'ORDER_CONFIRMED' ? 5 : $currentIdx));
         @endphp
         <div class="flex items-center justify-center gap-1.5 pb-3 px-4">
             @for ($i = 0; $i < 5; $i++)
@@ -191,6 +191,8 @@
                         class="mc-input"
                         wire:keydown.enter="submitPhone"
                         autocomplete="tel"
+                        inputmode="numeric"
+                        x-on:input="$event.target.value = formatPhone($event.target.value)"
                     />
                     @error('phone') <p class="text-red-600 text-xs mt-1 flex items-center gap-1"><span>⚠</span> {{ $message }}</p> @enderror
                 </div>
@@ -228,20 +230,45 @@
         @elseif ($step === 'REGISTER_ADDRESS')
             <div wire:key="step-register-address" class="space-y-2">
                 <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">
+                        CEP
+                        <span x-show="cepLoading" class="text-blue-500 font-normal normal-case ml-1">Buscando...</span>
+                    </label>
+                    <input
+                        wire:model="cep"
+                        type="text"
+                        placeholder="00000-000"
+                        class="mc-input"
+                        autocomplete="postal-code"
+                        inputmode="numeric"
+                        maxlength="9"
+                        x-on:input="
+                            $event.target.value = formatCep($event.target.value);
+                            if ($event.target.value.replace(/\D/g,'').length === 8) lookupCep($event.target.value, $wire);
+                        "
+                    />
+                    @error('cep') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
+                </div>
+                <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Rua e número</label>
                     <input wire:model="address" type="text" placeholder="Ex: Av. Brasil, 100" class="mc-input" autocomplete="street-address" />
                     @error('address') <p class="text-red-600 text-xs mt-0.5 flex items-center gap-1"><span>⚠</span> {{ $message }}</p> @enderror
                 </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Complemento <span class="text-gray-400 font-normal">(opcional)</span></label>
+                    <input wire:model="complement" type="text" placeholder="Apto 12, Bloco B..." class="mc-input" autocomplete="address-line2" />
+                    @error('complement') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
+                </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div>
                         <label class="block text-xs font-semibold text-gray-600 mb-1">Bairro</label>
-                        <input wire:model="neighborhood" type="text" placeholder="Zona 1" class="mc-input" autocomplete="address-level2" />
+                        <input wire:model="neighborhood" type="text" placeholder="Zona 1" class="mc-input" autocomplete="address-level3" />
                         @error('neighborhood') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-gray-600 mb-1">CEP</label>
-                        <input wire:model="cep" type="text" placeholder="00000-000" class="mc-input" autocomplete="postal-code" />
-                        @error('cep') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Cidade</label>
+                        <input wire:model="city" type="text" placeholder="Maringá" class="mc-input" autocomplete="address-level2" />
+                        @error('city') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
                     </div>
                 </div>
                 <button wire:click="submitAddress" class="mc-btn-primary mt-1">Salvar e continuar →</button>
@@ -292,7 +319,7 @@
                                         {{-- Image --}}
                                         <div class="w-12 h-12 rounded-lg overflow-hidden shrink-0">
                                             @if ($product->image_path)
-                                                <img src="{{ asset('storage/'.$product->image_path) }}" class="w-full h-full object-cover" />
+                                                <img src="{{ $product->image_url }}" class="w-full h-full object-cover" />
                                             @else
                                                 <div class="w-full h-full bg-gradient-to-br from-red-100 to-amber-100 flex items-center justify-center text-xl">
                                                     🥟
@@ -388,6 +415,26 @@
                 <button wire:click="confirmCart" class="mc-btn-primary flex-1">Confirmar →</button>
             </div>
 
+        {{-- ── CHECKOUT_ORDER_TYPE ── --}}
+        @elseif ($step === 'CHECKOUT_ORDER_TYPE')
+            <div class="space-y-3">
+                <p class="text-sm font-semibold text-gray-700 text-center">Como deseja receber seu pedido?</p>
+                <button wire:click="selectOrderType('delivery')" class="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-gray-200 hover:border-red-400 hover:bg-red-50 transition-colors">
+                    <span class="text-2xl">🛵</span>
+                    <div class="text-left">
+                        <p class="font-bold text-gray-800">Entrega</p>
+                        <p class="text-xs text-gray-500">Receba em seu endereço</p>
+                    </div>
+                </button>
+                <button wire:click="selectOrderType('pickup')" class="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-gray-200 hover:border-red-400 hover:bg-red-50 transition-colors">
+                    <span class="text-2xl">🏪</span>
+                    <div class="text-left">
+                        <p class="font-bold text-gray-800">Retirada no local</p>
+                        <p class="text-xs text-gray-500">Retire na filial</p>
+                    </div>
+                </button>
+            </div>
+
         {{-- ── CHECKOUT_NOTES ── --}}
         @elseif ($step === 'CHECKOUT_NOTES')
             <div class="space-y-2.5">
@@ -443,6 +490,8 @@
                         wire:keydown.enter="submitCpf"
                         maxlength="14"
                         autocomplete="off"
+                        inputmode="numeric"
+                        x-on:input="$event.target.value = formatCpf($event.target.value)"
                     />
                     @error('taxId') <p class="text-red-600 text-xs mt-1 flex items-center gap-1"><span>⚠</span> {{ $message }}</p> @enderror
                 </div>
@@ -543,7 +592,7 @@
         @elseif ($step === 'PAYMENT_PIX')
             <div wire:poll.5s="checkPaymentStatus" class="space-y-3 text-center">
 
-                {{-- Status label --}}
+                {{-- Status label + countdown timer --}}
                 <div class="flex items-center justify-center gap-2">
                     <span class="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></span>
                     <p class="text-sm font-semibold text-gray-600">
@@ -555,6 +604,44 @@
                     </p>
                 </div>
 
+                {{-- Countdown timer (Alpine.js) --}}
+                @if ($expiresAt)
+                    <div
+                        x-data="{
+                            expiresAt: new Date('{{ $expiresAt }}'),
+                            timeLeft: '',
+                            expired: false,
+                            intervalId: null,
+                            init() {
+                                this.tick();
+                                this.intervalId = setInterval(() => this.tick(), 1000);
+                            },
+                            tick() {
+                                const diff = Math.max(0, this.expiresAt - Date.now());
+                                if (diff === 0) {
+                                    this.expired = true;
+                                    clearInterval(this.intervalId);
+                                    $wire.handlePaymentExpired();
+                                    return;
+                                }
+                                const m = String(Math.floor(diff / 60000)).padStart(2, '0');
+                                const s = String(Math.floor((diff % 60000) / 1000)).padStart(2, '0');
+                                this.timeLeft = m + ':' + s;
+                            }
+                        }"
+                        class="flex items-center justify-center gap-1.5"
+                    >
+                        <svg class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <span
+                            x-text="expired ? 'Expirado' : timeLeft"
+                            :class="expired ? 'text-red-500 font-bold' : 'text-gray-400'"
+                            class="text-[11px] font-mono"
+                        ></span>
+                    </div>
+                @endif
+
                 {{-- QR Code --}}
                 @if ($pixQrCode)
                     <div class="flex justify-center">
@@ -565,38 +652,119 @@
                 @endif
 
                 {{-- PIX copia e cola --}}
-                @if ($pixCopyPaste)
-                    <div class="bg-gray-50 rounded-xl p-3 border border-gray-200">
-                        <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">PIX Copia e Cola</p>
-                        <div class="flex gap-2">
-                            <input
-                                readonly
-                                value="{{ $pixCopyPaste }}"
-                                class="flex-1 text-[11px] font-mono bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-gray-500 truncate"
-                            />
+                @if ($paymentMethod !== 'CARD')
+                    @if ($pixCopyPaste)
+                        <div x-data="{ copied: false }" class="bg-gray-50 rounded-xl p-3 border border-gray-200">
+                            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">PIX Copia e Cola</p>
+                            <div class="flex gap-2">
+                                <input
+                                    readonly
+                                    value="{{ $pixCopyPaste }}"
+                                    class="flex-1 text-[11px] font-mono bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-gray-500 truncate"
+                                />
+                                <button
+                                    x-on:click="
+                                        navigator.clipboard.writeText('{{ $pixCopyPaste }}');
+                                        copied = true;
+                                        setTimeout(() => copied = false, 2500);
+                                    "
+                                    class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-all"
+                                    :class="copied ? 'bg-green-500' : 'bg-[#B91C1C] hover:bg-red-700'"
+                                >
+                                    <span x-show="!copied">Copiar</span>
+                                    <span x-show="copied">✓ Copiado</span>
+                                </button>
+                            </div>
+                        </div>
+                    @elseif ($paymentUrl)
+                        {{-- Fallback: QR code não disponível (ex: modo dev), abrir checkout AbacatePay --}}
+                        <div
+                            x-data="{
+                                popup: null,
+                                opened: false,
+                                openCheckout() {
+                                    this.popup = window.open(
+                                        '{{ $paymentUrl }}',
+                                        'abacatepay_checkout',
+                                        'width=480,height=700,left=' + Math.round((screen.width - 480) / 2) + ',top=' + Math.round((screen.height - 700) / 2) + ',resizable=yes,scrollbars=yes'
+                                    );
+                                    if (this.popup) {
+                                        this.opened = true;
+                                        this.popup.focus();
+                                    }
+                                }
+                            }"
+                            class="rounded-xl border border-green-200 bg-green-50 p-4 space-y-3 text-center"
+                        >
+                            <div class="flex flex-col items-center gap-2">
+                                <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                                    <svg class="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v1m6.364 1.636l-.707.707M20 12h-1M17.657 17.657l-.707-.707M12 19v1M6.343 17.657l-.707-.707M4 12H3M6.343 6.343l-.707-.707" />
+                                    </svg>
+                                </div>
+                                <p class="text-sm font-semibold text-gray-700">Pague via PIX</p>
+                                <p class="text-[11px] text-gray-400">Clique no botão abaixo para abrir a página de pagamento PIX.</p>
+                            </div>
                             <button
-                                x-on:click="
-                                    navigator.clipboard.writeText('{{ $pixCopyPaste }}');
-                                    copied = true;
-                                    setTimeout(() => copied = false, 2500);
-                                "
-                                class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-all"
-                                :class="copied ? 'bg-green-500' : 'bg-[#B91C1C] hover:bg-red-700'"
+                                x-on:click="openCheckout()"
+                                class="w-full py-2.5 rounded-xl text-sm font-bold text-white bg-green-600 hover:bg-green-700 transition-colors"
                             >
-                                <span x-show="!copied">Copiar</span>
-                                <span x-show="copied">✓ Copiado</span>
+                                <span x-show="!opened">Pagar com PIX</span>
+                                <span x-show="opened">Aguardando pagamento…</span>
                             </button>
                         </div>
-                    </div>
+                    @endif
                 @elseif ($paymentUrl)
-                    <a
-                        href="{{ $paymentUrl }}"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="inline-flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-bold text-white bg-[#B91C1C] hover:bg-red-700 transition-colors"
+                    {{-- Cartão: abre checkout AbacatePay em popup --}}
+                    <div
+                        x-data="{
+                            popup: null,
+                            opened: false,
+                            openCheckout() {
+                                this.popup = window.open(
+                                    '{{ $paymentUrl }}',
+                                    'abacatepay_checkout',
+                                    'width=480,height=700,left=' + Math.round((screen.width - 480) / 2) + ',top=' + Math.round((screen.height - 700) / 2) + ',resizable=yes,scrollbars=yes'
+                                );
+                                if (this.popup) {
+                                    this.opened = true;
+                                    this.popup.focus();
+                                }
+                            }
+                        }"
+                        class="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3 text-center"
                     >
-                        Pagar via AbacatePay
-                    </a>
+                        <div class="flex flex-col items-center gap-2">
+                            <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                                <svg class="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                                </svg>
+                            </div>
+                            <p class="text-sm font-semibold text-gray-700">Pague com cartão de crédito</p>
+                            <p class="text-[11px] text-gray-400">Clique no botão abaixo para abrir o formulário seguro de pagamento.</p>
+                        </div>
+
+                        <button
+                            x-on:click="openCheckout()"
+                            class="w-full px-4 py-2.5 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                        >
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                            </svg>
+                            <span x-show="!opened">Abrir página de pagamento</span>
+                            <span x-show="opened">Reabrir página de pagamento</span>
+                        </button>
+
+                        {{-- Fallback: link direto caso popup seja bloqueado pelo browser --}}
+                        <a
+                            href="{{ $paymentUrl }}"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="block text-[11px] text-gray-400 hover:text-gray-600 underline"
+                        >
+                            Ou clique aqui para abrir em nova aba
+                        </a>
+                    </div>
                 @endif
 
                 {{-- Simular pagamento (apenas sandbox/debug) --}}
@@ -626,6 +794,15 @@
 
         {{-- ── ORDER_CONFIRMED ── --}}
         @elseif ($step === 'ORDER_CONFIRMED')
+            {{-- Polling de fallback caso o evento Echo não chegue --}}
+            @if ($orderId && !in_array($lastNotifiedStatus, ['delivered', 'cancelled']))
+                <div wire:poll.15s="checkPaymentStatus" class="hidden"></div>
+            @endif
+            {{-- Polling de mensagens do admin (fallback Echo) --}}
+            @if ($orderId)
+                <div wire:poll.4s="pollAdminMessages" class="hidden"></div>
+            @endif
+
             <div class="text-center space-y-3 py-1">
                 <div class="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto text-4xl">
                     🎉
@@ -634,6 +811,33 @@
                     <p class="font-black text-green-600 text-lg">Pedido confirmado!</p>
                     <p class="text-sm text-gray-500 mt-0.5">Seus salgados já estão sendo preparados. 🥟</p>
                 </div>
+
+                {{-- Confirmação de cancelamento --}}
+                @if ($showCancelConfirm)
+                    <div class="bg-red-50 border border-red-200 rounded-xl p-3 text-left space-y-2">
+                        <p class="text-sm font-semibold text-red-700">Tem certeza que deseja cancelar o pedido?</p>
+                        <p class="text-xs text-red-500">Essa ação não pode ser desfeita.</p>
+                        <div class="flex gap-2">
+                            <button wire:click="confirmCancelOrder" wire:loading.attr="disabled" class="flex-1 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold py-2 rounded-lg transition-colors">
+                                Sim, cancelar
+                            </button>
+                            <button wire:click="dismissCancelOrder" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-semibold py-2 rounded-lg transition-colors">
+                                Não
+                            </button>
+                        </div>
+                    </div>
+                @else
+                    @php
+                        $currentOrder = $orderId ? \App\Models\Order::find($orderId) : null;
+                        $canCancel = $currentOrder && in_array($currentOrder->status, ['paid', 'preparing']);
+                    @endphp
+                    @if ($canCancel)
+                        <button wire:click="requestCancelOrder" class="w-full border border-red-300 text-red-600 hover:bg-red-50 text-sm font-medium py-2 rounded-lg transition-colors">
+                            Cancelar pedido
+                        </button>
+                    @endif
+                @endif
+
                 <div class="space-y-2">
                     <button wire:click="startNewOrderKeepHistory" class="mc-btn-primary w-full">
                         Fazer novo pedido
@@ -642,6 +846,29 @@
                         Novo pedido e apagar histórico
                     </button>
                 </div>
+            </div>
+
+            {{-- Suporte: enviar mensagem ao atendente --}}
+            <div class="border-t border-gray-100 pt-3 space-y-2">
+                <p class="text-[11px] font-semibold text-gray-400 uppercase tracking-wide text-center">Falar com o atendente</p>
+                <div class="flex gap-2">
+                    <input
+                        wire:model="supportMessage"
+                        wire:keydown.enter="sendSupportMessage"
+                        type="text"
+                        placeholder="Digite sua mensagem..."
+                        class="flex-1 text-sm rounded-xl border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                    <button
+                        wire:click="sendSupportMessage"
+                        wire:loading.attr="disabled"
+                        class="shrink-0 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors"
+                    >
+                        <span wire:loading.remove wire:target="sendSupportMessage">→</span>
+                        <span wire:loading wire:target="sendSupportMessage">...</span>
+                    </button>
+                </div>
+                @error('supportMessage') <p class="text-red-500 text-xs">{{ $message }}</p> @enderror
             </div>
 
         {{-- ── CLOSED ── --}}
@@ -659,7 +886,7 @@
                         @foreach($this->branches as $branch)
                             <div class="bg-gray-50 rounded-xl px-3 py-2 border border-gray-100 flex items-center justify-between">
                                 <span class="text-sm font-medium text-gray-700">{{ $branch->name }}</span>
-                                <span class="text-xs text-gray-500">{{ $branch->opens_at->format('H:i') }} – {{ $branch->closes_at->format('H:i') }}</span>
+                                <span class="text-xs text-gray-500">{{ $branch->opens_at }} – {{ $branch->closes_at }}</span>
                             </div>
                         @endforeach
                     </div>
@@ -676,20 +903,45 @@
                     @error('name') <p class="text-red-600 text-xs mt-0.5 flex items-center gap-1"><span>⚠</span> {{ $message }}</p> @enderror
                 </div>
                 <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">
+                        CEP
+                        <span x-show="cepLoading" class="text-blue-500 font-normal normal-case ml-1">Buscando...</span>
+                    </label>
+                    <input
+                        wire:model="cep"
+                        type="text"
+                        placeholder="00000-000"
+                        class="mc-input"
+                        autocomplete="postal-code"
+                        inputmode="numeric"
+                        maxlength="9"
+                        x-on:input="
+                            $event.target.value = formatCep($event.target.value);
+                            if ($event.target.value.replace(/\D/g,'').length === 8) lookupCep($event.target.value, $wire);
+                        "
+                    />
+                    @error('cep') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
+                </div>
+                <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Rua e número</label>
                     <input wire:model="address" type="text" class="mc-input" autocomplete="street-address" />
                     @error('address') <p class="text-red-600 text-xs mt-0.5 flex items-center gap-1"><span>⚠</span> {{ $message }}</p> @enderror
                 </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Complemento <span class="text-gray-400 font-normal">(opcional)</span></label>
+                    <input wire:model="complement" type="text" placeholder="Apto 12, Bloco B..." class="mc-input" autocomplete="address-line2" />
+                    @error('complement') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
+                </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div>
                         <label class="block text-xs font-semibold text-gray-600 mb-1">Bairro</label>
-                        <input wire:model="neighborhood" type="text" class="mc-input" autocomplete="address-level2" />
+                        <input wire:model="neighborhood" type="text" class="mc-input" autocomplete="address-level3" />
                         @error('neighborhood') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-gray-600 mb-1">CEP</label>
-                        <input wire:model="cep" type="text" placeholder="00000-000" class="mc-input" autocomplete="postal-code" />
-                        @error('cep') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Cidade</label>
+                        <input wire:model="city" type="text" class="mc-input" autocomplete="address-level2" />
+                        @error('city') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
                     </div>
                 </div>
                 <div class="flex gap-2 pt-1">
@@ -731,3 +983,50 @@
     </div>
 
 </div>
+
+@script
+<script>
+    Alpine.data('chatApp', () => ({
+        copied: false,
+        cepLoading: false,
+
+        formatPhone(v) {
+            v = v.replace(/\D/g, '').slice(0, 11);
+            if (v.length === 0) return '';
+            if (v.length <= 2) return '(' + v;
+            if (v.length <= 6) return '(' + v.slice(0,2) + ') ' + v.slice(2);
+            if (v.length <= 10) return '(' + v.slice(0,2) + ') ' + v.slice(2,6) + '-' + v.slice(6);
+            return '(' + v.slice(0,2) + ') ' + v.slice(2,7) + '-' + v.slice(7);
+        },
+
+        formatCep(v) {
+            v = v.replace(/\D/g, '').slice(0, 8);
+            return v.length > 5 ? v.slice(0,5) + '-' + v.slice(5) : v;
+        },
+
+        formatCpf(v) {
+            v = v.replace(/\D/g, '').slice(0, 11);
+            if (v.length <= 3) return v;
+            if (v.length <= 6) return v.slice(0,3) + '.' + v.slice(3);
+            if (v.length <= 9) return v.slice(0,3) + '.' + v.slice(3,6) + '.' + v.slice(6);
+            return v.slice(0,3) + '.' + v.slice(3,6) + '.' + v.slice(6,9) + '-' + v.slice(9);
+        },
+
+        async lookupCep(cep, wire) {
+            const digits = cep.replace(/\D/g, '');
+            if (digits.length !== 8) return;
+            this.cepLoading = true;
+            try {
+                const res = await fetch('https://viacep.com.br/ws/' + digits + '/json/');
+                const data = await res.json();
+                if (!data.erro) {
+                    if (data.logradouro) wire.set('address', data.logradouro);
+                    if (data.bairro) wire.set('neighborhood', data.bairro);
+                    if (data.localidade) wire.set('city', data.localidade);
+                }
+            } catch(e) {}
+            this.cepLoading = false;
+        },
+    }));
+</script>
+@endscript

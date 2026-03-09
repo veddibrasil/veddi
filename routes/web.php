@@ -11,6 +11,9 @@ Route::get('/{company}', \App\Livewire\Chat\OrderChat::class)->name('chat.compan
 Route::match(['get', 'post'], '/webhooks/abacatepay', [WebhookController::class, 'abacatepay'])
     ->name('webhook.abacatepay');
 
+// --- Payment completion popup close ---
+Route::get('/payment/complete', fn () => view('payment.complete'))->name('payment.complete');
+
 // --- Company Admin Panel ---
 Route::middleware(['auth', 'verified'])
     ->prefix('admin')

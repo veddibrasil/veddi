@@ -19,6 +19,14 @@
     </div>
 
     <div class="bg-white border rounded-xl shadow-sm overflow-hidden dark:bg-zinc-800 dark:border-zinc-700">
+        {{-- Cabeçalho de colunas --}}
+        <div class="flex items-center justify-between px-4 py-2 border-b bg-neutral-50 dark:bg-zinc-700/50 dark:border-zinc-700">
+            <span class="text-xs font-medium text-neutral-400 uppercase tracking-wide">Pedido / Cliente</span>
+            <div class="flex items-center gap-6">
+                <span class="text-xs font-medium text-neutral-400 uppercase tracking-wide">Total</span>
+                <span class="text-xs font-medium text-neutral-400 uppercase tracking-wide">Status</span>
+            </div>
+        </div>
         <div class="divide-y dark:divide-zinc-700">
             @forelse ($orders as $order)
                 <a href="{{ route('admin.orders.show', $order) }}"
@@ -28,9 +36,9 @@
                         <p class="text-sm text-neutral-600 dark:text-neutral-400">{{ $order->customer->name ?? '—' }}</p>
                         <p class="text-xs text-neutral-400 dark:text-neutral-500">{{ $order->branch->name ?? '—' }} · {{ $order->created_at->format('d/m H:i') }}</p>
                     </div>
-                    <div class="text-right">
+                    <div class="flex items-center gap-4">
                         <p class="font-bold text-sm text-neutral-800 dark:text-neutral-100">R$ {{ number_format($order->total, 2, ',', '.') }}</p>
-                        <span class="text-xs px-2 py-0.5 rounded-full
+                        <span class="text-xs px-2 py-1 rounded-full min-w-20 text-center
                             @if($order->status === 'paid' || $order->status === 'delivered') bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400
                             @elseif($order->status === 'preparing' || $order->status === 'ready') bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-400
                             @elseif($order->status === 'cancelled') bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400
@@ -41,7 +49,10 @@
                     </div>
                 </a>
             @empty
-                <p class="px-4 py-8 text-sm text-neutral-500 dark:text-neutral-400 text-center">Nenhum pedido encontrado.</p>
+                <div class="px-4 py-12 text-center">
+                    <div class="text-3xl mb-2">📋</div>
+                    <p class="text-sm text-neutral-500 dark:text-neutral-400">Nenhum pedido encontrado.</p>
+                </div>
             @endforelse
         </div>
     </div>

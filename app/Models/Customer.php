@@ -10,7 +10,7 @@ class Customer extends Model
 {
     use BelongsToCompany;
 
-    protected $fillable = ['company_id', 'name', 'phone', 'email', 'tax_id', 'address', 'neighborhood', 'city', 'cep'];
+    protected $fillable = ['company_id', 'name', 'phone', 'email', 'tax_id', 'address', 'complement', 'neighborhood', 'city', 'cep'];
 
     public function orders(): HasMany
     {

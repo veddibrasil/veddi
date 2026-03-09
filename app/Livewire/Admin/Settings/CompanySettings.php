@@ -65,7 +65,7 @@ class CompanySettings extends Component
         $data['abacatepay_token'] = $this->abacatepay_token ?: null;
 
         if ($this->logo) {
-            $data['logo_path'] = $this->logo->store('logos', 'public');
+            $data['logo_path'] = $this->logo->storeAs('logos', "company_{$company->id}." . $this->logo->getClientOriginalExtension(), 's3');
         }
 
         $company->update($data);

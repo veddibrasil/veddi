@@ -80,7 +80,7 @@ class Form extends Component
         $data['abacatepay_webhook_secret'] = $this->abacatepay_webhook_secret ?: null;
 
         if ($this->logo) {
-            $data['logo_path'] = $this->logo->store('logos', 'public');
+            $data['logo_path'] = $this->logo->store('logos', 's3');
         }
 
         if ($this->isEditing) {

@@ -32,6 +32,24 @@ class Company extends Model
         'active' => 'boolean',
     ];
 
+    public function getLogoUrlAttribute(): ?string
+    {
+        if (! $this->logo_path) {
+            return null;
+        }
+        $base = rtrim(config('filesystems.disks.s3.url', ''), '/');
+        return $base . '/' . ltrim($this->logo_path, '/');
+    }
+
+    public function getFaviconUrlAttribute(): ?string
+    {
+        if (! $this->favicon_path) {
+            return null;
+        }
+        $base = rtrim(config('filesystems.disks.s3.url', ''), '/');
+        return $base . '/' . ltrim($this->favicon_path, '/');
+    }
+
     public function branches(): HasMany
     {
         return $this->hasMany(Branch::class);

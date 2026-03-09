@@ -13,7 +13,7 @@ class Order extends Model
     use BelongsToCompany;
 
     protected $fillable = [
-        'company_id', 'order_number', 'customer_id', 'branch_id', 'subtotal', 'total', 'status', 'notes', 'payment_method',
+        'company_id', 'order_number', 'customer_id', 'branch_id', 'subtotal', 'total', 'status', 'notes', 'payment_method', 'order_type',
     ];
 
     protected static function booted(): void

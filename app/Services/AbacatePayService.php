@@ -23,10 +23,10 @@ class AbacatePayService
 
     public function createBilling(Order $order, Customer $customer, string $method = 'pix'): array
     {
-        Log::info('Creating AbacatePay billing', [
-            'order_id' => $order->id,
+        Log::channel('payments')->info('Iniciando criação de billing AbacatePay', [
+            'order_id'    => $order->id,
             'customer_id' => $customer->id,
-            'method' => $method,
+            'method'      => $method,
         ]);
         $order->loadMissing('items');
 
@@ -36,12 +36,12 @@ class AbacatePayService
                 'frequency'     => 'ONE_TIME',
                 'methods'       => [strtoupper($method)],
                 'returnUrl'     => route('chat.index'),
-                'completionUrl' => env('COMPLETETION_URL', route('webhook.abacatepay')),
+                'completionUrl' => route('payment.complete'),
                 'customer'      => array_filter([
                     'name'      => $customer->name,
                     'email'     => $customer->email,
-                    'cellphone' => $this->formatPhone($customer->phone),
-                    'taxId'     => $this->formatTaxId($customer->tax_id) ?? null,
+                    'cellphone' => $this->formatPhone($customer->phone) ?? preg_replace('/\D/', '', $customer->phone ?? ''),
+                    'taxId'     => $this->formatTaxId($customer->tax_id),
                 ], fn ($v) => $v !== null),
                 'products' => $order->items->map(fn ($item) => [
                     'externalId'  => (string) $item->product_id,
@@ -53,6 +53,11 @@ class AbacatePayService
             ]);
 
         if ($response->failed()) {
+            Log::channel('payments')->error('Erro na API AbacatePay ao criar billing', [
+                'order_id' => $order->id,
+                'status'   => $response->status(),
+                'body'     => $response->body(),
+            ]);
             throw new RuntimeException(
                 'AbacatePay API error: '.$response->body(),
                 $response->status()
@@ -61,13 +66,18 @@ class AbacatePayService
 
         $data = $response->json('data');
 
-        Log::info('Created AbacatePay billing', $data);
+        Log::channel('payments')->info('Billing AbacatePay criado com sucesso', [
+            'order_id'   => $order->id,
+            'billing_id' => $data['id'] ?? null,
+        ]);
+
+        Log::channel('payments')->debug('AbacatePay billing response', ['data' => $data]);
 
         return [
             'id'           => $data['id'],
             'url'          => $data['url'] ?? null,
-            'pixQrCode'    => $data['pixQrCode'] ?? null,
-            'pixCopyPaste' => $data['pixCopyPaste'] ?? null,
+            'pixQrCode'    => $data['pix']['brCodeBase64'] ?? null,
+            'pixCopyPaste' => $data['pix']['brCode'] ?? null,
         ];
     }
 
@@ -79,12 +89,17 @@ class AbacatePayService
 
         $digits = preg_replace('/\D/', '', $phone);
 
-        // Garante código de país 55 (Brasil)
-        if (strlen($digits) === 10 || strlen($digits) === 11) {
-            $digits = '55' . $digits;
+        // Remove country code if present
+        if (str_starts_with($digits, '55')) {
+            $digits = substr($digits, 2);
         }
 
-        return $digits ?: null;
+        // Format as (XX) XXXXX-XXXX
+        if (strlen($digits) === 11) {
+            return '(' . substr($digits, 0, 2) . ') ' . substr($digits, 2, 5) . '-' . substr($digits, 7, 4);
+        }
+
+        return null;
     }
 
     private function formatTaxId(?string $taxId): ?string
@@ -93,7 +108,14 @@ class AbacatePayService
             return null;
         }
 
-        return preg_replace('/\D/', '', $taxId) ?: null;
+        $digits = preg_replace('/\D/', '', $taxId);
+
+        // Formata como CPF: XXX.XXX.XXX-XX
+        if (strlen($digits) === 11) {
+            return substr($digits, 0, 3) . '.' . substr($digits, 3, 3) . '.' . substr($digits, 6, 3) . '-' . substr($digits, 9, 2);
+        }
+
+        return $digits ?: null;
     }
 
     public function validateWebhookSignature(string $payload, string $signature): bool

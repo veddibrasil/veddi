@@ -35,7 +35,7 @@
                         <td class="px-4 py-3 font-medium text-neutral-800 dark:text-neutral-100">
                             <div class="flex items-center gap-2">
                                 @if($company->logo_path)
-                                    <img src="{{ asset('storage/' . $company->logo_path) }}" class="w-7 h-7 rounded-full object-cover">
+                                    <img src="{{ $company->logo_url }}" class="w-7 h-7 rounded-full object-cover">
                                 @else
                                     <div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold"
                                          style="background: {{ $company->primary_color }}">

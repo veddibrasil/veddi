@@ -33,7 +33,7 @@
                 {{-- Logo / Avatar --}}
                 <div style="background: var(--mc-red-light)" class="w-28 h-28 rounded-full border-4 border-white/30 flex items-center justify-center mx-auto mb-8 shadow-2xl overflow-hidden">
                     @if(isset($currentCompany) && $currentCompany->logo_path)
-                        <img src="{{ asset('storage/' . $currentCompany->logo_path) }}" alt="{{ $currentCompany->name }}" class="w-full h-full object-cover">
+                        <img src="{{ $currentCompany->logo_url }}" alt="{{ $currentCompany->name }}" class="w-full h-full object-cover">
                     @else
                         <img src="{{ '/logo.png' }}" alt="{{ $currentCompany->name ?? config('app.name') }}" class="w-full h-full object-cover">
                     @endif

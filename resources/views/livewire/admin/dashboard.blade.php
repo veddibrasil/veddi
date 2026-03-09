@@ -7,7 +7,7 @@
             <div class="flex items-center gap-4">
                 <div class="w-12 h-12 rounded-xl bg-white/15 border border-white/25 flex items-center justify-center shrink-0 overflow-hidden">
                     @if(isset($currentCompany) && $currentCompany->logo_path)
-                        <img src="{{ asset('storage/' . $currentCompany->logo_path) }}" class="w-full h-full object-cover" alt="">
+                        <img src="{{ $currentCompany->logo_url }}" class="w-full h-full object-cover" alt="">
                     @else
                         <img src="{{ asset('logo.png') }}" class="w-full h-full object-cover" alt="">
                     @endif
