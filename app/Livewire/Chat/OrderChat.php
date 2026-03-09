@@ -50,6 +50,9 @@ class OrderChat extends Component
     public float  $deliveryFee   = 0.0;
     public bool   $freeDelivery  = false;
 
+    // --- Company ---
+    public ?int $companyId = null;
+
     // --- Edit profile ---
     public ?string $previousStep = null;
 
@@ -73,10 +76,28 @@ class OrderChat extends Component
     public bool $showEndConfirm = false;
     public bool $showCancelConfirm = false;
 
+    public function boot(): void
+    {
+        if (! $this->companyId) {
+            return;
+        }
+
+        $bound = app()->bound('current.company') ? app('current.company') : null;
+
+        if (! $bound || $bound->id !== $this->companyId) {
+            $company = \App\Models\Company::find($this->companyId);
+            if ($company) {
+                app()->instance('current.company', $company);
+            }
+        }
+    }
+
     public function mount(): void
     {
+        $currentCompanyId = app()->bound('current.company') ? app('current.company')->id : null;
+
         $savedState = session('chat_state');
-        if ($savedState) {
+        if ($savedState && ($savedState['companyId'] ?? null) === $currentCompanyId) {
             foreach ($savedState as $key => $value) {
                 if (property_exists($this, $key)) {
                     $this->$key = $value;
@@ -85,6 +106,8 @@ class OrderChat extends Component
             return;
         }
 
+        session()->forget('chat_state');
+        $this->companyId = $currentCompanyId;
         $this->initialize();
     }
 
@@ -92,11 +115,12 @@ class OrderChat extends Component
     {
         $company     = app()->bound('current.company') ? app('current.company') : null;
         $companyName = $company?->name ?? config('app.name');
-        $companyId   = $company?->id;
+        $companyId   = $this->companyId;
 
         $hasOpenBranch = Cache::remember("open_branches:company:{$companyId}", now()->addMinutes(1), fn () =>
-            Branch::where('active', true)
-                ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
+            Branch::withoutGlobalScopes()
+                ->where('active', true)
+                ->where('company_id', $companyId)
                 ->where('opens_at', '<=', now()->format('H:i:s'))
                 ->where('closes_at', '>=', now()->format('H:i:s'))
                 ->exists()
@@ -295,7 +319,11 @@ class OrderChat extends Component
 
     public function selectBranch(int $branchId): void
     {
-        $branch = Branch::where('id', $branchId)->where('active', true)->firstOrFail();
+        $branch = Branch::withoutGlobalScopes()
+            ->where('id', $branchId)
+            ->where('company_id', $this->companyId)
+            ->where('active', true)
+            ->firstOrFail();
 
         if (! $branch->isOpen()) {
             $this->addMessage('bot', "A filial {$branch->name} está fechada no momento. Horário: {$branch->opens_at} às {$branch->closes_at}. Escolha outra filial ou tente mais tarde.");
@@ -823,6 +851,7 @@ class OrderChat extends Component
     {
         session(['chat_state' => [
             'step'             => $this->step,
+            'companyId'        => $this->companyId,
             'customerId'       => $this->customerId,
             'phone'            => $this->phone,
             'name'             => $this->name,
@@ -873,10 +902,11 @@ class OrderChat extends Component
 
     public function getBranchesProperty()
     {
-        $companyId = app()->bound('current.company') ? app('current.company')->id : null;
+        $companyId = $this->companyId;
         return Cache::remember("branches:company:{$companyId}", now()->addMinutes(10), fn () =>
-            Branch::where('active', true)
-                ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
+            Branch::withoutGlobalScopes()
+                ->where('active', true)
+                ->where('company_id', $companyId)
                 ->orderBy('name')
                 ->get()
         );
@@ -884,14 +914,20 @@ class OrderChat extends Component
 
     public function getMenuProperty()
     {
-        return Cache::remember("menu:branch:{$this->selectedBranchId}", now()->addMinutes(5), fn () =>
-            ProductCategory::with(['products' => function ($q) {
-                $q->whereHas('branches', fn ($b) => $b
-                    ->where('branches.id', $this->selectedBranchId)
-                    ->where('branch_product.available', true))
-                    ->where('active', true)
-                    ->orderBy('sort_order');
-            }])->where('active', true)->orderBy('sort_order')->get()
+        $companyId = $this->companyId;
+        return Cache::remember("menu:branch:{$this->selectedBranchId}:company:{$companyId}", now()->addMinutes(5), fn () =>
+            ProductCategory::withoutGlobalScopes()
+                ->where('active', true)
+                ->where('company_id', $companyId)
+                ->orderBy('sort_order')
+                ->with(['products' => function ($q) {
+                    $q->whereHas('branches', fn ($b) => $b
+                        ->where('branches.id', $this->selectedBranchId)
+                        ->where('branch_product.available', true))
+                        ->where('active', true)
+                        ->orderBy('sort_order');
+                }])
+                ->get()
         );
     }
 
