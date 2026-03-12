@@ -2,7 +2,9 @@
 
 namespace App\Livewire\Admin\Categories;
 
+use App\Models\Company;
 use App\Models\ProductCategory;
+use App\Models\Scopes\CompanyScope;
 use Livewire\Component;
 
 class Index extends Component
@@ -12,9 +14,17 @@ class Index extends Component
     public ?int $editingId    = null;
     public ?int $deletingId   = null;
 
+    public bool $isSuperAdmin = false;
+    public ?int $company_id   = null;
+
     protected function rules(): array
     {
+        $companyRule = $this->isSuperAdmin
+            ? ['required', 'integer', 'exists:companies,id']
+            : ['nullable'];
+
         return [
+            'company_id' => $companyRule,
             'name'       => ['required', 'string', 'max:100'],
             'sort_order' => ['integer', 'min:0'],
         ];
@@ -23,8 +33,19 @@ class Index extends Component
     protected function messages(): array
     {
         return [
-            'name.required' => 'Informe o nome da categoria.',
+            'company_id.required' => 'Selecione uma empresa.',
+            'name.required'       => 'Informe o nome da categoria.',
         ];
+    }
+
+    public function mount(): void
+    {
+        $user = auth()->user();
+        $this->isSuperAdmin = $user->isSuperAdmin();
+
+        if (! $this->isSuperAdmin) {
+            $this->company_id = $user->companies()->first()?->id;
+        }
     }
 
     public function save(): void
@@ -32,10 +53,22 @@ class Index extends Component
         $validated = $this->validate($this->rules(), $this->messages());
 
         if ($this->editingId) {
-            ProductCategory::findOrFail($this->editingId)->update($validated);
+            $data = collect($validated)->except('company_id')->toArray();
+            if ($this->isSuperAdmin && $this->company_id) {
+                $data['company_id'] = $this->company_id;
+            }
+            ProductCategory::withoutGlobalScope(CompanyScope::class)
+                ->where('id', $this->editingId)
+                ->update($data);
             session()->flash('status', 'Categoria atualizada.');
         } else {
-            ProductCategory::create($validated);
+            $data = collect($validated)->except('company_id')->toArray();
+            if ($this->isSuperAdmin) {
+                $data['company_id'] = $this->company_id;
+                ProductCategory::withoutGlobalScope(CompanyScope::class)->create($data);
+            } else {
+                ProductCategory::create($data);
+            }
             session()->flash('status', 'Categoria criada.');
         }
 
@@ -44,15 +77,19 @@ class Index extends Component
 
     public function edit(int $id): void
     {
-        $category      = ProductCategory::findOrFail($id);
-        $this->editingId   = $id;
-        $this->name        = $category->name;
-        $this->sort_order  = $category->sort_order;
+        $category         = ProductCategory::withoutGlobalScope(CompanyScope::class)->findOrFail($id);
+        $this->editingId  = $id;
+        $this->name       = $category->name;
+        $this->sort_order = $category->sort_order;
+        $this->company_id = $category->company_id;
     }
 
     public function cancelEdit(): void
     {
         $this->reset(['name', 'sort_order', 'editingId']);
+        if (! $this->isSuperAdmin) {
+            $this->company_id = auth()->user()->companies()->first()?->id;
+        }
     }
 
     public function confirmDelete(int $id): void
@@ -67,15 +104,31 @@ class Index extends Component
 
     public function delete(): void
     {
-        ProductCategory::findOrFail($this->deletingId)->delete();
+        ProductCategory::withoutGlobalScope(CompanyScope::class)
+            ->findOrFail($this->deletingId)
+            ->delete();
         $this->deletingId = null;
         session()->flash('status', 'Categoria removida.');
     }
 
     public function render()
     {
-        return view('livewire.admin.categories.index', [
-            'categories' => ProductCategory::orderBy('sort_order')->orderBy('name')->get(),
-        ])->layout('layouts.app', ['title' => 'Categorias']);
+        $categories = $this->isSuperAdmin
+            ? ProductCategory::withoutGlobalScope(CompanyScope::class)
+                ->with('company')
+                ->orderBy('sort_order')
+                ->orderBy('name')
+                ->get()
+            : ProductCategory::orderBy('sort_order')->orderBy('name')->get();
+
+        $companies = $this->isSuperAdmin
+            ? Company::withoutGlobalScope(CompanyScope::class)
+                ->where('active', true)
+                ->orderBy('name')
+                ->get()
+            : collect();
+
+        return view('livewire.admin.categories.index', compact('categories', 'companies'))
+            ->layout('layouts.app', ['title' => 'Categorias']);
     }
 }

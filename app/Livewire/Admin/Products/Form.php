@@ -3,8 +3,10 @@
 namespace App\Livewire\Admin\Products;
 
 use App\Models\Branch;
+use App\Models\Company;
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Models\Scopes\CompanyScope;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -14,6 +16,9 @@ class Form extends Component
 
     public ?Product $product  = null;
     public bool $isEditing    = false;
+
+    public bool $isSuperAdmin       = false;
+    public ?int $company_id         = null;
 
     public int    $product_category_id = 0;
     public string $name                = '';
@@ -28,6 +33,7 @@ class Form extends Component
     protected function rules(): array
     {
         return [
+            'company_id'          => $this->isSuperAdmin ? ['required', 'integer', 'exists:companies,id'] : ['nullable'],
             'product_category_id' => ['required', 'integer', 'exists:product_categories,id'],
             'name'                => ['required', 'string', 'max:150'],
             'description'         => ['nullable', 'string', 'max:500'],
@@ -43,6 +49,7 @@ class Form extends Component
     protected function messages(): array
     {
         return [
+            'company_id.required'          => 'Selecione uma empresa.',
             'product_category_id.required' => 'Selecione uma categoria.',
             'product_category_id.exists'   => 'Categoria inválida.',
             'name.required'                => 'Informe o nome do produto.',
@@ -56,11 +63,19 @@ class Form extends Component
 
     public function mount(?Product $product = null): void
     {
+        $user = auth()->user();
+        $this->isSuperAdmin = $user->isSuperAdmin();
+
+        if (! $this->isSuperAdmin) {
+            $this->company_id = $user->companies()->first()?->id;
+        }
+
         if ($product?->exists) {
             $this->product    = $product;
             $this->isEditing  = true;
+            $this->company_id = $product->company_id;
             $this->fill($product->only('product_category_id', 'name', 'active', 'sort_order'));
-            $this->description = $product->description ?? '';
+            $this->description      = $product->description ?? '';
             $this->price            = (string) $product->price;
             $this->selectedBranches = $product->branches->pluck('id')->map(fn ($id) => (string) $id)->toArray();
         }
@@ -91,11 +106,21 @@ class Form extends Component
         ];
 
         if ($this->isEditing) {
-            $this->product->update($data);
-            $product = $this->product;
+            if ($this->isSuperAdmin && $this->company_id) {
+                $data['company_id'] = $this->company_id;
+            }
+            Product::withoutGlobalScope(CompanyScope::class)
+                ->where('id', $this->product->id)
+                ->update($data);
+            $product = $this->product->refresh();
             session()->flash('status', 'Produto atualizado.');
         } else {
-            $product = Product::create($data);
+            if ($this->isSuperAdmin) {
+                $data['company_id'] = $this->company_id;
+                $product = Product::withoutGlobalScope(CompanyScope::class)->create($data);
+            } else {
+                $product = Product::create($data);
+            }
             session()->flash('status', 'Produto criado.');
         }
 
@@ -111,9 +136,30 @@ class Form extends Component
 
     public function render()
     {
-        return view('livewire.admin.products.form', [
-            'categories' => ProductCategory::where('active', true)->orderBy('name')->get(),
-            'branches'   => Branch::where('active', true)->orderBy('name')->get(),
-        ])->layout('layouts.app', ['title' => $this->isEditing ? 'Editar Produto' : 'Novo Produto']);
+        if ($this->isSuperAdmin) {
+            $categories = ProductCategory::withoutGlobalScope(CompanyScope::class)
+                ->when($this->company_id, fn ($q) => $q->where('company_id', $this->company_id))
+                ->where('active', true)
+                ->orderBy('name')
+                ->get();
+
+            $branches = Branch::withoutGlobalScope(CompanyScope::class)
+                ->when($this->company_id, fn ($q) => $q->where('company_id', $this->company_id))
+                ->where('active', true)
+                ->orderBy('name')
+                ->get();
+
+            $companies = Company::withoutGlobalScope(CompanyScope::class)
+                ->where('active', true)
+                ->orderBy('name')
+                ->get();
+        } else {
+            $categories = ProductCategory::where('active', true)->orderBy('name')->get();
+            $branches   = Branch::where('active', true)->orderBy('name')->get();
+            $companies  = collect();
+        }
+
+        return view('livewire.admin.products.form', compact('categories', 'branches', 'companies'))
+            ->layout('layouts.app', ['title' => $this->isEditing ? 'Editar Produto' : 'Novo Produto']);
     }
 }

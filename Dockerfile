@@ -19,7 +19,7 @@ RUN apk add --no-cache \
     $PHPIZE_DEPS
 
 # Extensões PHP
-RUN docker-php-ext-install pdo pdo_sqlite pcntl bcmath \
+RUN docker-php-ext-install pdo pdo_mysql pdo_sqlite pcntl bcmath \
     && docker-php-ext-configure gd --with-jpeg --with-webp \
     && docker-php-ext-install gd
 
@@ -55,6 +55,7 @@ RUN composer dump-autoload --optimize --no-dev
 
 # Configs de produção
 COPY docker/php.ini /usr/local/etc/php/conf.d/app.ini
+COPY docker/php-fpm.conf /usr/local/etc/php-fpm.d/www.conf
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
@@ -67,6 +68,8 @@ RUN mkdir -p database \
     && touch database/database.sqlite \
     && chown -R www-data:www-data database
 
-EXPOSE 8080
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+EXPOSE 8080
+ENTRYPOINT ["/entrypoint.sh"]

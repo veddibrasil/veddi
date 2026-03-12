@@ -9,6 +9,17 @@
     <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
         <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Informações da filial</h2>
 
+        @if($needsCompanySelect)
+        <div>
+            <flux:select wire:model="company_id" label="Empresa" placeholder="Selecione uma empresa...">
+                @foreach($companies as $company)
+                    <flux:select.option value="{{ $company->id }}">{{ $company->name }}</flux:select.option>
+                @endforeach
+            </flux:select>
+            @error('company_id') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+        </div>
+        @endif
+
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
                 <flux:input wire:model="name" label="Nome da filial" placeholder="Ex: Filial Centro" />

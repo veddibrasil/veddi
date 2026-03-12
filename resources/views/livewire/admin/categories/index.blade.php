@@ -14,6 +14,16 @@
         <p class="font-semibold text-sm text-neutral-700 dark:text-neutral-300">
             {{ $editingId ? 'Editar categoria' : 'Nova categoria' }}
         </p>
+        @if($isSuperAdmin)
+        <div>
+            <flux:select wire:model="company_id" label="Empresa" placeholder="Selecione uma empresa...">
+                @foreach($companies as $company)
+                    <flux:select.option value="{{ $company->id }}">{{ $company->name }}</flux:select.option>
+                @endforeach
+            </flux:select>
+            @error('company_id') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+        </div>
+        @endif
         <div class="flex gap-2 items-end">
             <div class="flex-1">
                 <label class="block text-xs font-medium text-neutral-500 mb-1 dark:text-neutral-400">Nome</label>
@@ -51,6 +61,9 @@
                 <div class="flex items-center justify-between px-4 py-3">
                     <div>
                         <p class="font-semibold text-sm text-neutral-800 dark:text-neutral-100">{{ $cat->name }}</p>
+                        @if($isSuperAdmin && $cat->company)
+                            <p class="text-xs font-medium text-amber-600 dark:text-amber-400">{{ $cat->company->name }}</p>
+                        @endif
                         <p class="text-xs text-neutral-400 dark:text-neutral-500">Ordem: {{ $cat->sort_order }}</p>
                     </div>
                     <div class="flex items-center gap-3">

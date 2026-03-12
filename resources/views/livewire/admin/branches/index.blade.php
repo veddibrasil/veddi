@@ -21,11 +21,15 @@
             <span class="text-xs font-medium text-neutral-400 uppercase tracking-wide">Filial / Endereço</span>
             <span class="text-xs font-medium text-neutral-400 uppercase tracking-wide">Ações</span>
         </div>
+
         <div class="divide-y dark:divide-zinc-700">
             @forelse ($branches as $branch)
                 <div class="flex items-center justify-between px-4 py-4">
                     <div>
                         <p class="font-semibold text-neutral-800 dark:text-neutral-100">{{ $branch->name }}</p>
+                        @if($isSuperAdmin && $branch->company)
+                            <p class="text-xs font-medium text-amber-600 dark:text-amber-400">{{ $branch->company->name }}</p>
+                        @endif
                         <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ $branch->address }}, {{ $branch->city }}</p>
                         <p class="text-xs text-neutral-400 dark:text-neutral-500">{{ $branch->opens_at }} – {{ $branch->closes_at }}
                             @if ($branch->phone) · {{ $branch->phone }} @endif

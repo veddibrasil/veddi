@@ -3,6 +3,7 @@
 namespace App\Livewire\Admin\Branches;
 
 use App\Models\Branch;
+use App\Models\Scopes\CompanyScope;
 use Livewire\Component;
 
 class Index extends Component
@@ -21,15 +22,24 @@ class Index extends Component
 
     public function delete(): void
     {
-        Branch::findOrFail($this->deletingId)->delete();
+        Branch::withoutGlobalScope(CompanyScope::class)
+            ->findOrFail($this->deletingId)
+            ->delete();
         $this->deletingId = null;
         session()->flash('status', 'Filial removida.');
     }
 
     public function render()
     {
+        $isSuperAdmin = auth()->user()->isSuperAdmin();
+
+        $query = $isSuperAdmin
+            ? Branch::withoutGlobalScope(CompanyScope::class)->with('company')->orderBy('name')
+            : Branch::orderBy('name');
+
         return view('livewire.admin.branches.index', [
-            'branches' => Branch::orderBy('name')->get(),
+            'branches'     => $query->get(),
+            'isSuperAdmin' => $isSuperAdmin,
         ])->layout('layouts.app', ['title' => 'Filiais']);
     }
 }

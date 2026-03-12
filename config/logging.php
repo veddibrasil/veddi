@@ -128,7 +128,7 @@ return [
         ],
 
         'orders' => [
-            'driver' => 'daily',
+            'driver' => '',
             'path' => storage_path('logs/orders.log'),
             'level' => 'debug',
             'days' => 30,
@@ -136,7 +136,7 @@ return [
         ],
 
         'payments' => [
-            'driver' => 'daily',
+            'driver' => '',
             'path' => storage_path('logs/payments.log'),
             'level' => 'debug',
             'days' => 60,
@@ -144,7 +144,7 @@ return [
         ],
 
         'chat' => [
-            'driver' => 'daily',
+            'driver' => '',
             'path' => storage_path('logs/chat.log'),
             'level' => 'debug',
             'days' => 14,
@@ -152,7 +152,7 @@ return [
         ],
 
         'webhook' => [
-            'driver' => 'daily',
+            'driver' => '',
             'path' => storage_path('logs/webhook.log'),
             'level' => 'debug',
             'days' => 60,

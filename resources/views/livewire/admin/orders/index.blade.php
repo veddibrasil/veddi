@@ -5,6 +5,15 @@
         <div class="flex-1">
             <flux:input wire:model.live="search" placeholder="Buscar por número ou cliente..." />
         </div>
+        @if(auth()->user()->isSuperAdmin())
+        <select wire:model.live="companyFilter"
+            class="border rounded-lg px-3 py-2 text-sm text-neutral-700 focus:outline-none focus:ring-2 focus:ring-amber-400 dark:bg-zinc-800 dark:border-zinc-600 dark:text-neutral-200 dark:focus:ring-amber-500">
+            <option value="">Todas as empresas</option>
+            @foreach ($companies as $company)
+                <option value="{{ $company->id }}">{{ $company->name }}</option>
+            @endforeach
+        </select>
+        @endif
         <select wire:model.live="statusFilter"
             class="border rounded-lg px-3 py-2 text-sm text-neutral-700 focus:outline-none focus:ring-2 focus:ring-amber-400 dark:bg-zinc-800 dark:border-zinc-600 dark:text-neutral-200 dark:focus:ring-amber-500">
             <option value="">Todos os status</option>
@@ -33,6 +42,9 @@
                     class="flex items-center justify-between px-4 py-4 hover:bg-neutral-50 transition-colors dark:hover:bg-zinc-700/50">
                     <div>
                         <p class="font-mono font-semibold text-sm text-neutral-800 dark:text-neutral-100">{{ $order->order_number }}</p>
+                        @if(auth()->user()->isSuperAdmin() && $order->company)
+                            <p class="text-xs font-medium text-amber-600 dark:text-amber-400">{{ $order->company->name }}</p>
+                        @endif
                         <p class="text-sm text-neutral-600 dark:text-neutral-400">{{ $order->customer->name ?? '—' }}</p>
                         <p class="text-xs text-neutral-400 dark:text-neutral-500">{{ $order->branch->name ?? '—' }} · {{ $order->created_at->format('d/m H:i') }}</p>
                     </div>

@@ -19,6 +19,15 @@
         <div class="flex-1">
             <flux:input wire:model.live="search" placeholder="Buscar produto..." />
         </div>
+        @if($isSuperAdmin)
+        <select wire:model.live="companyFilter"
+            class="border rounded-lg px-3 py-2 text-sm text-neutral-700 focus:outline-none focus:ring-2 focus:ring-amber-400 dark:bg-zinc-800 dark:border-zinc-600 dark:text-neutral-200 dark:focus:ring-amber-500">
+            <option value="">Todas as empresas</option>
+            @foreach ($companies as $company)
+                <option value="{{ $company->id }}">{{ $company->name }}</option>
+            @endforeach
+        </select>
+        @endif
         <select wire:model.live="categoryFilter"
             class="border rounded-lg px-3 py-2 text-sm text-neutral-700 focus:outline-none focus:ring-2 focus:ring-amber-400 dark:bg-zinc-800 dark:border-zinc-600 dark:text-neutral-200 dark:focus:ring-amber-500">
             <option value="">Todas as categorias</option>
@@ -50,6 +59,9 @@
                     @endif
                     <div class="flex-1 min-w-0">
                         <p class="font-semibold text-sm text-neutral-800 dark:text-neutral-100">{{ $product->name }}</p>
+                        @if($isSuperAdmin && $product->company)
+                            <p class="text-xs font-medium text-amber-600 dark:text-amber-400">{{ $product->company->name }}</p>
+                        @endif
                         <p class="text-xs text-neutral-400 dark:text-neutral-500">{{ $product->category->name ?? '—' }}</p>
                     </div>
                     <div class="w-24 text-right shrink-0">
