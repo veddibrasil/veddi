@@ -59,6 +59,7 @@ class DatabaseSeeder extends Seeder
         app()->instance('current.company', $company);
 
         $this->call([
+            PermissionSeeder::class,
             BranchSeeder::class,
             ProductCategorySeeder::class,
             ProductSeeder::class,

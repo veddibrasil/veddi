@@ -3,8 +3,8 @@
     <head>
         @include('partials.head')
     </head>
-    <body class="min-h-screen bg-white dark:bg-zinc-800">
-        <flux:sidebar sticky collapsible="mobile" class="border-e border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900">
+    <body class="min-h-screen bg-[#FCFCFC] dark:bg-[#18100e]">
+        <flux:sidebar sticky collapsible="mobile" class="delivry-sidebar border-e border-[#e6b428]">
             <flux:sidebar.header>
                 <x-app-logo :sidebar="true" href="{{ route('admin.dashboard') }}" wire:navigate />
 
@@ -39,6 +39,14 @@
                 </flux:sidebar.group>
 
                 @if(auth()->user()?->isCompanyAdmin(app()->bound('current.company') ? app('current.company') : new \App\Models\Company))
+                    <flux:sidebar.group heading="Equipe" class="grid">
+                        <flux:sidebar.item icon="users" :href="route('admin.users.index')" :current="request()->routeIs('admin.users.*')" wire:navigate>
+                            Usuários
+                        </flux:sidebar.item>
+                        <flux:sidebar.item icon="user-group" :href="route('admin.roles.index')" :current="request()->routeIs('admin.roles.*')" wire:navigate>
+                            Tipos de Usuário
+                        </flux:sidebar.item>
+                    </flux:sidebar.group>
                     <flux:sidebar.group heading="Configurações" class="grid">
                         <flux:sidebar.item icon="cog-6-tooth" :href="route('admin.settings')" :current="request()->routeIs('admin.settings')" wire:navigate>
                             Empresa
@@ -53,6 +61,9 @@
                         </flux:sidebar.item>
                         <flux:sidebar.item icon="users" :href="route('superadmin.users.index')" :current="request()->routeIs('superadmin.users.*')" wire:navigate>
                             Usuários
+                        </flux:sidebar.item>
+                        <flux:sidebar.item icon="shield-check" :href="route('superadmin.permissions.index')" :current="request()->routeIs('superadmin.permissions.*')" wire:navigate>
+                            Permissões
                         </flux:sidebar.item>
                     </flux:sidebar.group>
                 @endif
@@ -73,7 +84,7 @@
         </flux:sidebar>
 
         <!-- Mobile User Menu -->
-        <flux:header class="lg:hidden">
+        <flux:header class="lg:hidden bg-[#ffc72d] border-b border-[#e6b428]">
             <flux:sidebar.toggle class="lg:hidden" icon="bars-2" inset="left" />
 
             <flux:spacer />

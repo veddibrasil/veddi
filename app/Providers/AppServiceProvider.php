@@ -2,10 +2,21 @@
 
 namespace App\Providers;
 
+use App\Models\Branch;
+use App\Models\Company;
+use App\Models\Order;
+use App\Models\Product;
+use App\Models\ProductCategory;
+use App\Policies\BranchPolicy;
+use App\Policies\CompanyPolicy;
+use App\Policies\OrderPolicy;
+use App\Policies\ProductCategoryPolicy;
+use App\Policies\ProductPolicy;
 use App\Services\AbacatePayService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 
@@ -25,6 +36,16 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        $this->registerPolicies();
+    }
+
+    protected function registerPolicies(): void
+    {
+        Gate::policy(Order::class, OrderPolicy::class);
+        Gate::policy(Product::class, ProductPolicy::class);
+        Gate::policy(ProductCategory::class, ProductCategoryPolicy::class);
+        Gate::policy(Branch::class, BranchPolicy::class);
+        Gate::policy(Company::class, CompanyPolicy::class);
     }
 
     /**

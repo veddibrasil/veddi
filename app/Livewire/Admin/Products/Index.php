@@ -38,9 +38,9 @@ class Index extends Component
 
     public function delete(): void
     {
-        Product::withoutGlobalScope(CompanyScope::class)
-            ->findOrFail($this->deletingId)
-            ->delete();
+        $product = Product::withoutGlobalScope(CompanyScope::class)->findOrFail($this->deletingId);
+        $this->authorize('delete', $product);
+        $product->delete();
         $this->deletingId = null;
         session()->flash('status', 'Produto removido.');
     }

@@ -5,6 +5,7 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Str;
@@ -85,6 +86,42 @@ class User extends Authenticatable
     public function isBranchManager(Company $company): bool
     {
         return $this->roleForCompany($company) === 'branch_manager';
+    }
+
+    public function overridePermissions(): HasMany
+    {
+        return $this->hasMany(UserPermission::class);
+    }
+
+    public function hasPermission(string $permission, Company $company): bool
+    {
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
+        $roleSlug = $this->roleForCompany($company);
+        if (! $roleSlug) {
+            return false;
+        }
+
+        $override = UserPermission::whereHas('permission', fn ($q) => $q->where('name', $permission))
+            ->where('user_id', $this->id)
+            ->where('company_id', $company->id)
+            ->first();
+
+        if ($override !== null) {
+            return $override->granted;
+        }
+
+        $role = Role::where('slug', $roleSlug)
+            ->where(fn ($q) => $q->whereNull('company_id')->orWhere('company_id', $company->id))
+            ->first();
+
+        if (! $role) {
+            return false;
+        }
+
+        return $role->permissions()->where('name', $permission)->exists();
     }
 
     /**

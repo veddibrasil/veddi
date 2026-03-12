@@ -3,7 +3,7 @@
     {{-- ══════════════ CARD BOAS-VINDAS / EXPLICAÇÃO DO SISTEMA ══════════════ --}}
     <div class="rounded-2xl overflow-hidden shadow-sm border border-red-100 dark:border-red-900/30">
         {{-- Header com gradiente da empresa --}}
-        <div class="px-6 py-5 text-white" style="background: linear-gradient(135deg, var(--mc-red-dark, #7F1D1D) 0%, var(--mc-red, #B91C1C) 60%, var(--mc-red-light, #C2410C) 100%);">
+        <div class="px-6 py-5 text-white" style="background: linear-gradient(135deg, #a81f14 0%, #da291c 60%, #e8392b 100%);">
             <div class="flex items-center gap-4">
                 <div class="w-12 h-12 rounded-xl bg-white/15 border border-white/25 flex items-center justify-center shrink-0 overflow-hidden">
                     @if(isset($currentCompany) && $currentCompany->logo_path)
@@ -69,8 +69,8 @@
                     href="{{ url('/' . ($currentCompany->slug ?? '')) }}"
                     target="_blank"
                     class="shrink-0 inline-flex items-center gap-1.5 text-xs font-bold text-white px-4 py-2 rounded-lg transition-colors"
-                    style="background: #B91C1C; hover: background: #7F1D1D;"
-                    onmouseover="this.style.background='#7F1D1D'" onmouseout="this.style.background='#B91C1C'"
+                    style="background: #da291c;"
+                    onmouseover="this.style.background='#a81f14'" onmouseout="this.style.background='#da291c'"
                 >
                     Abrir chat de pedidos
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">

@@ -22,9 +22,9 @@ class Index extends Component
 
     public function delete(): void
     {
-        Branch::withoutGlobalScope(CompanyScope::class)
-            ->findOrFail($this->deletingId)
-            ->delete();
+        $branch = Branch::withoutGlobalScope(CompanyScope::class)->findOrFail($this->deletingId);
+        $this->authorize('delete', $branch);
+        $branch->delete();
         $this->deletingId = null;
         session()->flash('status', 'Filial removida.');
     }

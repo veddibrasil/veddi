@@ -53,15 +53,16 @@ class Index extends Component
         $validated = $this->validate($this->rules(), $this->messages());
 
         if ($this->editingId) {
+            $category = ProductCategory::withoutGlobalScope(CompanyScope::class)->findOrFail($this->editingId);
+            $this->authorize('update', $category);
             $data = collect($validated)->except('company_id')->toArray();
             if ($this->isSuperAdmin && $this->company_id) {
                 $data['company_id'] = $this->company_id;
             }
-            ProductCategory::withoutGlobalScope(CompanyScope::class)
-                ->where('id', $this->editingId)
-                ->update($data);
+            $category->update($data);
             session()->flash('status', 'Categoria atualizada.');
         } else {
+            $this->authorize('create', ProductCategory::class);
             $data = collect($validated)->except('company_id')->toArray();
             if ($this->isSuperAdmin) {
                 $data['company_id'] = $this->company_id;
@@ -104,9 +105,9 @@ class Index extends Component
 
     public function delete(): void
     {
-        ProductCategory::withoutGlobalScope(CompanyScope::class)
-            ->findOrFail($this->deletingId)
-            ->delete();
+        $category = ProductCategory::withoutGlobalScope(CompanyScope::class)->findOrFail($this->deletingId);
+        $this->authorize('delete', $category);
+        $category->delete();
         $this->deletingId = null;
         session()->flash('status', 'Categoria removida.');
     }

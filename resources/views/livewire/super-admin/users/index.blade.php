@@ -41,7 +41,12 @@
                                 {{ $user->is_super_admin ? 'Sim' : 'Não' }}
                             </button>
                         </td>
-                        <td class="px-4 py-3 text-right">
+                        <td class="px-4 py-3 text-right space-x-3">
+                            <a href="{{ route('superadmin.users.permissions', $user) }}"
+                                class="text-blue-600 hover:text-blue-800 text-xs font-medium dark:text-blue-400 dark:hover:text-blue-300"
+                                wire:navigate>
+                                Permissões
+                            </a>
                             <button wire:click="openAssign({{ $user->id }})"
                                 class="text-amber-600 hover:text-amber-800 text-xs font-medium dark:text-amber-400 dark:hover:text-amber-300">
                                 Vincular empresa
