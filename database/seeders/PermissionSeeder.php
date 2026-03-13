@@ -47,6 +47,12 @@ class PermissionSeeder extends Seeder
             ['name' => 'stock.view',   'group' => 'stock', 'label' => 'Visualizar estoque'],
             ['name' => 'stock.adjust', 'group' => 'stock', 'label' => 'Ajustar estoque manualmente'],
             ['name' => 'stock.toggle', 'group' => 'stock', 'label' => 'Habilitar/desabilitar rastreamento de estoque'],
+
+            // Cupons
+            ['name' => 'coupons.view',   'group' => 'coupons', 'label' => 'Visualizar cupons'],
+            ['name' => 'coupons.create', 'group' => 'coupons', 'label' => 'Criar cupom'],
+            ['name' => 'coupons.update', 'group' => 'coupons', 'label' => 'Editar cupom'],
+            ['name' => 'coupons.delete', 'group' => 'coupons', 'label' => 'Remover cupom'],
         ];
 
         foreach ($permissions as $data) {
@@ -62,6 +68,7 @@ class PermissionSeeder extends Seeder
             'users.view', 'users.manage',
             'roles.manage',
             'stock.view', 'stock.adjust', 'stock.toggle',
+            'coupons.view', 'coupons.create', 'coupons.update', 'coupons.delete',
         ];
 
         $branchManagerPermissions = [

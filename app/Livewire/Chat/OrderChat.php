@@ -2,13 +2,16 @@
 
 namespace App\Livewire\Chat;
 
+use App\Exceptions\CouponException;
 use App\Exceptions\DeliveryException;
 use App\Models\Branch;
 use App\Models\ChatMessage;
+use App\Models\Coupon;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\ProductCategory;
 use App\Services\ChatService;
+use App\Services\CouponService;
 use App\Services\DeliveryService;
 use App\Services\OrderService;
 use App\Services\PaymentService;
@@ -67,6 +70,12 @@ class OrderChat extends Component
     // --- Support chat ---
     public string $supportMessage    = '';
     public ?int $lastAdminMessageId  = null;
+
+    // --- Coupon ---
+    public string $couponInput    = '';
+    public ?array $appliedCoupon  = null; // ['code', 'type', 'discount', 'label']
+    public float $couponDiscount  = 0.0;
+    public ?string $couponError   = null;
 
     // --- UI ---
     public array $messages    = [];
@@ -410,7 +419,77 @@ class OrderChat extends Component
 
     public function confirmCart(): void
     {
+        $this->couponInput   = '';
+        $this->appliedCoupon = null;
+        $this->couponDiscount = 0.0;
+        $this->couponError   = null;
+        $this->transitionTo('CHECKOUT_COUPON');
+    }
+
+    // --- Step: Coupon ---
+
+    public function applyCoupon(): void
+    {
+        $this->couponError = null;
+        $code = strtoupper(trim($this->couponInput));
+
+        if ($code === '') {
+            $this->couponError = 'Informe um código de cupom.';
+            return;
+        }
+
+        try {
+            $coupon = app(CouponService::class)->validate(
+                $code,
+                $this->customerId,
+                $this->cart,
+                $this->cartTotal
+            );
+
+            $discount = app(CouponService::class)->calculateDiscount(
+                $coupon,
+                $this->cart,
+                $this->cartTotal,
+                $this->deliveryFee
+            );
+
+            $this->appliedCoupon = [
+                'id'       => $coupon->id,
+                'code'     => $coupon->code,
+                'type'     => $coupon->type,
+                'discount' => $discount,
+                'label'    => $coupon->name,
+            ];
+            $this->couponDiscount = $discount;
+            $this->couponError    = null;
+
+            $discountLabel = $coupon->type === 'free_delivery'
+                ? 'Frete grátis aplicado!'
+                : 'Desconto de R$ ' . number_format($discount, 2, ',', '.') . ' aplicado!';
+
+            $this->addMessage('user', "Cupom: {$coupon->code}");
+            $this->addMessage('bot', "✅ {$discountLabel} Escolha o tipo de entrega:");
+            $this->transitionTo('CHECKOUT_ORDER_TYPE');
+        } catch (CouponException $e) {
+            $this->couponError = $e->getMessage();
+        }
+    }
+
+    public function skipCoupon(): void
+    {
+        $this->appliedCoupon  = null;
+        $this->couponDiscount = 0.0;
+        $this->couponError    = null;
+        $this->couponInput    = '';
         $this->transitionTo('CHECKOUT_ORDER_TYPE');
+    }
+
+    public function removeCoupon(): void
+    {
+        $this->appliedCoupon  = null;
+        $this->couponDiscount = 0.0;
+        $this->couponError    = null;
+        $this->couponInput    = '';
     }
 
     public function selectOrderType(string $type): void
@@ -589,6 +668,11 @@ class OrderChat extends Component
 
         $orderService = app(OrderService::class);
 
+        $coupon = null;
+        if ($this->appliedCoupon) {
+            $coupon = Coupon::find($this->appliedCoupon['id']);
+        }
+
         try {
             $order = $orderService->createOrder(
                 $this->customerId,
@@ -598,7 +682,8 @@ class OrderChat extends Component
                 $this->paymentMethod,
                 $this->orderType,
                 $initialStatus,
-                $this->deliveryFee
+                $this->deliveryFee,
+                $coupon,
             );
         } catch (RuntimeException $e) {
             $this->addMessage('bot', 'Não foi possível criar o pedido: ' . $e->getMessage());
@@ -841,19 +926,23 @@ class OrderChat extends Component
 
     public function retryOrder(): void
     {
-        $this->cart          = [];
-        $this->orderId       = null;
-        $this->pixQrCode     = null;
-        $this->pixCopyPaste  = null;
-        $this->paymentId     = null;
-        $this->paymentUrl    = null;
-        $this->expiresAt     = null;
-        $this->submitting    = false;
-        $this->notes         = '';
-        $this->paymentMethod = 'PIX';
-        $this->orderType     = 'delivery';
-        $this->deliveryFee   = 0.0;
-        $this->freeDelivery  = false;
+        $this->cart           = [];
+        $this->orderId        = null;
+        $this->pixQrCode      = null;
+        $this->pixCopyPaste   = null;
+        $this->paymentId      = null;
+        $this->paymentUrl     = null;
+        $this->expiresAt      = null;
+        $this->submitting     = false;
+        $this->notes          = '';
+        $this->paymentMethod  = 'PIX';
+        $this->orderType      = 'delivery';
+        $this->deliveryFee    = 0.0;
+        $this->freeDelivery   = false;
+        $this->couponInput    = '';
+        $this->appliedCoupon  = null;
+        $this->couponDiscount = 0.0;
+        $this->couponError    = null;
         $this->transitionTo('MENU_BROWSE');
     }
 
@@ -905,6 +994,10 @@ class OrderChat extends Component
         $this->deliveryFee      = 0.0;
         $this->freeDelivery     = false;
         $this->previousStep     = null;
+        $this->couponInput      = '';
+        $this->appliedCoupon    = null;
+        $this->couponDiscount   = 0.0;
+        $this->couponError      = null;
         $this->messages         = [];
         $this->isLoading        = false;
         $this->submitting       = false;
@@ -960,6 +1053,9 @@ class OrderChat extends Component
             'deliveryFee'      => $this->deliveryFee,
             'freeDelivery'     => $this->freeDelivery,
             'previousStep'     => $this->previousStep,
+            'couponInput'      => $this->couponInput,
+            'appliedCoupon'    => $this->appliedCoupon,
+            'couponDiscount'   => $this->couponDiscount,
             'pixQrCode'        => $this->pixQrCode,
             'pixCopyPaste'     => $this->pixCopyPaste,
             'paymentId'        => $this->paymentId,
@@ -981,7 +1077,11 @@ class OrderChat extends Component
 
     public function getOrderTotalProperty(): float
     {
-        return $this->cartTotal + $this->deliveryFee;
+        $deliveryFeeAfterCoupon = ($this->appliedCoupon && $this->appliedCoupon['type'] === 'free_delivery')
+            ? 0.0
+            : $this->deliveryFee;
+
+        return max(0, $this->cartTotal + $deliveryFeeAfterCoupon - $this->couponDiscount);
     }
 
     public function getCartCountProperty(): int

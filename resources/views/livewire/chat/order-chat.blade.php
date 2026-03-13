@@ -121,7 +121,7 @@
         @php
             $steps = ['IDENTIFY_PHONE','BRANCH_SELECT','MENU_BROWSE','CART_REVIEW','PAYMENT_PIX'];
             $currentIdx = array_search($step, $steps);
-            if ($currentIdx === false) $currentIdx = in_array($step, ['REGISTER_NAME','REGISTER_EMAIL','REGISTER_ADDRESS']) ? 0 : (in_array($step, ['CHECKOUT_ORDER_TYPE','CHECKOUT_NOTES','CHECKOUT_CPF','CHECKOUT_PAYMENT_METHOD']) ? 3 : ($step === 'ORDER_CONFIRMED' ? 5 : $currentIdx));
+            if ($currentIdx === false) $currentIdx = in_array($step, ['REGISTER_NAME','REGISTER_EMAIL','REGISTER_ADDRESS']) ? 0 : (in_array($step, ['CHECKOUT_COUPON','CHECKOUT_ORDER_TYPE','CHECKOUT_DELIVERY_ADDRESS','CHECKOUT_DELIVERY_FEE','CHECKOUT_NOTES','CHECKOUT_CPF','CHECKOUT_PAYMENT_METHOD']) ? 3 : ($step === 'ORDER_CONFIRMED' ? 5 : $currentIdx));
         @endphp
         <div class="flex items-center justify-center gap-1.5 pb-3 px-4">
             @for ($i = 0; $i < 5; $i++)
@@ -366,12 +366,17 @@
                             </div>
                             <div class="space-y-1.5">
                                 @foreach ($category->products as $product)
-                                    @php $outOfStock = $product->track_stock && !$product->available; @endphp
-                                    <div class="flex items-center gap-2.5 rounded-xl p-2.5 border {{ $outOfStock ? 'bg-gray-100 border-gray-200 opacity-70' : 'bg-gray-50 border-gray-100' }}">
+                                    @php
+                                        $outOfStock = $product->track_stock && ($product->quantity <= 0 || !$product->available);
+                                        $cartQty = $cart[$product->id]['qty'] ?? 0;
+                                        $insufficientStock = !$outOfStock && $product->track_stock && $cartQty > 0 && $cartQty >= $product->quantity;
+                                        $disabled = $outOfStock || $insufficientStock;
+                                    @endphp
+                                    <div class="flex items-center gap-2.5 rounded-xl p-2.5 border {{ $disabled ? 'bg-gray-100 border-gray-200 opacity-70' : 'bg-gray-50 border-gray-100' }}">
                                         {{-- Image --}}
                                         <div class="w-12 h-12 rounded-lg overflow-hidden shrink-0 relative">
                                             @if ($product->image_path)
-                                                <img src="{{ $product->image_url }}" class="w-full h-full object-cover {{ $outOfStock ? 'grayscale' : '' }}" />
+                                                <img src="{{ $product->image_url }}" class="w-full h-full object-cover {{ $disabled ? 'grayscale' : '' }}" />
                                             @else
                                                 <div class="w-full h-full bg-gradient-to-br from-red-100 to-amber-100 flex items-center justify-center text-xl">
                                                     🥟
@@ -382,33 +387,40 @@
                                         {{-- Info --}}
                                         <div class="flex-1 min-w-0">
                                             <div class="flex items-center gap-1.5">
-                                                <p class="font-semibold text-sm {{ $outOfStock ? 'text-gray-400' : 'text-gray-800' }} truncate leading-tight">{{ $product->name }}</p>
+                                                <p class="font-semibold text-sm {{ $disabled ? 'text-gray-400' : 'text-gray-800' }} truncate leading-tight">{{ $product->name }}</p>
                                                 @if ($outOfStock)
                                                     <span class="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-500 uppercase tracking-wide">Esgotado</span>
+                                                @elseif ($insufficientStock)
+                                                    <span class="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-600 uppercase tracking-wide">Estoque insuficiente</span>
                                                 @endif
                                             </div>
                                             @if ($product->description)
                                                 <p class="text-[11px] text-gray-400 truncate">{{ $product->description }}</p>
                                             @endif
-                                            <p class="text-sm font-black {{ $outOfStock ? 'text-gray-400' : 'text-[#B91C1C]' }} mt-0.5">
+                                            <p class="text-sm font-black {{ $disabled ? 'text-gray-400' : 'text-[#B91C1C]' }} mt-0.5">
                                                 R$ {{ number_format($product->price, 2, ',', '.') }}
                                             </p>
+                                            @if ($insufficientStock)
+                                                <p class="text-[10px] text-amber-500 mt-0.5">Máx. disponível: {{ $product->quantity }}</p>
+                                            @endif
                                         </div>
 
                                         {{-- Qty controls --}}
                                         <div class="flex items-center gap-1 shrink-0">
                                             @if (! $outOfStock)
-                                                @if (isset($cart[$product->id]) && $cart[$product->id]['qty'] > 0)
+                                                @if ($cartQty > 0)
                                                     <button
-                                                        wire:click="updateCartQty({{ $product->id }}, {{ $cart[$product->id]['qty'] - 1 }})"
+                                                        wire:click="updateCartQty({{ $product->id }}, {{ $cartQty - 1 }})"
                                                         class="w-7 h-7 rounded-full bg-red-100 text-[#B91C1C] hover:bg-red-200 font-bold text-base flex items-center justify-center transition-colors"
                                                     >−</button>
-                                                    <span class="w-6 text-center text-sm font-bold text-gray-800">{{ $cart[$product->id]['qty'] }}</span>
+                                                    <span class="w-6 text-center text-sm font-bold text-gray-800">{{ $cartQty }}</span>
                                                 @endif
                                                 <button
-                                                    wire:click="addToCart({{ $product->id }})"
-                                                    class="w-7 h-7 rounded-full text-white font-bold text-base flex items-center justify-center transition-colors active:scale-90"
-                                                    style="background: #B91C1C"
+                                                    @if (! $insufficientStock) wire:click="addToCart({{ $product->id }})" @endif
+                                                    @disabled($insufficientStock)
+                                                    class="w-7 h-7 rounded-full font-bold text-base flex items-center justify-center transition-colors {{ $insufficientStock ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'text-white active:scale-90' }}"
+                                                    @if (! $insufficientStock) style="background: #B91C1C" @endif
+                                                    @if ($insufficientStock) title="Estoque insuficiente para adicionar mais" @endif
                                                 >+</button>
                                             @else
                                                 <div class="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center">
@@ -480,6 +492,60 @@
             <div class="flex gap-2">
                 <button wire:click="backToMenu" class="mc-btn-secondary flex-1">← Voltar</button>
                 <button wire:click="confirmCart" class="mc-btn-primary flex-1">Confirmar →</button>
+            </div>
+
+        {{-- ── CHECKOUT_COUPON ── --}}
+        @elseif ($step === 'CHECKOUT_COUPON')
+            <div class="space-y-3">
+                <p class="text-sm font-semibold text-gray-700 text-center">Tem um cupom de desconto?</p>
+
+                @if ($appliedCoupon)
+                    {{-- Cupom aplicado --}}
+                    <div class="flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl px-3.5 py-3">
+                        <div class="flex-1 min-w-0">
+                            <p class="text-xs font-semibold text-green-600 uppercase tracking-wide">Cupom aplicado</p>
+                            <p class="font-bold text-green-800 text-sm">{{ $appliedCoupon['code'] }}</p>
+                            @if ($appliedCoupon['type'] === 'free_delivery')
+                                <p class="text-xs text-green-700">Frete grátis</p>
+                            @else
+                                <p class="text-xs text-green-700">
+                                    -R$ {{ number_format($appliedCoupon['discount'], 2, ',', '.') }} de desconto
+                                </p>
+                            @endif
+                        </div>
+                        <button wire:click="removeCoupon" class="text-gray-400 hover:text-red-500 transition-colors text-lg leading-none">✕</button>
+                    </div>
+                    <button wire:click="skipCoupon" class="mc-btn-primary w-full">
+                        Continuar →
+                    </button>
+                @else
+                    {{-- Campo para inserir cupom --}}
+                    <div class="flex gap-2">
+                        <input
+                            wire:model.defer="couponInput"
+                            wire:keydown.enter="applyCoupon"
+                            type="text"
+                            placeholder="Ex: DESCONTO10"
+                            class="flex-2 border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-red-300 focus:border-red-400"
+                            autocomplete="off"
+                        />
+                        <button wire:click="applyCoupon" class="flex-2 mc-btn-primary px-4 shrink-0"
+                            wire:loading.attr="disabled" wire:target="applyCoupon">
+                            <span wire:loading.remove wire:target="applyCoupon">Aplicar</span>
+                            <span wire:loading wire:target="applyCoupon">...</span>
+                        </button>
+                    </div>
+                    @if ($couponError)
+                        <p class="text-xs text-red-500 px-1">{{ $couponError }}</p>
+                    @endif
+                    <button wire:click="skipCoupon" class="w-full text-xs text-center text-gray-400 hover:text-gray-600 py-1 transition-colors">
+                        Continuar sem cupom →
+                    </button>
+                @endif
+
+                <button wire:click="backToCartReview" class="w-full text-xs text-center text-gray-400 hover:text-gray-600 py-1">
+                    ← Voltar ao carrinho
+                </button>
             </div>
 
         {{-- ── CHECKOUT_ORDER_TYPE ── --}}

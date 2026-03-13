@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
@@ -104,24 +105,39 @@ class User extends Authenticatable
             return false;
         }
 
-        $override = UserPermission::whereHas('permission', fn ($q) => $q->where('name', $permission))
-            ->where('user_id', $this->id)
-            ->where('company_id', $company->id)
-            ->first();
+        $cacheKey  = "user:{$this->id}:permissions:company:{$company->id}";
+        $userId    = $this->id;
+        $companyId = $company->id;
 
-        if ($override !== null) {
-            return $override->granted;
+        $perms = Cache::remember($cacheKey, now()->addMinutes(5), function () use ($userId, $companyId, $roleSlug) {
+            $overrides = UserPermission::where('user_id', $userId)
+                ->where('company_id', $companyId)
+                ->with('permission')
+                ->get()
+                ->filter(fn ($up) => $up->permission !== null)
+                ->mapWithKeys(fn ($up) => [$up->permission->name => (bool) $up->granted])
+                ->toArray();
+
+            $role = Role::where('slug', $roleSlug)
+                ->where(fn ($q) => $q->whereNull('company_id')->orWhere('company_id', $companyId))
+                ->with('permissions')
+                ->first();
+
+            $rolePermissions = $role ? $role->permissions->pluck('name')->toArray() : [];
+
+            return ['overrides' => $overrides, 'role' => $rolePermissions];
+        });
+
+        if (array_key_exists($permission, $perms['overrides'])) {
+            return $perms['overrides'][$permission];
         }
 
-        $role = Role::where('slug', $roleSlug)
-            ->where(fn ($q) => $q->whereNull('company_id')->orWhere('company_id', $company->id))
-            ->first();
+        return in_array($permission, $perms['role']);
+    }
 
-        if (! $role) {
-            return false;
-        }
-
-        return $role->permissions()->where('name', $permission)->exists();
+    public static function clearPermissionCache(int $userId, int $companyId): void
+    {
+        Cache::forget("user:{$userId}:permissions:company:{$companyId}");
     }
 
     /**

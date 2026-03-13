@@ -49,6 +49,9 @@
                         <flux:sidebar.item icon="archive-box" :href="route('admin.stock.index')" :current="request()->routeIs('admin.stock.*')" wire:navigate>
                             Estoque
                         </flux:sidebar.item>
+                        <flux:sidebar.item icon="ticket" :href="route('admin.coupons.index')" :current="request()->routeIs('admin.coupons.*')" wire:navigate>
+                            Cupons
+                        </flux:sidebar.item>
                     </flux:sidebar.group>
 
                     @if(auth()->user()?->isCompanyAdmin(app()->bound('current.company') ? app('current.company') : new \App\Models\Company))

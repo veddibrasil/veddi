@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\Scopes\CompanyScope;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -68,10 +69,12 @@ class Index extends Component
             : ProductCategory::orderBy('name');
 
         $companies = $this->isSuperAdmin
-            ? Company::withoutGlobalScope(CompanyScope::class)
-                ->where('active', true)
-                ->orderBy('name')
-                ->get()
+            ? Cache::remember('companies:active', now()->addHours(24), fn () =>
+                Company::withoutGlobalScope(CompanyScope::class)
+                    ->where('active', true)
+                    ->orderBy('name')
+                    ->get()
+              )
             : collect();
 
         return view('livewire.admin.products.index', [

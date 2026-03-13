@@ -13,7 +13,8 @@ class Order extends Model
     use BelongsToCompany;
 
     protected $fillable = [
-        'company_id', 'order_number', 'customer_id', 'branch_id', 'subtotal', 'delivery_fee', 'total', 'status', 'notes', 'payment_method', 'order_type',
+        'company_id', 'order_number', 'customer_id', 'branch_id', 'subtotal', 'delivery_fee', 'total',
+        'status', 'notes', 'payment_method', 'order_type', 'coupon_id', 'discount',
     ];
 
     protected static function booted(): void
@@ -49,6 +50,11 @@ class Order extends Model
     public function payment(): HasOne
     {
         return $this->hasOne(Payment::class);
+    }
+
+    public function coupon(): BelongsTo
+    {
+        return $this->belongsTo(Coupon::class);
     }
 
     public function getStatusLabelAttribute(): string

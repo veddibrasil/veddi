@@ -1,0 +1,146 @@
+<?php
+
+namespace App\Services;
+
+use App\Exceptions\CouponException;
+use App\Models\Coupon;
+use App\Models\CouponUsage;
+use App\Models\Order;
+use App\Models\Product;
+use App\Models\Scopes\CompanyScope;
+
+class CouponService
+{
+    /**
+     * Valida um código de cupom e retorna o model Coupon.
+     *
+     * @param  array<int, array{qty: int, name: string, price: float}> $cart
+     * @throws CouponException
+     */
+    public function validate(string $code, int $customerId, array $cart, float $subtotal): Coupon
+    {
+        $coupon = Coupon::where('code', strtoupper(trim($code)))
+            ->where('active', true)
+            ->first();
+
+        if (! $coupon) {
+            throw new CouponException('Cupom inválido ou inativo.');
+        }
+
+        if ($coupon->isExpired()) {
+            throw new CouponException('Cupom expirado ou ainda não está vigente.');
+        }
+
+        if ($coupon->minimum_order_value !== null && $subtotal < $coupon->minimum_order_value) {
+            $min = number_format($coupon->minimum_order_value, 2, ',', '.');
+            throw new CouponException("Pedido mínimo de R$ {$min} para usar este cupom.");
+        }
+
+        if ($coupon->hasReachedMaxUses()) {
+            throw new CouponException('Limite de usos deste cupom foi atingido.');
+        }
+
+        if ($coupon->hasReachedMaxUsesForCustomer($customerId)) {
+            throw new CouponException('Você já utilizou este cupom o número máximo de vezes.');
+        }
+
+        if ($coupon->type === 'free_product' && ! $coupon->free_product_id) {
+            throw new CouponException('Cupom de produto grátis inválido.');
+        }
+
+        return $coupon;
+    }
+
+    /**
+     * Calcula o valor de desconto a ser aplicado.
+     *
+     * @param  array<int, array{qty: int, name: string, price: float}> $cart
+     */
+    public function calculateDiscount(Coupon $coupon, array $cart, float $subtotal, float $deliveryFee): float
+    {
+        return match ($coupon->type) {
+            'percentage'    => $this->calculatePercentageDiscount($coupon, $cart, $subtotal),
+            'fixed'         => $this->calculateFixedDiscount($coupon, $cart, $subtotal),
+            'free_delivery' => $deliveryFee,
+            'free_product'  => $this->getFreeProductPrice($coupon),
+            default         => 0.0,
+        };
+    }
+
+    /**
+     * Registra o uso do cupom após a criação do pedido.
+     */
+    public function recordUsage(Coupon $coupon, Order $order, int $customerId, float $discountApplied): CouponUsage
+    {
+        return CouponUsage::create([
+            'coupon_id'        => $coupon->id,
+            'order_id'         => $order->id,
+            'customer_id'      => $customerId,
+            'company_id'       => $order->company_id,
+            'discount_applied' => $discountApplied,
+        ]);
+    }
+
+    private function calculatePercentageDiscount(Coupon $coupon, array $cart, float $subtotal): float
+    {
+        $base = $this->getScopeBase($coupon, $cart, $subtotal);
+        return round($base * ($coupon->discount_value / 100), 2);
+    }
+
+    private function calculateFixedDiscount(Coupon $coupon, array $cart, float $subtotal): float
+    {
+        $base = $this->getScopeBase($coupon, $cart, $subtotal);
+        return min($coupon->discount_value, $base);
+    }
+
+    /**
+     * Retorna a base de cálculo de acordo com o escopo do cupom.
+     */
+    private function getScopeBase(Coupon $coupon, array $cart, float $subtotal): float
+    {
+        if ($coupon->scope === 'order' || empty($coupon->scope_ids)) {
+            return $subtotal;
+        }
+
+        $scopeIds = $coupon->scope_ids;
+
+        // Para escopos por produto ou categoria, busca os produtos do carrinho com dados do DB
+        $productIds = array_keys($cart);
+        $products = Product::withoutGlobalScope(CompanyScope::class)
+            ->whereIn('id', $productIds)
+            ->get()
+            ->keyBy('id');
+
+        $base = 0.0;
+
+        foreach ($cart as $productId => $item) {
+            $product = $products->get($productId);
+            if (! $product) {
+                continue;
+            }
+
+            $match = match ($coupon->scope) {
+                'product'  => in_array($productId, $scopeIds),
+                'category' => in_array($product->product_category_id, $scopeIds),
+                default    => false,
+            };
+
+            if ($match) {
+                $base += (float) $product->price * $item['qty'];
+            }
+        }
+
+        return $base;
+    }
+
+    private function getFreeProductPrice(Coupon $coupon): float
+    {
+        if (! $coupon->free_product_id) {
+            return 0.0;
+        }
+
+        $product = Product::withoutGlobalScope(CompanyScope::class)->find($coupon->free_product_id);
+
+        return $product ? (float) $product->price : 0.0;
+    }
+}

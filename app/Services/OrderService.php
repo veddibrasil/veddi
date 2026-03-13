@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Exceptions\InsufficientStockException;
 use App\Jobs\RefundPayment;
+use App\Models\Coupon;
 use App\Models\Order;
+use App\Services\CouponService;
 use App\Models\OrderItem;
 use App\Models\Product;
 use Illuminate\Support\Facades\DB;
@@ -27,7 +29,8 @@ class OrderService
         string $paymentMethod,
         string $orderType,
         string $status = 'pending',
-        float $deliveryFee = 0.0
+        float $deliveryFee = 0.0,
+        ?Coupon $coupon = null,
     ): Order {
         $productIds = array_keys($cart);
 
@@ -47,10 +50,20 @@ class OrderService
             }
         }
 
-        return DB::transaction(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products) {
+        return DB::transaction(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon) {
             $subtotal = 0.0;
             foreach ($cart as $productId => $item) {
                 $subtotal += (float) $products[$productId]->price * $item['qty'];
+            }
+
+            $discount = 0.0;
+            if ($coupon) {
+                $discount = app(CouponService::class)->calculateDiscount($coupon, $cart, $subtotal, $deliveryFee);
+                // Frete grátis: zera o delivery_fee no cálculo do total
+                if ($coupon->type === 'free_delivery') {
+                    $deliveryFee = 0.0;
+                    $discount = 0.0; // desconto já está embutido no frete zerado
+                }
             }
 
             $order = Order::create([
@@ -58,11 +71,13 @@ class OrderService
                 'branch_id'      => $branchId,
                 'subtotal'       => $subtotal,
                 'delivery_fee'   => $deliveryFee,
-                'total'          => $subtotal + $deliveryFee,
+                'discount'       => $discount,
+                'total'          => max(0, $subtotal + $deliveryFee - $discount),
                 'status'         => $status,
                 'notes'          => $notes,
                 'payment_method' => strtolower($paymentMethod),
                 'order_type'     => $orderType,
+                'coupon_id'      => $coupon?->id,
             ]);
 
             foreach ($cart as $productId => $item) {
@@ -79,7 +94,24 @@ class OrderService
                 ]);
             }
 
+            // Produto grátis: adicionar item extra com preço zero
+            if ($coupon && $coupon->type === 'free_product' && $coupon->freeProduct) {
+                $freeProduct = $coupon->freeProduct;
+                OrderItem::create([
+                    'order_id'     => $order->id,
+                    'product_id'   => $freeProduct->id,
+                    'product_name' => $freeProduct->name . ' (Brinde)',
+                    'unit_price'   => 0.0,
+                    'quantity'     => 1,
+                    'subtotal'     => 0.0,
+                ]);
+            }
+
             app(StockService::class)->deductForOrder($order);
+
+            if ($coupon) {
+                app(CouponService::class)->recordUsage($coupon, $order, $customerId, $discount);
+            }
 
             Log::channel('orders')->info('Pedido criado', [
                 'order_id'       => $order->id,
@@ -88,9 +120,11 @@ class OrderService
                 'branch_id'      => $branchId,
                 'subtotal'       => $order->subtotal,
                 'delivery_fee'   => $order->delivery_fee,
+                'discount'       => $order->discount,
                 'total'          => $order->total,
                 'payment_method' => $paymentMethod,
                 'order_type'     => $orderType,
+                'coupon_code'    => $coupon?->code,
             ]);
 
             return $order;
@@ -141,6 +175,10 @@ class OrderService
             } else {
                 $lines[] = "Frete: Grátis";
             }
+        }
+
+        if ($order->discount > 0) {
+            $lines[] = "Desconto: -R$ " . number_format($order->discount, 2, ',', '.');
         }
 
         $lines[] = "Total: R$ " . number_format($order->total, 2, ',', '.');

@@ -4,6 +4,7 @@ namespace App\Livewire\SuperAdmin\Companies;
 
 use App\Models\Company;
 use App\Models\Scopes\CompanyScope;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -90,6 +91,8 @@ class Form extends Component
             Company::create($data);
             session()->flash('status', 'Empresa criada.');
         }
+
+        Cache::forget('companies:active');
 
         $this->redirect(route('superadmin.companies.index'));
     }

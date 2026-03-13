@@ -5,6 +5,7 @@ namespace App\Livewire\Admin\Orders;
 use App\Models\Company;
 use App\Models\Order;
 use App\Models\Scopes\CompanyScope;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -44,10 +45,12 @@ class Index extends Component
             ->paginate(20);
 
         $companies = $this->isSuperAdmin
-            ? Company::withoutGlobalScope(CompanyScope::class)
-                ->where('active', true)
-                ->orderBy('name')
-                ->get()
+            ? Cache::remember('companies:active', now()->addHours(24), fn () =>
+                Company::withoutGlobalScope(CompanyScope::class)
+                    ->where('active', true)
+                    ->orderBy('name')
+                    ->get()
+              )
             : collect();
 
         return view('livewire.admin.orders.index', compact('orders', 'companies'))

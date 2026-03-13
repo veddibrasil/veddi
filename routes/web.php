@@ -52,6 +52,8 @@ Route::middleware(['auth', 'verified'])
 
             Route::get('/settings', \App\Livewire\Admin\Settings\CompanySettings::class)->name('settings');
 
+            Route::get('/coupons', \App\Livewire\Admin\Coupons\Index::class)->name('coupons.index');
+
             Route::get('/roles', \App\Livewire\Admin\Roles\Index::class)->name('roles.index');
 
             Route::get('/users', \App\Livewire\Admin\Users\Index::class)->name('users.index');
