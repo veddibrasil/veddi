@@ -7,6 +7,8 @@ use App\Models\Company;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\Scopes\CompanyScope;
+use App\Services\StockService;
+use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -29,6 +31,10 @@ class Form extends Component
     public $image;
 
     public array $selectedBranches = [];
+
+    public bool   $trackStock       = false;
+    public string $initialQuantity  = '0';
+    public string $minQuantity      = '0';
 
     protected function rules(): array
     {
@@ -126,10 +132,43 @@ class Form extends Component
 
         // Sync branches
         $branchSync = [];
-        foreach ($this->selectedBranches as $branchId) {
-            $branchSync[$branchId] = ['available' => true];
+        if ($this->isEditing) {
+            $existingPivots = DB::table('branch_product')
+                ->where('product_id', $product->id)
+                ->get()
+                ->keyBy('branch_id');
+
+            foreach ($this->selectedBranches as $branchId) {
+                $existing = $existingPivots->get($branchId);
+                $branchSync[$branchId] = [
+                    'available'    => $existing?->available ?? true,
+                    'track_stock'  => $existing?->track_stock ?? false,
+                    'min_quantity' => $existing?->min_quantity ?? 0,
+                    'quantity'     => $existing?->quantity ?? 0,
+                ];
+            }
+        } else {
+            foreach ($this->selectedBranches as $branchId) {
+                $branchSync[$branchId] = [
+                    'available'    => true,
+                    'track_stock'  => $this->trackStock,
+                    'min_quantity' => (int) $this->minQuantity,
+                    'quantity'     => 0,
+                ];
+            }
         }
         $product->branches()->sync($branchSync);
+
+        // Define estoque inicial para produtos novos
+        if (! $this->isEditing && $this->trackStock && (int) $this->initialQuantity > 0) {
+            $service = app(StockService::class);
+            foreach ($this->selectedBranches as $branchId) {
+                $branch = Branch::withoutGlobalScope(CompanyScope::class)->find($branchId);
+                if ($branch) {
+                    $service->setQuantity($branch, $product, (int) $this->initialQuantity, 'Estoque inicial', auth()->user());
+                }
+            }
+        }
 
         $this->redirect(route('admin.products.index'));
     }

@@ -1,9 +1,23 @@
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
     <head>
-        @include('partials.head')
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+        <title>
+            {{ filled($title ?? null) ? $title.' - '.config('app.name', 'Laravel') : config('app.name', 'Laravel') }}
+        </title>
+
+        <link rel="icon" href="/favicon.ico" sizes="any">
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+        <link rel="preconnect" href="https://fonts.bunny.net">
+        <link href="https://fonts.bunny.net/css?family=fredoka:400,500,600,700|instrument-sans:400,500,600" rel="stylesheet" />
+
+        @vite(['resources/css/app.css', 'resources/js/app.js'])
     </head>
-    <body class="min-h-screen antialiased" style="background: linear-gradient(145deg, #ffc72d 0%, #f5bc28 40%, #fff8e1 100%);">
+    <body class="min-h-screen antialiased bg-linear-to-br from-amber-400 via-yellow-300 to-amber-50">
         <div class="flex min-h-svh flex-col items-center justify-center gap-6 p-6 md:p-10">
             <div class="flex w-full max-w-sm flex-col gap-4">
 
@@ -18,7 +32,7 @@
                 </a>
 
                 {{-- Card de formulário --}}
-                <div class="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl shadow-amber-200/60 border border-white/70 p-6">
+                <div class="bg-white rounded-2xl shadow-xl shadow-amber-200/60 border border-white/70 p-6">
                     <div class="flex flex-col gap-6">
                         {{ $slot }}
                     </div>

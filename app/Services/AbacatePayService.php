@@ -35,7 +35,7 @@ class AbacatePayService
             ->post("{$this->baseUrl}/billing/create", [
                 'frequency'     => 'ONE_TIME',
                 'methods'       => [strtoupper($method)],
-                'returnUrl'     => route('chat.index'),
+                'returnUrl'     => $this->company ? route('chat.company', ['company' => $this->company->slug]) : '/',
                 'completionUrl' => route('payment.complete'),
                 'customer'      => array_filter([
                     'name'      => $customer->name,
@@ -116,6 +116,37 @@ class AbacatePayService
         }
 
         return $digits ?: null;
+    }
+
+    public function refundBilling(string $billingId): array
+    {
+        Log::channel('payments')->info('Solicitando reembolso AbacatePay', [
+            'billing_id' => $billingId,
+        ]);
+
+        $response = Http::withToken($this->token)
+            ->timeout(15)
+            ->post("{$this->baseUrl}/payment/refund", [
+                'id' => $billingId,
+            ]);
+
+        if ($response->failed()) {
+            Log::channel('payments')->error('Erro ao solicitar reembolso AbacatePay', [
+                'billing_id' => $billingId,
+                'status'     => $response->status(),
+                'body'       => $response->body(),
+            ]);
+            throw new RuntimeException(
+                'AbacatePay refund error: ' . $response->body(),
+                $response->status()
+            );
+        }
+
+        Log::channel('payments')->info('Reembolso AbacatePay solicitado com sucesso', [
+            'billing_id' => $billingId,
+        ]);
+
+        return $response->json('data') ?? [];
     }
 
     public function validateWebhookSignature(string $payload, string $signature): bool

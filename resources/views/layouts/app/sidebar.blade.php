@@ -13,59 +13,59 @@
             </flux:sidebar.header>
 
             <flux:sidebar.nav>
-                
-                <flux:sidebar.group :heading="__('Platform')" class="grid">
-                    <flux:sidebar.item icon="home" :href="route('admin.dashboard')" :current="request()->routeIs('admin.dashboard')" wire:navigate>
-                        {{ __('Dashboard') }}
-                    </flux:sidebar.item>
-                </flux:sidebar.group>
-
-                <flux:sidebar.group heading="Pedidos" class="grid">
-                    <flux:sidebar.item icon="list-bullet" :href="route('admin.orders.index')" :current="request()->routeIs('admin.orders.*')" wire:navigate>
-                        Pedidos
-                    </flux:sidebar.item>
-                </flux:sidebar.group>
-
-                <flux:sidebar.group heading="Cardápio" class="grid">
-                    <flux:sidebar.item icon="building-storefront" :href="route('admin.branches.index')" :current="request()->routeIs('admin.branches.*')" wire:navigate>
-                        Filiais
-                    </flux:sidebar.item>
-                    <flux:sidebar.item icon="tag" :href="route('admin.categories.index')" :current="request()->routeIs('admin.categories.*')" wire:navigate>
-                        Categorias
-                    </flux:sidebar.item>
-                    <flux:sidebar.item icon="shopping-bag" :href="route('admin.products.index')" :current="request()->routeIs('admin.products.*')" wire:navigate>
-                        Produtos
-                    </flux:sidebar.item>
-                </flux:sidebar.group>
-
-                @if(auth()->user()?->isCompanyAdmin(app()->bound('current.company') ? app('current.company') : new \App\Models\Company))
-                    <flux:sidebar.group heading="Equipe" class="grid">
-                        <flux:sidebar.item icon="users" :href="route('admin.users.index')" :current="request()->routeIs('admin.users.*')" wire:navigate>
-                            Usuários
-                        </flux:sidebar.item>
-                        <flux:sidebar.item icon="user-group" :href="route('admin.roles.index')" :current="request()->routeIs('admin.roles.*')" wire:navigate>
-                            Tipos de Usuário
-                        </flux:sidebar.item>
-                    </flux:sidebar.group>
-                    <flux:sidebar.group heading="Configurações" class="grid">
-                        <flux:sidebar.item icon="cog-6-tooth" :href="route('admin.settings')" :current="request()->routeIs('admin.settings')" wire:navigate>
-                            Empresa
-                        </flux:sidebar.item>
-                    </flux:sidebar.group>
-                @endif
 
                 @if(auth()->user()?->isSuperAdmin())
-                    <flux:sidebar.group heading="Super Admin" class="grid">
+                    <flux:sidebar.group heading="Administração" class="grid">
                         <flux:sidebar.item icon="building-office-2" :href="route('superadmin.companies.index')" :current="request()->routeIs('superadmin.companies.*')" wire:navigate>
                             Empresas
                         </flux:sidebar.item>
-                        <flux:sidebar.item icon="users" :href="route('superadmin.users.index')" :current="request()->routeIs('superadmin.users.*')" wire:navigate>
-                            Usuários
-                        </flux:sidebar.item>
-                        <flux:sidebar.item icon="shield-check" :href="route('superadmin.permissions.index')" :current="request()->routeIs('superadmin.permissions.*')" wire:navigate>
-                            Permissões
+                        <flux:sidebar.item icon="building-storefront" :href="route('admin.branches.index')" :current="request()->routeIs('admin.branches.*')" wire:navigate>
+                            Filiais
                         </flux:sidebar.item>
                     </flux:sidebar.group>
+                @else
+                    <flux:sidebar.group :heading="__('Platform')" class="grid">
+                        <flux:sidebar.item icon="home" :href="route('admin.dashboard')" :current="request()->routeIs('admin.dashboard')" wire:navigate>
+                            {{ __('Dashboard') }}
+                        </flux:sidebar.item>
+                    </flux:sidebar.group>
+
+                    <flux:sidebar.group heading="Pedidos" class="grid">
+                        <flux:sidebar.item icon="list-bullet" :href="route('admin.orders.index')" :current="request()->routeIs('admin.orders.*')" wire:navigate>
+                            Pedidos
+                        </flux:sidebar.item>
+                    </flux:sidebar.group>
+
+                    <flux:sidebar.group heading="Cardápio" class="grid">
+                        <flux:sidebar.item icon="building-storefront" :href="route('admin.branches.index')" :current="request()->routeIs('admin.branches.*')" wire:navigate>
+                            Filiais
+                        </flux:sidebar.item>
+                        <flux:sidebar.item icon="tag" :href="route('admin.categories.index')" :current="request()->routeIs('admin.categories.*')" wire:navigate>
+                            Categorias
+                        </flux:sidebar.item>
+                        <flux:sidebar.item icon="shopping-bag" :href="route('admin.products.index')" :current="request()->routeIs('admin.products.*')" wire:navigate>
+                            Produtos
+                        </flux:sidebar.item>
+                        <flux:sidebar.item icon="archive-box" :href="route('admin.stock.index')" :current="request()->routeIs('admin.stock.*')" wire:navigate>
+                            Estoque
+                        </flux:sidebar.item>
+                    </flux:sidebar.group>
+
+                    @if(auth()->user()?->isCompanyAdmin(app()->bound('current.company') ? app('current.company') : new \App\Models\Company))
+                        <flux:sidebar.group heading="Equipe" class="grid">
+                            <flux:sidebar.item icon="users" :href="route('admin.users.index')" :current="request()->routeIs('admin.users.*')" wire:navigate>
+                                Usuários
+                            </flux:sidebar.item>
+                            <flux:sidebar.item icon="user-group" :href="route('admin.roles.index')" :current="request()->routeIs('admin.roles.*')" wire:navigate>
+                                Tipos de Usuário
+                            </flux:sidebar.item>
+                        </flux:sidebar.group>
+                        <flux:sidebar.group heading="Configurações" class="grid">
+                            <flux:sidebar.item icon="cog-6-tooth" :href="route('admin.settings')" :current="request()->routeIs('admin.settings')" wire:navigate>
+                                Empresa
+                            </flux:sidebar.item>
+                        </flux:sidebar.group>
+                    @endif
                 @endif
             </flux:sidebar.nav>
 

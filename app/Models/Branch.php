@@ -30,7 +30,7 @@ class Branch extends Model
     public function products(): BelongsToMany
     {
         return $this->belongsToMany(Product::class)
-            ->withPivot('available')
+            ->withPivot(['available', 'quantity', 'min_quantity', 'track_stock'])
             ->withTimestamps();
     }
 

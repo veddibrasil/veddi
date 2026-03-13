@@ -6,9 +6,11 @@ use App\Models\Company;
 use App\Models\ProductCategory;
 use App\Models\Scopes\CompanyScope;
 use Livewire\Component;
+use Livewire\WithPagination;
 
 class Index extends Component
 {
+    use WithPagination;
     public string $name       = '';
     public int $sort_order    = 0;
     public ?int $editingId    = null;
@@ -119,8 +121,8 @@ class Index extends Component
                 ->with('company')
                 ->orderBy('sort_order')
                 ->orderBy('name')
-                ->get()
-            : ProductCategory::orderBy('sort_order')->orderBy('name')->get();
+                ->paginate(15)
+            : ProductCategory::orderBy('sort_order')->orderBy('name')->paginate(15);
 
         $companies = $this->isSuperAdmin
             ? Company::withoutGlobalScope(CompanyScope::class)

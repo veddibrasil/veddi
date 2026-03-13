@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Exceptions\InsufficientStockException;
+use App\Jobs\RefundPayment;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
@@ -77,6 +79,8 @@ class OrderService
                 ]);
             }
 
+            app(StockService::class)->deductForOrder($order);
+
             Log::channel('orders')->info('Pedido criado', [
                 'order_id'       => $order->id,
                 'order_number'   => $order->order_number,
@@ -103,6 +107,13 @@ class OrderService
         }
 
         $order->update(['status' => 'cancelled']);
+
+        app(StockService::class)->restoreForOrder($order);
+
+        $order->loadMissing('payment');
+        if ($order->payment?->status === 'paid') {
+            RefundPayment::dispatch($order);
+        }
 
         Log::channel('orders')->info('Pedido cancelado pelo cliente', [
             'order_id'    => $order->id,

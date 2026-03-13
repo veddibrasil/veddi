@@ -40,4 +40,8 @@ return [
         'webhook_secret' => env('ABACATEPAY_WEBHOOK_SECRET'),
     ],
 
+    'mapbox' => [
+        'token' => env('MAPBOX_TOKEN'),
+    ],
+
 ];

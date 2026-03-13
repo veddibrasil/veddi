@@ -36,6 +36,6 @@ class Product extends Model
 
     public function branches(): BelongsToMany
     {
-        return $this->belongsToMany(Branch::class)->withPivot('available');
+        return $this->belongsToMany(Branch::class)->withPivot(['available', 'quantity', 'min_quantity', 'track_stock']);
     }
 }

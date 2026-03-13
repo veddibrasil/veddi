@@ -13,6 +13,7 @@ use App\Services\DeliveryService;
 use App\Services\OrderService;
 use App\Services\PaymentService;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\Rule;
@@ -94,7 +95,22 @@ class OrderChat extends Component
 
     public function mount(): void
     {
-        $currentCompanyId = app()->bound('current.company') ? app('current.company')->id : null;
+        $slug = request()->route('company');
+
+        if (! $slug) {
+            abort(404);
+        }
+
+        $company = \App\Models\Company::where('slug', $slug)->where('active', true)->first();
+
+        if (! $company) {
+            abort(404);
+        }
+
+        app()->instance('current.company', $company);
+        view()->share('currentCompany', $company);
+
+        $currentCompanyId = $company->id;
 
         $savedState = session('chat_state');
         if ($savedState && ($savedState['companyId'] ?? null) === $currentCompanyId) {
@@ -154,6 +170,13 @@ class OrderChat extends Component
                 ],
             ],
             'REGISTER_ADDRESS' => [
+                'address'      => ['required', 'string', 'min:5', 'max:255'],
+                'complement'   => ['nullable', 'string', 'max:100'],
+                'neighborhood' => ['required', 'string', 'max:100'],
+                'city'         => ['required', 'string', 'max:100'],
+                'cep'          => ['required', 'regex:/^\d{5}-?\d{3}$/'],
+            ],
+            'CHECKOUT_DELIVERY_ADDRESS' => [
                 'address'      => ['required', 'string', 'min:5', 'max:255'],
                 'complement'   => ['nullable', 'string', 'max:100'],
                 'neighborhood' => ['required', 'string', 'max:100'],
@@ -404,6 +427,32 @@ class OrderChat extends Component
             return;
         }
 
+        // Para delivery, confirma/altera endereço antes de calcular frete
+        $this->transitionTo('CHECKOUT_DELIVERY_ADDRESS');
+    }
+
+    public function confirmDeliveryAddress(): void
+    {
+        $this->validate($this->rules(), $this->messages());
+
+        if ($this->customerId) {
+            $customer = Customer::findOrFail($this->customerId);
+            $customer->update([
+                'address'      => $this->address,
+                'complement'   => $this->complement,
+                'neighborhood' => $this->neighborhood,
+                'city'         => $this->city,
+                'cep'          => preg_replace('/\D/', '', $this->cep),
+            ]);
+        }
+
+        $addressSummary = $this->address;
+        if ($this->complement) {
+            $addressSummary .= ", {$this->complement}";
+        }
+        $addressSummary .= " — {$this->neighborhood}, {$this->city}";
+        $this->addMessage('user', $addressSummary);
+
         $this->resolveDeliveryFee();
     }
 
@@ -445,6 +494,46 @@ class OrderChat extends Component
     public function backToMenu(): void
     {
         $this->transitionTo('MENU_BROWSE');
+    }
+
+    public function backToIdentifyPhone(): void
+    {
+        $this->transitionTo('IDENTIFY_PHONE');
+    }
+
+    public function backToRegisterName(): void
+    {
+        $this->transitionTo('REGISTER_NAME');
+    }
+
+    public function backToRegisterEmail(): void
+    {
+        $this->transitionTo('REGISTER_EMAIL');
+    }
+
+    public function backToCartReview(): void
+    {
+        $this->transitionTo('CART_REVIEW');
+    }
+
+    public function backToOrderType(): void
+    {
+        $this->transitionTo('CHECKOUT_ORDER_TYPE');
+    }
+
+    public function backToDeliveryAddress(): void
+    {
+        $this->transitionTo('CHECKOUT_DELIVERY_ADDRESS');
+    }
+
+    public function backToNotes(): void
+    {
+        $this->transitionTo('CHECKOUT_NOTES');
+    }
+
+    public function backToCpf(): void
+    {
+        $this->transitionTo('CHECKOUT_CPF');
     }
 
     // --- Step: Checkout ---
@@ -915,20 +1004,24 @@ class OrderChat extends Component
     public function getMenuProperty()
     {
         $companyId = $this->companyId;
-        return Cache::remember("menu:branch:{$this->selectedBranchId}:company:{$companyId}", now()->addMinutes(5), fn () =>
-            ProductCategory::withoutGlobalScopes()
+        $branchId  = $this->selectedBranchId;
+
+        return Cache::remember("menu:branch:{$branchId}:company:{$companyId}", now()->addMinutes(5), function () use ($companyId, $branchId) {
+            return ProductCategory::withoutGlobalScopes()
                 ->where('active', true)
                 ->where('company_id', $companyId)
                 ->orderBy('sort_order')
-                ->with(['products' => function ($q) {
-                    $q->whereHas('branches', fn ($b) => $b
-                        ->where('branches.id', $this->selectedBranchId)
-                        ->where('branch_product.available', true))
-                        ->where('active', true)
-                        ->orderBy('sort_order');
+                ->with(['products' => function ($q) use ($branchId) {
+                    $q->join('branch_product as bp', function ($join) use ($branchId) {
+                            $join->on('bp.product_id', '=', 'products.id')
+                                 ->where('bp.branch_id', $branchId);
+                        })
+                        ->where('products.active', true)
+                        ->select('products.*', 'bp.available', 'bp.track_stock', 'bp.quantity')
+                        ->orderBy('products.sort_order');
                 }])
-                ->get()
-        );
+                ->get();
+        });
     }
 
     public function render()

@@ -1,10 +1,19 @@
 <?php
 
+use App\Helpers\Validation;
 use App\Http\Controllers\WebhookController;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
+// --- API pública ---
+Route::post('/api/validate-cpf', function (Request $request) {
+    $cpf = $request->input('cpf', '');
+    $valid = Validation::isValidCpf($cpf);
+
+    return response()->json(['valid' => $valid]);
+})->name('api.validate-cpf');
+
 // --- Chat Público ---
-Route::get('/', \App\Livewire\Chat\OrderChat::class)->name('chat.index');
 Route::get('/{company}', \App\Livewire\Chat\OrderChat::class)->name('chat.company');
 
 // --- Webhook (sem auth, sem CSRF, sem escopo de empresa) ---
@@ -25,6 +34,7 @@ Route::middleware(['auth', 'verified'])
             Route::get('/dashboard', \App\Livewire\Admin\Dashboard::class)->name('dashboard');
             Route::get('/orders', \App\Livewire\Admin\Orders\Index::class)->name('orders.index');
             Route::get('/orders/{order}', \App\Livewire\Admin\Orders\Show::class)->name('orders.show');
+            Route::get('/stock', \App\Livewire\Admin\Stock\Index::class)->name('stock.index');
         });
 
         // Gestão completa: só company_admin

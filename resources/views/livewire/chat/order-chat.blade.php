@@ -211,7 +211,10 @@
                         wire:keydown.enter="submitName" autocomplete="name" />
                     @error('name') <p class="text-red-600 text-xs mt-1 flex items-center gap-1"><span>⚠</span> {{ $message }}</p> @enderror
                 </div>
-                <button wire:click="submitName" class="mc-btn-primary">Continuar →</button>
+                <div class="flex gap-2">
+                    <button wire:click="backToIdentifyPhone" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
+                    <button wire:click="submitName" class="mc-btn-primary flex-1">Continuar →</button>
+                </div>
             </div>
 
         {{-- ── REGISTER_EMAIL ── --}}
@@ -223,12 +226,57 @@
                         wire:keydown.enter="submitEmail" autocomplete="email" />
                     @error('email') <p class="text-red-600 text-xs mt-1 flex items-center gap-1"><span>⚠</span> {{ $message }}</p> @enderror
                 </div>
-                <button wire:click="submitEmail" class="mc-btn-primary">Continuar →</button>
+                <div class="flex gap-2">
+                    <button wire:click="backToRegisterName" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
+                    <button wire:click="submitEmail" class="mc-btn-primary flex-1">Continuar →</button>
+                </div>
             </div>
 
         {{-- ── REGISTER_ADDRESS ── --}}
         @elseif ($step === 'REGISTER_ADDRESS')
             <div wire:key="step-register-address" class="space-y-2">
+
+                {{-- Botão de localização --}}
+                <button type="button" id="map-reg-loc-btn" onclick="mapPickerUseLocation('reg')"
+                    class="w-full flex items-center justify-center gap-2 border border-blue-200 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 text-blue-700 text-xs font-semibold rounded-xl py-2.5 transition-colors disabled:opacity-60">
+                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    <span id="map-reg-span-default">Usar minha localização</span>
+                    <span id="map-reg-span-loading" style="display:none" class="flex items-center gap-1.5">
+                        <svg class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                        </svg>
+                        Obtendo localização...
+                    </span>
+                </button>
+                <p id="map-reg-error" style="display:none" class="text-red-500 text-xs -mt-1 flex items-center gap-1"></p>
+
+                {{-- Mapa interativo --}}
+                <div id="map-reg-container" style="display:none" class="rounded-xl overflow-hidden border border-blue-200 shadow-sm">
+                    <div class="bg-blue-50 px-3 py-1.5 flex items-center justify-between">
+                        <span class="text-xs font-semibold text-blue-700">📍 Arraste o pin para ajustar</span>
+                        <button type="button" onclick="mapPickerCloseMap('reg')" class="text-blue-400 hover:text-blue-700 text-lg leading-none">×</button>
+                    </div>
+                    <div id="map-reg-el" style="height:200px; width:100%;"></div>
+                    <div class="flex gap-2 p-2 bg-gray-50 border-t border-gray-100">
+                        <button type="button" onclick="mapPickerCloseMap('reg')" class="mc-btn-secondary flex-1 !py-1.5 text-xs">Cancelar</button>
+                        <button type="button" id="map-reg-confirm-btn" onclick="mapPickerConfirmLocation('reg')"
+                            class="mc-btn-primary flex-1 !py-1.5 text-xs disabled:opacity-60">
+                            <span id="map-reg-span-confirm">Confirmar local →</span>
+                            <span id="map-reg-span-geocoding" style="display:none" class="flex items-center justify-center gap-1.5">
+                                <svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                                </svg>
+                                Buscando endereço...
+                            </span>
+                        </button>
+                    </div>
+                </div>
+
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">
                         CEP
@@ -271,7 +319,10 @@
                         @error('city') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
                     </div>
                 </div>
-                <button wire:click="submitAddress" class="mc-btn-primary mt-1">Salvar e continuar →</button>
+                <div class="flex gap-2 mt-1">
+                    <button wire:click="backToRegisterEmail" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
+                    <button wire:click="submitAddress" class="mc-btn-primary flex-1">Salvar e continuar →</button>
+                </div>
             </div>
 
         {{-- ── BRANCH_SELECT ── --}}
@@ -315,11 +366,12 @@
                             </div>
                             <div class="space-y-1.5">
                                 @foreach ($category->products as $product)
-                                    <div class="flex items-center gap-2.5 bg-gray-50 rounded-xl p-2.5 border border-gray-100">
+                                    @php $outOfStock = $product->track_stock && !$product->available; @endphp
+                                    <div class="flex items-center gap-2.5 rounded-xl p-2.5 border {{ $outOfStock ? 'bg-gray-100 border-gray-200 opacity-70' : 'bg-gray-50 border-gray-100' }}">
                                         {{-- Image --}}
-                                        <div class="w-12 h-12 rounded-lg overflow-hidden shrink-0">
+                                        <div class="w-12 h-12 rounded-lg overflow-hidden shrink-0 relative">
                                             @if ($product->image_path)
-                                                <img src="{{ $product->image_url }}" class="w-full h-full object-cover" />
+                                                <img src="{{ $product->image_url }}" class="w-full h-full object-cover {{ $outOfStock ? 'grayscale' : '' }}" />
                                             @else
                                                 <div class="w-full h-full bg-gradient-to-br from-red-100 to-amber-100 flex items-center justify-center text-xl">
                                                     🥟
@@ -329,29 +381,42 @@
 
                                         {{-- Info --}}
                                         <div class="flex-1 min-w-0">
-                                            <p class="font-semibold text-sm text-gray-800 truncate leading-tight">{{ $product->name }}</p>
+                                            <div class="flex items-center gap-1.5">
+                                                <p class="font-semibold text-sm {{ $outOfStock ? 'text-gray-400' : 'text-gray-800' }} truncate leading-tight">{{ $product->name }}</p>
+                                                @if ($outOfStock)
+                                                    <span class="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-500 uppercase tracking-wide">Esgotado</span>
+                                                @endif
+                                            </div>
                                             @if ($product->description)
                                                 <p class="text-[11px] text-gray-400 truncate">{{ $product->description }}</p>
                                             @endif
-                                            <p class="text-sm font-black text-[#B91C1C] mt-0.5">
+                                            <p class="text-sm font-black {{ $outOfStock ? 'text-gray-400' : 'text-[#B91C1C]' }} mt-0.5">
                                                 R$ {{ number_format($product->price, 2, ',', '.') }}
                                             </p>
                                         </div>
 
                                         {{-- Qty controls --}}
                                         <div class="flex items-center gap-1 shrink-0">
-                                            @if (isset($cart[$product->id]) && $cart[$product->id]['qty'] > 0)
+                                            @if (! $outOfStock)
+                                                @if (isset($cart[$product->id]) && $cart[$product->id]['qty'] > 0)
+                                                    <button
+                                                        wire:click="updateCartQty({{ $product->id }}, {{ $cart[$product->id]['qty'] - 1 }})"
+                                                        class="w-7 h-7 rounded-full bg-red-100 text-[#B91C1C] hover:bg-red-200 font-bold text-base flex items-center justify-center transition-colors"
+                                                    >−</button>
+                                                    <span class="w-6 text-center text-sm font-bold text-gray-800">{{ $cart[$product->id]['qty'] }}</span>
+                                                @endif
                                                 <button
-                                                    wire:click="updateCartQty({{ $product->id }}, {{ $cart[$product->id]['qty'] - 1 }})"
-                                                    class="w-7 h-7 rounded-full bg-red-100 text-[#B91C1C] hover:bg-red-200 font-bold text-base flex items-center justify-center transition-colors"
-                                                >−</button>
-                                                <span class="w-6 text-center text-sm font-bold text-gray-800">{{ $cart[$product->id]['qty'] }}</span>
+                                                    wire:click="addToCart({{ $product->id }})"
+                                                    class="w-7 h-7 rounded-full text-white font-bold text-base flex items-center justify-center transition-colors active:scale-90"
+                                                    style="background: #B91C1C"
+                                                >+</button>
+                                            @else
+                                                <div class="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center">
+                                                    <svg class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                                    </svg>
+                                                </div>
                                             @endif
-                                            <button
-                                                wire:click="addToCart({{ $product->id }})"
-                                                class="w-7 h-7 rounded-full text-white font-bold text-base flex items-center justify-center transition-colors active:scale-90"
-                                                style="background: #B91C1C"
-                                            >+</button>
                                         </div>
                                     </div>
                                 @endforeach
@@ -382,6 +447,8 @@
                     </span>
                 @endif
             </button>
+            
+
 
         {{-- ── CART_REVIEW ── --}}
         @elseif ($step === 'CART_REVIEW')
@@ -433,12 +500,135 @@
                         <p class="text-xs text-gray-500">Retire na filial</p>
                     </div>
                 </button>
+                <button wire:click="backToCartReview" class="w-full text-xs text-center text-gray-400 hover:text-gray-600 py-1">
+                    ← Voltar ao carrinho
+                </button>
+            </div>
+
+        {{-- ── CHECKOUT_DELIVERY_ADDRESS ── --}}
+        @elseif ($step === 'CHECKOUT_DELIVERY_ADDRESS')
+            <div wire:key="step-checkout-delivery-address" class="space-y-2">
+                <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Endereço de entrega</p>
+
+                {{-- Endereço atual em destaque --}}
+                @if ($address)
+                    <div class="bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5 mb-1">
+                        <p class="text-xs font-semibold text-blue-700 mb-0.5">Endereço cadastrado</p>
+                        <p class="text-sm text-gray-800 font-medium">{{ $address }}@if($complement), {{ $complement }}@endif</p>
+                        <p class="text-xs text-gray-500">{{ $neighborhood }}, {{ $city }}@if($cep) — CEP {{ $cep }}@endif</p>
+                    </div>
+                @endif
+
+                {{-- Botão de localização --}}
+                <button type="button" id="map-chk-loc-btn" onclick="mapPickerUseLocation('chk')"
+                    class="w-full flex items-center justify-center gap-2 border border-blue-200 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 text-blue-700 text-xs font-semibold rounded-xl py-2.5 transition-colors disabled:opacity-60">
+                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    <span id="map-chk-span-default">Usar minha localização atual</span>
+                    <span id="map-chk-span-loading" style="display:none" class="flex items-center gap-1.5">
+                        <svg class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                        </svg>
+                        Obtendo localização...
+                    </span>
+                </button>
+                <p id="map-chk-error" style="display:none" class="text-red-500 text-xs -mt-1"></p>
+
+                {{-- Mapa interativo --}}
+                <div id="map-chk-container" style="display:none" class="rounded-xl overflow-hidden border border-blue-200 shadow-sm">
+                    <div class="bg-blue-50 px-3 py-1.5 flex items-center justify-between">
+                        <span class="text-xs font-semibold text-blue-700">📍 Arraste o pin para ajustar</span>
+                        <button type="button" onclick="mapPickerCloseMap('chk')" class="text-blue-400 hover:text-blue-700 text-lg leading-none">×</button>
+                    </div>
+                    <div id="map-chk-el" style="height:200px; width:100%;"></div>
+                    <div class="flex gap-2 p-2 bg-gray-50 border-t border-gray-100">
+                        <button type="button" onclick="mapPickerCloseMap('chk')" class="mc-btn-secondary flex-1 !py-1.5 text-xs">Cancelar</button>
+                        <button type="button" id="map-chk-confirm-btn" onclick="mapPickerConfirmLocation('chk')"
+                            class="mc-btn-primary flex-1 !py-1.5 text-xs disabled:opacity-60">
+                            <span id="map-chk-span-confirm">Confirmar local →</span>
+                            <span id="map-chk-span-geocoding" style="display:none" class="flex items-center justify-center gap-1.5">
+                                <svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                                </svg>
+                                Buscando endereço...
+                            </span>
+                        </button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">
+                        CEP
+                        <span x-show="cepLoading" class="text-blue-500 font-normal normal-case ml-1">Buscando...</span>
+                    </label>
+                    <input
+                        wire:model="cep"
+                        type="text"
+                        placeholder="00000-000"
+                        class="mc-input"
+                        autocomplete="postal-code"
+                        inputmode="numeric"
+                        maxlength="9"
+                        x-on:input="
+                            $event.target.value = formatCep($event.target.value);
+                            if ($event.target.value.replace(/\D/g,'').length === 8) lookupCep($event.target.value, $wire);
+                        "
+                    />
+                    @error('cep') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Rua e número</label>
+                    <input wire:model="address" type="text" placeholder="Ex: Av. Brasil, 100" class="mc-input" autocomplete="street-address" />
+                    @error('address') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Complemento <span class="text-gray-400 font-normal">(opcional)</span></label>
+                    <input wire:model="complement" type="text" placeholder="Apto 12, Bloco B..." class="mc-input" autocomplete="address-line2" />
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Bairro</label>
+                        <input wire:model="neighborhood" type="text" placeholder="Zona 1" class="mc-input" autocomplete="address-level3" />
+                        @error('neighborhood') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Cidade</label>
+                        <input wire:model="city" type="text" placeholder="Maringá" class="mc-input" autocomplete="address-level2" />
+                        @error('city') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
+                    </div>
+                </div>
+                <div class="flex gap-2 mt-1">
+                    <button wire:click="backToOrderType" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
+                    <button wire:click="confirmDeliveryAddress" class="mc-btn-primary flex-1"
+                        wire:loading.attr="disabled" wire:target="confirmDeliveryAddress">
+                        <span wire:loading.remove wire:target="confirmDeliveryAddress">Confirmar endereço →</span>
+                        <span wire:loading wire:target="confirmDeliveryAddress">Calculando frete...</span>
+                    </button>
+                </div>
             </div>
 
         {{-- ── CHECKOUT_DELIVERY_FEE ── --}}
         @elseif ($step === 'CHECKOUT_DELIVERY_FEE')
             <div class="space-y-3">
                 <p class="text-sm font-semibold text-gray-700 text-center">Resumo da entrega</p>
+
+                {{-- Endereço de entrega --}}
+                <div class="flex items-start gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5">
+                    <span class="text-base mt-0.5">📍</span>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs font-semibold text-gray-500 mb-0.5">Entregando em</p>
+                        <p class="text-sm text-gray-800 font-medium truncate">{{ $address }}@if($complement), {{ $complement }}@endif</p>
+                        <p class="text-xs text-gray-500">{{ $neighborhood }}, {{ $city }}</p>
+                    </div>
+                    <button wire:click="backToDeliveryAddress"
+                        class="text-xs text-blue-600 hover:text-blue-800 font-medium shrink-0 mt-0.5">
+                        Alterar
+                    </button>
+                </div>
 
                 <div class="bg-gray-50 rounded-xl p-4 space-y-2 border border-gray-100">
                     <div class="flex justify-between text-sm text-gray-600">
@@ -487,17 +677,33 @@
                     @error('notes') <p class="text-red-600 text-xs mt-0.5 flex items-center gap-1"><span>⚠</span> {{ $message }}</p> @enderror
                 </div>
 
-                <div class="flex items-center justify-between bg-red-50 rounded-xl px-4 py-2.5">
-                    <span class="text-sm text-gray-600 font-medium">Total a pagar</span>
-                    <span class="text-xl font-black text-[#B91C1C]">R$ {{ number_format($this->orderTotal, 2, ',', '.') }}</span>
+                {{-- Resumo do endereço de entrega --}}
+                @if ($orderType === 'delivery' && $address)
+                    <div class="flex items-start gap-1.5 bg-gray-50 border border-gray-100 rounded-lg px-2.5 py-2">
+                        <span class="text-xs mt-0.5">📍</span>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-xs font-semibold text-gray-500">Entregando em</p>
+                            <p class="text-xs text-gray-700 truncate">{{ $address }}@if($complement), {{ $complement }}@endif </p>
+                            <p class="text-xs text-gray-700 truncate"> {{ $neighborhood }}, {{ $city }} </p>
+
+                        </div>
+                        <button wire:click="backToDeliveryAddress" class="text-xs text-blue-600 hover:text-blue-800 font-medium shrink-0">Alterar</button>
+                    </div>
+                @endif
+
+                <div class="flex items-center justify-between bg-red-50 rounded-lg px-3 py-2">
+                    <span class="text-xs text-gray-600 font-medium">Total a pagar</span>
+                    <span class="text-lg font-black text-[#B91C1C]">R$ {{ number_format($this->orderTotal, 2, ',', '.') }}</span>
                 </div>
 
-                <button
-                    wire:click="proceedFromNotes"
-                    class="mc-btn-primary flex items-center justify-center gap-2"
-                    wire:loading.attr="disabled"
-                    wire:target="proceedFromNotes"
-                >
+                <div class="flex gap-2">
+                    <button wire:click="backToOrderType" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
+                    <button
+                        wire:click="proceedFromNotes"
+                        class="mc-btn-primary flex-1 flex items-center justify-center gap-2"
+                        wire:loading.attr="disabled"
+                        wire:target="proceedFromNotes"
+                    >
                     <span wire:loading.remove wire:target="proceedFromNotes" class="flex items-center gap-2">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
@@ -512,47 +718,83 @@
                         Aguarde...
                     </span>
                 </button>
+                </div>
             </div>
 
         {{-- ── CHECKOUT_CPF ── --}}
         @elseif ($step === 'CHECKOUT_CPF')
-            <div wire:key="step-checkout-cpf" class="space-y-2.5">
+            <div wire:key="step-checkout-cpf" class="space-y-2.5"
+                x-data="{
+                    cpfStatus: null,
+                    validateCpf(val) {
+                        const digits = val.replace(/\D/g, '');
+                        if (digits.length < 11) { this.cpfStatus = null; return; }
+                        fetch('{{ route('api.validate-cpf') }}', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content },
+                            body: JSON.stringify({ cpf: val })
+                        })
+                        .then(r => r.json())
+                        .then(data => { this.cpfStatus = data.valid ? 'valid' : 'invalid'; });
+                    }
+                }"
+            >
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1.5">CPF</label>
-                    <input
-                        wire:model="taxId"
-                        type="text"
-                        placeholder="000.000.000-00"
-                        class="mc-input"
-                        wire:keydown.enter="submitCpf"
-                        maxlength="14"
-                        autocomplete="off"
-                        inputmode="numeric"
-                        x-on:input="$event.target.value = formatCpf($event.target.value)"
-                    />
+                    <div class="relative">
+                        <input
+                            wire:model="taxId"
+                            type="text"
+                            placeholder="000.000.000-00"
+                            class="mc-input pr-8"
+                            :class="{
+                                'border-green-500 focus:ring-green-500': cpfStatus === 'valid',
+                                'border-red-500 focus:ring-red-500': cpfStatus === 'invalid'
+                            }"
+                            wire:keydown.enter="submitCpf"
+                            maxlength="14"
+                            autocomplete="off"
+                            inputmode="numeric"
+                            x-on:input="
+                                $event.target.value = formatCpf($event.target.value);
+                                validateCpf($event.target.value);
+                            "
+                        />
+                        <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-sm pointer-events-none"
+                            x-show="cpfStatus === 'valid'" x-cloak>✅</span>
+                        <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-sm pointer-events-none"
+                            x-show="cpfStatus === 'invalid'" x-cloak>❌</span>
+                    </div>
+                    <p x-show="cpfStatus === 'invalid'" x-cloak class="text-red-600 text-xs mt-1 flex items-center gap-1">
+                        <span>⚠</span> CPF inválido. Verifique os números digitados.
+                    </p>
                     @error('taxId') <p class="text-red-600 text-xs mt-1 flex items-center gap-1"><span>⚠</span> {{ $message }}</p> @enderror
                 </div>
 
-                <button
-                    wire:click="submitCpf"
-                    class="mc-btn-primary flex items-center justify-center gap-2"
-                    wire:loading.attr="disabled"
-                    wire:target="submitCpf"
-                >
-                    <span wire:loading.remove wire:target="submitCpf" class="flex items-center gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-                        </svg>
-                        Continuar →
-                    </span>
-                    <span wire:loading wire:target="submitCpf" class="flex items-center gap-2">
-                        <svg class="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                        </svg>
-                        Aguarde...
-                    </span>
-                </button>
+                <div class="flex gap-2">
+                    <button wire:click="backToNotes" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
+                    <button
+                        wire:click="submitCpf"
+                        class="mc-btn-primary flex-1 flex items-center justify-center gap-2"
+                        wire:loading.attr="disabled"
+                        wire:target="submitCpf"
+                        :disabled="cpfStatus === 'invalid'"
+                    >
+                        <span wire:loading.remove wire:target="submitCpf" class="flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                            </svg>
+                            Continuar →
+                        </span>
+                        <span wire:loading wire:target="submitCpf" class="flex items-center gap-2">
+                            <svg class="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                            </svg>
+                            Aguarde...
+                        </span>
+                    </button>
+                </div>
             </div>
 
         {{-- ── CHECKOUT_PAYMENT_METHOD ── --}}
@@ -623,6 +865,11 @@
                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                     </svg>
                 </div>
+
+                <button wire:click="{{ $taxId ? 'backToCpf' : 'backToNotes' }}"
+                    class="w-full text-xs text-center text-gray-400 hover:text-gray-600 py-1">
+                    ← Voltar
+                </button>
             </div>
 
         {{-- ── PAYMENT_PIX ── --}}
@@ -1065,5 +1312,150 @@
             this.cepLoading = false;
         },
     }));
+
+    // ── Map Picker (pure JS) ─────────────────────────────────────────────────
+    var _mapStates = {};
+
+    function _mapEl(prefix, id) {
+        return document.getElementById('map-' + prefix + '-' + id);
+    }
+
+    function _mapShow(el, visible) {
+        if (el) el.style.display = visible ? '' : 'none';
+    }
+
+    function _mapSetLoading(prefix, v) {
+        var s = _mapStates[prefix];
+        if (!s) return;
+        s.loading = v;
+        var btn = _mapEl(prefix, 'loc-btn');
+        if (btn) btn.disabled = v;
+        _mapShow(_mapEl(prefix, 'span-default'), !v);
+        _mapShow(_mapEl(prefix, 'span-loading'), v);
+    }
+
+    function _mapSetError(prefix, msg) {
+        var el = _mapEl(prefix, 'error');
+        if (!el) return;
+        if (msg) { el.textContent = '⚠ ' + msg; _mapShow(el, true); }
+        else _mapShow(el, false);
+    }
+
+    function _mapSetGeocoding(prefix, v) {
+        var s = _mapStates[prefix];
+        if (!s) return;
+        s.reverseGeocoding = v;
+        var btn = _mapEl(prefix, 'confirm-btn');
+        if (btn) btn.disabled = v;
+        _mapShow(_mapEl(prefix, 'span-confirm'), !v);
+        _mapShow(_mapEl(prefix, 'span-geocoding'), v);
+    }
+
+    function _mapDestroy(prefix) {
+        var s = _mapStates[prefix];
+        if (s && s.map) { s.map.remove(); s.map = null; s.marker = null; }
+    }
+
+    function _mapBuild(prefix, lat, lng) {
+        _mapDestroy(prefix);
+        var container = _mapEl(prefix, 'el');
+        if (!container) return;
+        var s = _mapStates[prefix];
+        s.map = L.map(container, { zoomControl: true }).setView([lat, lng], 17);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+            maxZoom: 19,
+        }).addTo(s.map);
+        s.marker = L.marker([lat, lng], { draggable: true }).addTo(s.map);
+        s.marker.on('dragend', function () {
+            var pos = s.marker.getLatLng();
+            s.lat = pos.lat;
+            s.lng = pos.lng;
+        });
+        // Duplo rAF garante que o browser já pintou o container antes de recalcular
+        var mapRef = s.map;
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+                if (mapRef) mapRef.invalidateSize();
+            });
+        });
+    }
+
+    window.mapPickerUseLocation = function (prefix) {
+        if (!_mapStates[prefix]) _mapStates[prefix] = { map: null, marker: null, lat: null, lng: null, loading: false, reverseGeocoding: false };
+        var s = _mapStates[prefix];
+        if (!navigator.geolocation) {
+            _mapSetError(prefix, 'Geolocalização não suportada pelo seu navegador.');
+            return;
+        }
+        _mapSetLoading(prefix, true);
+        _mapSetError(prefix, null);
+        navigator.geolocation.getCurrentPosition(
+            function (pos) {
+                s.lat = pos.coords.latitude;
+                s.lng = pos.coords.longitude;
+                _mapSetLoading(prefix, false);
+                _mapShow(_mapEl(prefix, 'container'), true);
+                // rAF duplo: aguarda o browser renderizar o container antes de inicializar o Leaflet
+                requestAnimationFrame(function () {
+                    requestAnimationFrame(function () {
+                        _mapBuild(prefix, s.lat, s.lng);
+                    });
+                });
+            },
+            function () {
+                _mapSetLoading(prefix, false);
+                _mapSetError(prefix, 'Não foi possível obter sua localização. Verifique as permissões do navegador.');
+            },
+            { enableHighAccuracy: true, timeout: 12000 }
+        );
+    };
+
+    window.mapPickerCloseMap = function (prefix) {
+        _mapShow(_mapEl(prefix, 'container'), false);
+        _mapDestroy(prefix);
+    };
+
+    window.mapPickerConfirmLocation = async function (prefix) {
+        if (!_mapStates[prefix]) return;
+        var s = _mapStates[prefix];
+        if (!s.lat || !s.lng) return;
+        if (s.marker) {
+            var pos = s.marker.getLatLng();
+            s.lat = pos.lat;
+            s.lng = pos.lng;
+        }
+        _mapSetGeocoding(prefix, true);
+        _mapSetError(prefix, null);
+        try {
+            var res = await fetch(
+                'https://nominatim.openstreetmap.org/reverse?lat=' + s.lat + '&lon=' + s.lng + '&format=json&accept-language=pt-BR',
+                { headers: { 'Accept-Language': 'pt-BR,pt;q=0.9' } }
+            );
+            var data = await res.json();
+            var a = data.address || {};
+
+            var street = a.road || a.pedestrian || a.footway || '';
+            var num    = a.house_number || '';
+            if (street) $wire.set('address', num ? street + ', ' + num : street);
+
+            var bairro = a.suburb || a.neighbourhood || a.city_district || a.quarter || '';
+            if (bairro) $wire.set('neighborhood', bairro);
+
+            var cidade = a.city || a.town || a.village || a.municipality || '';
+            if (cidade) $wire.set('city', cidade);
+
+            if (a.postcode) {
+                var digits = a.postcode.replace(/\D/g, '').slice(0, 8);
+                $wire.set('cep', digits.length === 8 ? digits.slice(0,5) + '-' + digits.slice(5) : digits);
+            }
+        } catch (e) {
+            _mapSetError(prefix, 'Erro ao buscar o endereço. Arraste o pin e tente novamente.');
+            _mapSetGeocoding(prefix, false);
+            return;
+        }
+        _mapSetGeocoding(prefix, false);
+        window.mapPickerCloseMap(prefix);
+    };
 </script>
 @endscript

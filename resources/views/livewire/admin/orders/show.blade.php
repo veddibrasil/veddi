@@ -42,6 +42,119 @@
                 </div>
             </div>
 
+            {{-- Tipo de pedido --}}
+            @if ($order->order_type === 'delivery')
+                @php
+                    $mapboxToken    = config('services.mapbox.token');
+                    $customerAddr   = implode(', ', array_filter([
+                        $order->customer->address,
+                        $order->customer->neighborhood,
+                        $order->customer->city,
+                    ]));
+                    $googleMapsUrl  = 'https://maps.google.com/?q=' . urlencode($customerAddr);
+                    $wazeUrl        = 'https://waze.com/ul?q=' . urlencode($customerAddr);
+                @endphp
+
+                <div class="bg-white border rounded-xl shadow-sm overflow-hidden dark:bg-zinc-800 dark:border-zinc-700">
+                    {{-- Header --}}
+                    <div class="flex items-center justify-between px-4 py-3 border-b dark:border-zinc-700">
+                        <div class="flex items-center gap-2">
+                            <span class="text-lg">🛵</span>
+                            <div>
+                                <p class="font-semibold text-sm text-neutral-800 dark:text-neutral-100">Entrega</p>
+                                <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ $customerAddr }}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {{-- Mapa --}}
+                    <div wire:ignore class="w-full h-52 bg-neutral-100 dark:bg-zinc-700 relative overflow-hidden">
+                        <img id="customer-map-{{ $order->id }}"
+                             data-token="{{ $mapboxToken }}"
+                             data-address="{{ $customerAddr }}"
+                             class="w-full h-full object-cover"
+                             alt="Mapa do endereço de entrega" />
+                        <div id="customer-map-loader-{{ $order->id }}"
+                             class="absolute inset-0 flex items-center justify-center text-sm text-neutral-400 dark:text-neutral-500">
+                            Carregando mapa...
+                        </div>
+                    </div>
+
+                    {{-- Botões de compartilhar --}}
+                    <div class="flex gap-2 px-4 py-3 border-t dark:border-zinc-700">
+                        <a href="{{ $googleMapsUrl }}" target="_blank"
+                           class="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 px-3 py-2 rounded-lg transition-colors">
+                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+                            Google Maps
+                        </a>
+                        <a href="{{ $wazeUrl }}" target="_blank"
+                           class="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium bg-sky-50 text-sky-700 hover:bg-sky-100 dark:bg-sky-900/30 dark:text-sky-400 dark:hover:bg-sky-900/50 px-3 py-2 rounded-lg transition-colors">
+                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M20.54 6.63C19.08 4.15 16.71 2.37 14 1.76V1.5a2 2 0 0 0-4 0v.26C7.29 2.37 4.92 4.15 3.46 6.63A9.94 9.94 0 0 0 2 12c0 3.58 1.88 6.9 4.96 8.77.33.2.7.3 1.07.3.41 0 .82-.12 1.17-.36l1.3-.87c.44-.3.7-.79.7-1.32v-2.04c0-.88-.72-1.6-1.6-1.6H8v-1.26c0-.88.72-1.6 1.6-1.6h4.8c.88 0 1.6.72 1.6 1.6v1.26h-1.6c-.88 0-1.6.72-1.6 1.6v2.04c0 .53.26 1.02.7 1.32l1.3.87c.35.24.76.36 1.17.36.37 0 .74-.1 1.07-.3C20.12 18.9 22 15.58 22 12c0-1.96-.51-3.85-1.46-5.37z"/></svg>
+                            Waze
+                        </a>
+                        <button onclick="navigator.clipboard.writeText({{ Js::from($customerAddr) }})"
+                                class="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium bg-neutral-50 text-neutral-600 hover:bg-neutral-100 dark:bg-zinc-700 dark:text-neutral-300 dark:hover:bg-zinc-600 px-3 py-2 rounded-lg transition-colors">
+                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            Copiar
+                        </button>
+                    </div>
+                </div>
+
+                @script
+                <script>
+                    (function () {
+                        const img    = document.getElementById('customer-map-{{ $order->id }}');
+                        const loader = document.getElementById('customer-map-loader-{{ $order->id }}');
+                        if (!img || img.dataset.initialized) return;
+                        img.dataset.initialized = 'true';
+
+                        const token   = img.dataset.token;
+                        const address = img.dataset.address;
+                        if (!token) return;
+
+                        fetch('https://api.mapbox.com/geocoding/v5/mapbox.places/' + encodeURIComponent(address) + '.json?access_token=' + token + '&country=BR&limit=1')
+                            .then(function (r) { return r.json(); })
+                            .then(function (data) {
+                                var coords = data.features && data.features[0] && data.features[0].center;
+                                if (!coords) {
+                                    if (loader) loader.textContent = 'Endereço não encontrado.';
+                                    return;
+                                }
+                                var lng = coords[0];
+                                var lat = coords[1];
+                                var pin = 'pin-s+f59e0b(' + lng + ',' + lat + ')';
+                                var src = 'https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/'
+                                    + pin + '/' + lng + ',' + lat + ',15/800x208@2x'
+                                    + '?access_token=' + token;
+
+                                var el = document.getElementById('customer-map-{{ $order->id }}');
+                                if (!el) return;
+                                el.onload = function () {
+                                    if (loader) loader.style.display = 'none';
+                                };
+                                el.onerror = function () {
+                                    if (loader) loader.textContent = 'Erro ao carregar o mapa.';
+                                };
+                                el.src = src;
+                            })
+                            .catch(function () {
+                                if (loader) loader.textContent = 'Erro ao buscar endereço.';
+                            });
+                    })();
+                </script>
+                @endscript
+            @else
+                <div class="bg-white border rounded-xl p-4 shadow-sm dark:bg-zinc-800 dark:border-zinc-700">
+                    <div class="flex items-center gap-3">
+                        <span class="inline-flex items-center justify-center w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-lg">🏪</span>
+                        <div>
+                            <p class="font-semibold text-neutral-800 dark:text-neutral-100">Retirada no local</p>
+                            <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ $order->branch->name }} — {{ $order->branch->address }}</p>
+                        </div>
+                    </div>
+                </div>
+            @endif
+
             {{-- Items --}}
             <div class="bg-white border rounded-xl shadow-sm overflow-hidden dark:bg-zinc-800 dark:border-zinc-700">
                 <div class="px-4 py-3 border-b dark:border-zinc-700">
@@ -184,6 +297,13 @@
                         <div class="text-neutral-500 dark:text-neutral-400">Valor</div>
                         <div class="font-bold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($order->payment->amount, 2, ',', '.') }}</div>
                     </div>
+                    @if ($order->payment->status === 'paid')
+                        <button wire:click="manualRefund"
+                                wire:confirm="Confirmar reembolso manual? O pedido será cancelado e o pagamento marcado como reembolsado."
+                                class="mt-3 w-full text-sm bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 px-4 py-2 rounded-lg transition-colors">
+                            Marcar como Reembolsado (Manual)
+                        </button>
+                    @endif
                 </div>
             @endif
         </div>

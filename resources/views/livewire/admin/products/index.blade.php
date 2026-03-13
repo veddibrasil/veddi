@@ -73,11 +73,39 @@
                             {{ $product->active ? 'Ativo' : 'Inativo' }}
                         </span>
                     </div>
-                    <div class="w-28 flex items-center justify-end gap-2 shrink-0">
-                        <a href="{{ route('admin.products.edit', $product) }}"
-                            class="text-xs text-amber-600 hover:underline dark:text-amber-400">Editar</a>
-                        <button wire:click="confirmDelete({{ $product->id }})"
-                            class="text-xs text-neutral-400 hover:text-red-600 dark:hover:text-red-300">Excluir</button>
+                    <div class="w-28 flex items-center justify-end gap-1 shrink-0">
+                        {{-- Estoque --}}
+                        <div class="relative group">
+                            <a href="{{ route('admin.stock.index', ['search' => $product->name]) }}" wire:navigate
+                                class="inline-flex items-center justify-center p-1.5 rounded text-neutral-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:text-amber-400 dark:hover:bg-amber-900/20 transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                                </svg>
+                            </a>
+                            <span class="pointer-events-none absolute bottom-full right-0 mb-1.5 px-2 py-1 rounded bg-neutral-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 dark:bg-zinc-600">Estoque</span>
+                        </div>
+
+                        {{-- Editar --}}
+                        <div class="relative group">
+                            <a href="{{ route('admin.products.edit', $product) }}"
+                                class="inline-flex items-center justify-center p-1.5 rounded text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20 transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                            </a>
+                            <span class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded bg-neutral-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 dark:bg-zinc-600">Editar</span>
+                        </div>
+
+                        {{-- Excluir --}}
+                        <div class="relative group">
+                            <button wire:click="confirmDelete({{ $product->id }})"
+                                class="inline-flex items-center justify-center p-1.5 rounded text-neutral-400 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                            </button>
+                            <span class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded bg-neutral-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 dark:bg-zinc-600">Excluir</span>
+                        </div>
                     </div>
                 </div>
             @empty
@@ -92,6 +120,13 @@
         </div>
     </div>
 
+    {{-- Paginação --}}
+    @if ($products->hasPages())
+        <div class="mt-2">
+            {{ $products->links() }}
+        </div>
+    @endif
+
     {{-- Modal de confirmação de exclusão --}}
     <flux:modal name="confirm-delete-product" class="max-w-sm">
         <div class="space-y-5">
@@ -103,7 +138,7 @@
                 </div>
                 <div>
                     <flux:heading size="lg">Excluir produto?</flux:heading>
-                    <flux:subheading class="mt-1">Esta ação não pode ser desfeita. O produto será removido permanentemente.</flux:subheading>
+                    <flux:subheading class="mt-1">Esta ação não pode ser desfeita. <br> O produto será removido permanentemente.</flux:subheading>
                 </div>
             </div>
             <div class="flex justify-end gap-3 pt-1">

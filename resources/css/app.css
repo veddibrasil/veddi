@@ -396,6 +396,7 @@ p.text-amber-600, span.text-amber-600 {
     font-weight: 600;
     padding: 10px 16px;
     width: 100%;
+    min-width: 0;
     cursor: pointer;
     transition: background 0.15s ease;
     font-size: 14px;
@@ -424,7 +425,9 @@ p.text-amber-600, span.text-amber-600 {
 
 /* ─── Input focus ring ───────────────────────────────────────────────────── */
 .mc-input {
+    box-sizing: border-box;
     width: 100%;
+    max-width: 100%;
     border: 1.5px solid #E5E7EB;
     border-radius: 10px;
     padding: 10px 14px;

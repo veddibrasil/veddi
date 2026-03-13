@@ -7,9 +7,11 @@ use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\Scopes\CompanyScope;
 use Livewire\Component;
+use Livewire\WithPagination;
 
 class Index extends Component
 {
+    use WithPagination;
     public string $search         = '';
     public string $categoryFilter = '';
     public string $companyFilter  = '';
@@ -57,7 +59,7 @@ class Index extends Component
             ->when($this->isSuperAdmin && $this->companyFilter, fn ($q) => $q->where('company_id', $this->companyFilter))
             ->orderBy('product_category_id')
             ->orderBy('sort_order')
-            ->get();
+            ->paginate(15);
 
         $categoryQuery = $this->isSuperAdmin
             ? ProductCategory::withoutGlobalScope(CompanyScope::class)

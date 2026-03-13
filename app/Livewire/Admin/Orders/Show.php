@@ -4,8 +4,11 @@ namespace App\Livewire\Admin\Orders;
 
 use App\Events\AdminMessageSent;
 use App\Events\OrderStatusUpdated;
+use App\Jobs\RefundPayment;
 use App\Models\ChatMessage;
 use App\Models\Order;
+use App\Services\StockService;
+use Illuminate\Support\Facades\Log;
 use Livewire\Component;
 
 class Show extends Component
@@ -67,7 +70,18 @@ class Show extends Component
             return;
         }
 
+        $previousStatus = $this->order->status;
+
+        $this->order->loadMissing('payment');
+        if ($status === 'cancelled' && $this->order->payment?->status === 'paid') {
+            RefundPayment::dispatch($this->order);
+        }
+
         $this->order->update(['status' => $status]);
+
+        if ($status === 'cancelled' && $previousStatus !== 'cancelled') {
+            app(StockService::class)->restoreForOrder($this->order);
+        }
         $this->order->refresh();
 
         OrderStatusUpdated::dispatch($this->order);
@@ -86,6 +100,35 @@ class Show extends Component
                 'created_at' => $m->created_at->format('H:i'),
             ])
             ->toArray();
+    }
+
+    public function manualRefund(): void
+    {
+        $this->order->loadMissing('payment');
+
+        $payment = $this->order->payment;
+
+        if (! $payment || $payment->status !== 'paid') {
+            session()->flash('status', 'Pagamento não elegível para reembolso.');
+
+            return;
+        }
+
+        $payment->update(['status' => 'refunded']);
+
+        if ($this->order->status !== 'cancelled') {
+            $this->order->update(['status' => 'cancelled']);
+            $this->order->refresh();
+            app(StockService::class)->restoreForOrder($this->order);
+            OrderStatusUpdated::dispatch($this->order);
+        }
+
+        Log::channel('payments')->info('Reembolso manual marcado pelo admin', [
+            'order_id'   => $this->order->id,
+            'billing_id' => $payment->abacatepay_billing_id,
+        ]);
+
+        session()->flash('status', 'Pagamento marcado como reembolsado.');
     }
 
     public function render()

@@ -42,6 +42,11 @@ class PermissionSeeder extends Seeder
 
             // Roles (tipos de usuário)
             ['name' => 'roles.manage', 'group' => 'roles', 'label' => 'Gerenciar tipos de usuário'],
+
+            // Estoque
+            ['name' => 'stock.view',   'group' => 'stock', 'label' => 'Visualizar estoque'],
+            ['name' => 'stock.adjust', 'group' => 'stock', 'label' => 'Ajustar estoque manualmente'],
+            ['name' => 'stock.toggle', 'group' => 'stock', 'label' => 'Habilitar/desabilitar rastreamento de estoque'],
         ];
 
         foreach ($permissions as $data) {
@@ -56,6 +61,7 @@ class PermissionSeeder extends Seeder
             'company.settings',
             'users.view', 'users.manage',
             'roles.manage',
+            'stock.view', 'stock.adjust', 'stock.toggle',
         ];
 
         $branchManagerPermissions = [
@@ -63,6 +69,7 @@ class PermissionSeeder extends Seeder
             'products.view',
             'categories.view',
             'branches.view',
+            'stock.view', 'stock.adjust',
         ];
 
         $roles = [

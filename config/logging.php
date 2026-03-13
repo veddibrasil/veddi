@@ -144,7 +144,7 @@ return [
         ],
 
         'chat' => [
-            'driver' => '',
+            'driver' => 'daily',
             'path' => storage_path('logs/chat.log'),
             'level' => 'debug',
             'days' => 14,

@@ -185,26 +185,42 @@
                                 </span>
                             @endif
                         </td>
-                        <td class="px-4 py-3 text-right space-x-3">
-                            <a
-                                href="{{ route('admin.users.permissions', $user) }}"
-                                class="text-blue-600 hover:text-blue-800 text-xs font-medium dark:text-blue-400 dark:hover:text-blue-300"
-                                wire:navigate
-                            >
-                                Permissões
-                            </a>
-                            <button
-                                wire:click="openEditRole({{ $user->id }})"
-                                class="text-amber-600 hover:text-amber-800 text-xs font-medium dark:text-amber-400"
-                            >
-                                Tipo
-                            </button>
-                            <button
-                                wire:click="confirmRemove({{ $user->id }})"
-                                class="text-red-500 hover:text-red-700 text-xs dark:text-red-400"
-                            >
-                                Remover
-                            </button>
+                        <td class="px-4 py-3 text-right">
+                            <div class="flex items-center justify-end gap-1">
+                                {{-- Permissões --}}
+                                <div class="relative group">
+                                    <a href="{{ route('admin.users.permissions', $user) }}"
+                                        class="inline-flex items-center justify-center p-1.5 rounded text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20 transition-colors"
+                                        wire:navigate>
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                        </svg>
+                                    </a>
+                                    <span class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded bg-neutral-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 dark:bg-zinc-600">Permissões</span>
+                                </div>
+
+                                {{-- Tipo --}}
+                                <div class="relative group">
+                                    <button wire:click="openEditRole({{ $user->id }})"
+                                        class="inline-flex items-center justify-center p-1.5 rounded text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20 transition-colors">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-5 5a2 2 0 01-2.828 0l-7-7A2 2 0 013 8V5a2 2 0 012-2z" />
+                                        </svg>
+                                    </button>
+                                    <span class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded bg-neutral-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 dark:bg-zinc-600">Alterar tipo</span>
+                                </div>
+
+                                {{-- Remover --}}
+                                <div class="relative group">
+                                    <button wire:click="confirmRemove({{ $user->id }})"
+                                        class="inline-flex items-center justify-center p-1.5 rounded text-neutral-400 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 transition-colors">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M13 7a4 4 0 11-8 0 4 4 0 018 0zM9 14a6 6 0 00-6 6v1h12v-1a6 6 0 00-6-6zm7-4h6" />
+                                        </svg>
+                                    </button>
+                                    <span class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded bg-neutral-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 dark:bg-zinc-600">Remover</span>
+                                </div>
+                            </div>
                         </td>
                     </tr>
                 @empty

@@ -79,6 +79,29 @@
                 </div>
                 @error('selectedBranches') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
+
+            {{-- Estoque inicial (apenas na criação) --}}
+            @if (! $isEditing)
+            <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
+                <div class="flex items-center justify-between">
+                    <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Estoque</h2>
+                    <flux:checkbox wire:model.live="trackStock" label="Controlar estoque" />
+                </div>
+
+                @if ($trackStock)
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <flux:input wire:model="initialQuantity" type="number" min="0" label="Quantidade inicial" placeholder="0" />
+                        @error('initialQuantity') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
+                    <div>
+                        <flux:input wire:model="minQuantity" type="number" min="0" label="Quantidade mínima (alerta)" placeholder="0" />
+                        <p class="text-xs text-neutral-400 mt-1 dark:text-neutral-500">Alerta quando estoque ficar abaixo deste valor.</p>
+                    </div>
+                </div>
+                @endif
+            </div>
+            @endif
         </div>
 
         {{-- Coluna lateral - Imagem --}}

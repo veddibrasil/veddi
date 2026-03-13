@@ -25,12 +25,15 @@
                         <span class="ml-2 text-xs text-neutral-400 font-mono">{{ $role->slug }}</span>
                         <span class="ml-2 text-xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-500 dark:bg-zinc-700 dark:text-neutral-400">Sistema</span>
                     </div>
-                    <button
-                        wire:click="openAssign({{ $role->id }})"
-                        class="text-xs text-amber-600 hover:text-amber-700 dark:text-amber-400 font-medium"
-                    >
-                        Atribuir usuário →
-                    </button>
+                    <div class="relative group">
+                        <button wire:click="openAssign({{ $role->id }})"
+                            class="inline-flex items-center justify-center p-1.5 rounded text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                            </svg>
+                        </button>
+                        <span class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded bg-neutral-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 dark:bg-zinc-600">Atribuir usuário</span>
+                    </div>
                 </li>
             @endforeach
         </ul>
@@ -102,16 +105,39 @@
                                 <span class="font-medium text-neutral-800 dark:text-neutral-200">{{ $role->name }}</span>
                                 <span class="ml-2 text-xs text-neutral-400 font-mono">{{ $role->slug }}</span>
                             </div>
-                            <div class="flex items-center gap-4 text-sm">
-                                <button wire:click="openAssign({{ $role->id }})" class="text-amber-600 hover:text-amber-700 dark:text-amber-400 font-medium">
-                                    Atribuir usuário
-                                </button>
-                                <button wire:click="edit({{ $role->id }})" class="text-neutral-500 hover:text-neutral-700 dark:text-neutral-400">
-                                    Editar
-                                </button>
-                                <button wire:click="confirmDelete({{ $role->id }})" class="text-red-500 hover:text-red-700">
-                                    Remover
-                                </button>
+                            <div class="flex items-center gap-1">
+                                {{-- Atribuir usuário --}}
+                                <div class="relative group">
+                                    <button wire:click="openAssign({{ $role->id }})"
+                                        class="inline-flex items-center justify-center p-1.5 rounded text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20 transition-colors">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                                        </svg>
+                                    </button>
+                                    <span class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded bg-neutral-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 dark:bg-zinc-600">Atribuir usuário</span>
+                                </div>
+
+                                {{-- Editar --}}
+                                <div class="relative group">
+                                    <button wire:click="edit({{ $role->id }})"
+                                        class="inline-flex items-center justify-center p-1.5 rounded text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-zinc-700 transition-colors">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                        </svg>
+                                    </button>
+                                    <span class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded bg-neutral-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 dark:bg-zinc-600">Editar</span>
+                                </div>
+
+                                {{-- Remover --}}
+                                <div class="relative group">
+                                    <button wire:click="confirmDelete({{ $role->id }})"
+                                        class="inline-flex items-center justify-center p-1.5 rounded text-neutral-400 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 transition-colors">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                    </button>
+                                    <span class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded bg-neutral-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 dark:bg-zinc-600">Remover</span>
+                                </div>
                             </div>
                         </div>
                         @if($role->permissions->isNotEmpty())
