@@ -13,6 +13,7 @@ class StockMovement extends Model
     const TYPE_ORDER_DEDUCTION = 'order_deduction';
     const TYPE_ORDER_RESTORE   = 'order_restore';
     const TYPE_MANUAL_ADD      = 'manual_add';
+    const TYPE_MANUAL_REMOVE   = 'manual_remove';
     const TYPE_MANUAL_SET      = 'manual_set';
     const TYPE_INITIAL_STOCK   = 'initial_stock';
 

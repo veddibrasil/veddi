@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\StockMovement;
 use App\Models\User;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class StockService
@@ -147,9 +148,9 @@ class StockService
                     'available' => $newQty > 0,
                 ]);
 
-            $type = $quantity >= 0 ? StockMovement::TYPE_MANUAL_ADD : StockMovement::TYPE_MANUAL_ADD;
+            $type = $quantity >= 0 ? StockMovement::TYPE_MANUAL_ADD : StockMovement::TYPE_MANUAL_REMOVE;
 
-            return StockMovement::withoutGlobalScopes()->create([
+            $movement = StockMovement::withoutGlobalScopes()->create([
                 'company_id'      => $branch->company_id,
                 'branch_id'       => $branch->id,
                 'product_id'      => $product->id,
@@ -158,9 +159,13 @@ class StockService
                 'quantity'        => $quantity,
                 'quantity_before' => $currentQty,
                 'quantity_after'  => $newQty,
-                'type'            => StockMovement::TYPE_MANUAL_ADD,
+                'type'            => $type,
                 'notes'           => $notes,
             ]);
+
+            Cache::forget("stock:low:branch:{$branch->id}");
+
+            return $movement;
         });
     }
 
@@ -192,7 +197,7 @@ class StockService
                     'available' => $safeQty > 0,
                 ]);
 
-            return StockMovement::withoutGlobalScopes()->create([
+            $movement = StockMovement::withoutGlobalScopes()->create([
                 'company_id'      => $branch->company_id,
                 'branch_id'       => $branch->id,
                 'product_id'      => $product->id,
@@ -204,6 +209,10 @@ class StockService
                 'type'            => StockMovement::TYPE_MANUAL_SET,
                 'notes'           => $notes,
             ]);
+
+            Cache::forget("stock:low:branch:{$branch->id}");
+
+            return $movement;
         });
     }
 
@@ -216,6 +225,8 @@ class StockService
             ->where('branch_id', $branch->id)
             ->where('product_id', $product->id)
             ->update(['track_stock' => $track]);
+
+        Cache::forget("stock:low:branch:{$branch->id}");
     }
 
     /**
@@ -223,12 +234,14 @@ class StockService
      */
     public function getLowStockProducts(Branch $branch): Collection
     {
-        return DB::table('branch_product')
-            ->join('products', 'products.id', '=', 'branch_product.product_id')
-            ->where('branch_product.branch_id', $branch->id)
-            ->where('branch_product.track_stock', true)
-            ->whereColumn('branch_product.quantity', '<=', 'branch_product.min_quantity')
-            ->select('products.id', 'products.name', 'branch_product.quantity', 'branch_product.min_quantity')
-            ->get();
+        return Cache::remember("stock:low:branch:{$branch->id}", now()->addMinutes(15), function () use ($branch) {
+            return DB::table('branch_product')
+                ->join('products', 'products.id', '=', 'branch_product.product_id')
+                ->where('branch_product.branch_id', $branch->id)
+                ->where('branch_product.track_stock', true)
+                ->whereColumn('branch_product.quantity', '<=', 'branch_product.min_quantity')
+                ->select('products.id', 'products.name', 'branch_product.quantity', 'branch_product.min_quantity')
+                ->get();
+        });
     }
 }

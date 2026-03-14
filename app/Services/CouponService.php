@@ -8,6 +8,7 @@ use App\Models\CouponUsage;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Scopes\CompanyScope;
+use Illuminate\Support\Facades\Cache;
 
 class CouponService
 {
@@ -19,9 +20,13 @@ class CouponService
      */
     public function validate(string $code, int $customerId, array $cart, float $subtotal): Coupon
     {
-        $coupon = Coupon::where('code', strtoupper(trim($code)))
-            ->where('active', true)
-            ->first();
+        $normalizedCode = strtoupper(trim($code));
+
+        $coupon = Cache::remember(
+            "coupon:code:{$normalizedCode}",
+            now()->addMinutes(5),
+            fn () => Coupon::where('code', $normalizedCode)->where('active', true)->first()
+        );
 
         if (! $coupon) {
             throw new CouponException('Cupom inválido ou inativo.');

@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\UserPermission;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
+use Illuminate\Support\Facades\Cache;
 
 #[Layout('layouts.app')]
 class Permissions extends Component
@@ -60,6 +61,8 @@ class Permissions extends Component
                 );
             }
         }
+
+        Cache::forget("user:{$this->user->id}:permissions:company:{$company->id}");
 
         session()->flash('status', 'Permissões atualizadas com sucesso.');
     }

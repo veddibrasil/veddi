@@ -7,6 +7,7 @@ use App\Models\Branch;
 use App\Models\Company;
 use App\Models\Role;
 use App\Models\User;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
@@ -142,6 +143,8 @@ class Index extends Component
                 : null,
         ]);
 
+        User::clearPermissionCache($this->editUserId, $company->id);
+
         $this->reset(['editUserId', 'editRole', 'editBranchId']);
         session()->flash('status', 'Tipo de usuário atualizado.');
     }
@@ -165,6 +168,8 @@ class Index extends Component
     {
         $company = app('current.company');
         $user    = User::findOrFail($this->removingUserId);
+        User::clearPermissionCache($this->removingUserId, $company->id);
+
         $user->companies()->detach($company->id);
 
         $this->removingUserId = null;
