@@ -11,6 +11,7 @@ use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class StockService
 {
@@ -165,6 +166,16 @@ class StockService
 
             Cache::forget("stock:low:branch:{$branch->id}");
 
+            Log::channel('audit')->info('Ajuste manual de estoque', [
+                'user_id'    => $user?->id,
+                'branch_id'  => $branch->id,
+                'product_id' => $product->id,
+                'delta'      => $quantity,
+                'before'     => $currentQty,
+                'after'      => $newQty,
+                'notes'      => $notes,
+            ]);
+
             return $movement;
         });
     }
@@ -211,6 +222,15 @@ class StockService
             ]);
 
             Cache::forget("stock:low:branch:{$branch->id}");
+
+            Log::channel('audit')->info('Quantidade de estoque definida manualmente', [
+                'user_id'    => $user?->id,
+                'branch_id'  => $branch->id,
+                'product_id' => $product->id,
+                'before'     => $currentQty,
+                'after'      => $safeQty,
+                'notes'      => $notes,
+            ]);
 
             return $movement;
         });

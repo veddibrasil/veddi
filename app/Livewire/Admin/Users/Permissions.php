@@ -6,9 +6,10 @@ use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\UserPermission;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
-use Illuminate\Support\Facades\Cache;
 
 #[Layout('layouts.app')]
 class Permissions extends Component
@@ -63,6 +64,13 @@ class Permissions extends Component
         }
 
         Cache::forget("user:{$this->user->id}:permissions:company:{$company->id}");
+
+        Log::channel('audit')->info('Permissões de usuário atualizadas', [
+            'admin_id'   => auth()->id(),
+            'user_id'    => $this->user->id,
+            'company_id' => $company->id,
+            'overrides'  => $this->overrides,
+        ]);
 
         session()->flash('status', 'Permissões atualizadas com sucesso.');
     }

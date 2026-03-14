@@ -11,13 +11,14 @@ Route::post('/api/validate-cpf', function (Request $request) {
     $valid = Validation::isValidCpf($cpf);
 
     return response()->json(['valid' => $valid]);
-})->name('api.validate-cpf');
+})->middleware('throttle:30,1')->name('api.validate-cpf');
 
 // --- Chat Público ---
 Route::get('/{company}', \App\Livewire\Chat\OrderChat::class)->name('chat.company');
 
 // --- Webhook (sem auth, sem CSRF, sem escopo de empresa) ---
 Route::match(['get', 'post'], '/webhooks/abacatepay', [WebhookController::class, 'abacatepay'])
+    ->middleware('throttle:60,1')
     ->name('webhook.abacatepay');
 
 // --- Fechar popup de conclusão de pagamento ---

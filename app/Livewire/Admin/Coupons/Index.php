@@ -6,6 +6,7 @@ use App\Models\Coupon;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\Scopes\CompanyScope;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -131,9 +132,11 @@ class Index extends Component
         if ($this->editingId) {
             $coupon = Coupon::withoutGlobalScope(CompanyScope::class)->findOrFail($this->editingId);
             $coupon->update($data);
+            Log::channel('audit')->info('Cupom atualizado', ['admin_id' => auth()->id(), 'coupon_id' => $coupon->id, 'code' => $coupon->code]);
             session()->flash('status', 'Cupom atualizado com sucesso.');
         } else {
-            Coupon::create($data);
+            $coupon = Coupon::create($data);
+            Log::channel('audit')->info('Cupom criado', ['admin_id' => auth()->id(), 'coupon_id' => $coupon->id, 'code' => $coupon->code]);
             session()->flash('status', 'Cupom criado com sucesso.');
         }
 
@@ -182,6 +185,7 @@ class Index extends Component
     public function delete(): void
     {
         $coupon = Coupon::withoutGlobalScope(CompanyScope::class)->findOrFail($this->deletingId);
+        Log::channel('audit')->info('Cupom excluído', ['admin_id' => auth()->id(), 'coupon_id' => $coupon->id, 'code' => $coupon->code]);
         $coupon->delete();
         $this->deletingId = null;
         session()->flash('status', 'Cupom excluído.');
