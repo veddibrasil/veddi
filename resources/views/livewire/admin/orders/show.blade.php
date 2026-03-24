@@ -298,14 +298,38 @@
                         <div class="font-bold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($order->payment->amount, 2, ',', '.') }}</div>
                     </div>
                     @if ($order->payment->status === 'paid')
-                        <button wire:click="manualRefund"
-                                wire:confirm="Confirmar reembolso manual? O pedido será cancelado e o pagamento marcado como reembolsado."
-                                class="mt-3 w-full text-sm bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 px-4 py-2 rounded-lg transition-colors">
-                            Marcar como Reembolsado (Manual)
-                        </button>
+                        <flux:modal.trigger name="confirm-manual-refund">
+                            <button class="mt-3 w-full text-sm bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 px-4 py-2 rounded-lg transition-colors">
+                                Marcar como Reembolsado (Manual)
+                            </button>
+                        </flux:modal.trigger>
                     @endif
                 </div>
             @endif
         </div>
     </div>
+
+    <flux:modal name="confirm-manual-refund" class="max-w-sm">
+        <div class="space-y-5">
+            <div class="flex items-start gap-4">
+                <div class="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+                    <svg class="w-5 h-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                    </svg>
+                </div>
+                <div>
+                    <flux:heading size="lg">Confirmar reembolso?</flux:heading>
+                    <flux:subheading class="mt-1">O pedido será cancelado e o pagamento marcado como reembolsado. Esta ação não pode ser desfeita.</flux:subheading>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 pt-1">
+                <flux:modal.close>
+                    <flux:button variant="ghost">Cancelar</flux:button>
+                </flux:modal.close>
+                <flux:modal.close>
+                    <flux:button wire:click="manualRefund" variant="danger">Confirmar reembolso</flux:button>
+                </flux:modal.close>
+            </div>
+        </div>
+    </flux:modal>
 </div>

@@ -81,5 +81,6 @@
 
     @livewireScripts
     @fluxScripts
+    <script src="/js/snake-game.js"></script>
 </body>
 </html>

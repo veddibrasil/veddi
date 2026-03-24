@@ -9,6 +9,22 @@ use Livewire\Component;
 class Index extends Component
 {
     public ?int $deletingId = null;
+    public bool $canCreate  = false;
+    public bool $canUpdate  = false;
+    public bool $canDelete  = false;
+
+    public function mount(): void
+    {
+        $user = auth()->user();
+        if ($user->isSuperAdmin()) {
+            $this->canCreate = $this->canUpdate = $this->canDelete = true;
+        } elseif (app()->bound('current.company')) {
+            $company = app('current.company');
+            $this->canCreate = $user->hasPermission('branches.create', $company);
+            $this->canUpdate = $user->hasPermission('branches.update', $company);
+            $this->canDelete = $user->hasPermission('branches.delete', $company);
+        }
+    }
 
     public function confirmDelete(int $id): void
     {

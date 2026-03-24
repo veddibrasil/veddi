@@ -12,6 +12,17 @@ class Index extends Component
     use WithPagination;
 
     public string $search = '';
+    public ?int $deletingId = null;
+
+    public function confirmDelete(int $id): void
+    {
+        $this->deletingId = $id;
+    }
+
+    public function cancelDelete(): void
+    {
+        $this->deletingId = null;
+    }
 
     public function toggleActive(int $companyId): void
     {
@@ -19,9 +30,10 @@ class Index extends Component
         $company->update(['active' => ! $company->active]);
     }
 
-    public function delete(int $companyId): void
+    public function delete(): void
     {
-        Company::withoutGlobalScope(CompanyScope::class)->findOrFail($companyId)->delete();
+        Company::withoutGlobalScope(CompanyScope::class)->findOrFail($this->deletingId)->delete();
+        $this->deletingId = null;
         session()->flash('status', 'Empresa excluída.');
     }
 

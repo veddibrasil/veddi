@@ -19,10 +19,23 @@ class Index extends Component
     public ?int $deletingId       = null;
 
     public bool $isSuperAdmin = false;
+    public bool $canCreate    = false;
+    public bool $canUpdate    = false;
+    public bool $canDelete    = false;
 
     public function mount(): void
     {
-        $this->isSuperAdmin = auth()->user()->isSuperAdmin();
+        $user = auth()->user();
+        $this->isSuperAdmin = $user->isSuperAdmin();
+
+        if ($this->isSuperAdmin) {
+            $this->canCreate = $this->canUpdate = $this->canDelete = true;
+        } elseif (app()->bound('current.company')) {
+            $company = app('current.company');
+            $this->canCreate = $user->hasPermission('products.create', $company);
+            $this->canUpdate = $user->hasPermission('products.update', $company);
+            $this->canDelete = $user->hasPermission('products.delete', $company);
+        }
     }
 
     public function updatingSearch(): void { $this->resetPage(); }

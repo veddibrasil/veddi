@@ -10,6 +10,7 @@
     @endif
 
     {{-- Form --}}
+    @if($editingId ? $canUpdate : $canCreate)
     <div class="bg-white border rounded-xl shadow-sm p-4 space-y-3 dark:bg-zinc-800 dark:border-zinc-700">
         <p class="font-semibold text-sm text-neutral-700 dark:text-neutral-300">
             {{ $editingId ? 'Editar categoria' : 'Nova categoria' }}
@@ -48,6 +49,7 @@
             @endif
         </div>
     </div>
+    @endif
 
     {{-- List --}}
     <div class="bg-white border rounded-xl shadow-sm overflow-hidden dark:bg-zinc-800 dark:border-zinc-700">
@@ -68,6 +70,7 @@
                     </div>
                     <div class="flex items-center gap-1">
                         {{-- Editar --}}
+                        @if($canUpdate)
                         <div class="relative group">
                             <button wire:click="edit({{ $cat->id }})"
                                 class="inline-flex items-center justify-center p-1.5 rounded text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20 transition-colors">
@@ -77,8 +80,10 @@
                             </button>
                             <span class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded bg-neutral-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 dark:bg-zinc-600">Editar</span>
                         </div>
+                        @endif
 
                         {{-- Excluir --}}
+                        @if($canDelete)
                         <div class="relative group">
                             <button wire:click="confirmDelete({{ $cat->id }})"
                                 class="inline-flex items-center justify-center p-1.5 rounded text-neutral-400 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 transition-colors">
@@ -88,6 +93,7 @@
                             </button>
                             <span class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded bg-neutral-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 dark:bg-zinc-600">Excluir</span>
                         </div>
+                        @endif
                     </div>
                 </div>
             @empty

@@ -61,12 +61,12 @@
         <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Cores da Marca</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             @foreach([
-                ['primary_color', 'Cor primária', '#B91C1C'],
-                ['primary_color_dark', 'Primária escura', '#7F1D1D'],
-                ['primary_color_light', 'Primária clara', '#DC2626'],
-                ['secondary_color', 'Secundária', '#B45309'],
-                ['secondary_color_light', 'Secundária clara', '#D97706'],
-                ['accent_color', 'Destaque (fundo)', '#FEF3C7'],
+                ['primary_color', 'Cor primária', '#7A00A3'],
+                ['primary_color_dark', 'Primária escura', '#5c0079'],
+                ['primary_color_light', 'Primária clara', '#9B10C8'],
+                ['secondary_color', 'Secundária', '#1E2F4F'],
+                ['secondary_color_light', 'Secundária clara', '#D8DEE9'],
+                ['accent_color', 'Destaque (fundo)', '#f9f0fd'],
             ] as [$field, $label, $placeholder])
                 <div>
                     <label class="block text-sm font-medium text-neutral-700 mb-1 dark:text-neutral-300">{{ $label }}</label>
@@ -96,7 +96,7 @@
     </div>
 
     <div class="flex gap-3 pb-8">
-        <flux:button wire:click="save" class="!bg-amber-500 !text-white hover:!bg-amber-600">
+        <flux:button wire:click="save" class="bg-amber-500! text-white! hover:bg-amber-600!">
             {{ $isEditing ? 'Salvar alterações' : 'Criar empresa' }}
         </flux:button>
         <a href="{{ route('superadmin.companies.index') }}"

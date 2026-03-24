@@ -1,4 +1,7 @@
-<div class="space-y-6">
+<div class="space-y-6"
+    x-data
+    x-init="$watch(() => $wire.deletingId, val => val ? $flux.modal('confirm-delete-company').show() : $flux.modal('confirm-delete-company').close())"
+>
     <div class="flex items-center justify-between">
         <h1 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100">Empresas</h1>
         <a href="{{ route('superadmin.companies.create') }}"
@@ -57,8 +60,7 @@
                         <td class="px-4 py-3 text-right">
                             <a href="{{ route('superadmin.companies.edit', $company) }}"
                                 class="text-amber-600 hover:text-amber-800 text-xs font-medium mr-3 dark:text-amber-400 dark:hover:text-amber-300">Editar</a>
-                            <button wire:click="delete({{ $company->id }})"
-                                wire:confirm="Excluir esta empresa? Todos os dados relacionados serão apagados."
+                            <button wire:click="confirmDelete({{ $company->id }})"
                                 class="text-red-400 hover:text-red-600 text-xs dark:hover:text-red-300">Excluir</button>
                         </td>
                     </tr>
@@ -72,4 +74,28 @@
     </div>
 
     {{ $companies->links() }}
+
+    <flux:modal name="confirm-delete-company" class="max-w-sm">
+        <div class="space-y-5">
+            <div class="flex items-start gap-4">
+                <div class="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+                    <svg class="w-5 h-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                    </svg>
+                </div>
+                <div>
+                    <flux:heading size="lg">Excluir empresa?</flux:heading>
+                    <flux:subheading class="mt-1">Todos os dados relacionados serão apagados permanentemente. Esta ação não pode ser desfeita.</flux:subheading>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 pt-1">
+                <flux:modal.close>
+                    <flux:button wire:click="cancelDelete" variant="ghost">Cancelar</flux:button>
+                </flux:modal.close>
+                <flux:modal.close>
+                    <flux:button wire:click="delete" variant="danger">Excluir</flux:button>
+                </flux:modal.close>
+            </div>
+        </div>
+    </flux:modal>
 </div>

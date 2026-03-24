@@ -5,11 +5,11 @@
 --}}
 <div
     class="
-        flex flex-col bg-white overflow-hidden
+        relative flex flex-col bg-white overflow-hidden
         w-full h-full
         sm:w-[420px] sm:h-[90vh] sm:max-h-[820px] sm:rounded-2xl sm:shadow-2xl
     "
-    x-data="chatApp()"
+    x-data="{ ...chatApp(), snakeOpen: false }"
 >
 
     {{-- ═══════════════════════════════ HEADER ══════════════════════════════ --}}
@@ -46,6 +46,19 @@
             {{-- Restart + End chat buttons --}}
             @if ($step !== 'IDENTIFY_PHONE' && $step !== 'CLOSED')
                 <div class="flex items-center gap-1" x-data="{ confirmEnd: false }">
+                    {{-- Support icon --}}
+                    @if ($customerId && !in_array($step, ['IDENTIFY_PHONE', 'CLOSED', 'EDIT_PROFILE']) && !$showSupportModal)
+                        <button
+                            wire:click="goToSupport"
+                            class="text-white/70 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
+                            title="Falar com suporte"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                            </svg>
+                        </button>
+                    @endif
+
                     {{-- Edit profile --}}
                     @if ($customerId && !in_array($step, ['ORDER_CONFIRMED', 'EDIT_PROFILE']))
                         <button
@@ -60,7 +73,7 @@
                     @endif
 
                     {{-- Restart --}}
-                    @if ($step !== 'ORDER_CONFIRMED')
+                    @if (!in_array($step, ['ORDER_CONFIRMED']))
                         <button
                             wire:click="startNewOrder"
                             class="text-white/70 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
@@ -146,7 +159,7 @@
 
                 @if ($msg['from'] === 'bot')
                     {{-- Bot avatar --}}
-                    <div class="w-7 h-7 rounded-full bg-[#B91C1C] flex items-center justify-center text-white text-xs font-bold shrink-0 mr-1.5 mt-0.5">
+                    <div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 mr-1.5 mt-0.5" style="background: var(--mc-red)">
                         🎩
                     </div>
                 @endif
@@ -162,7 +175,7 @@
 
         @if ($isLoading)
             <div class="flex justify-start">
-                <div class="w-7 h-7 rounded-full bg-[#B91C1C] flex items-center justify-center text-white text-xs font-bold shrink-0 mr-1.5 mt-0.5">
+                <div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 mr-1.5 mt-0.5" style="background: var(--mc-red)">
                     🎩
                 </div>
                 <div class="mc-bubble-bot px-4 py-3">
@@ -361,8 +374,8 @@
                     @if ($category->products->isNotEmpty())
                         <div>
                             <div class="flex items-center gap-2 mb-2">
-                                <p class="text-xs font-black text-[#B91C1C] uppercase tracking-widest">{{ $category->name }}</p>
-                                <div class="flex-1 h-px bg-red-100"></div>
+                                <p class="text-xs font-black mc-text-primary uppercase tracking-widest">{{ $category->name }}</p>
+                                <div class="flex-1 h-px mc-bg-primary-light"></div>
                             </div>
                             <div class="space-y-1.5">
                                 @foreach ($category->products as $product)
@@ -397,7 +410,7 @@
                                             @if ($product->description)
                                                 <p class="text-[11px] text-gray-400 truncate">{{ $product->description }}</p>
                                             @endif
-                                            <p class="text-sm font-black {{ $disabled ? 'text-gray-400' : 'text-[#B91C1C]' }} mt-0.5">
+                                            <p class="text-sm font-black {{ $disabled ? 'text-gray-400' : 'mc-text-primary' }} mt-0.5">
                                                 R$ {{ number_format($product->price, 2, ',', '.') }}
                                             </p>
                                             @if ($insufficientStock)
@@ -411,15 +424,14 @@
                                                 @if ($cartQty > 0)
                                                     <button
                                                         wire:click="updateCartQty({{ $product->id }}, {{ $cartQty - 1 }})"
-                                                        class="w-7 h-7 rounded-full bg-red-100 text-[#B91C1C] hover:bg-red-200 font-bold text-base flex items-center justify-center transition-colors"
+                                                        class="w-7 h-7 rounded-full mc-bg-primary-light mc-text-primary font-bold text-base flex items-center justify-center transition-colors"
                                                     >−</button>
                                                     <span class="w-6 text-center text-sm font-bold text-gray-800">{{ $cartQty }}</span>
                                                 @endif
                                                 <button
                                                     @if (! $insufficientStock) wire:click="addToCart({{ $product->id }})" @endif
                                                     @disabled($insufficientStock)
-                                                    class="w-7 h-7 rounded-full font-bold text-base flex items-center justify-center transition-colors {{ $insufficientStock ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'text-white active:scale-90' }}"
-                                                    @if (! $insufficientStock) style="background: #B91C1C" @endif
+                                                    class="w-7 h-7 rounded-full font-bold text-base flex items-center justify-center transition-colors {{ $insufficientStock ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white active:scale-90' }}"
                                                     @if ($insufficientStock) title="Estoque insuficiente para adicionar mais" @endif
                                                 >+</button>
                                             @else
@@ -454,7 +466,7 @@
                 </svg>
                 Ver carrinho
                 @if ($this->cartCount > 0)
-                    <span class="ml-1 bg-white text-[#B91C1C] text-xs font-black rounded-full w-5 h-5 flex items-center justify-center">
+                    <span class="ml-1 bg-white mc-text-primary text-xs font-black rounded-full w-5 h-5 flex items-center justify-center">
                         {{ $this->cartCount }}
                     </span>
                 @endif
@@ -476,7 +488,7 @@
                                 class="w-7 h-7 rounded-full bg-gray-200 hover:bg-gray-300 font-bold text-sm flex items-center justify-center">−</button>
                             <span class="w-6 text-center text-sm font-bold">{{ $item['qty'] }}</span>
                             <button wire:click="updateCartQty({{ $productId }}, {{ $item['qty'] + 1 }})"
-                                class="w-7 h-7 rounded-full bg-red-100 hover:bg-red-200 font-bold text-sm text-[#B91C1C] flex items-center justify-center">+</button>
+                                class="w-7 h-7 rounded-full mc-bg-primary-light font-bold text-sm mc-text-primary flex items-center justify-center">+</button>
                             <button wire:click="removeFromCart({{ $productId }})"
                                 class="w-7 h-7 rounded-full bg-red-50 hover:bg-red-100 text-red-500 text-sm flex items-center justify-center ml-0.5">✕</button>
                         </div>
@@ -486,7 +498,7 @@
 
             <div class="flex items-center justify-between py-2 px-1 border-t border-gray-100 mb-2">
                 <span class="text-sm font-bold text-gray-600">Total do pedido</span>
-                <span class="text-xl font-black text-[#B91C1C]">R$ {{ number_format($this->cartTotal, 2, ',', '.') }}</span>
+                <span class="text-xl font-black mc-text-primary">R$ {{ number_format($this->cartTotal, 2, ',', '.') }}</span>
             </div>
 
             <div class="flex gap-2">
@@ -526,10 +538,10 @@
                             wire:keydown.enter="applyCoupon"
                             type="text"
                             placeholder="Ex: DESCONTO10"
-                            class="flex-2 border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-red-300 focus:border-red-400"
+                            class="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-red-300 focus:border-red-400"
                             autocomplete="off"
                         />
-                        <button wire:click="applyCoupon" class="flex-2 mc-btn-primary px-4 shrink-0"
+                        <button wire:click="applyCoupon" class="flex-1 mc-btn-primary px-4 shrink-0"
                             wire:loading.attr="disabled" wire:target="applyCoupon">
                             <span wire:loading.remove wire:target="applyCoupon">Aplicar</span>
                             <span wire:loading wire:target="applyCoupon">...</span>
@@ -711,7 +723,7 @@
                     </div>
                     <div class="flex justify-between text-base font-black border-t border-gray-200 pt-2 mt-1">
                         <span class="text-gray-800">Total</span>
-                        <span class="text-[#B91C1C]">R$ {{ number_format($this->orderTotal, 2, ',', '.') }}</span>
+                        <span class="mc-text-primary">R$ {{ number_format($this->orderTotal, 2, ',', '.') }}</span>
                     </div>
                 </div>
 
@@ -757,9 +769,9 @@
                     </div>
                 @endif
 
-                <div class="flex items-center justify-between bg-red-50 rounded-lg px-3 py-2">
+                <div class="flex items-center justify-between mc-bg-primary-light rounded-lg px-3 py-2">
                     <span class="text-xs text-gray-600 font-medium">Total a pagar</span>
-                    <span class="text-lg font-black text-[#B91C1C]">R$ {{ number_format($this->orderTotal, 2, ',', '.') }}</span>
+                    <span class="text-lg font-black mc-text-primary">R$ {{ number_format($this->orderTotal, 2, ',', '.') }}</span>
                 </div>
 
                 <div class="flex gap-2">
@@ -1019,7 +1031,8 @@
                                         setTimeout(() => copied = false, 2500);
                                     "
                                     class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold text-white transition-all"
-                                    :class="copied ? 'bg-green-500' : 'bg-[#B91C1C] hover:bg-red-700'"
+                                    :class="copied ? 'bg-green-500' : 'mc-bg-primary'"
+                                    :style="copied ? '' : 'background: var(--mc-red)'"
                                 >
                                     <span x-show="!copied">Copiar</span>
                                     <span x-show="copied">✓ Copiado</span>
@@ -1198,28 +1211,33 @@
                 </div>
             </div>
 
-            {{-- Suporte: enviar mensagem ao atendente --}}
-            <div class="border-t border-gray-100 pt-3 space-y-2">
-                <p class="text-[11px] font-semibold text-gray-400 uppercase tracking-wide text-center">Falar com o atendente</p>
-                <div class="flex gap-2">
-                    <input
-                        wire:model="supportMessage"
-                        wire:keydown.enter="sendSupportMessage"
-                        type="text"
-                        placeholder="Digite sua mensagem..."
-                        class="flex-1 text-sm rounded-xl border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                    />
-                    <button
-                        wire:click="sendSupportMessage"
-                        wire:loading.attr="disabled"
-                        class="shrink-0 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors"
-                    >
-                        <span wire:loading.remove wire:target="sendSupportMessage">→</span>
-                        <span wire:loading wire:target="sendSupportMessage">...</span>
-                    </button>
+            {{-- Chat de acompanhamento do pedido --}}
+            @if ($orderId)
+                <div class="border-t border-gray-100 pt-3 mt-1">
+                    <div class="flex gap-2">
+                        <input
+                            wire:model="supportMessage"
+                            wire:keydown.enter="sendSupportMessage"
+                            type="text"
+                            placeholder="Mensagem sobre o pedido..."
+                            class="mc-input flex-3"
+                            autocomplete="off"
+                        />
+                        <button
+                            wire:click="sendSupportMessage"
+                            class="mc-btn-primary px-4 flex-1"
+                            wire:loading.attr="disabled"
+                            wire:target="sendSupportMessage"
+                        >
+                            <span wire:loading.remove wire:target="sendSupportMessage">Enviar</span>
+                            <span wire:loading wire:target="sendSupportMessage">...</span>
+                        </button>
+                    </div>
+                    @error('supportMessage') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
-                @error('supportMessage') <p class="text-red-500 text-xs">{{ $message }}</p> @enderror
-            </div>
+            @endif
+
+
 
         {{-- ── CLOSED ── --}}
         @elseif ($step === 'CLOSED')
@@ -1323,13 +1341,200 @@
 
     </div>
 
-    {{-- Footer branding --}}
-    <div class="bg-gray-50 border-t border-gray-100 px-4 py-1.5 shrink-0 flex items-center justify-center gap-1">
-        <span class="text-[10px] text-gray-400 font-medium">{{ $currentCompany->name ?? config('app.name') }}</span>
-        @if(isset($currentCompany) && $currentCompany->tagline)
-            <span class="text-[10px] text-gray-300">•</span>
-            <span class="text-[10px] text-gray-400">{{ $currentCompany->tagline }}</span>
+    {{-- Footer branding + game trigger --}}
+    <div class="bg-gray-50 border-t border-gray-100 px-4 py-1.5 shrink-0 flex items-center justify-between gap-2">
+        <div class="flex items-center gap-1">
+            <span class="text-[10px] text-gray-400 font-medium">{{ $currentCompany->name ?? config('app.name') }}</span>
+            @if(isset($currentCompany) && $currentCompany->tagline)
+                <span class="text-[10px] text-gray-300">•</span>
+                <span class="text-[10px] text-gray-400">{{ $currentCompany->tagline }}</span>
+            @endif
+        </div>
+        <button
+            @click="snakeOpen = true; $nextTick(() => window.SnakeDash && window.SnakeDash.onOpen())"
+            class="flex items-center gap-1 text-[10px] font-semibold text-red-500 hover:text-red-600 transition-colors whitespace-nowrap"
+        >
+            🎮 Jogue enquanto espera
+        </button>
+    </div>
+
+    {{-- Always-active support listeners (Echo + poll fallback) --}}
+    @if ($supportTicketId)
+        <div wire:poll.4s="pollAdminSupportMessages" class="hidden"></div>
+        <div
+            wire:ignore
+            x-data
+            x-init="
+                if (window.Echo) {
+                    window.Echo.channel('support.{{ $supportTicketId }}')
+                        .listen('AdminSupportMessageSent', (data) => {
+                            $wire.receiveAdminSupportMessage(data);
+                        })
+                        .listen('SupportTicketClosed', (data) => {
+                            $wire.onSupportTicketClosed(data);
+                        });
+                }
+            "
+        ></div>
+    @endif
+
+    {{-- ═══════════════════════ SUPPORT MODAL ════════════════════════ --}}
+    @if ($showSupportModal)
+    <div
+        class="absolute inset-0 z-40 flex flex-col bg-white overflow-hidden
+               sm:rounded-2xl"
+        x-data
+        x-init="$nextTick(() => { const el = $el.querySelector('[data-support-msgs]'); if (el) el.scrollTop = el.scrollHeight; })"
+        x-on:livewire:updated.window="$nextTick(() => { const el = $el.querySelector('[data-support-msgs]'); if (el) el.scrollTop = el.scrollHeight; })"
+    >
+        {{-- Header --}}
+        <div class="shrink-0 px-4 py-3 flex items-center gap-3" style="background: linear-gradient(135deg, var(--mc-red-dark) 0%, var(--mc-red) 60%, var(--mc-red-light) 100%);">
+            <div class="flex-1 min-w-0">
+                <p class="text-white font-bold text-sm leading-tight">Suporte</p>
+                <p class="text-white/70 text-xs mt-0.5">
+                    @if ($supportTicketId)
+                        Ticket #{{ $supportTicketId }} • Online
+                    @else
+                        Ticket encerrado
+                    @endif
+                </p>
+            </div>
+            <button
+                wire:click="closeSupportModal"
+                class="text-white/70 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
+                title="Fechar suporte"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
+        {{-- Messages --}}
+        <div
+            data-support-msgs
+            class="flex-1 overflow-y-auto px-3 py-4 space-y-3 mc-scrollbar"
+        >
+            @forelse ($supportConversation as $msg)
+                @if ($msg['sender'] === 'system')
+                    <div class="flex justify-center">
+                        <p class="text-[11px] text-gray-400 bg-gray-100 rounded-full px-3 py-1">{{ $msg['message'] }}</p>
+                    </div>
+                @elseif ($msg['sender'] === 'customer')
+                    <div class="flex justify-end">
+                        <div class="max-w-[75%] mc-bubble-user text-white px-3 py-2">
+                            <p class="text-sm leading-relaxed whitespace-pre-line">{{ $msg['message'] }}</p>
+                            <span class="block text-[10px] mt-0.5 text-right text-white/60">{{ $msg['created_at'] }}</span>
+                        </div>
+                    </div>
+                @else
+                    <div class="flex justify-start">
+                        <div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 mr-1.5 mt-0.5" style="background: var(--mc-red)">
+                            🎩
+                        </div>
+                        <div class="max-w-[75%] mc-bubble-bot text-gray-800 px-3 py-2">
+                            <p class="text-sm leading-relaxed whitespace-pre-line">{{ $msg['message'] }}</p>
+                            <span class="block text-[10px] mt-0.5 text-right text-gray-400">{{ $msg['created_at'] }}</span>
+                        </div>
+                    </div>
+                @endif
+            @empty
+                <div class="flex flex-col items-center justify-center h-full gap-2 py-12">
+                    <span class="text-3xl">💬</span>
+                    <p class="text-sm text-gray-400 text-center">Como podemos ajudar?<br>Digite sua mensagem abaixo.</p>
+                </div>
+            @endforelse
+        </div>
+
+        {{-- Input --}}
+        @if ($supportTicketId)
+            <div class="border-t border-gray-100 bg-white px-4 py-3 shrink-0 flex gap-2">
+                <input
+                    wire:model="generalSupportMessage"
+                    wire:keydown.enter="sendGeneralSupportMessage"
+                    type="text"
+                    placeholder="Digite sua mensagem..."
+                    class="mc-input flex-3"
+                    autocomplete="off"
+                />
+                <button
+                    wire:click="sendGeneralSupportMessage"
+                    wire:loading.attr="disabled"
+                    wire:target="sendGeneralSupportMessage"
+                    class="mc-btn-primary shrink-0 px-4 flex-1"
+                >
+                    <span wire:loading.remove wire:target="sendGeneralSupportMessage">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                        </svg>
+                    </span>
+                    <span wire:loading wire:target="sendGeneralSupportMessage">...</span>
+                </button>
+            </div>
+            @error('generalSupportMessage')
+                <p class="text-red-500 text-xs px-4 pb-2">{{ $message }}</p>
+            @enderror
+        @else
+            <div class="border-t border-gray-100 bg-gray-50 px-4 py-3 shrink-0 text-center">
+                <p class="text-xs text-gray-400">Ticket encerrado.</p>
+            </div>
         @endif
+    </div>
+    @endif
+
+    {{-- Snake modal backdrop (covers full chat card) --}}
+    <div
+        x-show="snakeOpen"
+        x-transition:enter="transition ease-out duration-200"
+        x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        x-transition:leave="transition ease-in duration-150"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        class="absolute inset-0 z-50 flex items-center justify-center p-4"
+        style="display:none; background:rgba(0,0,0,.65); backdrop-filter:blur(4px)"
+        @click.self="snakeOpen = false; window.SnakeDash && window.SnakeDash.onClose()"
+        wire:ignore
+    >
+        {{-- Modal card --}}
+        <div
+            x-show="snakeOpen"
+            x-transition:enter="transition ease-out duration-200"
+            x-transition:enter-start="opacity-0 scale-95 translate-y-2"
+            x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+            x-transition:leave="transition ease-in duration-150"
+            x-transition:leave-start="opacity-100 scale-100 translate-y-0"
+            x-transition:leave-end="opacity-0 scale-95 translate-y-2"
+            class="w-full rounded-2xl overflow-hidden shadow-2xl"
+            style="max-width:310px; background:linear-gradient(160deg,#180707 0%,#220b0b 50%,#1a0808 100%); border:1px solid rgba(255,255,255,.07)"
+        >
+            {{-- Card header --}}
+            <div class="flex items-center justify-between px-3 py-2" style="border-bottom:1px solid rgba(255,255,255,.06)">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-xl flex items-center justify-center text-base shrink-0" style="background:rgba(220,38,38,.2);border:1px solid rgba(220,38,38,.2)">🥟</div>
+                    <div>
+                        <p class="font-black text-sm leading-tight" style="color:#fff">Coxinha Dash</p>
+                        <p class="text-xs" style="color:rgba(255,255,255,.35)">Jogue enquanto espera</p>
+                    </div>
+                </div>
+                <button
+                    @click="snakeOpen = false; window.SnakeDash && window.SnakeDash.onClose()"
+                    class="w-7 h-7 rounded-lg flex items-center justify-center"
+                    style="background:rgba(255,255,255,.07);color:rgba(255,255,255,.4)"
+                    onmouseover="this.style.background='rgba(255,255,255,.13)';this.style.color='rgba(255,255,255,.85)'"
+                    onmouseout="this.style.background='rgba(255,255,255,.07)';this.style.color='rgba(255,255,255,.4)'"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+
+            {{-- Game --}}
+            <div class="px-3 py-2">
+                <div id="mc-snake-game" class="w-full"></div>
+            </div>
+        </div>
     </div>
 
 </div>

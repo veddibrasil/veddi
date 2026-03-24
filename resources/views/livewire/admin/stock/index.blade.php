@@ -78,6 +78,7 @@
 
                     {{-- Toggle rastrear --}}
                     <div class="col-span-2 flex justify-center">
+                        @if($canToggle)
                         <button
                             wire:click="toggleTracking({{ $item->product_id }}, {{ $item->branch_id }})"
                             wire:loading.attr="disabled"
@@ -87,6 +88,11 @@
                                 {{ $item->track_stock ? 'translate-x-4.5' : 'translate-x-0.5' }}">
                             </span>
                         </button>
+                        @else
+                        <span class="text-xs {{ $item->track_stock ? 'text-amber-600 dark:text-amber-400' : 'text-neutral-400 dark:text-neutral-500' }}">
+                            {{ $item->track_stock ? 'Sim' : 'Não' }}
+                        </span>
+                        @endif
                     </div>
 
                     {{-- Quantidade --}}
@@ -132,7 +138,7 @@
 
                     {{-- Ações --}}
                     <div class="col-span-1 flex justify-center">
-                        @if ($item->track_stock)
+                        @if ($item->track_stock && $canAdjust)
                             <div class="relative group">
                                 <button
                                     wire:click="openAdjustModal({{ $item->product_id }}, {{ $item->branch_id }})"

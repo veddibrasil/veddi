@@ -4,7 +4,6 @@ namespace App\Livewire\Admin\Orders;
 
 use App\Events\AdminMessageSent;
 use App\Events\OrderStatusUpdated;
-use App\Jobs\RefundPayment;
 use App\Models\ChatMessage;
 use App\Models\Order;
 use App\Services\StockService;
@@ -71,11 +70,6 @@ class Show extends Component
         }
 
         $previousStatus = $this->order->status;
-
-        $this->order->loadMissing('payment');
-        if ($status === 'cancelled' && $this->order->payment?->status === 'paid') {
-            RefundPayment::dispatch($this->order);
-        }
 
         $this->order->update(['status' => $status]);
 

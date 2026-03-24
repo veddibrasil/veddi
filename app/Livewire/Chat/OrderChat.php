@@ -2,6 +2,9 @@
 
 namespace App\Livewire\Chat;
 
+use App\Events\AdminSupportMessageSent;
+use App\Events\NewSupportMessage;
+use App\Events\SupportMessageSent;
 use App\Exceptions\CouponException;
 use App\Exceptions\DeliveryException;
 use App\Models\Branch;
@@ -10,6 +13,8 @@ use App\Models\Coupon;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\ProductCategory;
+use App\Models\SupportMessage;
+use App\Models\SupportTicket;
 use App\Services\ChatService;
 use App\Services\CouponService;
 use App\Services\DeliveryService;
@@ -67,9 +72,14 @@ class OrderChat extends Component
     public ?string $paymentUrl   = null;
     public ?string $expiresAt    = null;
 
-    // --- Support chat ---
+    // --- Support chat (order-based) ---
     public string $supportMessage    = '';
     public ?int $lastAdminMessageId  = null;
+
+    // --- Support chat (general / ticket-based) ---
+    public ?int $supportTicketId            = null;
+    public string $generalSupportMessage    = '';
+    public ?int $lastAdminSupportMessageId  = null;
 
     // --- Coupon ---
     public string $couponInput    = '';
@@ -85,6 +95,8 @@ class OrderChat extends Component
     public ?string $cartError = null;
     public bool $showEndConfirm = false;
     public bool $showCancelConfirm = false;
+    public bool $showSupportModal = false;
+    public array $supportConversation = [];
 
     public function boot(): void
     {
@@ -310,7 +322,7 @@ class OrderChat extends Component
         }
         $addressSummary .= " — {$this->neighborhood}, {$this->city} — CEP {$this->cep}";
         $this->addMessage('user', $addressSummary);
-        $this->addMessage('bot', 'Cadastro criado com sucesso! Agora escolha uma filial.');
+        $this->addMessage('bot', "Cadastro criado com sucesso! Escolha uma filial para continuar.");
         $this->transitionTo('BRANCH_SELECT');
     }
 
@@ -723,14 +735,19 @@ class OrderChat extends Component
 
     public function getListeners(): array
     {
-        if (! $this->orderId) {
-            return [];
+        $listeners = [];
+
+        if ($this->orderId) {
+            $listeners["echo:order.{$this->orderId},OrderStatusUpdated"] = 'checkPaymentStatus';
+            $listeners["echo:order.{$this->orderId},AdminMessageSent"]   = 'receiveAdminMessage';
         }
 
-        return [
-            "echo:order.{$this->orderId},OrderStatusUpdated" => 'checkPaymentStatus',
-            "echo:order.{$this->orderId},AdminMessageSent"   => 'receiveAdminMessage',
-        ];
+        if ($this->supportTicketId) {
+            $listeners["echo:support.{$this->supportTicketId},AdminSupportMessageSent"] = 'receiveAdminSupportMessage';
+            $listeners["echo:support.{$this->supportTicketId},SupportTicketClosed"]     = 'onSupportTicketClosed';
+        }
+
+        return $listeners;
     }
 
     public function sendSupportMessage(): void
@@ -780,6 +797,199 @@ class OrderChat extends Component
         foreach ($newMessages as $msg) {
             $this->addMessage('bot', $msg->message);
             $this->lastAdminMessageId = $msg->id;
+        }
+    }
+
+    // --- Support shortcut (from header icon) ---
+
+    public function goToSupport(): void
+    {
+        if (! $this->customerId) {
+            return;
+        }
+
+        $company = app()->bound('current.company') ? app('current.company') : null;
+        if (! $company) {
+            return;
+        }
+
+        if (! $this->supportTicketId) {
+            $ticket = SupportTicket::withoutGlobalScopes()->create([
+                'company_id'  => $company->id,
+                'customer_id' => $this->customerId,
+                'status'      => 'open',
+            ]);
+            $this->supportTicketId = $ticket->id;
+        }
+
+        $this->supportConversation = SupportMessage::where('ticket_id', $this->supportTicketId)
+            ->orderBy('created_at')
+            ->get()
+            ->map(fn ($m) => [
+                'sender'     => $m->sender,
+                'message'    => $m->message,
+                'created_at' => $m->created_at->format('H:i'),
+            ])
+            ->toArray();
+
+        $this->showSupportModal = true;
+        $this->saveToSession();
+    }
+
+    public function closeSupportModal(): void
+    {
+        $this->showSupportModal = false;
+        $this->saveToSession();
+    }
+
+    // --- Step: Main menu ---
+
+    public function submitMainMenu(string $option): void
+    {
+        if ($option === '1') {
+            $this->addMessage('user', '1 - Fazer pedido');
+            $this->addMessage('bot', 'Ótimo! Escolha uma filial para continuar.');
+            $this->transitionTo('BRANCH_SELECT');
+        } elseif ($option === '2') {
+            $this->addMessage('user', '2 - Falar com o suporte');
+
+            $company = app()->bound('current.company') ? app('current.company') : null;
+
+            if (! $this->customerId || ! $company) {
+                return;
+            }
+
+            if (! $this->supportTicketId) {
+                $ticket = SupportTicket::withoutGlobalScopes()->create([
+                    'company_id'  => $company->id,
+                    'customer_id' => $this->customerId,
+                    'status'      => 'open',
+                ]);
+                $this->supportTicketId = $ticket->id;
+            }
+
+            $this->supportConversation = SupportMessage::where('ticket_id', $this->supportTicketId)
+                ->orderBy('created_at')
+                ->get()
+                ->map(fn ($m) => [
+                    'sender'     => $m->sender,
+                    'message'    => $m->message,
+                    'created_at' => $m->created_at->format('H:i'),
+                ])
+                ->toArray();
+
+            $this->showSupportModal = true;
+            $this->saveToSession();
+        }
+    }
+
+    // --- Step: Support chat (general) ---
+
+    public function sendGeneralSupportMessage(): void
+    {
+        $this->validate(['generalSupportMessage' => ['required', 'string', 'max:500']]);
+
+        if (! $this->supportTicketId) {
+            return;
+        }
+
+        $text = $this->generalSupportMessage;
+        $this->generalSupportMessage = '';
+
+        $msg = SupportMessage::create([
+            'ticket_id' => $this->supportTicketId,
+            'sender'    => 'customer',
+            'message'   => $text,
+        ]);
+
+        $ticket = SupportTicket::withoutGlobalScopes()->find($this->supportTicketId);
+        SupportMessageSent::dispatch($msg);
+        if ($ticket) {
+            NewSupportMessage::dispatch($msg, $ticket);
+        }
+
+        $this->supportConversation[] = [
+            'sender'     => 'customer',
+            'message'    => $text,
+            'created_at' => now()->format('H:i'),
+        ];
+    }
+
+    public function receiveAdminSupportMessage(array $data): void
+    {
+        $message = $data['message'] ?? '';
+        if ($message === '') {
+            return;
+        }
+
+        // Advance the poll baseline so the next poll doesn't duplicate this message
+        if (! empty($data['message_id'])) {
+            $this->lastAdminSupportMessageId = (int) $data['message_id'];
+        } else {
+            // Fallback: set baseline to current max to skip anything up to now
+            $this->lastAdminSupportMessageId = SupportMessage::where('ticket_id', $this->supportTicketId)
+                ->where('sender', 'admin')
+                ->max('id') ?? $this->lastAdminSupportMessageId;
+        }
+
+        $this->supportConversation[] = [
+            'sender'     => 'admin',
+            'message'    => $message,
+            'created_at' => now()->format('H:i'),
+        ];
+    }
+
+    public function onSupportTicketClosed(array $data): void
+    {
+        if (! $this->supportTicketId) {
+            return; // already handled
+        }
+
+        $this->supportConversation[] = [
+            'sender'     => 'system',
+            'message'    => '✅ Ticket encerrado. Obrigado pelo contato!',
+            'created_at' => now()->format('H:i'),
+        ];
+
+        $this->supportTicketId = null;
+        $this->saveToSession();
+    }
+
+    public function pollAdminSupportMessages(): void
+    {
+        if (! $this->supportTicketId) {
+            return;
+        }
+
+        // Check if ticket was closed (fallback for when echo/websocket doesn't deliver the event)
+        $ticket = SupportTicket::withoutGlobalScopes()->find($this->supportTicketId);
+        if (! $ticket || $ticket->status === 'closed') {
+            $this->onSupportTicketClosed([]);
+            return;
+        }
+
+        // On first poll, set baseline to current max to avoid replaying old messages
+        if ($this->lastAdminSupportMessageId === null) {
+            $this->lastAdminSupportMessageId = SupportMessage::where('ticket_id', $this->supportTicketId)
+                ->where('sender', 'admin')
+                ->max('id') ?? 0;
+            $this->saveToSession();
+            return;
+        }
+
+        $newMessages = SupportMessage::where('ticket_id', $this->supportTicketId)
+            ->where('sender', 'admin')
+            ->where('id', '>', $this->lastAdminSupportMessageId)
+            ->orderBy('id')
+            ->get();
+
+        foreach ($newMessages as $msg) {
+            $this->supportConversation[] = [
+                'sender'     => 'admin',
+                'message'    => $msg->message,
+                'created_at' => $msg->created_at->format('H:i'),
+            ];
+            $this->lastAdminSupportMessageId = $msg->id;
         }
     }
 
@@ -1005,8 +1215,13 @@ class OrderChat extends Component
         $this->showEndConfirm   = false;
         $this->showCancelConfirm   = false;
         $this->lastNotifiedStatus  = null;
-        $this->supportMessage      = '';
-        $this->lastAdminMessageId  = null;
+        $this->supportMessage              = '';
+        $this->lastAdminMessageId          = null;
+        $this->supportTicketId             = null;
+        $this->generalSupportMessage       = '';
+        $this->lastAdminSupportMessageId   = null;
+        $this->showSupportModal            = false;
+        $this->supportConversation         = [];
         $this->resetErrorBag();
     }
 
@@ -1064,7 +1279,11 @@ class OrderChat extends Component
             'messages'             => $this->messages,
             'lastNotifiedStatus'   => $this->lastNotifiedStatus,
             'showCancelConfirm'    => $this->showCancelConfirm,
-            'lastAdminMessageId'   => $this->lastAdminMessageId,
+            'lastAdminMessageId'         => $this->lastAdminMessageId,
+            'supportTicketId'            => $this->supportTicketId,
+            'lastAdminSupportMessageId'  => $this->lastAdminSupportMessageId,
+            'showSupportModal'           => $this->showSupportModal,
+            'supportConversation'        => $this->supportConversation,
         ]]);
     }
 

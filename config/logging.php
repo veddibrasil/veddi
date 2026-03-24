@@ -128,7 +128,7 @@ return [
         ],
 
         'orders' => [
-            'driver' => '',
+            'driver' => 'daily',
             'path' => storage_path('logs/orders.log'),
             'level' => 'debug',
             'days' => 30,
@@ -136,7 +136,7 @@ return [
         ],
 
         'payments' => [
-            'driver' => '',
+            'driver' => 'daily',
             'path' => storage_path('logs/payments.log'),
             'level' => 'debug',
             'days' => 60,
@@ -152,7 +152,7 @@ return [
         ],
 
         'webhook' => [
-            'driver' => '',
+            'driver' => 'daily',
             'path' => storage_path('logs/webhook.log'),
             'level' => 'debug',
             'days' => 60,

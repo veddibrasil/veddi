@@ -27,7 +27,7 @@
                         <x-app-logo-icon class="size-10 fill-current text-white" />
                     </span>
                     <span class="text-2xl font-bold text-[#7a1510]" style="font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px;">
-                        {{ config('app.name', 'Delivry') }}
+                        {{ config('app.name', 'Veddi') }}
                     </span>
                 </a>
 
@@ -39,7 +39,7 @@
                 </div>
 
                 <p class="text-center text-xs text-[#a81f14]/70">
-                    Seu pedido, nossa prioridade.
+                    Seu pedido, rápido e sem complicação
                 </p>
             </div>
         </div>

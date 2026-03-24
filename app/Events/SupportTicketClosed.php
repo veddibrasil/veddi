@@ -2,34 +2,30 @@
 
 namespace App\Events;
 
-use App\Models\Order;
+use App\Models\SupportTicket;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class NewOrderPlaced implements ShouldBroadcastNow
+class SupportTicketClosed implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    public function __construct(public Order $order) {}
+    public function __construct(public SupportTicket $ticket) {}
 
     public function broadcastOn(): array
     {
         return [
-            new Channel('orders.' . $this->order->company_id),
+            new Channel('support.' . $this->ticket->id),
         ];
     }
 
     public function broadcastWith(): array
     {
         return [
-            'order_id'       => $this->order->id,
-            'order_number'   => $this->order->order_number,
-            'customer_name'  => $this->order->customer?->name ?? 'Cliente',
-            'total'          => $this->order->total,
-            'payment_method' => $this->order->payment_method,
+            'ticket_id' => $this->ticket->id,
         ];
     }
 }

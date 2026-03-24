@@ -19,6 +19,10 @@ class Index extends Component
     public bool $isSuperAdmin = false;
     public ?int $company_id   = null;
 
+    public bool $canCreate = false;
+    public bool $canUpdate = false;
+    public bool $canDelete = false;
+
     protected function rules(): array
     {
         $companyRule = $this->isSuperAdmin
@@ -45,7 +49,18 @@ class Index extends Component
         $user = auth()->user();
         $this->isSuperAdmin = $user->isSuperAdmin();
 
-        if (! $this->isSuperAdmin) {
+        if ($this->isSuperAdmin) {
+            $this->canCreate = true;
+            $this->canUpdate = true;
+            $this->canDelete = true;
+        } elseif (app()->bound('current.company')) {
+            $company = app('current.company');
+            $this->canCreate = $user->hasPermission('categories.create', $company);
+            $this->canUpdate = $user->hasPermission('categories.update', $company);
+            $this->canDelete = $user->hasPermission('categories.delete', $company);
+            $this->company_id = $user->companies()->where('companies.id', $company->id)->first()?->id
+                ?? $user->companies()->first()?->id;
+        } else {
             $this->company_id = $user->companies()->first()?->id;
         }
     }

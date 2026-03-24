@@ -36,6 +36,7 @@ Route::middleware(['auth', 'verified'])
             Route::get('/orders', \App\Livewire\Admin\Orders\Index::class)->name('orders.index');
             Route::get('/orders/{order}', \App\Livewire\Admin\Orders\Show::class)->name('orders.show');
             Route::get('/stock', \App\Livewire\Admin\Stock\Index::class)->name('stock.index');
+            Route::get('/support', \App\Livewire\Admin\Support\Index::class)->name('support.index');
         });
 
         // Gestão completa: só company_admin

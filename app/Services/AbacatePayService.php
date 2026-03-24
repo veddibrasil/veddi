@@ -14,9 +14,11 @@ class AbacatePayService
     private string $baseUrl = 'https://api.abacatepay.com/v1';
     private string $token;
     private ?string $webhookSecret;
+    private ?Company $company;
 
     public function __construct(?Company $company = null)
     {
+        $this->company       = $company;
         $this->token         = $company?->abacatepay_token ?? config('services.abacatepay.token');
         $this->webhookSecret = $company?->abacatepay_webhook_secret ?? config('services.abacatepay.webhook_secret');
     }
@@ -28,29 +30,33 @@ class AbacatePayService
             'customer_id' => $customer->id,
             'method'      => $method,
         ]);
-        $order->loadMissing('items');
+        $payload = [
+            'frequency'     => 'ONE_TIME',
+            'methods'       => [strtoupper($method)],
+            'returnUrl'     => $this->company ? route('chat.company', ['company' => $this->company->slug]) : '/',
+            'completionUrl' => route('payment.complete'),
+            'customer'      => array_filter([
+                'name'      => $customer->name,
+                'email'     => $customer->email,
+                'cellphone' => $this->formatPhone($customer->phone) ?? preg_replace('/\D/', '', $customer->phone ?? ''),
+                'taxId'     => $this->formatTaxId($customer->tax_id),
+            ], fn ($v) => $v !== null),
+            'products' => [
+                [
+                    'externalId'  => (string) $order->id,
+                    'name'        => 'Valor do pedido',
+                    'description' => "Pedido {$order->order_number}",
+                    'quantity'    => 1,
+                    'price'       => (int) round((float) $order->total * 100),
+                ],
+            ],
+        ];
+
+        Log::channel('payments')->debug('AbacatePay billing payload', ['payload' => $payload]);
 
         $response = Http::withToken($this->token)
             ->timeout(15)
-            ->post("{$this->baseUrl}/billing/create", [
-                'frequency'     => 'ONE_TIME',
-                'methods'       => [strtoupper($method)],
-                'returnUrl'     => $this->company ? route('chat.company', ['company' => $this->company->slug]) : '/',
-                'completionUrl' => route('payment.complete'),
-                'customer'      => array_filter([
-                    'name'      => $customer->name,
-                    'email'     => $customer->email,
-                    'cellphone' => $this->formatPhone($customer->phone) ?? preg_replace('/\D/', '', $customer->phone ?? ''),
-                    'taxId'     => $this->formatTaxId($customer->tax_id),
-                ], fn ($v) => $v !== null),
-                'products' => $order->items->map(fn ($item) => [
-                    'externalId'  => (string) $item->product_id,
-                    'name'        => $item->product_name,
-                    'description' => $item->product_name,
-                    'quantity'    => $item->quantity,
-                    'price'       => (int) ($item->unit_price * 100),
-                ])->toArray(),
-            ]);
+            ->post("{$this->baseUrl}/billing/create", $payload);
 
         if ($response->failed()) {
             Log::channel('payments')->error('Erro na API AbacatePay ao criar billing', [

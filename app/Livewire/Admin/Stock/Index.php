@@ -31,6 +31,8 @@ class Index extends Component
     public int $currentQuantity      = 0;
 
     public bool $isSuperAdmin = false;
+    public bool $canAdjust    = false;
+    public bool $canToggle    = false;
 
     protected function rules(): array
     {
@@ -52,7 +54,16 @@ class Index extends Component
 
     public function mount(): void
     {
-        $this->isSuperAdmin = auth()->user()->isSuperAdmin();
+        $user = auth()->user();
+        $this->isSuperAdmin = $user->isSuperAdmin();
+
+        if ($this->isSuperAdmin) {
+            $this->canAdjust = $this->canToggle = true;
+        } elseif (app()->bound('current.company')) {
+            $company = app('current.company');
+            $this->canAdjust = $user->hasPermission('stock.adjust', $company);
+            $this->canToggle = $user->hasPermission('stock.toggle', $company);
+        }
 
         $branches = Branch::where('active', true)->get();
         if ($branches->count() === 1) {

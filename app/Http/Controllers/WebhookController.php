@@ -27,12 +27,14 @@ class WebhookController extends Controller
                 'data'    => $data,
             ]);
 
-            if ($event !== 'billing.paid') {
+            if (! in_array($event, ['billing.paid', 'checkout.refunded'])) {
                 Log::channel('webhook')->debug('Evento ignorado', ['event' => $event]);
                 return response()->json(['status' => 'ignored']);
             }
 
-            $billingId = $data['data']['billing']['id'] ?? null;
+            $billingId = $event === 'checkout.refunded'
+                ? ($data['data']['checkout']['id'] ?? null)
+                : ($data['data']['billing']['id'] ?? null);
 
             // Load payment without tenant scope (webhook is global)
             $payment = Payment::withoutGlobalScope(CompanyScope::class)
@@ -56,6 +58,37 @@ class WebhookController extends Controller
                     Log::channel('webhook')->warning('Assinatura inválida no webhook', ['billing_id' => $billingId]);
                     return response()->json(['error' => 'Invalid signature'], 401);
                 }
+            }
+
+            if ($event === 'checkout.refunded') {
+                if ($payment->status === 'refunded') {
+                    Log::channel('webhook')->info('Webhook duplicado ignorado (já reembolsado)', ['billing_id' => $billingId, 'order_id' => $payment->order_id]);
+                    return response()->json(['status' => 'already_processed']);
+                }
+
+                $payment->update([
+                    'status'          => 'refunded',
+                    'webhook_payload' => $data,
+                ]);
+
+                $payment->order->update(['status' => 'cancelled']);
+
+                Log::channel('webhook')->info('Reembolso confirmado via webhook', [
+                    'billing_id' => $billingId,
+                    'order_id'   => $payment->order_id,
+                    'reason'     => $data['data']['reason'] ?? null,
+                ]);
+
+                Log::channel('payments')->info('Reembolso confirmado via webhook AbacatePay', [
+                    'billing_id' => $billingId,
+                    'order_id'   => $payment->order_id,
+                    'amount'     => $payment->amount,
+                    'reason'     => $data['data']['reason'] ?? null,
+                ]);
+
+                OrderStatusUpdated::dispatch($payment->order->fresh());
+
+                return response()->json(['status' => 'ok']);
             }
 
             if ($payment->status === 'paid') {

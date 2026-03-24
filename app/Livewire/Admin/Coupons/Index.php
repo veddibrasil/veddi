@@ -40,10 +40,23 @@ class Index extends Component
     public bool $active                  = true;
 
     public bool $isSuperAdmin = false;
+    public bool $canCreate    = false;
+    public bool $canUpdate    = false;
+    public bool $canDelete    = false;
 
     public function mount(): void
     {
-        $this->isSuperAdmin = auth()->user()->isSuperAdmin();
+        $user = auth()->user();
+        $this->isSuperAdmin = $user->isSuperAdmin();
+
+        if ($this->isSuperAdmin) {
+            $this->canCreate = $this->canUpdate = $this->canDelete = true;
+        } elseif (app()->bound('current.company')) {
+            $company = app('current.company');
+            $this->canCreate = $user->hasPermission('coupons.create', $company);
+            $this->canUpdate = $user->hasPermission('coupons.update', $company);
+            $this->canDelete = $user->hasPermission('coupons.delete', $company);
+        }
     }
 
     public function updatingFilterStatus(): void { $this->resetPage(); }

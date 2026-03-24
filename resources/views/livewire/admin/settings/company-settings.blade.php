@@ -62,7 +62,7 @@
                 <label class="block text-sm font-medium text-neutral-700 mb-1 dark:text-neutral-300">Cor primária</label>
                 <div class="flex items-center gap-2">
                     <input type="color" wire:model="primary_color" class="h-9 w-14 cursor-pointer rounded border border-neutral-200 dark:border-zinc-600">
-                    <flux:input wire:model="primary_color" placeholder="#B91C1C" class="font-mono text-sm" />
+                    <flux:input wire:model="primary_color" placeholder="#7A00A3" class="font-mono text-sm" />
                 </div>
                 @error('primary_color') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
@@ -70,7 +70,7 @@
                 <label class="block text-sm font-medium text-neutral-700 mb-1 dark:text-neutral-300">Cor primária escura</label>
                 <div class="flex items-center gap-2">
                     <input type="color" wire:model="primary_color_dark" class="h-9 w-14 cursor-pointer rounded border border-neutral-200 dark:border-zinc-600">
-                    <flux:input wire:model="primary_color_dark" placeholder="#7F1D1D" class="font-mono text-sm" />
+                    <flux:input wire:model="primary_color_dark" placeholder="#5c0079" class="font-mono text-sm" />
                 </div>
                 @error('primary_color_dark') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
@@ -78,7 +78,7 @@
                 <label class="block text-sm font-medium text-neutral-700 mb-1 dark:text-neutral-300">Cor primária clara</label>
                 <div class="flex items-center gap-2">
                     <input type="color" wire:model="primary_color_light" class="h-9 w-14 cursor-pointer rounded border border-neutral-200 dark:border-zinc-600">
-                    <flux:input wire:model="primary_color_light" placeholder="#DC2626" class="font-mono text-sm" />
+                    <flux:input wire:model="primary_color_light" placeholder="#9B10C8" class="font-mono text-sm" />
                 </div>
                 @error('primary_color_light') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
@@ -86,7 +86,7 @@
                 <label class="block text-sm font-medium text-neutral-700 mb-1 dark:text-neutral-300">Cor secundária</label>
                 <div class="flex items-center gap-2">
                     <input type="color" wire:model="secondary_color" class="h-9 w-14 cursor-pointer rounded border border-neutral-200 dark:border-zinc-600">
-                    <flux:input wire:model="secondary_color" placeholder="#B45309" class="font-mono text-sm" />
+                    <flux:input wire:model="secondary_color" placeholder="#1E2F4F" class="font-mono text-sm" />
                 </div>
                 @error('secondary_color') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
@@ -94,7 +94,7 @@
                 <label class="block text-sm font-medium text-neutral-700 mb-1 dark:text-neutral-300">Cor secundária clara</label>
                 <div class="flex items-center gap-2">
                     <input type="color" wire:model="secondary_color_light" class="h-9 w-14 cursor-pointer rounded border border-neutral-200 dark:border-zinc-600">
-                    <flux:input wire:model="secondary_color_light" placeholder="#D97706" class="font-mono text-sm" />
+                    <flux:input wire:model="secondary_color_light" placeholder="#D8DEE9" class="font-mono text-sm" />
                 </div>
                 @error('secondary_color_light') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
@@ -102,7 +102,7 @@
                 <label class="block text-sm font-medium text-neutral-700 mb-1 dark:text-neutral-300">Cor de destaque (fundo)</label>
                 <div class="flex items-center gap-2">
                     <input type="color" wire:model="accent_color" class="h-9 w-14 cursor-pointer rounded border border-neutral-200 dark:border-zinc-600">
-                    <flux:input wire:model="accent_color" placeholder="#FEF3C7" class="font-mono text-sm" />
+                    <flux:input wire:model="accent_color" placeholder="#f9f0fd" class="font-mono text-sm" />
                 </div>
                 @error('accent_color') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
@@ -126,7 +126,7 @@
     </div>
 
     <div class="flex gap-3 pb-8">
-        <flux:button wire:click="save" class="!bg-amber-500 !text-white hover:!bg-amber-600"
+        <flux:button wire:click="save" class="bg-amber-500! text-white! hover:bg-amber-600!"
             wire:loading.attr="disabled">
             <span wire:loading.remove wire:target="save">Salvar configurações</span>
             <span wire:loading wire:target="save">Salvando...</span>
