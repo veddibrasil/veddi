@@ -14,6 +14,9 @@ use App\Policies\ProductCategoryPolicy;
 use App\Policies\ProductPolicy;
 use App\Services\AbacatePayService;
 use Carbon\CarbonImmutable;
+use Illuminate\Auth\Notifications\ResetPassword;
+use Illuminate\Auth\Notifications\VerifyEmail;
+use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -41,6 +44,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDefaults();
         $this->registerPolicies();
+        $this->configureNotifications();
     }
 
     protected function registerPolicies(): void
@@ -50,6 +54,33 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(ProductCategory::class, ProductCategoryPolicy::class);
         Gate::policy(Branch::class, BranchPolicy::class);
         Gate::policy(Company::class, CompanyPolicy::class);
+    }
+
+    protected function configureNotifications(): void
+    {
+        ResetPassword::toMailUsing(function ($notifiable, string $token) {
+            $url = url(route('password.reset', [
+                'token' => $token,
+                'email' => $notifiable->getEmailForPasswordReset(),
+            ], false));
+
+            $expire = config('auth.passwords.' . config('auth.defaults.passwords') . '.expire');
+
+            return (new MailMessage)
+                ->subject('Redefinição de Senha')
+                ->line('Você está recebendo este e-mail porque recebemos uma solicitação de redefinição de senha para sua conta.')
+                ->action('Redefinir Senha', $url)
+                ->line("Este link de redefinição de senha expirará em {$expire} minutos.")
+                ->line('Se você não solicitou a redefinição de senha, nenhuma ação adicional é necessária.');
+        });
+
+        VerifyEmail::toMailUsing(function ($notifiable, string $url) {
+            return (new MailMessage)
+                ->subject('Verificação de Endereço de E-mail')
+                ->line('Clique no botão abaixo para verificar seu endereço de e-mail.')
+                ->action('Verificar E-mail', $url)
+                ->line('Se você não criou uma conta, nenhuma ação adicional é necessária.');
+        });
     }
 
     /**

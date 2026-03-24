@@ -3,9 +3,10 @@
 ])
 
 @php
-    $logoSrc   = isset($currentCompany) && $currentCompany->logo_path
+    $platformLogo = $sidebar ? asset('logo_branca.png') : asset('logo_roxa.png');
+    $logoSrc      = isset($currentCompany) && $currentCompany->logo_path
         ? $currentCompany->logo_url
-        : asset('logo.jpg');
+        : $platformLogo;
     $brandName = isset($currentCompany) ? $currentCompany->name : config('app.name');
 @endphp
 

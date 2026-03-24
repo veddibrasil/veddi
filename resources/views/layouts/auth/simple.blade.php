@@ -8,9 +8,12 @@
             {{ filled($title ?? null) ? $title.' - '.config('app.name', 'Laravel') : config('app.name', 'Laravel') }}
         </title>
 
-        <link rel="icon" href="/favicon.ico" sizes="any">
-        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <link rel="icon" type="image/png" href="/favicon/favicon-96x96.png" sizes="96x96" />
+        <link rel="icon" type="image/svg+xml" href="/favicon/favicon.svg" />
+        <link rel="shortcut icon" href="/favicon/favicon.ico" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/favicon/apple-touch-icon.png" />
+        <meta name="apple-mobile-web-app-title" content="MyWebSite" />
+        <link rel="manifest" href="/favicon/site.webmanifest" />
 
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=fredoka:400,500,600,700|instrument-sans:400,500,600" rel="stylesheet" />
@@ -23,11 +26,11 @@
 
                 {{-- Logo / marca --}}
                 <a href="{{ route('admin.dashboard') }}" class="flex flex-col items-center gap-3" wire:navigate>
-                    <span class="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#da291c] shadow-lg shadow-red-200">
-                        <x-app-logo-icon class="size-10 fill-current text-white" />
+                    <span class="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#7A00A3] shadow-lg shadow-purple-300">
+                        <img src="{{ asset('logo_branca.png') }}" alt="{{ config('app.name') }}" class="size-12 object-contain" />
                     </span>
-                    <span class="text-2xl font-bold text-[#7a1510]" style="font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px;">
-                        {{ config('app.name', 'Veddi') }}
+                    <span class="text-2xl font-bold text-[#5c0079]" style="font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px;">
+                        {{ config('app.name') }}
                     </span>
                 </a>
 

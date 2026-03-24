@@ -73,10 +73,10 @@ class PermissionSeeder extends Seeder
 
         $branchManagerPermissions = [
             'orders.view', 'orders.update',
-            'products.view',
-            'categories.view',
+            'products.view', 'products.create', 'products.update', 'products.delete',
+            'categories.view', 'categories.create', 'categories.update', 'categories.delete',
             'branches.view',
-            'stock.view', 'stock.adjust',
+            'stock.view', 'stock.adjust', 'stock.toggle',
         ];
 
         $roles = [

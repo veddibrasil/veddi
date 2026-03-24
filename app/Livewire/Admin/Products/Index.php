@@ -22,6 +22,7 @@ class Index extends Component
     public bool $canCreate    = false;
     public bool $canUpdate    = false;
     public bool $canDelete    = false;
+    public ?int $lockedBranchId = null; // branch_manager: escopo fixo de filial
 
     public function mount(): void
     {
@@ -35,6 +36,10 @@ class Index extends Component
             $this->canCreate = $user->hasPermission('products.create', $company);
             $this->canUpdate = $user->hasPermission('products.update', $company);
             $this->canDelete = $user->hasPermission('products.delete', $company);
+        }
+
+        if (app()->bound('current.branch')) {
+            $this->lockedBranchId = app('current.branch')->id;
         }
     }
 
@@ -71,6 +76,7 @@ class Index extends Component
             ->when($this->search, fn ($q) => $q->where('name', 'like', "%{$this->search}%"))
             ->when($this->categoryFilter, fn ($q) => $q->where('product_category_id', $this->categoryFilter))
             ->when($this->isSuperAdmin && $this->companyFilter, fn ($q) => $q->where('company_id', $this->companyFilter))
+            ->when($this->lockedBranchId, fn ($q) => $q->whereHas('branches', fn ($bq) => $bq->where('branches.id', $this->lockedBranchId)))
             ->orderBy('product_category_id')
             ->orderBy('sort_order')
             ->paginate(15);

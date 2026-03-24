@@ -65,9 +65,14 @@ class Index extends Component
             $this->canToggle = $user->hasPermission('stock.toggle', $company);
         }
 
-        $branches = Branch::where('active', true)->get();
-        if ($branches->count() === 1) {
-            $this->branchFilter = $branches->first()->id;
+        if (app()->bound('current.branch')) {
+            // Branch manager: filtra fixo para a filial vinculada
+            $this->branchFilter = app('current.branch')->id;
+        } else {
+            $branches = Branch::where('active', true)->get();
+            if ($branches->count() === 1) {
+                $this->branchFilter = $branches->first()->id;
+            }
         }
     }
 
@@ -171,7 +176,10 @@ class Index extends Component
     public function render()
     {
         // Filiais da empresa (CompanyScope aplicado automaticamente)
-        $branches = Branch::where('active', true)->orderBy('name')->get();
+        // Branch manager: restringe à filial vinculada
+        $branches = app()->bound('current.branch')
+            ? Branch::where('id', app('current.branch')->id)->where('active', true)->get()
+            : Branch::where('active', true)->orderBy('name')->get();
         $branchIds = $branches->pluck('id');
 
         $query = DB::table('branch_product')

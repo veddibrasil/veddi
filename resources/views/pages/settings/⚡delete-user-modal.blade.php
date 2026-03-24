@@ -28,22 +28,22 @@ new class extends Component {
 <flux:modal name="confirm-user-deletion" :show="$errors->isNotEmpty()" focusable class="max-w-lg">
     <form method="POST" wire:submit="deleteUser" class="space-y-6">
         <div>
-            <flux:heading size="lg">{{ __('Are you sure you want to delete your account?') }}</flux:heading>
+            <flux:heading size="lg">{{ __('Tem certeza que deseja excluir sua conta?') }}</flux:heading>
 
             <flux:subheading>
-                {{ __('Once your account is deleted, all of its resources and data will be permanently deleted. Please enter your password to confirm you would like to permanently delete your account.') }}
+                {{ __('Ao excluir sua conta, todos os seus recursos e dados serão permanentemente removidos. Digite sua senha para confirmar que deseja excluir permanentemente sua conta.') }}
             </flux:subheading>
         </div>
 
-        <flux:input wire:model="password" :label="__('Password')" type="password" />
+        <flux:input wire:model="password" :label="__('Senha')" type="password" />
 
         <div class="flex justify-end space-x-2 rtl:space-x-reverse">
             <flux:modal.close>
-                <flux:button variant="filled">{{ __('Cancel') }}</flux:button>
+                <flux:button variant="filled">{{ __('Cancelar') }}</flux:button>
             </flux:modal.close>
 
             <flux:button variant="danger" type="submit" data-test="confirm-delete-user-button">
-                {{ __('Delete account') }}
+                {{ __('Excluir conta') }}
             </flux:button>
         </div>
     </form>

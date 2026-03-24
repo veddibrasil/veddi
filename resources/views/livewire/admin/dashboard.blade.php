@@ -9,7 +9,7 @@
                     @if(isset($currentCompany) && $currentCompany->logo_path)
                         <img src="{{ $currentCompany->logo_url }}" class="w-full h-full object-cover" alt="">
                     @else
-                        <img src="{{ asset('logo.png') }}" class="w-full h-full object-cover" alt="">
+                        <img src="{{ asset('logo_branca.png') }}" class="w-full h-full object-cover" alt="">
                     @endif
                 </div>
                 <div>
@@ -25,40 +25,54 @@
 
         {{-- Corpo: explicação do sistema + atalhos --}}
         <div class="bg-white dark:bg-zinc-800 px-6 py-5">
-            <p class="text-sm font-semibold text-neutral-700 dark:text-neutral-200 mb-4">O que você pode fazer neste painel:</p>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <a href="{{ route('admin.orders.index') }}" class="flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:border-purple-200 transition-all dark:border-zinc-700 dark:hover:border-purple-800/50 dark:hover:bg-purple-900/20">
-                    <div class="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0 text-base">📋</div>
-                    <div>
-                        <p class="text-sm font-bold text-neutral-800 dark:text-neutral-100 leading-tight">Pedidos</p>
-                        <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">Acompanhe e gerencie pedidos em tempo real.</p>
-                    </div>
-                </a>
-                <a href="{{ route('admin.branches.index') }}" class="flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:border-purple-200 transition-all dark:border-zinc-700 dark:hover:border-purple-800/50 dark:hover:bg-purple-900/20 ">
-                    <div class="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0 text-base">🏪</div>
-                    <div>
-                        <p class="text-sm font-bold text-neutral-800 dark:text-neutral-100 leading-tight">Filiais</p>
-                        <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">Cadastre filiais com horário de funcionamento.</p>
-                    </div>
-                </a>
-                <a href="{{ route('admin.products.index') }}" class="flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:border-purple-200 transition-all dark:border-zinc-700 dark:hover:border-purple-800/50 dark:hover:bg-purple-900/20">
-                    <div class="w-8 h-8 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0 text-base">🥟</div>
-                    <div>
-                        <p class="text-sm font-bold text-neutral-800 dark:text-neutral-100 leading-tight">Produtos</p>
-                        <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">Gerencie cardápio, preços e disponibilidade por filial.</p>
-                    </div>
-                </a>
-                <a href="{{ route('admin.settings') }}" class="flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:border-purple-200 transition-all dark:border-zinc-700 dark:hover:border-purple-800/50 dark:hover:bg-purple-900/20">
-                    <div class="w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center shrink-0 text-base">⚙️</div>
-                    <div>
-                        <p class="text-sm font-bold text-neutral-800 dark:text-neutral-100 leading-tight">Configurações</p>
-                        <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">Personalize cores, logo, slogan e pagamento PIX.</p>
-                    </div>
-                </a>
-            </div>
+            @php
+                $hasAnyQuickAction = $canViewOrders || $canViewBranches || $canViewProducts || $canSettings;
+            @endphp
+
+            @if($hasAnyQuickAction)
+                <p class="text-sm font-semibold text-neutral-700 dark:text-neutral-200 mb-4">O que você pode fazer neste painel:</p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    @if($canViewOrders)
+                        <a href="{{ route('admin.orders.index') }}" class="flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:border-purple-200 transition-all dark:border-zinc-700 dark:hover:border-purple-800/50 dark:hover:bg-purple-900/20">
+                            <div class="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0 text-base">📋</div>
+                            <div>
+                                <p class="text-sm font-bold text-neutral-800 dark:text-neutral-100 leading-tight">Pedidos</p>
+                                <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">Acompanhe e gerencie pedidos em tempo real.</p>
+                            </div>
+                        </a>
+                    @endif
+                    @if($canViewBranches)
+                        <a href="{{ route('admin.branches.index') }}" class="flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:border-purple-200 transition-all dark:border-zinc-700 dark:hover:border-purple-800/50 dark:hover:bg-purple-900/20 ">
+                            <div class="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0 text-base">🏪</div>
+                            <div>
+                                <p class="text-sm font-bold text-neutral-800 dark:text-neutral-100 leading-tight">Filiais</p>
+                                <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">Cadastre filiais com horário de funcionamento.</p>
+                            </div>
+                        </a>
+                    @endif
+                    @if($canViewProducts)
+                        <a href="{{ route('admin.products.index') }}" class="flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:border-purple-200 transition-all dark:border-zinc-700 dark:hover:border-purple-800/50 dark:hover:bg-purple-900/20">
+                            <div class="w-8 h-8 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0 text-base">🥟</div>
+                            <div>
+                                <p class="text-sm font-bold text-neutral-800 dark:text-neutral-100 leading-tight">Produtos</p>
+                                <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">Gerencie cardápio, preços e disponibilidade por filial.</p>
+                            </div>
+                        </a>
+                    @endif
+                    @if($canSettings)
+                        <a href="{{ route('admin.settings') }}" class="flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:border-purple-200 transition-all dark:border-zinc-700 dark:hover:border-purple-800/50 dark:hover:bg-purple-900/20">
+                            <div class="w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center shrink-0 text-base">⚙️</div>
+                            <div>
+                                <p class="text-sm font-bold text-neutral-800 dark:text-neutral-100 leading-tight">Configurações</p>
+                                <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">Personalize cores, logo, slogan e pagamento PIX.</p>
+                            </div>
+                        </a>
+                    @endif
+                </div>
+            @endif
 
             {{-- Link direto para o chat --}}
-            <div class="mt-4 pt-4 border-t border-gray-100 dark:border-zinc-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="{{ $hasAnyQuickAction ? 'mt-4 pt-4 border-t border-gray-100 dark:border-zinc-700' : '' }} flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                     <p class="text-xs text-neutral-500 dark:text-neutral-400">Link do chat de pedidos:</p>
                     <p class="text-sm font-mono font-semibold text-neutral-700 dark:text-neutral-200 mt-0.5">
@@ -89,52 +103,54 @@
         </div>
     @endif
 
-    <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <div class="bg-white border rounded-xl p-4 shadow-sm dark:bg-zinc-800 dark:border-zinc-700">
-            <p class="text-xs text-neutral-500 uppercase tracking-wide dark:text-neutral-400">Pedidos hoje</p>
-            <p class="text-3xl font-bold text-amber-600 mt-1 dark:text-amber-400">{{ $todayOrders->count() }}</p>
+    @if($canViewOrders)
+        <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <div class="bg-white border rounded-xl p-4 shadow-sm dark:bg-zinc-800 dark:border-zinc-700">
+                <p class="text-xs text-neutral-500 uppercase tracking-wide dark:text-neutral-400">Pedidos hoje</p>
+                <p class="text-3xl font-bold text-amber-600 mt-1 dark:text-amber-400">{{ $todayOrders->count() }}</p>
+            </div>
+            <div class="bg-white border rounded-xl p-4 shadow-sm dark:bg-zinc-800 dark:border-zinc-700">
+                <p class="text-xs text-neutral-500 uppercase tracking-wide dark:text-neutral-400">Receita hoje</p>
+                <p class="text-2xl font-bold text-green-600 mt-1 dark:text-green-400">R$ {{ number_format($todayRevenue, 2, ',', '.') }}</p>
+            </div>
+            <div class="bg-white border rounded-xl p-4 shadow-sm dark:bg-zinc-800 dark:border-zinc-700">
+                <p class="text-xs text-neutral-500 uppercase tracking-wide dark:text-neutral-400">Em preparo</p>
+                <p class="text-3xl font-bold text-blue-600 mt-1 dark:text-blue-400">{{ $pendingOrders }}</p>
+            </div>
+            <div class="bg-white border rounded-xl p-4 shadow-sm dark:bg-zinc-800 dark:border-zinc-700">
+                <p class="text-xs text-neutral-500 uppercase tracking-wide dark:text-neutral-400">Total pedidos</p>
+                <p class="text-3xl font-bold text-neutral-800 mt-1 dark:text-neutral-100">{{ $totalOrders }}</p>
+            </div>
         </div>
-        <div class="bg-white border rounded-xl p-4 shadow-sm dark:bg-zinc-800 dark:border-zinc-700">
-            <p class="text-xs text-neutral-500 uppercase tracking-wide dark:text-neutral-400">Receita hoje</p>
-            <p class="text-2xl font-bold text-green-600 mt-1 dark:text-green-400">R$ {{ number_format($todayRevenue, 2, ',', '.') }}</p>
-        </div>
-        <div class="bg-white border rounded-xl p-4 shadow-sm dark:bg-zinc-800 dark:border-zinc-700">
-            <p class="text-xs text-neutral-500 uppercase tracking-wide dark:text-neutral-400">Em preparo</p>
-            <p class="text-3xl font-bold text-blue-600 mt-1 dark:text-blue-400">{{ $pendingOrders }}</p>
-        </div>
-        <div class="bg-white border rounded-xl p-4 shadow-sm dark:bg-zinc-800 dark:border-zinc-700">
-            <p class="text-xs text-neutral-500 uppercase tracking-wide dark:text-neutral-400">Total pedidos</p>
-            <p class="text-3xl font-bold text-neutral-800 mt-1 dark:text-neutral-100">{{ $totalOrders }}</p>
-        </div>
-    </div>
 
-    <div class="bg-white border rounded-xl shadow-sm overflow-hidden dark:bg-zinc-800 dark:border-zinc-700">
-        <div class="px-4 py-3 border-b flex items-center justify-between dark:border-zinc-700">
-            <h2 class="font-semibold text-neutral-700 dark:text-neutral-200">Pedidos de hoje</h2>
-            <a href="{{ route('admin.orders.index') }}" class="text-xs text-amber-600 hover:underline dark:text-amber-400">Ver todos</a>
+        <div class="bg-white border rounded-xl shadow-sm overflow-hidden dark:bg-zinc-800 dark:border-zinc-700">
+            <div class="px-4 py-3 border-b flex items-center justify-between dark:border-zinc-700">
+                <h2 class="font-semibold text-neutral-700 dark:text-neutral-200">Pedidos de hoje</h2>
+                <a href="{{ route('admin.orders.index') }}" class="text-xs text-amber-600 hover:underline dark:text-amber-400">Ver todos</a>
+            </div>
+            <div class="divide-y dark:divide-zinc-700">
+                @forelse ($todayOrders->sortByDesc('created_at')->take(10) as $order)
+                    <a href="{{ route('admin.orders.show', $order) }}"
+                        class="flex items-center justify-between px-4 py-3 hover:bg-neutral-50 transition-colors dark:hover:bg-zinc-700/50">
+                        <div>
+                            <p class="font-mono text-sm font-semibold dark:text-neutral-100">{{ $order->order_number }}</p>
+                            <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ $order->customer->name ?? '—' }}</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-sm font-bold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($order->total, 2, ',', '.') }}</p>
+                            <span class="text-xs px-2 py-0.5 rounded-full
+                                @if($order->status === 'paid') bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400
+                                @elseif($order->status === 'preparing') bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-400
+                                @elseif($order->status === 'cancelled') bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400
+                                @else bg-neutral-100 text-neutral-600 dark:bg-zinc-700 dark:text-neutral-300 @endif">
+                                {{ $order->status_label }}
+                            </span>
+                        </div>
+                    </a>
+                @empty
+                    <p class="px-4 py-6 text-sm text-neutral-500 dark:text-neutral-400 text-center">Nenhum pedido hoje.</p>
+                @endforelse
+            </div>
         </div>
-        <div class="divide-y dark:divide-zinc-700">
-            @forelse ($todayOrders->sortByDesc('created_at')->take(10) as $order)
-                <a href="{{ route('admin.orders.show', $order) }}"
-                    class="flex items-center justify-between px-4 py-3 hover:bg-neutral-50 transition-colors dark:hover:bg-zinc-700/50">
-                    <div>
-                        <p class="font-mono text-sm font-semibold dark:text-neutral-100">{{ $order->order_number }}</p>
-                        <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ $order->customer->name ?? '—' }}</p>
-                    </div>
-                    <div class="text-right">
-                        <p class="text-sm font-bold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($order->total, 2, ',', '.') }}</p>
-                        <span class="text-xs px-2 py-0.5 rounded-full
-                            @if($order->status === 'paid') bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400
-                            @elseif($order->status === 'preparing') bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-400
-                            @elseif($order->status === 'cancelled') bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400
-                            @else bg-neutral-100 text-neutral-600 dark:bg-zinc-700 dark:text-neutral-300 @endif">
-                            {{ $order->status_label }}
-                        </span>
-                    </div>
-                </a>
-            @empty
-                <p class="px-4 py-6 text-sm text-neutral-500 dark:text-neutral-400 text-center">Nenhum pedido hoje.</p>
-            @endforelse
-        </div>
-    </div>
+    @endif
 </div>

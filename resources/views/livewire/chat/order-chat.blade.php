@@ -23,7 +23,7 @@
                 @if(isset($currentCompany) && $currentCompany->logo_path)
                     <img src="{{ $currentCompany->logo_url }}" alt="{{ $currentCompany->name }}" class="w-full h-full object-cover">
                 @else
-                    <img src="{{ asset('logo.png') }}" alt="{{ $currentCompany->name ?? config('app.name') }}" class="w-full h-full object-cover">
+                    <img src="{{ asset('logo_roxa.png') }}" alt="{{ $currentCompany->name ?? config('app.name') }}" class="w-full h-full object-cover">
                 @endif
             </div>
 

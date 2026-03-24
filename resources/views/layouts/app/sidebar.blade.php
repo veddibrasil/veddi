@@ -54,7 +54,8 @@
                     @endif
 
                     @php
-                        $showBranches   = $can('branches.view');
+                        $isBranchManager = $company && $user?->isBranchManager($company);
+                        $showBranches   = $can('branches.view') && !$isBranchManager;
                         $showCategories = $can('categories.view');
                         $showProducts   = $can('products.view');
                         $showStock      = $can('stock.view');

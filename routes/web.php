@@ -39,18 +39,21 @@ Route::middleware(['auth', 'verified'])
             Route::get('/support', \App\Livewire\Admin\Support\Index::class)->name('support.index');
         });
 
+        // Cardápio: company_admin + branch_manager
+        Route::middleware('company.role:company_admin,branch_manager')->group(function () {
+            Route::get('/categories', \App\Livewire\Admin\Categories\Index::class)->name('categories.index');
+
+            Route::get('/products', \App\Livewire\Admin\Products\Index::class)->name('products.index');
+            Route::get('/products/create', \App\Livewire\Admin\Products\Form::class)->name('products.create');
+            Route::get('/products/{product}/edit', \App\Livewire\Admin\Products\Form::class)->name('products.edit');
+        });
+
         // Gestão completa: só company_admin
         Route::middleware('company.role:company_admin')->group(function () {
             Route::get('/branches', \App\Livewire\Admin\Branches\Index::class)->name('branches.index');
             Route::get('/branches/create', \App\Livewire\Admin\Branches\Form::class)->name('branches.create');
             Route::get('/branches/{branch}/edit', \App\Livewire\Admin\Branches\Form::class)->name('branches.edit');
             Route::get('/branches/{branch}/delivery', \App\Livewire\Admin\Branches\DeliverySettings::class)->name('branches.delivery');
-
-            Route::get('/categories', \App\Livewire\Admin\Categories\Index::class)->name('categories.index');
-
-            Route::get('/products', \App\Livewire\Admin\Products\Index::class)->name('products.index');
-            Route::get('/products/create', \App\Livewire\Admin\Products\Form::class)->name('products.create');
-            Route::get('/products/{product}/edit', \App\Livewire\Admin\Products\Form::class)->name('products.edit');
 
             Route::get('/settings', \App\Livewire\Admin\Settings\CompanySettings::class)->name('settings');
 

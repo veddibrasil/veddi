@@ -19,8 +19,9 @@ class Form extends Component
     public ?Product $product  = null;
     public bool $isEditing    = false;
 
-    public bool $isSuperAdmin       = false;
-    public ?int $company_id         = null;
+    public bool $isSuperAdmin          = false;
+    public ?int $company_id            = null;
+    public ?int $branchManagerBranchId = null; // null = não é branch_manager
 
     public int    $product_category_id = 0;
     public string $name                = '';
@@ -76,6 +77,10 @@ class Form extends Component
             $this->company_id = $user->companies()->first()?->id;
         }
 
+        if (app()->bound('current.branch')) {
+            $this->branchManagerBranchId = app('current.branch')->id;
+        }
+
         if ($product?->exists) {
             $this->product    = $product;
             $this->isEditing  = true;
@@ -84,6 +89,9 @@ class Form extends Component
             $this->description      = $product->description ?? '';
             $this->price            = (string) $product->price;
             $this->selectedBranches = $product->branches->pluck('id')->map(fn ($id) => (string) $id)->toArray();
+        } elseif ($this->branchManagerBranchId) {
+            // Pré-seleciona a filial do gerente em novos produtos
+            $this->selectedBranches = [(string) $this->branchManagerBranchId];
         }
     }
 
@@ -194,7 +202,9 @@ class Form extends Component
                 ->get();
         } else {
             $categories = ProductCategory::where('active', true)->orderBy('name')->get();
-            $branches   = Branch::where('active', true)->orderBy('name')->get();
+            $branches   = $this->branchManagerBranchId
+                ? Branch::where('id', $this->branchManagerBranchId)->where('active', true)->get()
+                : Branch::where('active', true)->orderBy('name')->get();
             $companies  = collect();
         }
 
