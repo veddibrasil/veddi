@@ -172,9 +172,32 @@
                             </p>
                         </div>
                     @endforeach
-                    <div class="flex items-center justify-between px-4 py-3 bg-neutral-50 dark:bg-zinc-700/50">
-                        <p class="font-bold text-neutral-700 dark:text-neutral-200">Total</p>
-                        <p class="font-bold text-lg text-amber-600 dark:text-amber-400">R$ {{ number_format($order->total, 2, ',', '.') }}</p>
+                    <div class="px-4 py-3 bg-neutral-50 dark:bg-zinc-700/50 space-y-1.5">
+                        <div class="flex items-center justify-between text-sm text-neutral-500 dark:text-neutral-400">
+                            <span>Subtotal</span>
+                            <span>R$ {{ number_format($order->subtotal, 2, ',', '.') }}</span>
+                        </div>
+                        @if ($order->delivery_fee > 0)
+                            <div class="flex items-center justify-between text-sm text-neutral-500 dark:text-neutral-400">
+                                <span>Frete</span>
+                                <span>R$ {{ number_format($order->delivery_fee, 2, ',', '.') }}</span>
+                            </div>
+                        @elseif ($order->order_type === 'delivery')
+                            <div class="flex items-center justify-between text-sm text-neutral-500 dark:text-neutral-400">
+                                <span>Frete</span>
+                                <span class="text-green-600 dark:text-green-400">Grátis</span>
+                            </div>
+                        @endif
+                        @if ($order->discount > 0)
+                            <div class="flex items-center justify-between text-sm text-green-600 dark:text-green-400">
+                                <span>Desconto</span>
+                                <span>− R$ {{ number_format($order->discount, 2, ',', '.') }}</span>
+                            </div>
+                        @endif
+                        <div class="flex items-center justify-between pt-1 border-t dark:border-zinc-600">
+                            <p class="font-bold text-neutral-700 dark:text-neutral-200">Total</p>
+                            <p class="font-bold text-lg text-amber-600 dark:text-amber-400">R$ {{ number_format($order->total, 2, ',', '.') }}</p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -193,6 +216,7 @@
             {{-- Status --}}
             @php
                 $statusMap = [
+                    'awaiting_payment' => ['label' => 'Ag. Pagamento', 'active' => 'bg-yellow-500 text-white',  'inactive' => 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-400 dark:hover:bg-yellow-900/50'],
                     'paid'      => ['label' => 'Pago',       'active' => 'bg-green-500 text-white',  'inactive' => 'bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50'],
                     'preparing' => ['label' => 'Preparando',  'active' => 'bg-blue-500 text-white',   'inactive' => 'bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50'],
                     'ready'     => ['label' => 'Pronto',      'active' => 'bg-indigo-500 text-white', 'inactive' => 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50'],
@@ -277,10 +301,18 @@
             </div>
 
             {{-- Payment --}}
-            @if ($order->payment)
-                <div class="bg-white border rounded-xl shadow-sm p-4 dark:bg-zinc-800 dark:border-zinc-700">
-                    <p class="font-semibold text-neutral-700 mb-2 dark:text-neutral-200">Pagamento</p>
-                    <div class="grid grid-cols-2 gap-2 text-sm">
+            <div class="bg-white border rounded-xl shadow-sm p-4 dark:bg-zinc-800 dark:border-zinc-700">
+                <p class="font-semibold text-neutral-700 mb-2 dark:text-neutral-200">Pagamento</p>
+                <div class="grid grid-cols-2 gap-2 text-sm">
+                    <div class="text-neutral-500 dark:text-neutral-400">Método</div>
+                    <div class="font-semibold text-neutral-800 dark:text-neutral-100">
+                        @if ($order->payment_method === 'PIX') PIX
+                        @elseif ($order->payment_method === 'CARD') Cartão de Crédito
+                        @elseif ($order->payment_method === 'CASH') Dinheiro
+                        @else {{ $order->payment_method }}
+                        @endif
+                    </div>
+                    @if ($order->payment)
                         <div class="text-neutral-500 dark:text-neutral-400">ID Abacate Pay</div>
                         <div class="font-mono text-xs text-neutral-600 truncate dark:text-neutral-300">{{ $order->payment->abacatepay_billing_id }}</div>
                         <div class="text-neutral-500 dark:text-neutral-400">Status</div>
@@ -296,16 +328,16 @@
                         @endif
                         <div class="text-neutral-500 dark:text-neutral-400">Valor</div>
                         <div class="font-bold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($order->payment->amount, 2, ',', '.') }}</div>
-                    </div>
-                    @if ($order->payment->status === 'paid')
-                        <flux:modal.trigger name="confirm-manual-refund">
-                            <button class="mt-3 w-full text-sm bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 px-4 py-2 rounded-lg transition-colors">
-                                Marcar como Reembolsado (Manual)
-                            </button>
-                        </flux:modal.trigger>
                     @endif
                 </div>
-            @endif
+                @if ($order->payment && $order->payment->status === 'paid')
+                    <flux:modal.trigger name="confirm-manual-refund">
+                        <button class="mt-3 w-full text-sm bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 px-4 py-2 rounded-lg transition-colors">
+                            Marcar como Reembolsado (Manual)
+                        </button>
+                    </flux:modal.trigger>
+                @endif
+            </div>
         </div>
     </div>
 

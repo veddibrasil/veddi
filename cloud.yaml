@@ -1,0 +1,69 @@
+name: mistercoxinha
+
+environments:
+  production:
+    size: small
+
+    build:
+      commands:
+        - composer install --no-dev --optimize-autoloader
+        - npm ci
+        - npm run build
+        - php artisan config:cache
+        - php artisan route:cache
+        - php artisan view:cache
+        - php artisan event:cache
+
+    deploy:
+      commands:
+        - php artisan migrate --force
+
+    databases:
+      - name: mistercoxinha-db
+        type: mysql:8
+
+    caches:
+      - name: mistercoxinha-cache
+        type: redis
+
+    queues:
+      - connection: redis
+        queue: default
+        processes: 3
+        tries: 3
+        timeout: 3600
+
+    reverb:
+      enabled: true
+
+    schedule:
+      enabled: true
+
+    storage:
+      - path: storage/app/public
+
+    variables:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_LOCALE: pt_BR
+      APP_FALLBACK_LOCALE: pt_BR
+      BCRYPT_ROUNDS: "12"
+      LOG_CHANNEL: stderr
+      LOG_LEVEL: warning
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      SESSION_DRIVER: redis
+      SESSION_LIFETIME: "120"
+      SESSION_ENCRYPT: "true"
+      BROADCAST_CONNECTION: reverb
+      FILESYSTEM_DISK: s3
+      AWS_DEFAULT_REGION: sa-east-1
+      AWS_BUCKET: mistercoxinha
+      AWS_USE_PATH_STYLE_ENDPOINT: "false"
+      REVERB_PORT: "443"
+      REVERB_SCHEME: https
+      REDIS_CLIENT: predis
+      MAIL_MAILER: smtp
+      MAIL_HOST: smtp.titan.email
+      MAIL_PORT: "587"
+      MAIL_ENCRYPTION: tls

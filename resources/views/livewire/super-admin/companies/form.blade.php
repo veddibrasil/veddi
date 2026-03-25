@@ -95,6 +95,36 @@
         </div>
     </div>
 
+    {{-- Gerente (apenas na criação) --}}
+    @if(! $isEditing)
+    <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
+        <div class="flex items-center justify-between">
+            <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Gerente da Empresa</h2>
+            <flux:checkbox wire:model.live="create_manager" label="Cadastrar gerente agora" />
+        </div>
+
+        @if($create_manager)
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+            <div class="sm:col-span-2">
+                <flux:input wire:model="manager_name" label="Nome completo" placeholder="João Silva" />
+                @error('manager_name') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            </div>
+            <div>
+                <flux:input wire:model="manager_email" label="E-mail" type="email" placeholder="joao@empresa.com" />
+                @error('manager_email') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            </div>
+            <div></div>
+            <div class="sm:col-span-2">
+                <p class="text-xs text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-zinc-700 border border-neutral-200 dark:border-zinc-600 rounded-lg px-4 py-3">
+                    🔐 Uma senha segura será gerada automaticamente e enviada ao gerente por e-mail.
+                </p>
+            </div>
+        </div>
+        <p class="text-xs text-neutral-400 dark:text-neutral-500">O usuário será criado com o papel de <strong>Administrador da Empresa</strong> e vinculado automaticamente.</p>
+        @endif
+    </div>
+    @endif
+
     <div class="flex gap-3 pb-8">
         <flux:button wire:click="save" class="bg-amber-500! text-white! hover:bg-amber-600!">
             {{ $isEditing ? 'Salvar alterações' : 'Criar empresa' }}

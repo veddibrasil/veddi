@@ -10,13 +10,21 @@
         <x-company-theme :company="$currentCompany" />
     @endif
     @livewireStyles
+
+    <link rel="icon" type="image/png" href="/favicon/favicon-96x96.png" sizes="96x96" />
+    <link rel="icon" type="image/svg+xml" href="/favicon/favicon.svg" />
+    <link rel="shortcut icon" href="/favicon/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/favicon/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="MyWebSite" />
+    <link rel="manifest" href="/favicon/site.webmanifest" />
+    
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wght@0,6..12,300;0,6..12,400;0,6..12,500;0,6..12,600;0,6..12,700;1,6..12,400&family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
-<body class="mc-chat-bg h-full overflow-x-hidden font-['Inter',_sans-serif]">
+<body class="mc-chat-bg h-full overflow-x-hidden font-sans">
 
     <div class="h-full flex">
 
@@ -51,17 +59,22 @@
                 </p>
 
                 {{-- Diferenciais --}}
+                @php
+                    $highlights = isset($currentCompany) && $currentCompany->chat_highlights
+                        ? $currentCompany->chat_highlights
+                        : [
+                            ['icon' => '🥟', 'title' => 'Salgados fresquinhos', 'description' => 'Feitos na hora, com ingredientes selecionados'],
+                            ['icon' => '⚡', 'title' => 'Pedido rápido',        'description' => 'Faça seu pedido em poucos cliques pelo chat'],
+                            ['icon' => '💳', 'title' => 'Pague por PIX',        'description' => 'Confirmação automática e entrega ágil'],
+                        ];
+                @endphp
                 <div class="space-y-4 text-left">
-                    @foreach ([
-                        ['🥟', 'Salgados fresquinhos', 'Feitos na hora, com ingredientes selecionados'],
-                        ['⚡', 'Pedido rápido', 'Faça seu pedido em poucos cliques pelo chat'],
-                        ['💳', 'Pague por PIX', 'Confirmação automática e entrega ágil'],
-                    ] as [$icon, $title, $desc])
+                    @foreach ($highlights as $h)
                         <div class="flex items-start gap-4 bg-white/10 rounded-2xl px-5 py-4">
-                            <span class="text-2xl shrink-0 mt-0.5">{{ $icon }}</span>
+                            <span class="text-2xl shrink-0 mt-0.5">{{ $h['icon'] }}</span>
                             <div>
-                                <p class="text-white font-bold text-sm leading-tight">{{ $title }}</p>
-                                <p class="text-white/60 text-xs mt-0.5">{{ $desc }}</p>
+                                <p class="text-white font-bold text-sm leading-tight">{{ $h['title'] }}</p>
+                                <p class="text-white/60 text-xs mt-0.5">{{ $h['description'] }}</p>
                             </div>
                         </div>
                     @endforeach

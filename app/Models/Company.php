@@ -22,6 +22,7 @@ class Company extends Model
         'favicon_path',
         'tagline',
         'footer_text',
+        'chat_highlights',
         'abacatepay_token',
         'abacatepay_webhook_secret',
         'order_prefix',
@@ -29,7 +30,8 @@ class Company extends Model
     ];
 
     protected $casts = [
-        'active' => 'boolean',
+        'active'          => 'boolean',
+        'chat_highlights' => 'array',
     ];
 
     public function getLogoUrlAttribute(): ?string

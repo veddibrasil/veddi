@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Events\OrderStatusUpdated;
 use App\Jobs\ProcessOrder;
 use App\Models\Company;
 use App\Models\Customer;
@@ -33,6 +34,7 @@ class PaymentService
 
         $payment->update(['status' => 'paid', 'paid_at' => now()]);
         $payment->order->update(['status' => 'paid']);
+        OrderStatusUpdated::dispatch($payment->order->fresh());
     }
 
     /**

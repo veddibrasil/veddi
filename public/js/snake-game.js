@@ -190,12 +190,15 @@
 
     function onKey(e) {
         if (!visible) return;
+        var tag = document.activeElement && document.activeElement.tagName;
+        var isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement.isContentEditable;
         if (KEY_MAP[e.key]) {
-            e.preventDefault();
+            if (!isTyping) e.preventDefault();
             tryDir(KEY_MAP[e.key]);
             return;
         }
         if (e.code === 'Space') {
+            if (isTyping) return;
             e.preventDefault();
             if (state === 'running') { state = 'paused'; stopTick(); draw(); render(); }
             else if (state === 'paused') { state = 'running'; startTick(); render(); }

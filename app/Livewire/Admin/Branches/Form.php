@@ -62,6 +62,10 @@ class Form extends Component
 
         if ($user->isSuperAdmin()) {
             $this->needsCompanySelect = true;
+            $this->company_id = Company::withoutGlobalScope(CompanyScope::class)
+                ->where('active', true)
+                ->orderBy('name')
+                ->value('id');
         } else {
             // Usuário possui empresa vinculada — pegar a primeira
             $company = $user->companies()->first();

@@ -32,7 +32,12 @@ class IdentifyCompany
                 : null;
         }
 
-        // 3. Fallback: first active company (single-tenant dev compatibility)
+        // 3. Authenticated user's company (multi-tenant: resolve to the user's own company)
+        if (! $company && auth()->check()) {
+            $company = auth()->user()->companies()->where('active', true)->orderBy('id')->first();
+        }
+
+        // 4. Fallback: first active company (single-tenant dev compatibility)
         if (! $company) {
             $company = Company::where('active', true)->orderBy('id')->first();
         }

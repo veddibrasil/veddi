@@ -1015,16 +1015,16 @@ class OrderChat extends Component
             return;
         }
 
-        if ($order->status === 'awaiting_payment' && ! $this->pixCopyPaste && ! $this->paymentUrl) {
+        $status = $order->status;
+
+        if ($status === 'awaiting_payment' && ! $this->pixCopyPaste && ! $this->paymentUrl) {
             $payment = $order->payment;
             if ($payment) {
                 $sessionKey  = 'payment_token_' . $this->orderId;
                 $storedToken = session($sessionKey);
 
-                if ($storedToken === null) {
+                if ($storedToken === null || ! hash_equals((string) $storedToken, (string) $payment->payment_token)) {
                     session([$sessionKey => $payment->payment_token]);
-                } elseif (! hash_equals((string) $storedToken, (string) $payment->payment_token)) {
-                    return;
                 }
 
                 $this->pixQrCode    = $payment->pix_qr_code;
@@ -1034,8 +1034,6 @@ class OrderChat extends Component
                 $this->expiresAt    = $payment->expires_at?->toIso8601String();
             }
         }
-
-        $status = $order->status;
 
         if ($status === $this->lastNotifiedStatus) {
             return;
@@ -1048,6 +1046,7 @@ class OrderChat extends Component
         ]);
 
         $messages = [
+            'awaiting_payment' => "⏳ Pedido {$order->order_number} recebido! Aguardando confirmação do pagamento.",
             'paid'      => "✅ Pagamento confirmado! Seu pedido {$order->order_number} está sendo preparado. Obrigado!",
             'preparing' => "👨‍🍳 Seu pedido {$order->order_number} está sendo preparado! Em breve ficará pronto.",
             'ready'     => "🛵 Pedido {$order->order_number} pronto e saiu para entrega! Aguarde em breve.",
@@ -1099,7 +1098,7 @@ class OrderChat extends Component
     public function requestCancelOrder(): void
     {
         $order = Order::find($this->orderId);
-        if (! $order || ! in_array($order->status, ['paid', 'preparing'])) {
+        if (! $order || ! in_array($order->status, ['awaiting_payment', 'paid', 'preparing'])) {
             $this->addMessage('bot', 'Não é possível cancelar o pedido no momento. Entre em contato com a loja.');
             return;
         }
@@ -1324,6 +1323,7 @@ class OrderChat extends Component
     {
         $companyId = $this->companyId;
         $branchId  = $this->selectedBranchId;
+
 
         return Cache::remember("menu:branch:{$branchId}:company:{$companyId}", now()->addMinutes(5), function () use ($companyId, $branchId) {
             return ProductCategory::withoutGlobalScopes()

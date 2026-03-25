@@ -39,7 +39,7 @@ class WebhookController extends Controller
             // Load payment without tenant scope (webhook is global)
             $payment = Payment::withoutGlobalScope(CompanyScope::class)
                 ->where('abacatepay_billing_id', $billingId)
-                ->with('order.branch.company')
+                ->with(['order' => fn ($q) => $q->withoutGlobalScope(CompanyScope::class)])
                 ->first();
 
             if (! $payment) {
@@ -70,6 +70,11 @@ class WebhookController extends Controller
                     'status'          => 'refunded',
                     'webhook_payload' => $data,
                 ]);
+
+                if (! $payment->order) {
+                    Log::channel('webhook')->warning('Payment sem order associado (refund)', ['billing_id' => $billingId, 'payment_id' => $payment->id]);
+                    return response()->json(['status' => 'ok']);
+                }
 
                 $payment->order->update(['status' => 'cancelled']);
 
@@ -107,6 +112,11 @@ class WebhookController extends Controller
                 'paid_at'         => now(),
                 'webhook_payload' => $data,
             ]);
+
+            if (! $payment->order) {
+                Log::channel('webhook')->warning('Payment sem order associado', ['billing_id' => $billingId, 'payment_id' => $payment->id]);
+                return response()->json(['status' => 'ok']);
+            }
 
             $payment->order->update(['status' => 'paid']);
 

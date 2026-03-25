@@ -11,6 +11,7 @@
 
         @if($needsCompanySelect)
         <div>
+      
             <flux:select wire:model="company_id" label="Empresa" placeholder="Selecione uma empresa...">
                 @foreach($companies as $company)
                     <flux:select.option value="{{ $company->id }}">{{ $company->name }}</flux:select.option>

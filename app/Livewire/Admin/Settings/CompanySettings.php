@@ -22,6 +22,14 @@ class CompanySettings extends Component
     public string $order_prefix          = 'ORD';
     public string $abacatepay_token      = '';
 
+    public array $chat_highlights = [];
+
+    public const DEFAULT_HIGHLIGHTS = [
+        ['icon' => '🥟', 'title' => 'Salgados fresquinhos', 'description' => 'Feitos na hora, com ingredientes selecionados'],
+        ['icon' => '⚡', 'title' => 'Pedido rápido',        'description' => 'Faça seu pedido em poucos cliques pelo chat'],
+        ['icon' => '💳', 'title' => 'Pague por PIX',        'description' => 'Confirmação automática e entrega ágil'],
+    ];
+
     public $logo = null;
 
     public function mount(): void
@@ -34,6 +42,7 @@ class CompanySettings extends Component
             'order_prefix'
         ));
         $this->abacatepay_token = $company->abacatepay_token ?? '';
+        $this->chat_highlights  = $company->chat_highlights ?? self::DEFAULT_HIGHLIGHTS;
     }
 
     protected function rules(): array
@@ -51,8 +60,12 @@ class CompanySettings extends Component
             'secondary_color_light' => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'accent_color'          => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'order_prefix'          => ['required', 'string', 'max:10', 'regex:/^[A-Z0-9]+$/'],
-            'abacatepay_token'      => ['nullable', 'string', 'max:500'],
-            'logo'                  => ['nullable', 'image', 'max:2048'],
+            'abacatepay_token'              => ['nullable', 'string', 'max:500'],
+            'logo'                         => ['nullable', 'image', 'max:2048'],
+            'chat_highlights'              => ['array', 'max:6'],
+            'chat_highlights.*.icon'       => ['required', 'string', 'max:10'],
+            'chat_highlights.*.title'      => ['required', 'string', 'max:60'],
+            'chat_highlights.*.description'=> ['required', 'string', 'max:120'],
         ];
     }
 
@@ -61,7 +74,8 @@ class CompanySettings extends Component
         $validated = $this->validate($this->rules());
         $company   = app('current.company');
 
-        $data = collect($validated)->except(['logo', 'abacatepay_token'])->toArray();
+        $data = collect($validated)->except(['logo', 'abacatepay_token', 'chat_highlights'])->toArray();
+        $data['chat_highlights'] = $this->chat_highlights ?: null;
         $data['abacatepay_token'] = $this->abacatepay_token ?: null;
 
         if ($this->logo) {
@@ -72,6 +86,19 @@ class CompanySettings extends Component
 
         session()->flash('status', 'Configurações salvas com sucesso.');
         $this->redirect(route('admin.settings'));
+    }
+
+    public function addHighlight(): void
+    {
+        if (count($this->chat_highlights) < 6) {
+            $this->chat_highlights[] = ['icon' => '✨', 'title' => '', 'description' => ''];
+        }
+    }
+
+    public function removeHighlight(int $index): void
+    {
+        array_splice($this->chat_highlights, $index, 1);
+        $this->chat_highlights = array_values($this->chat_highlights);
     }
 
     public function render()

@@ -19,18 +19,18 @@
         <div class="flex items-center gap-3 px-4 py-3">
 
             {{-- Avatar / Logo --}}
-            <div style="background: var(--mc-red)" class="w-11 h-11 rounded-full bg-white/15 border-2 border-white/30 flex items-center justify-center shrink-0 shadow-lg overflow-hidden">
+            <div style="background: var(--mc-red)" class="w-12 h-12 rounded-full border-2 border-white/50 flex items-center justify-center shrink-0 shadow-lg overflow-hidden ring-1 ring-white/20">
                 @if(isset($currentCompany) && $currentCompany->logo_path)
                     <img src="{{ $currentCompany->logo_url }}" alt="{{ $currentCompany->name }}" class="w-full h-full object-cover">
                 @else
-                    <img src="{{ asset('logo_roxa.png') }}" alt="{{ $currentCompany->name ?? config('app.name') }}" class="w-full h-full object-cover">
+                    <img src="{{ asset('logo_branca.png') }}" alt="{{ $currentCompany->name ?? config('app.name') }}" class="w-full h-full object-cover">
                 @endif
             </div>
 
             {{-- Brand info --}}
             <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-1.5">
-                    <p class="text-white font-bold text-base leading-tight">{{ $currentCompany->name ?? config('app.name') }}</p>
+                    <p class="text-white font-bold text-base leading-tight">{{ $currentCompany->name }}</p>
                 </div>
                 <div class="flex items-center gap-1.5 mt-0.5">
                     @if ($step === 'CLOSED')
@@ -104,7 +104,7 @@
                         style="display: none;"
                     >
                         <div class="bg-white rounded-2xl shadow-2xl p-6 max-w-xs w-full text-center space-y-4">
-                            <div class="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto text-2xl">⚠️</div>
+                            <div class="w-12 h-12 rounded-full flex items-center justify-center mx-auto text-2xl mc-bg-primary-light">⚠️</div>
                             <div>
                                 <p class="font-bold text-gray-800 text-base">Encerrar conversa?</p>
                                 <p class="text-sm text-gray-500 mt-1">Você perderá todo o histórico desta conversa. Esta ação não pode ser desfeita.</p>
@@ -119,7 +119,7 @@
                                 <button
                                     wire:click="endChat"
                                     x-on:click="confirmEnd = false"
-                                    class="flex-1 px-4 py-2.5 rounded-xl bg-red-600 text-sm font-bold text-white hover:bg-red-700 transition-colors"
+                                    class="mc-btn-primary flex-1"
                                 >
                                     Encerrar
                                 </button>
@@ -158,9 +158,9 @@
             <div class="flex {{ $msg['from'] === 'bot' ? 'justify-start' : 'justify-end' }}">
 
                 @if ($msg['from'] === 'bot')
-                    {{-- Bot avatar --}}
-                    <div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 mr-1.5 mt-0.5" style="background: var(--mc-red)">
-                        🎩
+                    {{-- Bot avatar (logo do sistema) --}}
+                    <div class="w-7 h-7 rounded-full shrink-0 mr-1.5 mt-0.5 overflow-hidden border border-white/20 shadow-sm" style="background: var(--mc-red)">
+                        <img src="{{ asset('logo_branca.png') }}" alt="{{ config('app.name') }}" class="w-full h-full object-cover p-0.5">
                     </div>
                 @endif
 
@@ -175,8 +175,8 @@
 
         @if ($isLoading)
             <div class="flex justify-start">
-                <div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 mr-1.5 mt-0.5" style="background: var(--mc-red)">
-                    🎩
+                <div class="w-7 h-7 rounded-full shrink-0 mr-1.5 mt-0.5 overflow-hidden border border-white/20 shadow-sm" style="background: var(--mc-red)">
+                    <img src="{{ asset('logo_branca.png') }}" alt="{{ config('app.name') }}" class="w-full h-full object-cover p-0.5">
                 </div>
                 <div class="mc-bubble-bot px-4 py-3">
                     <div class="flex gap-1.5 items-center">
@@ -538,7 +538,7 @@
                             wire:keydown.enter="applyCoupon"
                             type="text"
                             placeholder="Ex: DESCONTO10"
-                            class="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-red-300 focus:border-red-400"
+                            class="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-mono uppercase mc-coupon-input"
                             autocomplete="off"
                         />
                         <button wire:click="applyCoupon" class="flex-1 mc-btn-primary px-4 shrink-0"
@@ -1192,7 +1192,7 @@
                 @else
                     @php
                         $currentOrder = $orderId ? \App\Models\Order::find($orderId) : null;
-                        $canCancel = $currentOrder && in_array($currentOrder->status, ['paid', 'preparing']);
+                        $canCancel = $currentOrder && in_array($currentOrder->status, ['awaiting_payment', 'paid', 'preparing']);
                     @endphp
                     @if ($canCancel)
                         <button wire:click="requestCancelOrder" class="w-full border border-red-300 text-red-600 hover:bg-red-50 text-sm font-medium py-2 rounded-lg transition-colors">
@@ -1342,17 +1342,25 @@
     </div>
 
     {{-- Footer branding + game trigger --}}
-    <div class="bg-gray-50 border-t border-gray-100 px-4 py-1.5 shrink-0 flex items-center justify-between gap-2">
-        <div class="flex items-center gap-1">
-            <span class="text-[10px] text-gray-400 font-medium">{{ $currentCompany->name ?? config('app.name') }}</span>
+    <div class="shrink-0 border-t px-4 py-2 flex items-center justify-between gap-2"
+         style="background: linear-gradient(90deg, color-mix(in srgb, var(--mc-red-dark) 95%, black) 0%, var(--mc-red-dark) 100%); border-color: var(--mc-red-dark);">
+        <div class="flex items-center gap-2">
+            <div class="w-5 h-5 rounded-full overflow-hidden border border-white/20 shrink-0" style="background: var(--mc-red)">
+                @if(isset($currentCompany) && $currentCompany->logo_path)
+                    <img src="{{ $currentCompany->logo_url }}" alt="" class="w-full h-full object-cover">
+                @else
+                    <img src="{{ asset('logo_branca.png') }}" alt="" class="w-full h-full object-cover p-0.5">
+                @endif
+            </div>
+            <span class="text-[10px] text-white/70 font-medium">{{ $currentCompany->name ?? config('app.name') }}</span>
             @if(isset($currentCompany) && $currentCompany->tagline)
-                <span class="text-[10px] text-gray-300">•</span>
-                <span class="text-[10px] text-gray-400">{{ $currentCompany->tagline }}</span>
+                <span class="text-[10px] text-white/70">•</span>
+                <span class="text-[10px] text-white/70">{{ $currentCompany->tagline }}</span>
             @endif
         </div>
         <button
             @click="snakeOpen = true; $nextTick(() => window.SnakeDash && window.SnakeDash.onOpen())"
-            class="flex items-center gap-1 text-[10px] font-semibold text-red-500 hover:text-red-600 transition-colors whitespace-nowrap"
+            class="flex items-center gap-1 text-[10px] font-semibold text-white/60 hover:text-white/90 transition-colors whitespace-nowrap"
         >
             🎮 Jogue enquanto espera
         </button>
@@ -1463,10 +1471,10 @@
                     wire:target="sendGeneralSupportMessage"
                     class="mc-btn-primary shrink-0 px-4 flex-1"
                 >
-                    <span wire:loading.remove wire:target="sendGeneralSupportMessage">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                        </svg>
+                
+                    <span wire:loading.remove  wire:target="sendGeneralSupportMessage">
+                        Enviar
+
                     </span>
                     <span wire:loading wire:target="sendGeneralSupportMessage">...</span>
                 </button>
