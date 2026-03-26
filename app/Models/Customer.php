@@ -32,4 +32,13 @@ class Customer extends Model
 
         return $query->first();
     }
+
+    public static function findByPhoneGlobally(string $phone): ?self
+    {
+        $normalized = preg_replace('/\D/', '', $phone);
+
+        return static::withoutGlobalScopes()
+            ->where('phone', $normalized)
+            ->first();
+    }
 }

@@ -266,10 +266,45 @@ class OrderChat extends Component
             $this->addMessage('bot', "Que bom te ver de volta, {$customer->name}! Escolha uma filial para continuar.");
             $this->transitionTo('BRANCH_SELECT');
         } else {
-            Log::channel('chat')->info('Telefone não encontrado — iniciando cadastro', ['phone' => $this->phone]);
-            $this->addMessage('user', $this->phone);
-            $this->addMessage('bot', 'Não encontrei seu cadastro. Vamos criar um rapidinho! Qual é o seu nome completo?');
-            $this->transitionTo('REGISTER_NAME');
+            $existing = Customer::findByPhoneGlobally($this->phone);
+
+            if ($existing) {
+                $customer = Customer::create([
+                    'phone'        => $this->phone,
+                    'name'         => $existing->name,
+                    'email'        => $existing->email,
+                    'address'      => $existing->address,
+                    'complement'   => $existing->complement,
+                    'neighborhood' => $existing->neighborhood,
+                    'city'         => $existing->city,
+                    'cep'          => $existing->cep,
+                    'tax_id'       => $existing->tax_id,
+                ]);
+
+                $this->customerId   = $customer->id;
+                $this->name         = $customer->name;
+                $this->email        = $customer->email ?? '';
+                $this->address      = $customer->address ?? '';
+                $this->complement   = $customer->complement ?? '';
+                $this->neighborhood = $customer->neighborhood ?? '';
+                $this->city         = $customer->city ?? '';
+                $this->cep          = $customer->cep ?? '';
+                $this->taxId        = $customer->tax_id ?? '';
+
+                Log::channel('chat')->info('Cliente identificado via outra empresa', [
+                    'customer_id'       => $customer->id,
+                    'source_company_id' => $existing->company_id,
+                    'phone'             => $this->phone,
+                ]);
+                $this->addMessage('user', $this->phone);
+                $this->addMessage('bot', "Que bom te ver de novo, {$customer->name}! Escolha uma filial para continuar.");
+                $this->transitionTo('BRANCH_SELECT');
+            } else {
+                Log::channel('chat')->info('Telefone não encontrado — iniciando cadastro', ['phone' => $this->phone]);
+                $this->addMessage('user', $this->phone);
+                $this->addMessage('bot', 'Não encontrei seu cadastro. Vamos criar um rapidinho! Qual é o seu nome completo?');
+                $this->transitionTo('REGISTER_NAME');
+            }
         }
     }
 
@@ -297,22 +332,18 @@ class OrderChat extends Component
 
         $normalized = preg_replace('/\D/', '', $this->phone);
 
-        try {
-            $customer = Customer::create([
+        $customer = Customer::updateOrCreate(
+            ['phone' => $normalized],
+            [
                 'name'         => $this->name,
-                'phone'        => $normalized,
                 'email'        => $this->email,
                 'address'      => $this->address,
                 'complement'   => $this->complement,
                 'neighborhood' => $this->neighborhood,
                 'city'         => $this->city,
                 'cep'          => preg_replace('/\D/', '', $this->cep),
-            ]);
-        } catch (\Exception $e) {
-            $this->addMessage('bot', $e->getMessage());
-            $this->transitionTo('REGISTER_EMAIL');
-            return;
-        }
+            ]
+        );
 
         $this->customerId = $customer->id;
         Log::channel('chat')->info('Novo cliente cadastrado', ['customer_id' => $customer->id, 'phone' => $normalized]);
