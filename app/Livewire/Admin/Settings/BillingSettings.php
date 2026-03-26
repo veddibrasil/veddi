@@ -100,6 +100,12 @@ class BillingSettings extends Component
             $this->payments            = [];
         } else {
             // Upgrade or cross-grade to a paid plan (Essencial or PRO)
+            if (! $company->asaas_customer_id) {
+                session()->flash('error', 'Esta empresa não possui cadastro no Asaas. Entre em contato com o suporte.');
+                $this->confirmingPlanChange = false;
+                $this->targetPlan           = '';
+                return;
+            }
 
             // Cancel existing subscription if switching between paid plans
             if ($company->asaas_subscription_id) {
@@ -112,16 +118,12 @@ class BillingSettings extends Component
             }
 
             $company->update([
-                'plan'                  => $targetPlan->value,
-                'status'                => 'PENDING_PAYMENT',
-                'active'                => false,
+                'pending_plan'          => $targetPlan->value,
                 'asaas_subscription_id' => null,
             ]);
 
             CreateAsaasSubscription::dispatch($company->fresh());
 
-            $this->plan                = $targetPlan->value;
-            $this->status              = 'PENDING_PAYMENT';
             $this->asaasSubscriptionId = null;
             $this->amount              = null;
             $this->nextDueDate         = null;

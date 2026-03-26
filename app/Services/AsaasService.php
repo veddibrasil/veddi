@@ -57,14 +57,13 @@ class AsaasService
      *
      * @return array{id: string, status: string, nextDueDate: string, value: float}
      */
-    public function createSubscription(string $customerId, string $plan): array
+    public function createSubscription(string $customerId, Plan $plan): array
     {
-        $planEnum = Plan::tryFrom($plan) ?? Plan::Pro;
-        $amount   = $planEnum->monthlyPrice();
+        $amount = $plan->monthlyPrice();
 
         Log::channel('payments')->info('Criando assinatura no Asaas', [
             'customer_id' => $customerId,
-            'plan'        => $plan,
+            'plan'        => $plan->value,
             'amount'      => $amount,
         ]);
 
@@ -76,7 +75,7 @@ class AsaasService
                 'value'       => $amount,
                 'nextDueDate' => now()->addDay()->toDateString(),
                 'cycle'       => 'MONTHLY',
-                'description' => $planEnum->asaasDescription(),
+                'description' => $plan->asaasDescription(),
             ]);
 
         if ($response->failed()) {

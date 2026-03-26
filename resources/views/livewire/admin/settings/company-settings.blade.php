@@ -162,11 +162,19 @@
 
     {{-- Pagamento --}}
     <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
-        <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Pagamento (AbacatePay)</h2>
+        <div>
+            <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Pagamento (AbacatePay)</h2>
+            <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                O AbacatePay é o gateway de pagamento utilizado para receber pagamentos via PIX e cartão. Para ativar, insira o token da sua conta abaixo.
+            </p>
+        </div>
 
         <div class="max-w-md">
             <flux:input wire:model="abacatepay_token" label="Token da API" type="password" placeholder="••••••••" />
             @error('abacatepay_token') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                Encontre seu token em: <strong>app.abacatepay.com → Configurações → API Keys</strong>
+            </p>
         </div>
     </div>
 

@@ -1,6 +1,7 @@
 <?php
 
 use App\Helpers\Validation;
+use App\Http\Controllers\AsaasSimulatePaymentController;
 use App\Http\Controllers\AsaasWebhookController;
 use App\Http\Controllers\RegisterCompanyController;
 use App\Http\Controllers\WebhookController;
@@ -11,6 +12,9 @@ use Illuminate\Support\Facades\Route;
 Route::get('/cadastro', [RegisterCompanyController::class, 'create'])->name('register.create');
 Route::post('/cadastro', [RegisterCompanyController::class, 'store'])->middleware('throttle:5,1')->name('register.store');
 Route::get('/cadastro/pendente', fn () => view('register.pending'))->name('register.pending');
+
+// --- Simulação de pagamento Asaas (somente APP_DEBUG=true) ---
+Route::post('/dev/simulate/asaas-payment', AsaasSimulatePaymentController::class)->name('dev.simulate.asaas-payment');
 
 // --- Webhook Asaas (sem auth, sem CSRF — coberto por webhooks/* em bootstrap/app.php) ---
 Route::post('/webhooks/asaas', AsaasWebhookController::class)
@@ -37,6 +41,15 @@ Route::match(['get', 'post'], '/webhooks/abacatepay', [WebhookController::class,
 Route::get('/payment/complete', fn () => view('payment.complete'))->name('payment.complete');
 
 // --- Painel Administrativo da Empresa ---
+
+// Rota de assinatura acessível mesmo com empresa bloqueada
+Route::middleware(['auth', 'verified', 'company.role:company_admin'])
+    ->prefix('admin')
+    ->name('admin.')
+    ->group(function () {
+        Route::get('/billing', \App\Livewire\Admin\Settings\BillingSettings::class)->name('billing');
+    });
+
 Route::middleware(['auth', 'verified', 'company.active'])
     ->prefix('admin')
     ->name('admin.')
@@ -68,7 +81,6 @@ Route::middleware(['auth', 'verified', 'company.active'])
             Route::get('/branches/{branch}/delivery', \App\Livewire\Admin\Branches\DeliverySettings::class)->name('branches.delivery');
 
             Route::get('/settings', \App\Livewire\Admin\Settings\CompanySettings::class)->name('settings');
-            Route::get('/billing', \App\Livewire\Admin\Settings\BillingSettings::class)->name('billing');
 
             Route::get('/coupons', \App\Livewire\Admin\Coupons\Index::class)->name('coupons.index');
 
@@ -90,6 +102,8 @@ Route::middleware(['auth', 'verified', 'super.admin'])
         Route::get('/users', \App\Livewire\SuperAdmin\Users\Index::class)->name('users.index');
         Route::get('/users/{user}/permissions', \App\Livewire\SuperAdmin\Permissions\UserPermissions::class)->name('users.permissions');
         Route::get('/permissions', \App\Livewire\SuperAdmin\Permissions\Index::class)->name('permissions.index');
+
+        Route::post('/simulate/asaas-payment', AsaasSimulatePaymentController::class)->name('simulate.asaas-payment');
     });
 
 require __DIR__.'/settings.php';

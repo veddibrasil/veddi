@@ -24,6 +24,8 @@ class RegisterCompanyController extends Controller
         );
 
         // All plans start as PENDING_PAYMENT (setup fee required)
+        session(['pending_company_id' => $company->id]);
+
         return redirect()->route('register.pending')
             ->with('info', 'Sua conta foi criada. Aguardando confirmação do pagamento da taxa de ativação.');
     }

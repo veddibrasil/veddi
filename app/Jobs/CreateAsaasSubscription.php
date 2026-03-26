@@ -20,9 +20,18 @@ class CreateAsaasSubscription implements ShouldQueue
 
     public function handle(AsaasService $asaasService): void
     {
+        if (! $this->company->asaas_customer_id) {
+            Log::channel('payments')->error('CreateAsaasSubscription: empresa sem asaas_customer_id', [
+                'company_id' => $this->company->id,
+            ]);
+            return;
+        }
+
+        $plan = $this->company->pending_plan ?? $this->company->plan;
+
         $result = $asaasService->createSubscription(
             $this->company->asaas_customer_id,
-            $this->company->plan,
+            $plan,
         );
 
         $this->company->update(['asaas_subscription_id' => $result['id']]);

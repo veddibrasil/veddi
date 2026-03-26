@@ -7,6 +7,8 @@ use App\Models\Branch;
 use App\Models\Company;
 use App\Models\Role;
 use App\Models\User;
+use App\Models\UserPermission;
+use App\Services\UserPermissionService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
@@ -81,6 +83,8 @@ class Index extends Component
                 : null,
         ]);
 
+        UserPermissionService::assignRolePermissions($user, $company, $this->newRole);
+
         Mail::to($user->email)->send(new WelcomeUser($user, $company, $temporaryPassword));
 
         $this->reset(['newName', 'newEmail', 'newPassword', 'newRole', 'newBranchId', 'showCreateForm']);
@@ -109,6 +113,8 @@ class Index extends Component
                     : null,
             ],
         ]);
+
+        UserPermissionService::assignRolePermissions($user, $company, $this->linkRole);
 
         $this->reset(['linkEmail', 'linkRole', 'linkBranchId', 'showLinkForm']);
         session()->flash('status', 'Usuário vinculado com sucesso.');
@@ -142,6 +148,12 @@ class Index extends Component
                 ? $this->editBranchId
                 : null,
         ]);
+
+        UserPermission::where('user_id', $this->editUserId)
+            ->where('company_id', $company->id)
+            ->delete();
+
+        UserPermissionService::assignRolePermissions($user, $company, $this->editRole);
 
         User::clearPermissionCache($this->editUserId, $company->id);
 

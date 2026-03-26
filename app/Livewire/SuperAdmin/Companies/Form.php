@@ -2,12 +2,15 @@
 
 namespace App\Livewire\SuperAdmin\Companies;
 
+use App\Enums\Plan;
+use App\Jobs\CreateAsaasSubscription;
 use App\Mail\WelcomeUser;
 use App\Models\Company;
-use App\Models\Role;
 use App\Models\Scopes\CompanyScope;
+use App\Models\Subscription;
 use App\Models\User;
-use App\Models\UserPermission;
+use App\Services\AsaasService;
+use App\Services\UserPermissionService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
@@ -24,9 +27,9 @@ class Form extends Component
 
     public string $name                     = '';
     public string $slug                     = '';
-    public string $subdomain                = '';
-    public string $tagline                  = '';
-    public string $footer_text              = '';
+    public ?string $subdomain               = '';
+    public ?string $tagline                 = '';
+    public ?string $footer_text             = '';
     public string $primary_color            = '#B91C1C';
     public string $primary_color_dark       = '#7F1D1D';
     public string $primary_color_light      = '#DC2626';
@@ -37,8 +40,14 @@ class Form extends Component
     public string $abacatepay_token         = '';
     public string $abacatepay_webhook_secret = '';
     public bool   $active                   = true;
+    public string $plan                     = 'free';
+    public string $status                   = 'ACTIVE';
 
     public $logo = null;
+
+    // Controle de alteração de plano
+    public string $originalPlan    = 'free';
+    public bool   $bypassPayment   = false;
 
     // Gerente da empresa (apenas na criação)
     public bool   $create_manager = false;
@@ -64,6 +73,8 @@ class Form extends Component
             'abacatepay_token'         => ['nullable', 'string', 'max:500'],
             'abacatepay_webhook_secret'=> ['nullable', 'string', 'max:500'],
             'active'                   => ['boolean'],
+            'plan'                     => ['required', 'in:free,essencial,pro'],
+            'status'                   => ['required', 'in:ACTIVE,PENDING_PAYMENT,BLOCKED'],
             'logo'                     => ['nullable', 'image', 'max:2048'],
         ];
 
@@ -88,6 +99,9 @@ class Form extends Component
             ));
             $this->abacatepay_token          = $company->abacatepay_token ?? '';
             $this->abacatepay_webhook_secret = $company->abacatepay_webhook_secret ?? '';
+            $this->plan                      = $company->plan?->value ?? 'free';
+            $this->originalPlan              = $this->plan;
+            $this->status                    = $company->status ?? 'ACTIVE';
         }
     }
 
@@ -107,7 +121,15 @@ class Form extends Component
         }
 
         if ($this->isEditing) {
-            $this->company->update($companyData);
+            $planChanged = $this->plan !== $this->originalPlan;
+
+            if ($planChanged) {
+                $this->handlePlanChange($companyData);
+            } else {
+                $companyData['active'] = $this->status === 'ACTIVE';
+                $this->company->update($companyData);
+            }
+
             session()->flash('status', 'Empresa atualizada.');
         } else {
             $company = Company::create($companyData);
@@ -126,23 +148,7 @@ class Form extends Component
                     'branch_id' => null,
                 ]);
 
-                $adminRole = Role::where('slug', 'company_admin')
-                    ->whereNull('company_id')
-                    ->with('permissions')
-                    ->first();
-
-                if ($adminRole) {
-                    $adminRole->permissions->each(function ($permission) use ($user, $company) {
-                        UserPermission::updateOrCreate(
-                            [
-                                'user_id'       => $user->id,
-                                'company_id'    => $company->id,
-                                'permission_id' => $permission->id,
-                            ],
-                            ['granted' => true]
-                        );
-                    });
-                }
+                UserPermissionService::assignRolePermissions($user, $company, 'company_admin');
 
                 Mail::to($user)->queue(new WelcomeUser($user, $company, $temporaryPassword));
             }
@@ -153,6 +159,54 @@ class Form extends Component
         Cache::forget('companies:active');
 
         $this->redirect(route('superadmin.companies.index'));
+    }
+
+    private function handlePlanChange(array $baseData): void
+    {
+        $asaasService = app(AsaasService::class);
+        $company      = $this->company;
+        $targetPlan   = Plan::tryFrom($this->plan);
+
+        // Cancel existing subscription if any
+        if ($company->asaas_subscription_id) {
+            try {
+                $asaasService->cancelSubscription($company->asaas_subscription_id);
+            } catch (\Throwable) {
+                // Log already handled inside AsaasService; proceed anyway
+            }
+
+            Subscription::where('company_id', $company->id)
+                ->where('asaas_subscription_id', $company->asaas_subscription_id)
+                ->whereIn('status', ['active', 'pending'])
+                ->update(['status' => 'cancelled']);
+        }
+
+        if ($targetPlan === Plan::Free) {
+            // Downgrade to free: always ACTIVE (setup fee already paid)
+            $baseData['active']                = true;
+            $baseData['status']                = 'ACTIVE';
+            $baseData['asaas_subscription_id'] = null;
+            $company->update($baseData);
+        } else {
+            // Upgrade/crossgrade to paid plan
+            if ($this->bypassPayment) {
+                // SuperAdmin override: activate immediately, no Asaas subscription
+                $baseData['active']                = true;
+                $baseData['status']                = 'ACTIVE';
+                $baseData['asaas_subscription_id'] = null;
+                $company->update($baseData);
+            } else {
+                // Normal flow: await payment via Asaas
+                $baseData['active']                = false;
+                $baseData['status']                = 'PENDING_PAYMENT';
+                $baseData['asaas_subscription_id'] = null;
+                $company->update($baseData);
+
+                if ($company->asaas_customer_id) {
+                    CreateAsaasSubscription::dispatch($company->fresh());
+                }
+            }
+        }
     }
 
     public function render()

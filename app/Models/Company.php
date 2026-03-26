@@ -30,6 +30,7 @@ class Company extends Model
         'order_prefix',
         'active',
         'plan',
+        'pending_plan',
         'status',
         'asaas_customer_id',
         'asaas_subscription_id',
@@ -41,6 +42,7 @@ class Company extends Model
         'active'            => 'boolean',
         'chat_highlights'   => 'array',
         'plan'              => Plan::class,
+        'pending_plan'      => Plan::class,
         'status'            => 'string',
         'setup_fee_paid_at' => 'datetime',
     ];

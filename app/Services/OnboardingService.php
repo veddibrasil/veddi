@@ -8,6 +8,7 @@ use App\Jobs\CreateAsaasSetupFee;
 use App\Models\Branch;
 use App\Models\Company;
 use App\Models\User;
+use App\Services\UserPermissionService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -71,6 +72,8 @@ class OnboardingService
                 'role'      => 'company_admin',
                 'branch_id' => null,
             ]);
+
+            UserPermissionService::assignRolePermissions($user, $company, 'company_admin');
 
             return $company;
         });

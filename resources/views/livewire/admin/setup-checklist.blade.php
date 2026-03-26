@@ -1,5 +1,4 @@
-@if(!$this->isComplete())
-<div class="bg-white border rounded-xl shadow-sm p-6 dark:bg-zinc-800 dark:border-zinc-700">
+<div @if($this->isComplete()) style="display:none" @endif class="bg-white border rounded-xl shadow-sm p-6 dark:bg-zinc-800 dark:border-zinc-700">
 
     {{-- Header --}}
     <div class="flex items-center justify-between mb-4">
@@ -59,4 +58,3 @@
         @endforeach
     </ul>
 </div>
-@endif

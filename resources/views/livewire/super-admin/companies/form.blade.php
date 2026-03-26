@@ -47,6 +47,60 @@
             </div>
         </div>
 
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-neutral-700 mb-1 dark:text-neutral-300">Plano</label>
+                <select wire:model.live="plan" class="w-full rounded-md border border-neutral-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-neutral-800 dark:text-neutral-100 px-3 py-2 text-sm">
+                    <option value="free">Grátis</option>
+                    <option value="essencial">Essencial</option>
+                    <option value="pro">PRO</option>
+                </select>
+                @error('plan') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            </div>
+            @if($isEditing)
+            <div>
+                <label class="block text-sm font-medium text-neutral-700 mb-1 dark:text-neutral-300">Status</label>
+                <select wire:model="status" class="w-full rounded-md border border-neutral-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-neutral-800 dark:text-neutral-100 px-3 py-2 text-sm">
+                    <option value="ACTIVE">Ativo</option>
+                    <option value="PENDING_PAYMENT">Aguardando pagamento</option>
+                    <option value="BLOCKED">Bloqueado</option>
+                </select>
+                @error('status') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            </div>
+            @endif
+        </div>
+
+        @if($isEditing && $plan !== $originalPlan)
+        <div class="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 px-4 py-3 space-y-2">
+            <p class="text-sm font-medium text-amber-800 dark:text-amber-300">
+                Alteração de plano detectada:
+                <span class="font-semibold">{{ ucfirst($originalPlan) }}</span> →
+                <span class="font-semibold">{{ ucfirst($plan) }}</span>
+            </p>
+
+            @if($plan === 'free')
+                <p class="text-xs text-amber-700 dark:text-amber-400">
+                    A assinatura Asaas será cancelada e a empresa ficará <strong>Ativa</strong> sem cobrança mensal.
+                </p>
+            @else
+                <div class="space-y-1">
+                    <p class="text-xs text-amber-700 dark:text-amber-400">
+                        Sem bypass: a assinatura Asaas antiga será cancelada e uma nova será criada. A empresa ficará <strong>Aguardando pagamento</strong> até a confirmação.
+                    </p>
+                    <label class="flex items-center gap-2 cursor-pointer mt-2">
+                        <input type="checkbox" wire:model.live="bypassPayment" class="rounded border-neutral-300 dark:border-zinc-600">
+                        <span class="text-sm font-medium text-amber-800 dark:text-amber-300">Forçar ativação imediata (sem aguardar pagamento)</span>
+                    </label>
+                    @if($bypassPayment)
+                    <p class="text-xs text-amber-600 dark:text-amber-500 pl-6">
+                        Nenhuma assinatura Asaas será criada. A empresa será ativada diretamente no plano {{ ucfirst($plan) }}.
+                    </p>
+                    @endif
+                </div>
+            @endif
+        </div>
+        @endif
+
         <div>
             <x-image-upload
                 model="logo"
@@ -82,15 +136,28 @@
 
     {{-- Pagamento --}}
     <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
-        <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Pagamento (AbacatePay)</h2>
+        <div>
+            <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Pagamento (AbacatePay)</h2>
+            <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                Configure as credenciais do AbacatePay para habilitar pagamentos via PIX e cartão. Ambas as chaves são encontradas no painel da conta AbacatePay da empresa.
+            </p>
+        </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
                 <flux:input wire:model="abacatepay_token" label="Token da API" type="password" placeholder="••••••••" />
                 @error('abacatepay_token') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                    Em: <strong>app.abacatepay.com → Configurações → API Keys</strong>
+                </p>
             </div>
             <div>
                 <flux:input wire:model="abacatepay_webhook_secret" label="Webhook Secret" type="password" placeholder="••••••••" />
                 @error('abacatepay_webhook_secret') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                    Cadastre o webhook em <strong>app.abacatepay.com → Webhooks</strong> com a URL
+                    <code class="bg-zinc-100 dark:bg-zinc-700 px-1 rounded text-xs">https://[domínio]/webhooks/abacatepay</code>
+                    e copie o segredo gerado.
+                </p>
             </div>
         </div>
     </div>

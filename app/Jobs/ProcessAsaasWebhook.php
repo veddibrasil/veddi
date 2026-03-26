@@ -47,7 +47,7 @@ class ProcessAsaasWebhook implements ShouldQueue
 
         match ($this->event) {
             'PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED' => $this->handlePaymentConfirmed($company, $companyService),
-            'PAYMENT_OVERDUE'                        => $companyService->block($company),
+            'PAYMENT_OVERDUE'                        => $this->handlePaymentOverdue($company, $companyService),
             default => Log::channel('webhook')->debug('Asaas webhook: evento ignorado', [
                 'event'      => $this->event,
                 'company_id' => $company->id,
@@ -96,8 +96,33 @@ class ProcessAsaasWebhook implements ShouldQueue
             return;
         }
 
-        // Recurring subscription payment — keep company active
+        // Recurring subscription payment — apply pending plan change if any, then activate
+        if ($company->pending_plan !== null) {
+            $company->update([
+                'plan'         => $company->pending_plan->value,
+                'pending_plan' => null,
+            ]);
+        }
+
         $companyService->activate($company);
+    }
+
+    private function handlePaymentOverdue(Company $company, CompanyService $companyService): void
+    {
+        // If there's a pending plan change, the overdue is for the new plan's subscription.
+        // Cancel the pending change and keep the company on the current plan.
+        if ($company->pending_plan !== null) {
+            $company->update(['pending_plan' => null]);
+
+            Log::channel('payments')->warning('Pagamento da troca de plano não confirmado — empresa mantida no plano atual', [
+                'company_id'   => $company->id,
+                'current_plan' => $company->plan->value,
+            ]);
+
+            return;
+        }
+
+        $companyService->block($company);
     }
 
     public function failed(\Throwable $exception): void
