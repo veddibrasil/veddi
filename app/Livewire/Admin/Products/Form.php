@@ -101,7 +101,7 @@ class Form extends Component
 
         $imagePath = $this->isEditing ? $this->product->image_path : null;
         if ($this->image) {
-            $stored = $this->image->storePublicly('products', 's3');
+            $stored = $this->image->store('products', 's3');
             if ($stored === false) {
                 $this->addError('image', 'Falha ao fazer upload da imagem. Verifique a configuração do storage.');
                 return;

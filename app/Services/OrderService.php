@@ -58,7 +58,7 @@ class OrderService
             }
         }
 
-        return DB::transaction(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon) {
+        return DB::transaction(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany) {
             $subtotal = 0.0;
             foreach ($cart as $productId => $item) {
                 $subtotal += (float) $products[$productId]->price * $item['qty'];

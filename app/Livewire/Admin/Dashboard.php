@@ -77,6 +77,6 @@ class Dashboard extends Component
             'todayOrders', 'todayRevenue', 'pendingOrders', 'totalOrders',
             'canViewOrders', 'canViewBranches', 'canViewProducts', 'canSettings',
             'monthlyOrderCount', 'monthlyOrderLimit'
-        ))->layout('layouts.app', ['title' => 'Dashboard Admin']);
+        ) + ['currentCompany' => $company])->layout('layouts.app', ['title' => 'Dashboard Admin']);
     }
 }

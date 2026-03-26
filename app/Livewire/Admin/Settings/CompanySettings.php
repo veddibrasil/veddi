@@ -103,7 +103,8 @@ class CompanySettings extends Component
 
     public function render()
     {
-        return view('livewire.admin.settings.company-settings')
-            ->layout('layouts.app', ['title' => 'Configurações da Empresa']);
+        return view('livewire.admin.settings.company-settings', [
+            'currentCompany' => app('current.company'),
+        ])->layout('layouts.app', ['title' => 'Configurações da Empresa']);
     }
 }

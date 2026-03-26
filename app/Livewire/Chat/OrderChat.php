@@ -1345,7 +1345,9 @@ class OrderChat extends Component
 
     public function render()
     {
-        return view('livewire.chat.order-chat')
+        $currentCompany = app()->bound('current.company') ? app('current.company') : null;
+
+        return view('livewire.chat.order-chat', compact('currentCompany'))
             ->layout('layouts.chat');
     }
 }
