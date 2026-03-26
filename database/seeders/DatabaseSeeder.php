@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Company;
 use App\Models\User;
+use App\Services\UserPermissionService;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
@@ -64,5 +65,8 @@ class DatabaseSeeder extends Seeder
             ProductCategorySeeder::class,
             ProductSeeder::class,
         ]);
+
+        // Atribui permissões explícitas ao gerente padrão (após PermissionSeeder criar os papéis)
+        UserPermissionService::assignRolePermissions($companyAdmin, $company, 'company_admin');
     }
 }
