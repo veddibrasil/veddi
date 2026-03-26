@@ -44,4 +44,14 @@ return [
         'token' => env('MAPBOX_TOKEN'),
     ],
 
+    'asaas' => [
+        'api_key'           => env('ASAAS_API_KEY'),
+        'sandbox'           => env('ASAAS_SANDBOX', true),
+        'webhook_token'     => env('ASAAS_WEBHOOK_TOKEN'),
+        'pro_monthly_value' => env('ASAAS_PRO_MONTHLY_VALUE', 49.90),
+        'base_url'          => env('ASAAS_SANDBOX', true)
+            ? 'https://sandbox.asaas.com/api/v3'
+            : 'https://api.asaas.com/v3',
+    ],
+
 ];

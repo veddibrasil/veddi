@@ -3,11 +3,12 @@
 namespace App\Services;
 
 use App\Exceptions\InsufficientStockException;
+use App\Exceptions\OrderLimitExceededException;
 use App\Models\Coupon;
 use App\Models\Order;
-use App\Services\CouponService;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Services\CouponService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -31,6 +32,14 @@ class OrderService
         float $deliveryFee = 0.0,
         ?Coupon $coupon = null,
     ): Order {
+        $currentCompany = app()->bound('current.company') ? app('current.company') : null;
+
+        if ($currentCompany && ! $currentCompany->isWithinOrderLimit()) {
+            throw new OrderLimitExceededException(
+                'Limite de 50 pedidos mensais atingido. Faça upgrade para o plano Essencial ou PRO.'
+            );
+        }
+
         $productIds = array_keys($cart);
 
         $products = Product::withoutGlobalScopes()
@@ -65,13 +74,27 @@ class OrderService
                 }
             }
 
+            $total = max(0, $subtotal + $deliveryFee - $discount);
+
+            // Calculate platform fee based on company plan (fee applies only to products, not shipping)
+            $fee      = 0.0;
+            $netValue = $total;
+            if ($currentCompany) {
+                $feeBase  = max(0.0, $subtotal - $discount);
+                $fees     = app(FeeCalculator::class)->calculate($currentCompany, $feeBase, $total);
+                $fee      = $fees['fee'];
+                $netValue = $fees['net_value'];
+            }
+
             $order = Order::create([
                 'customer_id'    => $customerId,
                 'branch_id'      => $branchId,
                 'subtotal'       => $subtotal,
                 'delivery_fee'   => $deliveryFee,
                 'discount'       => $discount,
-                'total'          => max(0, $subtotal + $deliveryFee - $discount),
+                'total'          => $total,
+                'fee'            => $fee,
+                'net_value'      => $netValue,
                 'status'         => $status,
                 'notes'          => $notes,
                 'payment_method' => strtolower($paymentMethod),
@@ -121,6 +144,8 @@ class OrderService
                 'delivery_fee'   => $order->delivery_fee,
                 'discount'       => $order->discount,
                 'total'          => $order->total,
+                'fee'            => $order->fee,
+                'net_value'      => $order->net_value,
                 'payment_method' => $paymentMethod,
                 'order_type'     => $orderType,
                 'coupon_code'    => $coupon?->code,

@@ -1,5 +1,8 @@
 <div class="space-y-6">
 
+    {{-- ══════════════ CHECKLIST DE CONFIGURAÇÃO INICIAL ══════════════ --}}
+    <livewire:admin.setup-checklist />
+
     {{-- ══════════════ CARD BOAS-VINDAS / EXPLICAÇÃO DO SISTEMA ══════════════ --}}
     <div class="rounded-2xl overflow-hidden shadow-sm border border-purple-100 dark:border-purple-900/30">
         {{-- Header com gradiente da empresa --}}

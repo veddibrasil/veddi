@@ -14,7 +14,12 @@ class Order extends Model
 
     protected $fillable = [
         'company_id', 'order_number', 'customer_id', 'branch_id', 'subtotal', 'delivery_fee', 'total',
-        'status', 'notes', 'payment_method', 'order_type', 'coupon_id', 'discount',
+        'status', 'notes', 'payment_method', 'order_type', 'coupon_id', 'discount', 'fee', 'net_value',
+        'fee_billed_at',
+    ];
+
+    protected $casts = [
+        'fee_billed_at' => 'datetime',
     ];
 
     protected static function booted(): void

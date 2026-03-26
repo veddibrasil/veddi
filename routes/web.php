@@ -1,9 +1,21 @@
 <?php
 
 use App\Helpers\Validation;
+use App\Http\Controllers\AsaasWebhookController;
+use App\Http\Controllers\RegisterCompanyController;
 use App\Http\Controllers\WebhookController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+
+// --- Onboarding público ---
+Route::get('/cadastro', [RegisterCompanyController::class, 'create'])->name('register.create');
+Route::post('/cadastro', [RegisterCompanyController::class, 'store'])->middleware('throttle:5,1')->name('register.store');
+Route::get('/cadastro/pendente', fn () => view('register.pending'))->name('register.pending');
+
+// --- Webhook Asaas (sem auth, sem CSRF — coberto por webhooks/* em bootstrap/app.php) ---
+Route::post('/webhooks/asaas', AsaasWebhookController::class)
+    ->middleware('throttle:60,1')
+    ->name('webhook.asaas');
 
 // --- API pública ---
 Route::post('/api/validate-cpf', function (Request $request) {
@@ -25,7 +37,7 @@ Route::match(['get', 'post'], '/webhooks/abacatepay', [WebhookController::class,
 Route::get('/payment/complete', fn () => view('payment.complete'))->name('payment.complete');
 
 // --- Painel Administrativo da Empresa ---
-Route::middleware(['auth', 'verified'])
+Route::middleware(['auth', 'verified', 'company.active'])
     ->prefix('admin')
     ->name('admin.')
     ->group(function () {
@@ -56,6 +68,7 @@ Route::middleware(['auth', 'verified'])
             Route::get('/branches/{branch}/delivery', \App\Livewire\Admin\Branches\DeliverySettings::class)->name('branches.delivery');
 
             Route::get('/settings', \App\Livewire\Admin\Settings\CompanySettings::class)->name('settings');
+            Route::get('/billing', \App\Livewire\Admin\Settings\BillingSettings::class)->name('billing');
 
             Route::get('/coupons', \App\Livewire\Admin\Coupons\Index::class)->name('coupons.index');
 

@@ -23,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'identify.company' => \App\Http\Middleware\IdentifyCompany::class,
             'company.role'     => \App\Http\Middleware\CheckCompanyRole::class,
             'super.admin'      => \App\Http\Middleware\RequireSuperAdmin::class,
+            'company.active'   => \App\Http\Middleware\EnsureCompanyIsActive::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

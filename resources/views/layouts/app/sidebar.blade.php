@@ -119,6 +119,9 @@
                             <flux:sidebar.item icon="cog-6-tooth" :href="route('admin.settings')" :current="request()->routeIs('admin.settings')" wire:navigate>
                                 Empresa
                             </flux:sidebar.item>
+                            <flux:sidebar.item icon="credit-card" :href="route('admin.billing')" :current="request()->routeIs('admin.billing')" wire:navigate>
+                                Assinatura
+                            </flux:sidebar.item>
                         </flux:sidebar.group>
                     @endif
                 @endif
