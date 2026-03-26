@@ -5,6 +5,7 @@ namespace App\Livewire\SuperAdmin\Users;
 use App\Models\Company;
 use App\Models\Scopes\CompanyScope;
 use App\Models\User;
+use App\Services\UserPermissionService;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -38,6 +39,8 @@ class Index extends Component
         ]);
 
         $user = User::findOrFail($this->editUserId);
+        $company = Company::withoutGlobalScope(CompanyScope::class)->findOrFail($this->assignCompanyId);
+
         $user->companies()->syncWithoutDetaching([
             $this->assignCompanyId => [
                 'role'      => $this->assignRole,
@@ -46,6 +49,8 @@ class Index extends Component
                     : null,
             ],
         ]);
+
+        UserPermissionService::assignRolePermissions($user, $company, $this->assignRole);
 
         $this->showModal = false;
         session()->flash('status', 'Usuário vinculado à empresa.');

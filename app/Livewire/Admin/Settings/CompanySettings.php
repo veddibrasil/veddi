@@ -13,12 +13,12 @@ class CompanySettings extends Component
     public string $slug                  = '';
     public string $tagline               = '';
     public string $footer_text           = '';
-    public string $primary_color         = '#B91C1C';
-    public string $primary_color_dark    = '#7F1D1D';
-    public string $primary_color_light   = '#DC2626';
-    public string $secondary_color       = '#B45309';
+    public string $primary_color         = '#5c347f';
+    public string $primary_color_dark    = '#19273c';
+    public string $primary_color_light   = '#5c347f';
+    public string $secondary_color       = '#e36831';
     public string $secondary_color_light = '#D97706';
-    public string $accent_color          = '#FEF3C7';
+    public string $accent_color          = '#cad1d8';
     public string $order_prefix          = 'ORD';
     public string $abacatepay_token      = '';
 
