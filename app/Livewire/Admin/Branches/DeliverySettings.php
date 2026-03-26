@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Admin\Branches;
 
+use App\Enums\Plan;
 use App\Models\Branch;
 use App\Models\DeliverySetting;
 use Illuminate\Support\Facades\Cache;
@@ -54,6 +55,18 @@ class DeliverySettings extends Component
 
     public function mount(Branch $branch): void
     {
+        // Controle de frete é exclusivo do plano PRO
+        if (app()->bound('current.company')) {
+            $company = app('current.company');
+            if (! $company->isSuperAdmin ?? true) {
+                if (! auth()->user()?->isSuperAdmin() && $company->plan !== Plan::Pro) {
+                    session()->flash('error', 'O controle de frete é exclusivo do Plano PRO. Faça upgrade para acessar este recurso.');
+                    $this->redirectRoute('admin.billing');
+                    return;
+                }
+            }
+        }
+
         $this->branch = $branch;
 
         $settings = $branch->deliverySetting;

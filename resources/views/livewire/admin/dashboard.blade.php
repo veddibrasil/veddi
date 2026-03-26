@@ -3,6 +3,62 @@
     {{-- ══════════════ CHECKLIST DE CONFIGURAÇÃO INICIAL ══════════════ --}}
     <livewire:admin.setup-checklist />
 
+    {{-- ══════════════ BANNER DE USO MENSAL (somente plano FREE) ══════════════ --}}
+    @if($monthlyOrderLimit !== null)
+        @php
+            $used       = $monthlyOrderCount ?? 0;
+            $limit      = $monthlyOrderLimit;
+            $remaining  = max(0, $limit - $used);
+            $percentage = $limit > 0 ? min(100, round($used / $limit * 100)) : 0;
+            $isNearLimit = $percentage >= 80;
+            $isAtLimit   = $used >= $limit;
+        @endphp
+        <div class="rounded-xl border p-4 flex flex-col sm:flex-row sm:items-center gap-4
+            {{ $isAtLimit ? 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-700/50'
+             : ($isNearLimit ? 'bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-700/50'
+             : 'bg-white border-neutral-200 dark:bg-zinc-800 dark:border-zinc-700') }}">
+
+            <div class="flex-1 space-y-2">
+                <div class="flex items-center justify-between">
+                    <p class="text-sm font-semibold {{ $isAtLimit ? 'text-red-700 dark:text-red-400' : ($isNearLimit ? 'text-amber-700 dark:text-amber-400' : 'text-neutral-700 dark:text-neutral-200') }}">
+                        @if($isAtLimit)
+                            🚫 Limite de pedidos atingido este mês
+                        @elseif($isNearLimit)
+                            ⚠️ Você está próximo do limite mensal
+                        @else
+                            📊 Pedidos este mês — Plano Grátis
+                        @endif
+                    </p>
+                    <span class="text-sm font-bold {{ $isAtLimit ? 'text-red-700 dark:text-red-400' : 'text-neutral-700 dark:text-neutral-200' }}">
+                        {{ $used }}/{{ $limit }}
+                    </span>
+                </div>
+
+                <div class="h-2 w-full rounded-full bg-neutral-200 dark:bg-zinc-700 overflow-hidden">
+                    <div class="h-full rounded-full transition-all duration-500
+                        {{ $isAtLimit ? 'bg-red-500' : ($isNearLimit ? 'bg-amber-500' : 'bg-[#7A00A3]') }}"
+                        style="width: {{ $percentage }}%">
+                    </div>
+                </div>
+
+                <p class="text-xs text-neutral-500 dark:text-neutral-400">
+                    @if($isAtLimit)
+                        Novos pedidos estão bloqueados. Faça upgrade ou aguarde o próximo mês.
+                    @else
+                        {{ $remaining }} pedido{{ $remaining !== 1 ? 's' : '' }} restante{{ $remaining !== 1 ? 's' : '' }} este mês.
+                    @endif
+                </p>
+            </div>
+
+            <a href="{{ route('admin.billing') }}"
+               class="shrink-0 inline-flex items-center gap-1.5 text-xs font-bold text-white px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
+               style="background: #7A00A3;"
+               onmouseover="this.style.background='#5c0079'" onmouseout="this.style.background='#7A00A3'">
+                🚀 Fazer upgrade
+            </a>
+        </div>
+    @endif
+
     {{-- ══════════════ CARD BOAS-VINDAS / EXPLICAÇÃO DO SISTEMA ══════════════ --}}
     <div class="rounded-2xl overflow-hidden shadow-sm border border-purple-100 dark:border-purple-900/30">
         {{-- Header com gradiente da empresa --}}

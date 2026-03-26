@@ -61,9 +61,22 @@ class Dashboard extends Component
             );
         }
 
+        // FREE plan: monthly order usage for limit indicator
+        $monthlyOrderCount = null;
+        $monthlyOrderLimit = null;
+        if ($company && ! $isSuperAdmin && $company->isFree()) {
+            $monthlyOrderLimit = $company->plan?->maxOrdersPerMonth();
+            $monthlyOrderCount = $company->orders()
+                ->whereMonth('created_at', now()->month)
+                ->whereYear('created_at', now()->year)
+                ->whereNotIn('status', ['cancelled'])
+                ->count();
+        }
+
         return view('livewire.admin.dashboard', compact(
             'todayOrders', 'todayRevenue', 'pendingOrders', 'totalOrders',
-            'canViewOrders', 'canViewBranches', 'canViewProducts', 'canSettings'
+            'canViewOrders', 'canViewBranches', 'canViewProducts', 'canSettings',
+            'monthlyOrderCount', 'monthlyOrderLimit'
         ))->layout('layouts.app', ['title' => 'Dashboard Admin']);
     }
 }

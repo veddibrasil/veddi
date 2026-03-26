@@ -23,16 +23,8 @@ class RegisterCompanyController extends Controller
             OnboardingDTO::fromArray($request->validated())
         );
 
-        if ($company->isPendingPayment()) {
-            return redirect()->route('register.pending')
-                ->with('info', 'Sua conta foi criada. Aguardando confirmação do pagamento via Asaas.');
-        }
-
-        // FREE plan: log the user in immediately
-        $user = $company->users()->wherePivot('role', 'company_admin')->first();
-        auth()->login($user);
-
-        return redirect()->route('admin.dashboard')
-            ->with('success', 'Bem-vindo(a)! Sua conta está ativa.');
+        // All plans start as PENDING_PAYMENT (setup fee required)
+        return redirect()->route('register.pending')
+            ->with('info', 'Sua conta foi criada. Aguardando confirmação do pagamento da taxa de ativação.');
     }
 }

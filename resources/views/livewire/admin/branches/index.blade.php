@@ -2,12 +2,45 @@
     x-data="{}"
     x-init="$watch(() => $wire.deletingId, val => val ? $flux.modal('confirm-delete-branch').show() : $flux.modal('confirm-delete-branch').close())">
     <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100">Filiais</h1>
+        <div>
+            <h1 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100">Filiais</h1>
+            @if(!$isSuperAdmin && $branchLimit > 0)
+                <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">
+                    {{ $branchCount }}/{{ $branchLimit }} filiai{{ $branchLimit > 1 ? 's' : '' }} do plano
+                </p>
+            @endif
+        </div>
+
         @if($canCreate)
-        <a href="{{ route('admin.branches.create') }}"
-            class="inline-flex items-center gap-1 bg-amber-500 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-amber-600 transition-colors">
-            + Nova filial
-        </a>
+            @if($canCreateMoreBranches)
+                <a href="{{ route('admin.branches.create') }}"
+                    class="inline-flex items-center gap-1 bg-amber-500 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-amber-600 transition-colors">
+                    + Nova filial
+                </a>
+            @else
+                <div class="relative group">
+                    <span class="inline-flex items-center gap-1.5 bg-neutral-100 text-neutral-400 text-sm font-medium px-4 py-2 rounded-lg cursor-not-allowed dark:bg-zinc-700 dark:text-zinc-500">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+                        </svg>
+                        + Nova filial
+                    </span>
+                    <div class="pointer-events-none absolute right-0 top-full mt-1.5 z-10 w-56 rounded-xl bg-neutral-900 dark:bg-zinc-700 px-3 py-2.5 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                        <p class="text-xs text-white font-semibold">Limite de filiais atingido</p>
+                        <p class="text-xs text-neutral-300 mt-0.5">
+                            Seu plano permite {{ $branchLimit }} filial(ais).
+                            @if($branchLimit < 3)
+                                Faça upgrade para o <span class="text-amber-400 font-bold">PRO</span> e tenha até 3.
+                            @endif
+                        </p>
+                        @if($branchLimit < 3)
+                            <a href="{{ route('admin.billing') }}" class="mt-2 inline-block text-xs font-bold text-amber-400 hover:text-amber-300 underline underline-offset-2">
+                                Ver planos →
+                            </a>
+                        @endif
+                    </div>
+                </div>
+            @endif
         @endif
     </div>
 
@@ -56,13 +89,28 @@
 
                         {{-- Entrega --}}
                         <div class="relative group">
-                            <a href="{{ route('admin.branches.delivery', $branch) }}"
-                                class="inline-flex items-center justify-center p-1.5 rounded text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20 transition-colors">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0zM1 1h4l2.68 13.39a2 2 0 001.97 1.61h9.72a2 2 0 001.97-1.61L23 6H6" />
-                                </svg>
-                            </a>
-                            <span class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded bg-neutral-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 dark:bg-zinc-600">Entrega</span>
+                            @if($deliveryEnabled)
+                                <a href="{{ route('admin.branches.delivery', $branch) }}"
+                                    class="inline-flex items-center justify-center p-1.5 rounded text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20 transition-colors">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0zM1 1h4l2.68 13.39a2 2 0 001.97 1.61h9.72a2 2 0 001.97-1.61L23 6H6" />
+                                    </svg>
+                                </a>
+                                <span class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded bg-neutral-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 dark:bg-zinc-600">Entrega</span>
+                            @else
+                                <span class="inline-flex items-center justify-center p-1.5 rounded text-neutral-300 cursor-not-allowed dark:text-zinc-600">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0zM1 1h4l2.68 13.39a2 2 0 001.97 1.61h9.72a2 2 0 001.97-1.61L23 6H6" />
+                                    </svg>
+                                </span>
+                                <div class="pointer-events-none absolute bottom-full right-0 mb-1.5 z-10 w-44 rounded-xl bg-neutral-900 dark:bg-zinc-700 px-3 py-2.5 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <p class="text-xs text-white font-semibold flex items-center gap-1">
+                                        <svg class="w-3.5 h-3.5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>
+                                        Somente Plano PRO
+                                    </p>
+                                    <a href="{{ route('admin.billing') }}" class="mt-1.5 inline-block text-xs text-amber-400 hover:text-amber-300 underline underline-offset-2">Fazer upgrade →</a>
+                                </div>
+                            @endif
                         </div>
                         @endif
 
