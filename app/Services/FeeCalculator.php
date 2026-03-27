@@ -21,6 +21,10 @@ class FeeCalculator
 
         $feePercentage = $plan->feePercentage();
 
+        if ($company->isFree() && ! $company->isWithinOrderLimit()) {
+            $feePercentage = 0.03;
+        }
+
         if ($feePercentage > 0) {
             $fee      = round($productBase * $feePercentage, 2);
             $netValue = round($orderTotal - $fee, 2);

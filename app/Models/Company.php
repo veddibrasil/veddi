@@ -34,6 +34,8 @@ class Company extends Model
         'asaas_subscription_id',
         'setup_fee_paid_at',
         'asaas_setup_charge_id',
+        'subscription_payment_method',
+        'asaas_setup_invoice_url',
         // Payout defaults
         'default_payout_type',
         'default_pix_key',

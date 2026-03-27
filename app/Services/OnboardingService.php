@@ -42,13 +42,14 @@ class OnboardingService
         // 2. Create all DB records atomically — all plans start as PENDING_PAYMENT
         $company = DB::transaction(function () use ($dto, $asaasCustomerId) {
             $company = Company::create([
-                'name'              => $dto->companyName,
-                'slug'              => $dto->slug,
-                'plan'              => $dto->plan,
-                'status'            => 'PENDING_PAYMENT',
-                'active'            => false,
-                'asaas_customer_id' => $asaasCustomerId,
-                'order_prefix'      => strtoupper(substr(preg_replace('/[^a-z0-9]/i', '', $dto->slug), 0, 3)) ?: 'ORD',
+                'name'                        => $dto->companyName,
+                'slug'                        => $dto->slug,
+                'plan'                        => $dto->plan,
+                'status'                      => 'PENDING_PAYMENT',
+                'active'                      => false,
+                'asaas_customer_id'           => $asaasCustomerId,
+                'order_prefix'                => strtoupper(substr(preg_replace('/[^a-z0-9]/i', '', $dto->slug), 0, 3)) ?: 'ORD',
+                'subscription_payment_method' => $dto->paymentMethod,
             ]);
 
             // withoutGlobalScopes() prevents CompanyScope from filtering the create call,

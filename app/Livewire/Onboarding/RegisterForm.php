@@ -38,6 +38,7 @@ class RegisterForm extends Component
 
     // Step 4: Plan
     public string  $plan                = 'free';
+    public string  $paymentMethod       = 'PIX';
     public string  $asaasCpfCnpj        = '';
     public bool    $asaasCpfCnpjValid   = false;
     public ?string $asaasCpfCnpjError   = null;
@@ -228,8 +229,9 @@ class RegisterForm extends Component
                 'userPassword' => ['required', 'min:8'],
             ],
             4 => [
-                'plan'         => ['required', 'in:' . implode(',', Plan::values())],
-                'asaasCpfCnpj' => ['required', 'string', function (string $attr, mixed $value, \Closure $fail) {
+                'plan'          => ['required', 'in:' . implode(',', Plan::values())],
+                'paymentMethod' => ['required', 'in:PIX,BOLETO,CREDIT_CARD'],
+                'asaasCpfCnpj'  => ['required', 'string', function (string $attr, mixed $value, \Closure $fail) {
                     $digits = preg_replace('/\D/', '', $value);
                     if (strlen($digits) === 11 && ! Validation::isValidCpf($digits)) {
                         $fail('CPF inválido.');
@@ -266,10 +268,12 @@ class RegisterForm extends Component
                 'userPassword.min'      => 'A senha deve ter no mínimo 8 caracteres.',
             ],
             4 => [
-                'plan.required'         => 'Selecione um plano.',
-                'plan.in'               => 'Selecione um plano válido.',
-                'asaasCpfCnpj.required' => 'CPF ou CNPJ é obrigatório para a conta de pagamento.',
-                'asaasCpfCnpj.min'      => 'Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.',
+                'plan.required'          => 'Selecione um plano.',
+                'plan.in'                => 'Selecione um plano válido.',
+                'paymentMethod.required' => 'Selecione uma forma de pagamento.',
+                'paymentMethod.in'       => 'Forma de pagamento inválida.',
+                'asaasCpfCnpj.required'  => 'CPF ou CNPJ é obrigatório para a conta de pagamento.',
+                'asaasCpfCnpj.min'       => 'Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.',
             ],
             default => [],
         };
@@ -301,20 +305,22 @@ class RegisterForm extends Component
 
         try {
             $dto = new OnboardingDTO(
-                companyName:  $this->companyName,
-                slug:         $this->slug,
-                plan:         $this->plan,
-                asaasCpfCnpj: $this->asaasCpfCnpj,
-                branchName:   $this->branchName,
-                branchPhone:  $this->branchPhone,
-                userName:     $this->userName,
-                userEmail:    $this->userEmail,
-                userPassword: $this->userPassword,
+                companyName:   $this->companyName,
+                slug:          $this->slug,
+                plan:          $this->plan,
+                asaasCpfCnpj:  $this->asaasCpfCnpj,
+                branchName:    $this->branchName,
+                branchPhone:   $this->branchPhone,
+                userName:      $this->userName,
+                userEmail:     $this->userEmail,
+                userPassword:  $this->userPassword,
+                paymentMethod: $this->paymentMethod,
             );
 
             app(OnboardingService::class)->handle($dto);
 
             // All plans start as PENDING_PAYMENT (setup fee required)
+            session()->flash('payment_method', $this->paymentMethod);
             $this->redirectRoute('register.pending');
         } catch (\Throwable $e) {
             $this->submitting   = false;

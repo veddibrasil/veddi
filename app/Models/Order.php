@@ -72,6 +72,7 @@ class Order extends Model
             'ready'            => 'Pronto',
             'delivered'        => 'Entregue',
             'cancelled'        => 'Cancelado',
+            'refunded'         => 'Reembolsado',
             default            => $this->status,
         };
     }

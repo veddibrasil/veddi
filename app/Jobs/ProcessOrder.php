@@ -56,13 +56,15 @@ class ProcessOrder implements ShouldQueue
                     'phone'   => $this->customer->phone ?? null,
                 ]);
 
-                $companyName = $this->company?->name ?? config('app.name');
+                $companyName   = $this->company?->name ?? config('app.name');
+                $feePercentage = $this->company?->plan?->feePercentage() ?? 0.0;
 
                 $charge = $asaas->createOrderCharge(
                     $asaasCustomerId,
                     (float) $this->order->total,
                     "Pedido #{$this->order->order_number} - {$companyName}",
                     (string) $this->order->id,
+                    $feePercentage,
                 );
 
                 // Asaas does not return pixTransaction in the charge creation response;

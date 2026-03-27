@@ -7,6 +7,8 @@ use App\Http\Controllers\RegisterCompanyController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
+Route::get('/', function(){ return redirect('https://veddi.com.br');});
+
 // --- Onboarding público ---
 Route::get('/cadastro', [RegisterCompanyController::class, 'create'])->name('register.create');
 Route::post('/cadastro', [RegisterCompanyController::class, 'store'])->middleware('throttle:5,1')->name('register.store');

@@ -1,4 +1,8 @@
 <x-layouts::auth :title="'Aguardando pagamento'">
+    @php
+        $paymentMethod = session('payment_method', 'PIX');
+    @endphp
+
     <div class="flex flex-col items-center gap-6 text-center w-full max-w-md">
 
         <div class="flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/20">
@@ -10,7 +14,7 @@
         <div>
             <h1 class="text-2xl font-bold text-zinc-900 dark:text-white">Conta criada!</h1>
             <p class="mt-2 text-zinc-500 dark:text-zinc-400">
-                Sua conta está aguardando a confirmação do pagamento do Plano PRO.
+                Sua conta está aguardando a confirmação do pagamento da taxa de ativação.
             </p>
         </div>
 
@@ -23,14 +27,38 @@
         <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 p-6 text-left w-full space-y-3">
             <h2 class="font-semibold text-zinc-800 dark:text-zinc-200">Próximos passos</h2>
             <ul class="space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
-                <li class="flex items-start gap-2">
-                    <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 text-xs">1</span>
-                    Você receberá um link de pagamento PIX via e-mail do Asaas.
-                </li>
-                <li class="flex items-start gap-2">
-                    <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 text-xs">2</span>
-                    Após o pagamento ser confirmado, sua conta será ativada automaticamente.
-                </li>
+
+                @if($paymentMethod === 'BOLETO')
+                    <li class="flex items-start gap-2">
+                        <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 text-xs">1</span>
+                        Você receberá o boleto bancário por e-mail em instantes. O prazo de compensação é de até 3 dias úteis.
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 text-xs">2</span>
+                        Após a compensação, sua conta será ativada automaticamente.
+                    </li>
+
+                @elseif($paymentMethod === 'CREDIT_CARD')
+                    <li class="flex items-start gap-2">
+                        <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 text-xs">1</span>
+                        Você receberá um link seguro por e-mail para inserir os dados do seu cartão de crédito.
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 text-xs">2</span>
+                        Após a confirmação do pagamento, sua conta será ativada automaticamente.
+                    </li>
+
+                @else {{-- PIX --}}
+                    <li class="flex items-start gap-2">
+                        <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 text-xs">1</span>
+                        Você receberá um link de pagamento PIX via e-mail em instantes.
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 text-xs">2</span>
+                        Após o pagamento ser confirmado, sua conta será ativada automaticamente.
+                    </li>
+                @endif
+
                 <li class="flex items-start gap-2">
                     <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 text-xs">3</span>
                     Você receberá um e-mail de boas-vindas com o link de acesso.

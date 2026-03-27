@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Exceptions\InsufficientStockException;
-use App\Exceptions\OrderLimitExceededException;
+use App\Models\CompanyNotification;
 use App\Models\Coupon;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -34,12 +34,6 @@ class OrderService
     ): Order {
         $currentCompany = app()->bound('current.company') ? app('current.company') : null;
 
-        if ($currentCompany && ! $currentCompany->isWithinOrderLimit()) {
-            throw new OrderLimitExceededException(
-                'Limite de 50 pedidos mensais atingido. Faça upgrade para o plano Essencial ou PRO.'
-            );
-        }
-
         $productIds = array_keys($cart);
 
         $products = Product::withoutGlobalScopes()
@@ -58,7 +52,7 @@ class OrderService
             }
         }
 
-        return DB::transaction(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany) {
+        $order = DB::transaction(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany) {
             $subtotal = 0.0;
             foreach ($cart as $productId => $item) {
                 $subtotal += (float) $products[$productId]->price * $item['qty'];
@@ -153,6 +147,17 @@ class OrderService
 
             return $order;
         });
+
+        if ($currentCompany && $currentCompany->isFree() && ! $currentCompany->isWithinOrderLimit()) {
+            CompanyNotification::create([
+                'company_id' => $currentCompany->id,
+                'type'       => 'plan_limit',
+                'title'      => 'Limite de pedidos do plano gratuito ultrapassado',
+                'subtitle'   => 'Você ultrapassou 50 pedidos este mês. A taxa da plataforma foi ajustada de 1% para 3%. Considere fazer upgrade para o plano Essencial ou PRO.',
+            ]);
+        }
+
+        return $order;
     }
 
     /**

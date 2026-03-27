@@ -2,7 +2,10 @@
 
 namespace App\Jobs;
 
+use App\Events\OrderStatusUpdated;
 use App\Models\Order;
+use App\Services\AsaasService;
+use App\Services\WalletService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -33,17 +36,40 @@ class RefundPayment implements ShouldQueue
         }
 
         if (str_starts_with((string) $payment->asaas_payment_id, 'sim_')) {
-            Log::channel('payments')->info('Reembolso ignorado: pagamento simulado (ambiente de desenvolvimento)', [
-                'order_id'          => $this->order->id,
-                'asaas_payment_id'  => $payment->asaas_payment_id,
+            Log::channel('payments')->info('Reembolso simulado (ambiente de desenvolvimento)', [
+                'order_id'         => $this->order->id,
+                'asaas_payment_id' => $payment->asaas_payment_id,
+            ]);
+
+            $payment->update(['status' => 'refunded']);
+            $this->order->update(['status' => 'refunded']);
+            OrderStatusUpdated::dispatch($this->order);
+
+            return;
+        }
+
+        $result = app(AsaasService::class)->refundPayment($payment->asaas_payment_id);
+
+        $refundStatuses = ['REFUND_REQUESTED', 'REFUNDED', 'REFUND_IN_PROGRESS'];
+
+        if (! in_array($result['status'] ?? '', $refundStatuses)) {
+            Log::channel('payments')->error('Resposta inesperada do Asaas ao reembolsar', [
+                'order_id'         => $this->order->id,
+                'asaas_payment_id' => $payment->asaas_payment_id,
+                'result'           => $result,
             ]);
 
             return;
         }
 
         $payment->update(['status' => 'refunded']);
+        $this->order->update(['status' => 'refunded']);
 
-        Log::channel('payments')->info('Pagamento marcado como reembolsado', [
+        app(WalletService::class)->debitForRefund($this->order, $payment);
+
+        OrderStatusUpdated::dispatch($this->order);
+
+        Log::channel('payments')->info('Reembolso processado com sucesso', [
             'order_id'         => $this->order->id,
             'asaas_payment_id' => $payment->asaas_payment_id,
         ]);

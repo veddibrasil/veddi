@@ -14,6 +14,7 @@ readonly class OnboardingDTO
         public string $userName,
         public string $userEmail,
         public string $userPassword,
+        public string $paymentMethod = 'PIX',
     ) {}
 
     public static function fromArray(array $data): self
@@ -27,7 +28,8 @@ readonly class OnboardingDTO
             branchPhone:  $data['branch_phone'],
             userName:     $data['user_name'],
             userEmail:    $data['user_email'],
-            userPassword: $data['user_password'],
+            userPassword:  $data['user_password'],
+            paymentMethod: $data['payment_method'] ?? 'PIX',
         );
     }
 }

@@ -22,21 +22,26 @@ class CreateAsaasSetupFee implements ShouldQueue
         $plan        = $this->company->plan;
         $setupFee    = $plan?->setupFee() ?? 99.00;
         $description = "Taxa de ativação — {$plan?->label()} — {$this->company->name}";
+        $billingType = $this->company->subscription_payment_method ?? 'PIX';
 
         $charge = $asaasService->createCharge(
             $this->company->asaas_customer_id,
             $setupFee,
             $description,
+            $billingType,
         );
 
         $this->company->update([
-            'asaas_setup_charge_id' => $charge['id'],
+            'asaas_setup_charge_id'   => $charge['id'],
+            'asaas_setup_invoice_url' => $charge['invoiceUrl'] ?? null,
         ]);
 
         Log::channel('payments')->info('Taxa de ativação criada no Asaas', [
-            'company_id' => $this->company->id,
-            'charge_id'  => $charge['id'],
-            'amount'     => $setupFee,
+            'company_id'   => $this->company->id,
+            'charge_id'    => $charge['id'],
+            'amount'       => $setupFee,
+            'billing_type' => $billingType,
+            'invoice_url'  => $charge['invoiceUrl'] ?? null,
         ]);
     }
 

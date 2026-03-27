@@ -159,7 +159,7 @@
 
                 @if ($msg['from'] === 'bot')
                     {{-- Bot avatar (logo do sistema) --}}
-                    <div class="w-7 h-7 rounded-full shrink-0 mr-1.5 mt-0.5 overflow-hidden border border-white/20 shadow-sm" style="background: var(--mc-red)">
+                    <div class="w-7 h-7 rounded-full shrink-0 mr-1.5 mt-0.5 overflow-hidden border border-white/20 shadow-sm">
                         <img src="{{ asset('logo_branca.png') }}" alt="{{ config('app.name') }}" class="w-full h-full object-cover p-0.5">
                     </div>
                 @endif
@@ -175,7 +175,7 @@
 
         @if ($isLoading)
             <div class="flex justify-start">
-                <div class="w-7 h-7 rounded-full shrink-0 mr-1.5 mt-0.5 overflow-hidden border border-white/20 shadow-sm" style="background: var(--mc-red)">
+                <div class="w-7 h-7 rounded-full shrink-0 mr-1.5 mt-0.5 overflow-hidden border border-white/20 shadow-sm">
                     <img src="{{ asset('logo_branca.png') }}" alt="{{ config('app.name') }}" class="w-full h-full object-cover p-0.5">
                 </div>
                 <div class="mc-bubble-bot px-4 py-3">
@@ -1176,6 +1176,13 @@
                 </div>
 
                 {{-- Confirmação de cancelamento --}}
+                @php
+                    $currentOrder = $orderId ? \App\Models\Order::find($orderId) : null;
+                    $canCancel = $currentOrder && in_array($currentOrder->status, ['awaiting_payment', 'paid', 'preparing']);
+                    $canRefund = $currentOrder && in_array($currentOrder->status, ['paid', 'preparing']) && $currentOrder->payment_method !== 'CASH';
+                @endphp
+
+                {{-- Confirmação de cancelamento --}}
                 @if ($showCancelConfirm)
                     <div class="bg-red-50 border border-red-200 rounded-xl p-3 text-left space-y-2">
                         <p class="text-sm font-semibold text-red-700">Tem certeza que deseja cancelar o pedido?</p>
@@ -1189,14 +1196,29 @@
                             </button>
                         </div>
                     </div>
+                @elseif ($showRefundConfirm)
+                    {{-- Confirmação de reembolso --}}
+                    <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-left space-y-2">
+                        <p class="text-sm font-semibold text-amber-700">Solicitar reembolso deste pedido?</p>
+                        <p class="text-xs text-amber-600">O valor será devolvido ao seu método de pagamento original. Essa ação não pode ser desfeita.</p>
+                        <div class="flex gap-2">
+                            <button wire:click="confirmRefund" wire:loading.attr="disabled" class="flex-1 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold py-2 rounded-lg transition-colors">
+                                Sim, reembolsar
+                            </button>
+                            <button wire:click="dismissRefund" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-semibold py-2 rounded-lg transition-colors">
+                                Não
+                            </button>
+                        </div>
+                    </div>
                 @else
-                    @php
-                        $currentOrder = $orderId ? \App\Models\Order::find($orderId) : null;
-                        $canCancel = $currentOrder && in_array($currentOrder->status, ['awaiting_payment', 'paid', 'preparing']);
-                    @endphp
                     @if ($canCancel)
                         <button wire:click="requestCancelOrder" class="w-full border border-red-300 text-red-600 hover:bg-red-50 text-sm font-medium py-2 rounded-lg transition-colors">
                             Cancelar pedido
+                        </button>
+                    @endif
+                    @if ($canRefund)
+                        <button wire:click="requestRefund" class="w-full border border-amber-300 text-amber-700 hover:bg-amber-50 text-sm font-medium py-2 rounded-lg transition-colors">
+                            Solicitar reembolso
                         </button>
                     @endif
                 @endif

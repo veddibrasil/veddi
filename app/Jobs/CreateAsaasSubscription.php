@@ -27,11 +27,13 @@ class CreateAsaasSubscription implements ShouldQueue
             return;
         }
 
-        $plan = $this->company->pending_plan ?? $this->company->plan;
+        $plan        = $this->company->pending_plan ?? $this->company->plan;
+        $billingType = $this->company->subscription_payment_method ?? 'PIX';
 
         $result = $asaasService->createSubscription(
             $this->company->asaas_customer_id,
             $plan,
+            $billingType,
         );
 
         $this->company->update(['asaas_subscription_id' => $result['id']]);

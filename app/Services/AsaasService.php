@@ -57,21 +57,22 @@ class AsaasService
      *
      * @return array{id: string, status: string, nextDueDate: string, value: float}
      */
-    public function createSubscription(string $customerId, Plan $plan): array
+    public function createSubscription(string $customerId, Plan $plan, string $billingType = 'PIX'): array
     {
         $amount = $plan->monthlyPrice();
 
         Log::channel('payments')->info('Criando assinatura no Asaas', [
-            'customer_id' => $customerId,
-            'plan'        => $plan->value,
-            'amount'      => $amount,
+            'customer_id'  => $customerId,
+            'plan'         => $plan->value,
+            'amount'       => $amount,
+            'billing_type' => $billingType,
         ]);
 
         $response = Http::withHeaders(['access_token' => $this->apiKey])
             ->timeout(15)
             ->post("{$this->baseUrl}/subscriptions", [
                 'customer'    => $customerId,
-                'billingType' => 'PIX',
+                'billingType' => $billingType,
                 'value'       => $amount,
                 'nextDueDate' => now()->addDay()->toDateString(),
                 'cycle'       => 'MONTHLY',
@@ -161,19 +162,20 @@ class AsaasService
      *
      * @return array Asaas payment object
      */
-    public function createCharge(string $customerId, float $amount, string $description): array
+    public function createCharge(string $customerId, float $amount, string $description, string $billingType = 'PIX'): array
     {
         Log::channel('payments')->info('Criando cobrança avulsa no Asaas', [
-            'customer_id' => $customerId,
-            'amount'      => $amount,
-            'description' => $description,
+            'customer_id'  => $customerId,
+            'amount'       => $amount,
+            'description'  => $description,
+            'billing_type' => $billingType,
         ]);
 
         $response = Http::withHeaders(['access_token' => $this->apiKey])
             ->timeout(15)
             ->post("{$this->baseUrl}/payments", [
                 'customer'    => $customerId,
-                'billingType' => 'PIX',
+                'billingType' => $billingType,
                 'value'       => $amount,
                 'dueDate'     => now()->addDays(3)->toDateString(),
                 'description' => $description,
@@ -307,24 +309,38 @@ class AsaasService
         string $customerId,
         float $amount,
         string $description,
-        string $externalReference
+        string $externalReference,
+        float $feePercentage = 0.0
     ): array {
         Log::channel('payments')->info('Criando cobrança de pedido no Asaas', [
             'customer_id'        => $customerId,
             'amount'             => $amount,
             'external_reference' => $externalReference,
+            'fee_percentage'     => $feePercentage,
         ]);
+
+        $payload = [
+            'customer'          => $customerId,
+            'billingType'       => 'PIX',
+            'value'             => $amount,
+            'dueDate'           => now()->addMinutes(30)->toDateString(),
+            'description'       => $description,
+            'externalReference' => $externalReference,
+        ];
+
+        $veddiWalletId = config('services.asaas.veddi_wallet_id');
+        if ($feePercentage > 0 && $veddiWalletId) {
+            $payload['split'] = [
+                [
+                    'walletId'        => $veddiWalletId,
+                    'percentualValue' => round($feePercentage * 100, 4),
+                ],
+            ];
+        }
 
         $response = Http::withHeaders(['access_token' => $this->apiKey])
             ->timeout(15)
-            ->post("{$this->baseUrl}/payments", [
-                'customer'          => $customerId,
-                'billingType'       => 'PIX',
-                'value'             => $amount,
-                'dueDate'           => now()->addMinutes(30)->toDateString(),
-                'description'       => $description,
-                'externalReference' => $externalReference,
-            ]);
+            ->post("{$this->baseUrl}/payments", $payload);
 
         if ($response->failed()) {
             Log::channel('payments')->error('Erro ao criar cobrança de pedido no Asaas', [
@@ -415,6 +431,45 @@ class AsaasService
         ]);
 
         return $transfer;
+    }
+
+    /**
+     * Request a refund for a payment in Asaas.
+     * For PIX: funds are returned to the customer's PIX key.
+     * For credit card: the charge is reversed.
+     *
+     * @return array Asaas payment object with updated status
+     */
+    public function refundPayment(string $asaasPaymentId, ?float $value = null): array
+    {
+        Log::channel('payments')->info('Solicitando reembolso no Asaas', [
+            'asaas_payment_id' => $asaasPaymentId,
+            'value'            => $value,
+        ]);
+
+        $body = $value !== null ? ['value' => $value] : [];
+
+        $response = Http::withHeaders(['access_token' => $this->apiKey])
+            ->timeout(15)
+            ->post("{$this->baseUrl}/payments/{$asaasPaymentId}/refund", $body);
+
+        if ($response->failed()) {
+            Log::channel('payments')->error('Erro ao solicitar reembolso no Asaas', [
+                'asaas_payment_id' => $asaasPaymentId,
+                'status'           => $response->status(),
+                'body'             => $response->body(),
+            ]);
+            throw new RuntimeException('Asaas refund error: ' . $response->body(), $response->status());
+        }
+
+        $data = $response->json();
+
+        Log::channel('payments')->info('Reembolso solicitado no Asaas', [
+            'asaas_payment_id' => $asaasPaymentId,
+            'result_status'    => $data['status'] ?? null,
+        ]);
+
+        return $data;
     }
 
     /**

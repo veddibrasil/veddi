@@ -248,7 +248,7 @@
         <div class="flex flex-col gap-6">
 
             {{-- Plan cards --}}
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
                 {{-- FREE --}}
                 <label class="relative flex flex-col cursor-pointer rounded-2xl border-2 p-5 transition-all duration-200 select-none
@@ -413,6 +413,56 @@
                     </p>
                 @endif
                 @error('asaasCpfCnpj')
+                    <p class="mt-1.5 text-xs text-red-600">{{ $message }}</p>
+                @enderror
+            </div>
+
+            {{-- Payment Method --}}
+            <div>
+                <p class="mb-3 text-sm font-semibold text-zinc-700">Forma de pagamento</p>
+                <div class="flex flex-cols-3 gap-3">
+
+                    {{-- PIX --}}
+                    <label class="relative flex flex-col items-center gap-2 cursor-pointer rounded-xl border-2 p-4 text-center transition-all duration-200 select-none
+                        {{ $paymentMethod === 'PIX'
+                            ? 'border-[#7A00A3] bg-purple-50 shadow-sm shadow-purple-100'
+                            : 'border-zinc-200 bg-white hover:border-zinc-300' }}">
+                        <input type="radio" wire:model.live="paymentMethod" value="PIX" class="sr-only" />
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 {{ $paymentMethod === 'PIX' ? 'text-[#7A00A3]' : 'text-zinc-400' }}" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" />
+                        </svg>
+                        <span class="text-xs font-semibold {{ $paymentMethod === 'PIX' ? 'text-[#5c0079]' : 'text-zinc-600' }}">PIX</span>
+                        <span class="text-[10px] text-zinc-400">Instantâneo</span>
+                    </label>
+
+                    {{-- Boleto --}}
+                    <label class="relative flex flex-col items-center gap-2 cursor-pointer rounded-xl border-2 p-4 text-center transition-all duration-200 select-none
+                        {{ $paymentMethod === 'BOLETO'
+                            ? 'border-[#7A00A3] bg-purple-50 shadow-sm shadow-purple-100'
+                            : 'border-zinc-200 bg-white hover:border-zinc-300' }}">
+                        <input type="radio" wire:model.live="paymentMethod" value="BOLETO" class="sr-only" />
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 {{ $paymentMethod === 'BOLETO' ? 'text-[#7A00A3]' : 'text-zinc-400' }}" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25H12" />
+                        </svg>
+                        <span class="text-xs font-semibold {{ $paymentMethod === 'BOLETO' ? 'text-[#5c0079]' : 'text-zinc-600' }}">Boleto</span>
+                        <span class="text-[10px] text-zinc-400">Até 3 dias</span>
+                    </label>
+
+                    {{-- Cartão --}}
+                    <label class="relative flex flex-col items-center gap-2 cursor-pointer rounded-xl border-2 p-4 text-center transition-all duration-200 select-none
+                        {{ $paymentMethod === 'CREDIT_CARD'
+                            ? 'border-[#7A00A3] bg-purple-50 shadow-sm shadow-purple-100'
+                            : 'border-zinc-200 bg-white hover:border-zinc-300' }}">
+                        <input type="radio" wire:model.live="paymentMethod" value="CREDIT_CARD" class="sr-only" />
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 {{ $paymentMethod === 'CREDIT_CARD' ? 'text-[#7A00A3]' : 'text-zinc-400' }}" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z" />
+                        </svg>
+                        <span class="text-xs font-semibold {{ $paymentMethod === 'CREDIT_CARD' ? 'text-[#5c0079]' : 'text-zinc-600' }}">Cartão</span>
+                        <span class="text-[10px] text-zinc-400">Link seguro</span>
+                    </label>
+
+                </div>
+                @error('paymentMethod')
                     <p class="mt-1.5 text-xs text-red-600">{{ $message }}</p>
                 @enderror
             </div>
