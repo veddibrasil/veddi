@@ -20,7 +20,8 @@ class CompanySettings extends Component
     public string $secondary_color_light = '#D97706';
     public string $accent_color          = '#cad1d8';
     public string $order_prefix          = 'ORD';
-    public string $abacatepay_token      = '';
+
+    public bool $isFree = false;
 
     public array $chat_highlights = [];
 
@@ -41,8 +42,8 @@ class CompanySettings extends Component
             'secondary_color', 'secondary_color_light', 'accent_color',
             'order_prefix'
         ));
-        $this->abacatepay_token = $company->abacatepay_token ?? '';
         $this->chat_highlights  = $company->chat_highlights ?? self::DEFAULT_HIGHLIGHTS;
+        $this->isFree           = $company->isFree();
     }
 
     protected function rules(): array
@@ -60,7 +61,6 @@ class CompanySettings extends Component
             'secondary_color_light' => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'accent_color'          => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'order_prefix'          => ['required', 'string', 'max:10', 'regex:/^[A-Z0-9]+$/'],
-            'abacatepay_token'              => ['nullable', 'string', 'max:500'],
             'logo'                         => ['nullable', 'image', 'max:2048'],
             'chat_highlights'              => ['array', 'max:6'],
             'chat_highlights.*.icon'       => ['required', 'string', 'max:10'],
@@ -74,9 +74,12 @@ class CompanySettings extends Component
         $validated = $this->validate($this->rules());
         $company   = app('current.company');
 
-        $data = collect($validated)->except(['logo', 'abacatepay_token', 'chat_highlights'])->toArray();
-        $data['chat_highlights'] = $this->chat_highlights ?: null;
-        $data['abacatepay_token'] = $this->abacatepay_token ?: null;
+        if ($company->isFree()) {
+            $data = collect($validated)->only(['name', 'slug', 'tagline', 'footer_text', 'order_prefix'])->toArray();
+        } else {
+            $data = collect($validated)->except(['logo', 'chat_highlights'])->toArray();
+            $data['chat_highlights'] = $this->chat_highlights ?: null;
+        }
 
         if ($this->logo) {
             $data['logo_path'] = $this->logo->storeAs('logos', "company_{$company->id}." . $this->logo->getClientOriginalExtension(), 's3');

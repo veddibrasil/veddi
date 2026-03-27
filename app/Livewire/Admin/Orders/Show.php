@@ -119,7 +119,7 @@ class Show extends Component
 
         Log::channel('payments')->info('Reembolso manual marcado pelo admin', [
             'order_id'   => $this->order->id,
-            'billing_id' => $payment->abacatepay_billing_id,
+            'asaas_payment_id' => $payment->asaas_payment_id,
         ]);
 
         session()->flash('status', 'Pagamento marcado como reembolsado.');

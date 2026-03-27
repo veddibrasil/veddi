@@ -122,6 +122,9 @@
                             <flux:sidebar.item icon="credit-card" :href="route('admin.billing')" :current="request()->routeIs('admin.billing')" wire:navigate>
                                 Assinatura
                             </flux:sidebar.item>
+                            <flux:sidebar.item icon="banknotes" :href="route('admin.wallet')" :current="request()->routeIs('admin.wallet')" wire:navigate>
+                                Carteira
+                            </flux:sidebar.item>
                         </flux:sidebar.group>
                     @endif
                 @endif

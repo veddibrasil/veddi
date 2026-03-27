@@ -12,7 +12,6 @@ use App\Policies\CompanyPolicy;
 use App\Policies\OrderPolicy;
 use App\Policies\ProductCategoryPolicy;
 use App\Policies\ProductPolicy;
-use App\Services\AbacatePayService;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Auth\Notifications\VerifyEmail;
@@ -30,7 +29,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->singleton(AbacatePayService::class);
         $this->app->singleton(
             \Illuminate\Contracts\Debug\ExceptionHandler::class,
             \App\Exceptions\Handler::class,

@@ -2,8 +2,12 @@
 
 namespace App\Jobs;
 
+use App\Events\OrderStatusUpdated;
 use App\Models\Company;
+use App\Models\Order;
+use App\Models\Payment;
 use App\Services\CompanyService;
+use App\Services\WalletService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -22,7 +26,17 @@ class ProcessAsaasWebhook implements ShouldQueue
 
     public function handle(CompanyService $companyService): void
     {
-        // Asaas sends the customer ID in different paths depending on the event type
+        // Check if this is an order payment first (has externalReference = order_id)
+        $externalRef = $this->payload['payment']['externalReference'] ?? null;
+
+        if ($externalRef && is_numeric($externalRef)) {
+            if (in_array($this->event, ['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED'])) {
+                $this->handleOrderPayment((int) $externalRef);
+            }
+            return;
+        }
+
+        // Otherwise, handle company billing (subscription / setup fee)
         $customerId = $this->payload['payment']['customer']
             ?? $this->payload['subscription']['customer']
             ?? null;
@@ -53,6 +67,58 @@ class ProcessAsaasWebhook implements ShouldQueue
                 'company_id' => $company->id,
             ]),
         };
+    }
+
+    private function handleOrderPayment(int $orderId): void
+    {
+        $asaasPaymentId = $this->payload['payment']['id'] ?? null;
+
+        $order = Order::find($orderId);
+
+        if (! $order) {
+            Log::channel('webhook')->warning('Asaas webhook: pedido não encontrado', [
+                'event'    => $this->event,
+                'order_id' => $orderId,
+            ]);
+            return;
+        }
+
+        $payment = Payment::where('asaas_payment_id', $asaasPaymentId)->first();
+
+        if (! $payment) {
+            Log::channel('webhook')->warning('Asaas webhook: payment não encontrado para pedido', [
+                'event'           => $this->event,
+                'asaas_payment_id' => $asaasPaymentId,
+                'order_id'        => $orderId,
+            ]);
+            return;
+        }
+
+        if ($payment->status === 'paid') {
+            Log::channel('webhook')->info('Asaas webhook: pagamento de pedido já confirmado (duplicado ignorado)', [
+                'order_id'         => $orderId,
+                'asaas_payment_id' => $asaasPaymentId,
+            ]);
+            return;
+        }
+
+        $payment->update([
+            'status'          => 'paid',
+            'paid_at'         => now(),
+            'webhook_payload' => $this->payload,
+        ]);
+
+        $order->update(['status' => 'paid']);
+
+        Log::channel('payments')->info('Pagamento de pedido confirmado via Asaas', [
+            'order_id'         => $orderId,
+            'asaas_payment_id' => $asaasPaymentId,
+            'amount'           => $payment->amount,
+        ]);
+
+        app(WalletService::class)->creditForOrder($order, $payment);
+
+        OrderStatusUpdated::dispatch($order->fresh());
     }
 
     private function handlePaymentConfirmed(Company $company, CompanyService $companyService): void

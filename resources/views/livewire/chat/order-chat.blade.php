@@ -1039,95 +1039,7 @@
                                 </button>
                             </div>
                         </div>
-                    @elseif ($paymentUrl)
-                        {{-- Fallback: QR code não disponível (ex: modo dev), abrir checkout AbacatePay --}}
-                        <div
-                            x-data="{
-                                popup: null,
-                                opened: false,
-                                openCheckout() {
-                                    this.popup = window.open(
-                                        '{{ $paymentUrl }}',
-                                        'abacatepay_checkout',
-                                        'width=480,height=700,left=' + Math.round((screen.width - 480) / 2) + ',top=' + Math.round((screen.height - 700) / 2) + ',resizable=yes,scrollbars=yes'
-                                    );
-                                    if (this.popup) {
-                                        this.opened = true;
-                                        this.popup.focus();
-                                    }
-                                }
-                            }"
-                            class="rounded-xl border border-green-200 bg-green-50 p-4 space-y-3 text-center"
-                        >
-                            <div class="flex flex-col items-center gap-2">
-                                <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
-                                    <svg class="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v1m6.364 1.636l-.707.707M20 12h-1M17.657 17.657l-.707-.707M12 19v1M6.343 17.657l-.707-.707M4 12H3M6.343 6.343l-.707-.707" />
-                                    </svg>
-                                </div>
-                                <p class="text-sm font-semibold text-gray-700">Pague via PIX</p>
-                                <p class="text-[11px] text-gray-400">Clique no botão abaixo para abrir a página de pagamento PIX.</p>
-                            </div>
-                            <button
-                                x-on:click="openCheckout()"
-                                class="w-full py-2.5 rounded-xl text-sm font-bold text-white bg-green-600 hover:bg-green-700 transition-colors"
-                            >
-                                <span x-show="!opened">Pagar com PIX</span>
-                                <span x-show="opened">Aguardando pagamento…</span>
-                            </button>
-                        </div>
                     @endif
-                @elseif ($paymentUrl)
-                    {{-- Cartão: abre checkout AbacatePay em popup --}}
-                    <div
-                        x-data="{
-                            popup: null,
-                            opened: false,
-                            openCheckout() {
-                                this.popup = window.open(
-                                    '{{ $paymentUrl }}',
-                                    'abacatepay_checkout',
-                                    'width=480,height=700,left=' + Math.round((screen.width - 480) / 2) + ',top=' + Math.round((screen.height - 700) / 2) + ',resizable=yes,scrollbars=yes'
-                                );
-                                if (this.popup) {
-                                    this.opened = true;
-                                    this.popup.focus();
-                                }
-                            }
-                        }"
-                        class="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3 text-center"
-                    >
-                        <div class="flex flex-col items-center gap-2">
-                            <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                                <svg class="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                                </svg>
-                            </div>
-                            <p class="text-sm font-semibold text-gray-700">Pague com cartão de crédito</p>
-                            <p class="text-[11px] text-gray-400">Clique no botão abaixo para abrir o formulário seguro de pagamento.</p>
-                        </div>
-
-                        <button
-                            x-on:click="openCheckout()"
-                            class="w-full px-4 py-2.5 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-                        >
-                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                            </svg>
-                            <span x-show="!opened">Abrir página de pagamento</span>
-                            <span x-show="opened">Reabrir página de pagamento</span>
-                        </button>
-
-                        {{-- Fallback: link direto caso popup seja bloqueado pelo browser --}}
-                        <a
-                            href="{{ $paymentUrl }}"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            class="block text-[11px] text-gray-400 hover:text-gray-600 underline"
-                        >
-                            Ou clique aqui para abrir em nova aba
-                        </a>
-                    </div>
                 @endif
 
                 {{-- Simular pagamento (apenas sandbox/debug) --}}
@@ -1153,6 +1065,94 @@
                 @endif
 
                 <p class="text-[11px] text-gray-400">Confirmação automática em até 5s após o pagamento.</p>
+            </div>
+
+        {{-- ── PAYMENT_CARD_FORM ── --}}
+        @elseif ($step === 'PAYMENT_CARD_FORM')
+            <div class="space-y-4 px-1 py-2">
+                <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">💳 Insira os dados do cartão:</p>
+
+                {{-- Número do cartão --}}
+                <div>
+                    <label class="block text-xs text-neutral-500 mb-1">Número do cartão</label>
+                    <input
+                        wire:model="cardNumber"
+                        placeholder="0000 0000 0000 0000"
+                        maxlength="19"
+                        inputmode="numeric"
+                        autocomplete="cc-number"
+                        x-data
+                        x-mask="9999 9999 9999 9999"
+                        class="w-full rounded-lg border @error('cardNumber') border-red-400 @else border-neutral-300 dark:border-neutral-600 @enderror bg-white dark:bg-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                    @error('cardNumber')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
+                </div>
+
+                {{-- Validade + CVV --}}
+                <div class="flex gap-3">
+                    <div class="flex-1">
+                        <label class="block text-xs text-neutral-500 mb-1">Validade</label>
+                        <input
+                            wire:model="cardExpiry"
+                            placeholder="MM/AA"
+                            x-data
+                            x-mask="99/99"
+                            maxlength="5"
+                            inputmode="numeric"
+                            autocomplete="cc-exp"
+                            class="w-full rounded-lg border @error('cardExpiry') border-red-400 @else border-neutral-300 dark:border-neutral-600 @enderror bg-white dark:bg-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                        @error('cardExpiry')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-xs text-neutral-500 mb-1">CVV</label>
+                        <input
+                            wire:model="cardCvv"
+                            placeholder="CVV"
+                            maxlength="4"
+                            inputmode="numeric"
+                            type="password"
+                            autocomplete="cc-csc"
+                            class="w-full rounded-lg border @error('cardCvv') border-red-400 @else border-neutral-300 dark:border-neutral-600 @enderror bg-white dark:bg-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                        @error('cardCvv')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
+                    </div>
+                </div>
+
+                {{-- Nome no cartão --}}
+                <div>
+                    <label class="block text-xs text-neutral-500 mb-1">Nome impresso no cartão</label>
+                    <input
+                        wire:model="cardHolderName"
+                        placeholder="NOME SOBRENOME"
+                        autocomplete="cc-name"
+                        style="text-transform:uppercase"
+                        class="w-full rounded-lg border @error('cardHolderName') border-red-400 @else border-neutral-300 dark:border-neutral-600 @enderror bg-white dark:bg-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                    @error('cardHolderName')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
+                </div>
+
+                {{-- Total à vista --}}
+                <p class="text-xs text-neutral-500">
+                    Total à vista: <span class="font-semibold text-neutral-700 dark:text-neutral-200">R$ {{ number_format($this->orderTotal, 2, ',', '.') }}</span>
+                </p>
+
+                {{-- Erro da API / recusa --}}
+                @if ($cardError)
+                    <div class="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-3 py-2">
+                        <p class="text-sm text-red-600 dark:text-red-400 font-medium">⚠ {{ $cardError }}</p>
+                    </div>
+                @endif
+
+                {{-- Botão submit --}}
+                <button
+                    wire:click="submitCardPayment"
+                    wire:loading.attr="disabled"
+                    class="w-full rounded-lg bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white font-semibold py-2.5 text-sm transition-colors"
+                >
+                    <span wire:loading.remove wire:target="submitCardPayment">Pagar com cartão</span>
+                    <span wire:loading wire:target="submitCardPayment">Processando...</span>
+                </button>
             </div>
 
         {{-- ── ORDER_CONFIRMED ── --}}

@@ -37,8 +37,6 @@ class Form extends Component
     public string $secondary_color_light = '#D97706';
     public string $accent_color          = '#cad1d8';
     public string $order_prefix             = 'ORD';
-    public string $abacatepay_token         = '';
-    public string $abacatepay_webhook_secret = '';
     public bool   $active                   = true;
     public string $plan                     = 'free';
     public string $status                   = 'ACTIVE';
@@ -70,8 +68,6 @@ class Form extends Component
             'secondary_color_light'    => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'accent_color'             => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'order_prefix'             => ['required', 'string', 'max:10', 'regex:/^[A-Z0-9]+$/', "unique:companies,order_prefix,{$ignoreId}"],
-            'abacatepay_token'         => ['nullable', 'string', 'max:500'],
-            'abacatepay_webhook_secret'=> ['nullable', 'string', 'max:500'],
             'active'                   => ['boolean'],
             'plan'                     => ['required', 'in:free,essencial,pro'],
             'status'                   => ['required', 'in:ACTIVE,PENDING_PAYMENT,BLOCKED'],
@@ -97,8 +93,6 @@ class Form extends Component
                 'secondary_color', 'secondary_color_light', 'accent_color',
                 'order_prefix', 'active'
             ));
-            $this->abacatepay_token          = $company->abacatepay_token ?? '';
-            $this->abacatepay_webhook_secret = $company->abacatepay_webhook_secret ?? '';
             $this->plan                      = $company->plan?->value ?? 'free';
             $this->originalPlan              = $this->plan;
             $this->status                    = $company->status ?? 'ACTIVE';
@@ -113,8 +107,6 @@ class Form extends Component
             ->except(['logo', 'manager_name', 'manager_email', 'manager_password', 'manager_password_confirmation'])
             ->toArray();
         $companyData['subdomain'] = $this->subdomain ?: null;
-        $companyData['abacatepay_token']          = $this->abacatepay_token ?: null;
-        $companyData['abacatepay_webhook_secret'] = $this->abacatepay_webhook_secret ?: null;
 
         if ($this->logo) {
             $companyData['logo_path'] = $this->logo->store('logos', 's3');

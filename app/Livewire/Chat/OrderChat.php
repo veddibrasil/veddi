@@ -19,7 +19,11 @@ use App\Services\ChatService;
 use App\Services\CouponService;
 use App\Services\DeliveryService;
 use App\Services\OrderService;
+use App\Events\OrderStatusUpdated;
+use App\Models\Payment;
+use App\Services\AsaasService;
 use App\Services\PaymentService;
+use App\Services\WalletService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -69,8 +73,14 @@ class OrderChat extends Component
     public ?string $pixQrCode    = null;
     public ?string $pixCopyPaste = null;
     public ?string $paymentId    = null;
-    public ?string $paymentUrl   = null;
     public ?string $expiresAt    = null;
+
+    // --- Card payment ---
+    public string  $cardNumber     = '';
+    public string  $cardExpiry     = '';
+    public string  $cardCvv        = '';
+    public string  $cardHolderName = '';
+    public ?string $cardError      = null;
 
     // --- Support chat (order-based) ---
     public string $supportMessage    = '';
@@ -752,10 +762,12 @@ class OrderChat extends Component
         if ($initialStatus === 'paid') {
             $this->addMessage('bot', $summary . "\n\nPagamento em dinheiro na entrega. Obrigado!");
             $this->transitionTo('ORDER_CONFIRMED');
+        } elseif ($this->paymentMethod === 'CARD') {
+            $this->addMessage('bot', $summary . "\n\nPreencha os dados do cartão para finalizar.");
+            $this->transitionTo('PAYMENT_CARD_FORM');
         } else {
             app(PaymentService::class)->dispatchPayment($order, $customer, $company, $this->paymentMethod);
-            $label = $this->paymentMethod === 'CARD' ? 'cobrança no cartão' : 'PIX';
-            $this->addMessage('bot', $summary . "\n\nGerando {$label}...");
+            $this->addMessage('bot', $summary . "\n\nGerando PIX...");
             $this->transitionTo('PAYMENT_PIX');
         }
 
@@ -1032,6 +1044,11 @@ class OrderChat extends Component
             return;
         }
 
+        // Credit card payments are synchronous — no polling needed
+        if ($this->step === 'PAYMENT_CARD_FORM') {
+            return;
+        }
+
         $phase        = $this->step === 'PAYMENT_PIX' ? 'pay' : 'delivery';
         $rateLimitKey = "status-check:{$phase}:{$this->orderId}";
         $maxAttempts  = $phase === 'pay' ? 30 : 10;
@@ -1048,7 +1065,7 @@ class OrderChat extends Component
 
         $status = $order->status;
 
-        if ($status === 'awaiting_payment' && ! $this->pixCopyPaste && ! $this->paymentUrl) {
+        if ($status === 'awaiting_payment' && ! $this->pixCopyPaste) {
             $payment = $order->payment;
             if ($payment) {
                 $sessionKey  = 'payment_token_' . $this->orderId;
@@ -1060,8 +1077,7 @@ class OrderChat extends Component
 
                 $this->pixQrCode    = $payment->pix_qr_code;
                 $this->pixCopyPaste = $payment->pix_copy_paste;
-                $this->paymentId    = $payment->abacatepay_billing_id;
-                $this->paymentUrl   = $payment->abacatepay_url;
+                $this->paymentId    = $payment->asaas_payment_id;
                 $this->expiresAt    = $payment->expires_at?->toIso8601String();
             }
         }
@@ -1101,6 +1117,11 @@ class OrderChat extends Component
 
     public function handlePaymentExpired(): void
     {
+        // Credit card payments are synchronous — no expiration needed
+        if ($this->paymentMethod === 'CARD') {
+            return;
+        }
+
         $order = Order::find($this->orderId);
         if (! $order) {
             return;
@@ -1108,7 +1129,6 @@ class OrderChat extends Component
 
         $this->pixQrCode    = null;
         $this->pixCopyPaste = null;
-        $this->paymentUrl   = null;
         $this->expiresAt    = null;
         $this->paymentId    = null;
 
@@ -1117,6 +1137,122 @@ class OrderChat extends Component
 
         app(PaymentService::class)->expireAndRenew($order, $customer, $company, $this->paymentMethod);
         $this->addMessage('bot', 'O tempo para pagamento expirou. Gerando nova cobrança...');
+    }
+
+    public function submitCardPayment(): void
+    {
+        $this->cardError = null;
+
+        $this->validate([
+            'cardNumber'     => ['required', 'min:14'],
+            'cardExpiry'     => ['required', 'regex:/^\d{2}\/\d{2}$/'],
+            'cardCvv'        => ['required', 'min:3', 'max:4'],
+            'cardHolderName' => ['required', 'min:3'],
+        ], [
+            'cardNumber.required'     => 'Informe o número do cartão.',
+            'cardNumber.min'          => 'Número do cartão inválido.',
+            'cardExpiry.required'     => 'Informe a validade.',
+            'cardExpiry.regex'        => 'Validade inválida. Use MM/AA.',
+            'cardCvv.required'        => 'Informe o CVV.',
+            'cardCvv.min'             => 'CVV inválido.',
+            'cardHolderName.required' => 'Informe o nome impresso no cartão.',
+            'cardHolderName.min'      => 'Nome inválido.',
+        ]);
+
+        $order    = Order::find($this->orderId);
+        $customer = Customer::findOrFail($this->customerId);
+        $company  = app()->bound('current.company') ? app('current.company') : null;
+
+        if (! $order) {
+            $this->cardError = 'Pedido não encontrado. Tente novamente.';
+            return;
+        }
+
+        // Parse expiry MM/YY → expiryMonth, expiryYear (4 digits)
+        [$expMonth, $expYear] = explode('/', $this->cardExpiry);
+        $expiryYear = strlen($expYear) === 2 ? '20' . $expYear : $expYear;
+
+        try {
+            $asaas = app(AsaasService::class);
+
+            $asaasCustomerId = $asaas->findOrCreateCustomer([
+                'name'    => $customer->name,
+                'email'   => $customer->email,
+                'cpfCnpj' => $customer->tax_id ?? '',
+                'phone'   => $customer->phone ?? null,
+            ]);
+
+            $charge = $asaas->createCreditCardCharge(
+                $asaasCustomerId,
+                (float) $order->total,
+                "Pedido #{$order->order_number}" . ($company ? " - {$company->name}" : ''),
+                (string) $order->id,
+                [
+                    'holderName'  => $this->cardHolderName,
+                    'number'      => $this->cardNumber,
+                    'expiryMonth' => $expMonth,
+                    'expiryYear'  => $expiryYear,
+                    'ccv'         => $this->cardCvv,
+                ],
+                [
+                    'name'          => $customer->name,
+                    'email'         => $customer->email ?? '',
+                    'cpfCnpj'       => $customer->tax_id ?? '',
+                    'postalCode'    => $customer->cep ?? '',
+                    'addressNumber' => 'S/N',
+                    'phone'         => $customer->phone ?? null,
+                ]
+            );
+
+            $status = $charge['status'] ?? null;
+
+            if ($status === 'CONFIRMED' || $status === 'RECEIVED') {
+                $newPayment = Payment::create([
+                    'order_id'         => $order->id,
+                    'asaas_payment_id' => $charge['id'],
+                    'payment_gateway'  => 'asaas',
+                    'amount'           => $order->total,
+                    'status'           => 'paid',
+                    'paid_at'          => now(),
+                    'payment_token'    => hash('sha256', $order->id . $customer->id . uniqid()),
+                ]);
+
+                $order->update(['status' => 'paid']);
+
+                app(WalletService::class)->creditForOrder($order->fresh(), $newPayment);
+
+                OrderStatusUpdated::dispatch($order->fresh());
+
+                $this->cardNumber     = '';
+                $this->cardExpiry     = '';
+                $this->cardCvv        = '';
+                $this->cardHolderName = '';
+
+                $this->addMessage('bot', '✅ Pagamento aprovado! Seu pedido está confirmado.');
+                $this->transitionTo('ORDER_CONFIRMED');
+            } else {
+                $declineReason = $charge['creditCard']['declineReason'] ?? $charge['declineReason'] ?? null;
+                $this->cardError = $this->friendlyDeclineMessage($declineReason);
+            }
+        } catch (\Throwable $e) {
+            Log::channel('payments')->error('Erro ao processar cartão no chat', [
+                'order_id' => $this->orderId,
+                'error'    => $e->getMessage(),
+            ]);
+            $this->cardError = 'Não foi possível processar o pagamento. Tente novamente.';
+        }
+    }
+
+    private function friendlyDeclineMessage(?string $reason): string
+    {
+        return match ($reason) {
+            'INSUFFICIENT_FUNDS'         => 'Saldo insuficiente no cartão.',
+            'EXPIRED_CARD'               => 'Cartão expirado. Verifique a validade.',
+            'INVALID_CARD', 'INVALID_NUMBER' => 'Dados do cartão inválidos.',
+            'SECURITY_VIOLATION', 'INVALID_CVV' => 'CVV inválido.',
+            'BLOCKED_CARD'               => 'Cartão bloqueado. Contate seu banco.',
+            default                      => 'Pagamento recusado. Verifique os dados ou tente outro cartão.',
+        };
     }
 
     public function simulatePayment(): void
@@ -1171,7 +1307,6 @@ class OrderChat extends Component
         $this->pixQrCode      = null;
         $this->pixCopyPaste   = null;
         $this->paymentId      = null;
-        $this->paymentUrl     = null;
         $this->expiresAt      = null;
         $this->submitting     = false;
         $this->notes          = '';
@@ -1304,7 +1439,6 @@ class OrderChat extends Component
             'pixQrCode'        => $this->pixQrCode,
             'pixCopyPaste'     => $this->pixCopyPaste,
             'paymentId'        => $this->paymentId,
-            'paymentUrl'       => $this->paymentUrl,
             'expiresAt'        => $this->expiresAt,
             'messages'             => $this->messages,
             'lastNotifiedStatus'   => $this->lastNotifiedStatus,

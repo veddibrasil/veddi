@@ -313,8 +313,8 @@
                         @endif
                     </div>
                     @if ($order->payment)
-                        <div class="text-neutral-500 dark:text-neutral-400">ID Abacate Pay</div>
-                        <div class="font-mono text-xs text-neutral-600 truncate dark:text-neutral-300">{{ $order->payment->abacatepay_billing_id }}</div>
+                        <div class="text-neutral-500 dark:text-neutral-400">ID Asaas</div>
+                        <div class="font-mono text-xs text-neutral-600 truncate dark:text-neutral-300">{{ $order->payment->asaas_payment_id }}</div>
                         <div class="text-neutral-500 dark:text-neutral-400">Status</div>
                         <div>
                             <span class="px-2 py-0.5 rounded-full text-xs

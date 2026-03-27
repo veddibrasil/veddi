@@ -73,10 +73,16 @@ class Dashboard extends Component
                 ->count();
         }
 
+        // Wallet balance
+        $walletBalance = null;
+        if ($company && ! $isSuperAdmin && $canSettings) {
+            $walletBalance = $company->walletBalance();
+        }
+
         return view('livewire.admin.dashboard', compact(
             'todayOrders', 'todayRevenue', 'pendingOrders', 'totalOrders',
             'canViewOrders', 'canViewBranches', 'canViewProducts', 'canSettings',
-            'monthlyOrderCount', 'monthlyOrderLimit'
+            'monthlyOrderCount', 'monthlyOrderLimit', 'walletBalance'
         ) + ['currentCompany' => $company])->layout('layouts.app', ['title' => 'Dashboard Admin']);
     }
 }

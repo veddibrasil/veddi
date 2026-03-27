@@ -8,7 +8,7 @@ use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Payment;
-use App\Services\AbacatePayService;
+use App\Services\AsaasService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -30,7 +30,7 @@ class ProcessOrder implements ShouldQueue
         public string $paymentMethod = 'pix',
     ) {}
 
-    public function handle(): void
+    public function handle(AsaasService $asaas): void
     {
         Log::channel('orders')->info('Processando pedido', [
             'order_id'       => $this->order->id,
@@ -41,56 +41,72 @@ class ProcessOrder implements ShouldQueue
         ]);
 
         try {
-            $hasToken = $this->company?->abacatepay_token || config('services.abacatepay.token');
+            $apiKey = config('services.asaas.api_key');
 
-            if ($hasToken) {
-                Log::channel('payments')->info('Criando cobrança AbacatePay', [
-                    'order_id'       => $this->order->id,
-                    'payment_method' => $this->paymentMethod,
-                    'amount'         => $this->order->total,
+            if ($apiKey) {
+                Log::channel('payments')->info('Criando cobrança Asaas para pedido', [
+                    'order_id' => $this->order->id,
+                    'amount'   => $this->order->total,
                 ]);
 
-                $billing = (new AbacatePayService($this->company))
-                    ->createBilling($this->order, $this->customer, $this->paymentMethod);
+                $asaasCustomerId = $asaas->findOrCreateCustomer([
+                    'name'    => $this->customer->name,
+                    'email'   => $this->customer->email,
+                    'cpfCnpj' => $this->customer->tax_id ?? '',
+                    'phone'   => $this->customer->phone ?? null,
+                ]);
+
+                $companyName = $this->company?->name ?? config('app.name');
+
+                $charge = $asaas->createOrderCharge(
+                    $asaasCustomerId,
+                    (float) $this->order->total,
+                    "Pedido #{$this->order->order_number} - {$companyName}",
+                    (string) $this->order->id,
+                );
+
+                // Asaas does not return pixTransaction in the charge creation response;
+                // fetch QR code via dedicated endpoint.
+                $pixQrCode = $asaas->getPaymentPixQrCode($charge['id']);
 
                 Payment::create([
-                    'order_id'              => $this->order->id,
-                    'abacatepay_billing_id' => $billing['id'],
-                    'abacatepay_url'        => $billing['url'],
-                    'pix_qr_code'           => $billing['pixQrCode'],
-                    'pix_copy_paste'        => $billing['pixCopyPaste'],
-                    'amount'                => $this->order->total,
-                    'status'                => 'pending',
-                    'expires_at'            => now()->addMinutes(30),
-                    'payment_token'         => hash('sha256', $this->order->id . $this->customer->id . Str::random(32)),
+                    'order_id'         => $this->order->id,
+                    'asaas_payment_id' => $charge['id'],
+                    'payment_gateway'  => 'asaas',
+                    'pix_qr_code'      => $pixQrCode['encodedImage'],
+                    'pix_copy_paste'   => $pixQrCode['payload'],
+                    'amount'           => $this->order->total,
+                    'status'           => 'pending',
+                    'expires_at'       => now()->addMinutes(30),
+                    'payment_token'    => hash('sha256', $this->order->id . $this->customer->id . Str::random(32)),
                 ]);
 
-                Log::channel('payments')->info('Cobrança AbacatePay criada', [
+                Log::channel('payments')->info('Cobrança Asaas criada para pedido', [
                     'order_id'   => $this->order->id,
-                    'billing_id' => $billing['id'],
+                    'payment_id' => $charge['id'],
                 ]);
             } else {
                 $companyName = $this->company?->name ?? config('app.name');
 
-                Log::channel('payments')->info('Criando cobrança simulada (sem token AbacatePay)', [
+                Log::channel('payments')->info('Criando cobrança simulada (sem configuração Asaas)', [
                     'order_id' => $this->order->id,
                     'amount'   => $this->order->total,
                 ]);
 
                 Payment::create([
-                    'order_id'              => $this->order->id,
-                    'abacatepay_billing_id' => 'sim_' . uniqid(),
-                    'abacatepay_url'        => '#',
-                    'pix_qr_code'           => null,
-                    'pix_copy_paste'        => '00020126580014br.gov.bcb.pix0136SIMULACAO-PAGAMENTO-DESENVOLVIMENTO52040000530398654'
-                        . number_format($this->order->total, 2, '', '')
+                    'order_id'        => $this->order->id,
+                    'asaas_payment_id' => 'sim_' . uniqid(),
+                    'payment_gateway' => 'asaas',
+                    'pix_qr_code'     => null,
+                    'pix_copy_paste'  => '00020126580014br.gov.bcb.pix0136SIMULACAO-PAGAMENTO-DESENVOLVIMENTO52040000530398654'
+                        . number_format((float) $this->order->total, 2, '', '')
                         . '5802BR5924'
                         . mb_substr(preg_replace('/[^A-Z0-9 ]/', '', strtoupper($companyName)), 0, 25)
                         . '6009SAO PAULO62070503***6304ABCD',
-                    'amount'                => $this->order->total,
-                    'status'                => 'pending',
-                    'expires_at'            => now()->addMinutes(30),
-                    'payment_token'         => hash('sha256', $this->order->id . $this->customer->id . Str::random(32)),
+                    'amount'          => $this->order->total,
+                    'status'          => 'pending',
+                    'expires_at'      => now()->addMinutes(30),
+                    'payment_token'   => hash('sha256', $this->order->id . $this->customer->id . Str::random(32)),
                 ]);
             }
 

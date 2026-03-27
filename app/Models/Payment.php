@@ -8,9 +8,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class Payment extends Model
 {
     protected $fillable = [
-        'order_id', 'abacatepay_billing_id', 'abacatepay_url',
-        'pix_qr_code', 'pix_copy_paste', 'amount', 'status', 'paid_at', 'webhook_payload',
-        'expires_at', 'payment_token',
+        'order_id',
+        'asaas_payment_id',
+        'payment_gateway',
+        'pix_qr_code',
+        'pix_copy_paste',
+        'amount',
+        'status',
+        'paid_at',
+        'webhook_payload',
+        'expires_at',
+        'payment_token',
     ];
 
     protected $casts = [

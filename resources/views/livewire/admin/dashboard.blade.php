@@ -78,6 +78,15 @@
                     @if(isset($currentCompany) && $currentCompany->tagline)
                         <p class="text-white/70 text-sm mt-0.5">{{ $currentCompany->tagline }}</p>
                     @endif
+                    @if(isset($currentCompany) && $currentCompany->plan)
+                        <span class="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full mt-1
+                            {{ $currentCompany->isPro() ? 'bg-amber-400/30 text-amber-200' :
+                               ($currentCompany->isEssencial() ? 'bg-purple-300/30 text-purple-100' :
+                               'bg-white/20 text-white/80') }}">
+                            {{ $currentCompany->isPro() ? '⭐' : ($currentCompany->isEssencial() ? '📦' : '🆓') }}
+                            Plano {{ $currentCompany->plan->label() }}
+                        </span>
+                    @endif
                 </div>
             </div>
         </div>
@@ -160,6 +169,45 @@
         <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm dark:bg-green-900/30 dark:border-green-700 dark:text-green-400">
             {{ session('status') }}
         </div>
+    @endif
+
+    @if(isset($currentCompany) && $currentCompany->plan && $canSettings)
+        <a href="{{ route('admin.billing') }}"
+           class="flex items-center justify-between bg-white border rounded-xl p-4 shadow-sm hover:border-purple-300 transition-colors dark:bg-zinc-800 dark:border-zinc-700 dark:hover:border-purple-700">
+            <div>
+                <p class="text-xs text-neutral-500 uppercase tracking-wide dark:text-neutral-400">Plano atual</p>
+                <p class="text-xl font-bold mt-1
+                    {{ $currentCompany->isPro() ? 'text-amber-600 dark:text-amber-400' :
+                       ($currentCompany->isEssencial() ? 'text-purple-700 dark:text-purple-400' :
+                       'text-neutral-600 dark:text-neutral-300') }}">
+                    {{ $currentCompany->plan->label() }}
+                </p>
+                @if(! $currentCompany->isPro())
+                    <p class="text-xs text-purple-600 dark:text-purple-400 mt-0.5">Ver planos →</p>
+                @endif
+            </div>
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0
+                {{ $currentCompany->isPro() ? 'bg-amber-100 dark:bg-amber-900/30' :
+                   ($currentCompany->isEssencial() ? 'bg-purple-100 dark:bg-purple-900/30' :
+                   'bg-neutral-100 dark:bg-zinc-700') }}">
+                {{ $currentCompany->isPro() ? '⭐' : ($currentCompany->isEssencial() ? '📦' : '🆓') }}
+            </div>
+        </a>
+    @endif
+
+    @if($walletBalance !== null)
+        <a href="{{ route('admin.wallet') }}"
+           class="flex items-center justify-between bg-white border rounded-xl p-4 shadow-sm hover:border-purple-300 transition-colors dark:bg-zinc-800 dark:border-zinc-700 dark:hover:border-purple-700">
+            <div>
+                <p class="text-xs text-neutral-500 uppercase tracking-wide dark:text-neutral-400">Saldo na carteira</p>
+                <p class="text-2xl font-bold mt-1 {{ $walletBalance < 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400' }}">
+                    R$ {{ number_format($walletBalance, 2, ',', '.') }}
+                </p>
+            </div>
+            <div class="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-xl shrink-0">
+                💰
+            </div>
+        </a>
     @endif
 
     @if($canViewOrders)

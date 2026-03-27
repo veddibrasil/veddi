@@ -35,11 +35,6 @@ return [
         ],
     ],
 
-    'abacatepay' => [
-        'token'          => env('ABACATEPAY_TOKEN'),
-        'webhook_secret' => env('ABACATEPAY_WEBHOOK_SECRET'),
-    ],
-
     'mapbox' => [
         'token' => env('MAPBOX_TOKEN'),
     ],

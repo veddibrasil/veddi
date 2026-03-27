@@ -134,34 +134,6 @@
         </div>
     </div>
 
-    {{-- Pagamento --}}
-    <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
-        <div>
-            <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Pagamento (AbacatePay)</h2>
-            <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-                Configure as credenciais do AbacatePay para habilitar pagamentos via PIX e cartão. Ambas as chaves são encontradas no painel da conta AbacatePay da empresa.
-            </p>
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-                <flux:input wire:model="abacatepay_token" label="Token da API" type="password" placeholder="••••••••" />
-                @error('abacatepay_token') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-                <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-                    Em: <strong>app.abacatepay.com → Configurações → API Keys</strong>
-                </p>
-            </div>
-            <div>
-                <flux:input wire:model="abacatepay_webhook_secret" label="Webhook Secret" type="password" placeholder="••••••••" />
-                @error('abacatepay_webhook_secret') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-                <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-                    Cadastre o webhook em <strong>app.abacatepay.com → Webhooks</strong> com a URL
-                    <code class="bg-zinc-100 dark:bg-zinc-700 px-1 rounded text-xs">https://[domínio]/webhooks/abacatepay</code>
-                    e copie o segredo gerado.
-                </p>
-            </div>
-        </div>
-    </div>
-
     {{-- Gerente (apenas na criação) --}}
     @if(! $isEditing)
     <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">

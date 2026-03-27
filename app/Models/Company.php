@@ -25,8 +25,6 @@ class Company extends Model
         'tagline',
         'footer_text',
         'chat_highlights',
-        'abacatepay_token',
-        'abacatepay_webhook_secret',
         'order_prefix',
         'active',
         'plan',
@@ -36,6 +34,17 @@ class Company extends Model
         'asaas_subscription_id',
         'setup_fee_paid_at',
         'asaas_setup_charge_id',
+        // Payout defaults
+        'default_payout_type',
+        'default_pix_key',
+        'default_pix_key_type',
+        'default_bank_code',
+        'default_bank_agency',
+        'default_bank_account',
+        'default_bank_account_digit',
+        'default_bank_account_type',
+        'default_bank_owner_cpf_cnpj',
+        'default_bank_owner_name',
     ];
 
     protected $casts = [
@@ -95,6 +104,21 @@ class Company extends Model
     public function subscriptions(): HasMany
     {
         return $this->hasMany(Subscription::class);
+    }
+
+    public function walletEntries(): HasMany
+    {
+        return $this->hasMany(CompanyWalletEntry::class);
+    }
+
+    public function withdrawals(): HasMany
+    {
+        return $this->hasMany(CompanyWithdrawal::class);
+    }
+
+    public function walletBalance(): float
+    {
+        return CompanyWalletEntry::balanceFor($this->id);
     }
 
     public function isPro(): bool

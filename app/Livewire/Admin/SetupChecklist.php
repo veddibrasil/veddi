@@ -18,13 +18,6 @@ class SetupChecklist extends Component
 
         $this->steps = [
             [
-                'done'        => ! empty($company->abacatepay_token),
-                'title'       => 'Configurar AbacatePay',
-                'description' => 'Adicione seu token do AbacatePay para começar a receber pagamentos PIX dos seus clientes.',
-                'actionLabel' => 'Configurar agora',
-                'actionRoute' => route('admin.settings') . '#pagamento',
-            ],
-            [
                 'done'        => ! empty($company->logo_path),
                 'title'       => 'Adicionar logo da empresa',
                 'description' => 'Personalize sua loja com a logo da sua empresa.',

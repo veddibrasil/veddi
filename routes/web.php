@@ -4,7 +4,6 @@ use App\Helpers\Validation;
 use App\Http\Controllers\AsaasSimulatePaymentController;
 use App\Http\Controllers\AsaasWebhookController;
 use App\Http\Controllers\RegisterCompanyController;
-use App\Http\Controllers\WebhookController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -32,11 +31,6 @@ Route::post('/api/validate-cpf', function (Request $request) {
 // --- Chat Público ---
 Route::get('/{company}', \App\Livewire\Chat\OrderChat::class)->name('chat.company');
 
-// --- Webhook (sem auth, sem CSRF, sem escopo de empresa) ---
-Route::match(['get', 'post'], '/webhooks/abacatepay', [WebhookController::class, 'abacatepay'])
-    ->middleware('throttle:60,1')
-    ->name('webhook.abacatepay');
-
 // --- Fechar popup de conclusão de pagamento ---
 Route::get('/payment/complete', fn () => view('payment.complete'))->name('payment.complete');
 
@@ -48,6 +42,7 @@ Route::middleware(['auth', 'verified', 'company.role:company_admin'])
     ->name('admin.')
     ->group(function () {
         Route::get('/billing', \App\Livewire\Admin\Settings\BillingSettings::class)->name('billing');
+        Route::get('/wallet', \App\Livewire\Admin\Wallet\CompanyWallet::class)->name('wallet');
     });
 
 Route::middleware(['auth', 'verified', 'company.active'])

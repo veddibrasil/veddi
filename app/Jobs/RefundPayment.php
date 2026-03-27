@@ -3,7 +3,6 @@
 namespace App\Jobs;
 
 use App\Models\Order;
-use App\Services\AbacatePayService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -33,23 +32,20 @@ class RefundPayment implements ShouldQueue
             return;
         }
 
-        if (str_starts_with($payment->abacatepay_billing_id, 'sim_')) {
-            Log::channel('payments')->info('Reembolso ignorado: billing simulado (ambiente de desenvolvimento)', [
-                'order_id'   => $this->order->id,
-                'billing_id' => $payment->abacatepay_billing_id,
+        if (str_starts_with((string) $payment->asaas_payment_id, 'sim_')) {
+            Log::channel('payments')->info('Reembolso ignorado: pagamento simulado (ambiente de desenvolvimento)', [
+                'order_id'          => $this->order->id,
+                'asaas_payment_id'  => $payment->asaas_payment_id,
             ]);
 
             return;
         }
 
-        (new AbacatePayService($this->order->company))
-            ->refundBilling($payment->abacatepay_billing_id);
-
         $payment->update(['status' => 'refunded']);
 
         Log::channel('payments')->info('Pagamento marcado como reembolsado', [
-            'order_id'   => $this->order->id,
-            'billing_id' => $payment->abacatepay_billing_id,
+            'order_id'         => $this->order->id,
+            'asaas_payment_id' => $payment->asaas_payment_id,
         ]);
     }
 }
