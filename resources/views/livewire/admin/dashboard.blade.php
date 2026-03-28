@@ -48,6 +48,16 @@
                         {{ $remaining }} pedido{{ $remaining !== 1 ? 's' : '' }} restante{{ $remaining !== 1 ? 's' : '' }} este mês.
                     @endif
                 </p>
+
+                <p class="text-xs text-neutral-500 dark:text-neutral-400 border-t border-neutral-100 dark:border-zinc-700 pt-2 mt-1">
+                    💡 <span class="font-medium">Taxa por volume:</span>
+                    até 50 pedidos no mês → <span class="font-semibold {{ $used > 50 ? 'line-through text-neutral-400 dark:text-zinc-500' : 'text-[#7A00A3] dark:text-purple-400' }}">1%</span>
+                    &nbsp;·&nbsp;
+                    acima de 50 pedidos → <span class="font-semibold {{ $used > 50 ? 'text-amber-600 dark:text-amber-400' : 'text-neutral-500 dark:text-neutral-400' }}">3%</span>
+                    @if($used > 50)
+                        <span class="ml-1 text-amber-600 dark:text-amber-400 font-medium">(taxa atual)</span>
+                    @endif
+                </p>
             </div>
 
             <a href="{{ route('admin.billing') }}"

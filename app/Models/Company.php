@@ -51,6 +51,9 @@ class Company extends Model
         'default_bank_account_type',
         'default_bank_owner_cpf_cnpj',
         'default_bank_owner_name',
+        'terms_accepted_at',
+        'terms_accepted_by_user_id',
+        'terms_version',
     ];
 
     protected $casts = [
@@ -60,6 +63,7 @@ class Company extends Model
         'pending_plan'      => Plan::class,
         'status'            => 'string',
         'setup_fee_paid_at' => 'datetime',
+        'terms_accepted_at' => 'datetime',
     ];
 
     public function getLogoUrlAttribute(): ?string

@@ -9,7 +9,8 @@
         w-full h-full
         sm:w-[420px] sm:h-[90vh] sm:max-h-[820px] sm:rounded-2xl sm:shadow-2xl
     "
-    x-data="{ ...chatApp(), snakeOpen: false }"
+    x-data="{ ...chatApp(), snakeOpen: false, productSidebarOpen: false, productSidebarSide: 'right' }"
+    x-init="$watch('$wire.step', v => { if (v === 'MENU_BROWSE') productSidebarOpen = true; })"
 >
 
     {{-- ═══════════════════════════════ HEADER ══════════════════════════════ --}}
@@ -369,109 +370,34 @@
 
         {{-- ── MENU_BROWSE ── --}}
         @elseif ($step === 'MENU_BROWSE')
-            <div class="space-y-3 max-h-72 overflow-y-auto mc-scrollbar pr-0.5">
-                @forelse ($this->menu as $category)
-                    @if ($category->products->isNotEmpty())
-                        <div>
-                            <div class="flex items-center gap-2 mb-2">
-                                <p class="text-xs font-black mc-text-primary uppercase tracking-widest">{{ $category->name }}</p>
-                                <div class="flex-1 h-px mc-bg-primary-light"></div>
-                            </div>
-                            <div class="space-y-1.5">
-                                @foreach ($category->products as $product)
-                                    @php
-                                        $outOfStock = $product->track_stock && ($product->quantity <= 0 || !$product->available);
-                                        $cartQty = $cart[$product->id]['qty'] ?? 0;
-                                        $insufficientStock = !$outOfStock && $product->track_stock && $cartQty > 0 && $cartQty >= $product->quantity;
-                                        $disabled = $outOfStock || $insufficientStock;
-                                    @endphp
-                                    <div class="flex items-center gap-2.5 rounded-xl p-2.5 border {{ $disabled ? 'bg-gray-100 border-gray-200 opacity-70' : 'bg-gray-50 border-gray-100' }}">
-                                        {{-- Image --}}
-                                        <div class="w-12 h-12 rounded-lg overflow-hidden shrink-0 relative">
-                                            @if ($product->image_path)
-                                                <img src="{{ $product->image_url }}" class="w-full h-full object-cover {{ $disabled ? 'grayscale' : '' }}" />
-                                            @else
-                                                <div class="w-full h-full bg-gradient-to-br from-red-100 to-amber-100 flex items-center justify-center text-xl">
-                                                    🥟
-                                                </div>
-                                            @endif
-                                        </div>
+            <div class="flex gap-2">
+                <button
+                    x-on:click="productSidebarOpen = true"
+                    class="mc-btn-primary flex-1 flex items-center justify-center gap-2"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h7" />
+                    </svg>
+                    Ver cardápio
+                </button>
 
-                                        {{-- Info --}}
-                                        <div class="flex-1 min-w-0">
-                                            <div class="flex items-center gap-1.5">
-                                                <p class="font-semibold text-sm {{ $disabled ? 'text-gray-400' : 'text-gray-800' }} truncate leading-tight">{{ $product->name }}</p>
-                                                @if ($outOfStock)
-                                                    <span class="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-500 uppercase tracking-wide">Esgotado</span>
-                                                @elseif ($insufficientStock)
-                                                    <span class="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-600 uppercase tracking-wide">Estoque insuficiente</span>
-                                                @endif
-                                            </div>
-                                            @if ($product->description)
-                                                <p class="text-[11px] text-gray-400 truncate">{{ $product->description }}</p>
-                                            @endif
-                                            <p class="text-sm font-black {{ $disabled ? 'text-gray-400' : 'mc-text-primary' }} mt-0.5">
-                                                R$ {{ number_format($product->price, 2, ',', '.') }}
-                                            </p>
-                                            @if ($insufficientStock)
-                                                <p class="text-[10px] text-amber-500 mt-0.5">Máx. disponível: {{ $product->quantity }}</p>
-                                            @endif
-                                        </div>
-
-                                        {{-- Qty controls --}}
-                                        <div class="flex items-center gap-1 shrink-0">
-                                            @if (! $outOfStock)
-                                                @if ($cartQty > 0)
-                                                    <button
-                                                        wire:click="updateCartQty({{ $product->id }}, {{ $cartQty - 1 }})"
-                                                        class="w-7 h-7 rounded-full mc-bg-primary-light mc-text-primary font-bold text-base flex items-center justify-center transition-colors"
-                                                    >−</button>
-                                                    <span class="w-6 text-center text-sm font-bold text-gray-800">{{ $cartQty }}</span>
-                                                @endif
-                                                <button
-                                                    @if (! $insufficientStock) wire:click="addToCart({{ $product->id }})" @endif
-                                                    @disabled($insufficientStock)
-                                                    class="w-7 h-7 rounded-full font-bold text-base flex items-center justify-center transition-colors {{ $insufficientStock ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white active:scale-90' }}"
-                                                    @if ($insufficientStock) title="Estoque insuficiente para adicionar mais" @endif
-                                                >+</button>
-                                            @else
-                                                <div class="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center">
-                                                    <svg class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                                                    </svg>
-                                                </div>
-                                            @endif
-                                        </div>
-                                    </div>
-                                @endforeach
-                            </div>
-                        </div>
+                <button wire:click="proceedToCheckout" class="mc-btn-primary flex-1 flex items-center justify-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    Ver carrinho
+                    @if ($this->cartCount > 0)
+                        <span class="ml-1 bg-white mc-text-primary text-xs font-black rounded-full w-5 h-5 flex items-center justify-center">
+                            {{ $this->cartCount }}
+                        </span>
                     @endif
-                @empty
-                    <div class="text-center py-6">
-                        <p class="text-3xl mb-2">😔</p>
-                        <p class="text-sm text-gray-500">Nenhum produto disponível nesta filial.</p>
-                    </div>
-                @endforelse
+                </button>
             </div>
 
             @if ($cartError)
                 <p class="text-red-600 text-xs mt-1.5 flex items-center gap-1"><span>⚠</span> {{ $cartError }}</p>
             @endif
 
-            {{-- Cart button --}}
-            <button wire:click="proceedToCheckout" class="mc-btn-primary mt-3 flex items-center justify-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-                Ver carrinho
-                @if ($this->cartCount > 0)
-                    <span class="ml-1 bg-white mc-text-primary text-xs font-black rounded-full w-5 h-5 flex items-center justify-center">
-                        {{ $this->cartCount }}
-                    </span>
-                @endif
-            </button>
-            
 
 
         {{-- ── CART_REVIEW ── --}}
@@ -1565,6 +1491,131 @@
                 <div id="mc-snake-game" class="w-full"></div>
             </div>
         </div>
+    </div>
+
+    {{-- ═══════════════════════ PRODUCT SIDEBAR ═══════════════════════ --}}
+    {{-- Sidebar panel --}}
+    <div
+        x-show="productSidebarOpen"
+        x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="opacity-0 translate-y-full"
+        x-transition:enter-end="opacity-100 translate-y-0"
+        x-transition:leave="transition ease-in duration-200"
+        x-transition:leave-start="opacity-100 translate-y-0"
+        x-transition:leave-end="opacity-0 translate-y-full"
+        class="absolute inset-0 z-40 bg-white shadow-2xl flex flex-col overflow-hidden"
+        style="display:none"
+    >
+        {{-- Sidebar header --}}
+        <div class="shrink-0 px-4 py-3 flex items-center justify-between" style="background: linear-gradient(135deg, var(--mc-red-dark) 0%, var(--mc-red) 60%, var(--mc-red-light) 100%);">
+            <p class="text-white font-bold text-sm">Cardápio</p>
+            <button
+                @click="productSidebarOpen = false"
+                class="text-white/70 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
+                title="Fechar"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
+        {{-- Product list --}}
+        <div class="flex-1 overflow-y-auto px-3 py-3 space-y-3 mc-scrollbar">
+            @forelse ($this->menu as $category)
+                @if ($category->products->isNotEmpty())
+                    <div>
+                        <div class="flex items-center gap-2 mb-2">
+                            <p class="text-xs font-black mc-text-primary uppercase tracking-widest">{{ $category->name }}</p>
+                            <div class="flex-1 h-px mc-bg-primary-light"></div>
+                        </div>
+                        <div class="space-y-1.5">
+                            @foreach ($category->products as $product)
+                                @php
+                                    $sbOutOfStock = $product->track_stock && ($product->quantity <= 0 || !$product->available);
+                                    $sbCartQty = $cart[$product->id]['qty'] ?? 0;
+                                    $sbInsufficientStock = !$sbOutOfStock && $product->track_stock && $sbCartQty > 0 && $sbCartQty >= $product->quantity;
+                                    $sbDisabled = $sbOutOfStock || $sbInsufficientStock;
+                                @endphp
+                                <div class="flex items-center gap-3 rounded-xl p-2.5 border {{ $sbDisabled ? 'bg-gray-100 border-gray-200 opacity-70' : 'bg-gray-50 border-gray-100' }}">
+                                    {{-- Image --}}
+                                    <div class="w-16 h-16 rounded-xl overflow-hidden shrink-0">
+                                        @if ($product->image_path)
+                                            <img src="{{ $product->image_url }}" class="w-full h-full object-cover {{ $sbDisabled ? 'grayscale' : '' }}" />
+                                        @else
+                                            <div class="w-full h-full bg-linear-to-br from-red-100 to-amber-100 flex items-center justify-center text-2xl">🥟</div>
+                                        @endif
+                                    </div>
+                                    {{-- Info --}}
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center gap-1">
+                                            <p class="font-semibold text-sm {{ $sbDisabled ? 'text-gray-400' : 'text-gray-800' }} truncate leading-tight">{{ $product->name }}</p>
+                                            @if ($sbOutOfStock)
+                                                <span class="shrink-0 text-[9px] font-bold px-1 py-0.5 rounded-full bg-gray-200 text-gray-500 uppercase">Esgotado</span>
+                                            @elseif ($sbInsufficientStock)
+                                                <span class="shrink-0 text-[9px] font-bold px-1 py-0.5 rounded-full bg-amber-100 text-amber-600 uppercase">Insuf.</span>
+                                            @endif
+                                        </div>
+                                        @if ($product->description)
+                                            <p class="text-[11px] text-gray-400 leading-snug mt-0.5 line-clamp-2">{{ $product->description }}</p>
+                                        @endif
+                                        <p class="text-sm font-black {{ $sbDisabled ? 'text-gray-400' : 'mc-text-primary' }} mt-0.5">
+                                            R$ {{ number_format($product->price, 2, ',', '.') }}
+                                        </p>
+                                        @if ($sbInsufficientStock)
+                                            <p class="text-[10px] text-amber-500 mt-0.5">Máx. disponível: {{ $product->quantity }}</p>
+                                        @endif
+                                    </div>
+                                    {{-- Qty controls --}}
+                                    <div class="flex items-center gap-0.5 shrink-0">
+                                        @if (! $sbOutOfStock)
+                                            @if ($sbCartQty > 0)
+                                                <button wire:click="updateCartQty({{ $product->id }}, {{ $sbCartQty - 1 }})"
+                                                    class="w-6 h-6 rounded-full mc-bg-primary-light mc-text-primary font-bold text-sm flex items-center justify-center">−</button>
+                                                <span class="w-5 text-center text-xs font-bold text-gray-800">{{ $sbCartQty }}</span>
+                                            @endif
+                                            <button
+                                                @if (! $sbInsufficientStock) wire:click="addToCart({{ $product->id }})" @endif
+                                                @disabled($sbInsufficientStock)
+                                                class="w-6 h-6 rounded-full font-bold text-sm flex items-center justify-center transition-colors {{ $sbInsufficientStock ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white active:scale-90' }}"
+                                            >+</button>
+                                        @else
+                                            <div class="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center">
+                                                <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                                </svg>
+                                            </div>
+                                        @endif
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+            @empty
+                <div class="text-center py-8">
+                    <p class="text-3xl mb-2">😔</p>
+                    <p class="text-sm text-gray-500">Nenhum produto disponível.</p>
+                </div>
+            @endforelse
+        </div>
+
+        {{-- Sidebar footer: go to cart --}}
+        @if ($step === 'MENU_BROWSE')
+            <div class="shrink-0 border-t border-gray-100 px-3 py-3">
+                <button wire:click="proceedToCheckout" @click="productSidebarOpen = false" class="mc-btn-primary flex items-center justify-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    Ver carrinho
+                    @if ($this->cartCount > 0)
+                        <span class="ml-1 bg-white mc-text-primary text-xs font-black rounded-full w-5 h-5 flex items-center justify-center">
+                            {{ $this->cartCount }}
+                        </span>
+                    @endif
+                </button>
+            </div>
+        @endif
     </div>
 
 </div>

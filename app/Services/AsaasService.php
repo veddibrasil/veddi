@@ -55,10 +55,19 @@ class AsaasService
     /**
      * Create a monthly subscription in Asaas for the given plan.
      *
+     * @param  array|null $creditCard       Card data (holderName, number, expiryMonth, expiryYear, ccv)
+     * @param  array|null $holderInfo       Holder info (name, email, cpfCnpj, postalCode, addressNumber, phone)
+     * @param  string|null $nextDueDate     ISO date string; defaults to tomorrow
      * @return array{id: string, status: string, nextDueDate: string, value: float}
      */
-    public function createSubscription(string $customerId, Plan $plan, string $billingType = 'PIX'): array
-    {
+    public function createSubscription(
+        string $customerId,
+        Plan $plan,
+        string $billingType = 'PIX',
+        ?array $creditCard = null,
+        ?array $holderInfo = null,
+        ?string $nextDueDate = null,
+    ): array {
         $amount = $plan->monthlyPrice();
 
         Log::channel('payments')->info('Criando assinatura no Asaas', [
@@ -68,16 +77,40 @@ class AsaasService
             'billing_type' => $billingType,
         ]);
 
+        $payload = [
+            'customer'    => $customerId,
+            'billingType' => $billingType,
+            'value'       => $amount,
+            'nextDueDate' => $nextDueDate ?? now()->addDay()->toDateString(),
+            'cycle'       => 'MONTHLY',
+            'description' => $plan->asaasDescription(),
+        ];
+
+        if ($creditCard !== null) {
+            $payload['creditCard'] = [
+                'holderName'  => strtoupper($creditCard['holderName']),
+                'number'      => preg_replace('/\D/', '', $creditCard['number']),
+                'expiryMonth' => $creditCard['expiryMonth'],
+                'expiryYear'  => $creditCard['expiryYear'],
+                'ccv'         => $creditCard['ccv'],
+            ];
+        }
+
+        if ($holderInfo !== null) {
+            $payload['creditCardHolderInfo'] = array_filter([
+                'name'          => $holderInfo['name'],
+                'email'         => $holderInfo['email'],
+                'cpfCnpj'       => preg_replace('/\D/', '', $holderInfo['cpfCnpj'] ?? ''),
+                'postalCode'    => preg_replace('/\D/', '', $holderInfo['postalCode'] ?? ''),
+                'addressNumber' => $holderInfo['addressNumber'] ?? 'S/N',
+                'mobilePhone'   => $holderInfo['mobilePhone'] ?? $holderInfo['phone'] ?? null,
+                'phone'         => $holderInfo['phone'] ?? $holderInfo['mobilePhone'] ?? null,
+            ], fn ($v) => $v !== null && $v !== '');
+        }
+
         $response = Http::withHeaders(['access_token' => $this->apiKey])
             ->timeout(15)
-            ->post("{$this->baseUrl}/subscriptions", [
-                'customer'    => $customerId,
-                'billingType' => $billingType,
-                'value'       => $amount,
-                'nextDueDate' => now()->addDay()->toDateString(),
-                'cycle'       => 'MONTHLY',
-                'description' => $plan->asaasDescription(),
-            ]);
+            ->post("{$this->baseUrl}/subscriptions", $payload);
 
         if ($response->failed()) {
             Log::channel('payments')->error('Erro ao criar assinatura no Asaas', [

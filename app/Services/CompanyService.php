@@ -18,12 +18,12 @@ class CompanyService
      */
     public function activate(Company $company): void
     {
-        $wasAlreadyActive = $company->status === 'ACTIVE';
-
-        $company->update([
-            'status' => 'ACTIVE',
-            'active' => true,
-        ]);
+        // Atomic update: only updates (and returns 1) if the company is not already ACTIVE.
+        // This prevents a race condition where two simultaneous webhooks (e.g. PAYMENT_CONFIRMED
+        // and PAYMENT_RECEIVED) both read status as non-ACTIVE and dispatch duplicate events.
+        $updated = Company::where('id', $company->id)
+            ->where('status', '!=', 'ACTIVE')
+            ->update(['status' => 'ACTIVE', 'active' => true]);
 
         if ($company->asaas_subscription_id) {
             Subscription::where('company_id', $company->id)
@@ -33,7 +33,7 @@ class CompanyService
 
         Log::channel('payments')->info('Empresa ativada', ['company_id' => $company->id]);
 
-        if (! $wasAlreadyActive) {
+        if ($updated > 0) {
             CompanyActivated::dispatch($company->fresh());
         }
     }
