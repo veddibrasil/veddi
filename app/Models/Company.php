@@ -33,9 +33,13 @@ class Company extends Model
         'asaas_customer_id',
         'asaas_subscription_id',
         'setup_fee_paid_at',
+        'owner_cpf_cnpj',
         'asaas_setup_charge_id',
         'subscription_payment_method',
         'asaas_setup_invoice_url',
+        'asaas_setup_pix_qr_code',
+        'asaas_setup_pix_copy_paste',
+        'asaas_setup_bank_slip_url',
         // Payout defaults
         'default_payout_type',
         'default_pix_key',

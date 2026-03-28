@@ -244,7 +244,8 @@ class AsaasService
                     'cpfCnpj'       => preg_replace('/\D/', '', $holderInfo['cpfCnpj'] ?? ''),
                     'postalCode'    => preg_replace('/\D/', '', $holderInfo['postalCode'] ?? ''),
                     'addressNumber' => $holderInfo['addressNumber'] ?? 'S/N',
-                    'phone'         => $holderInfo['phone'] ?? null,
+                    'mobilePhone'   => $holderInfo['mobilePhone'] ?? $holderInfo['phone'] ?? null,
+                    'phone'         => $holderInfo['phone'] ?? $holderInfo['mobilePhone'] ?? null,
                 ], fn ($v) => $v !== null && $v !== ''),
             ]);
 

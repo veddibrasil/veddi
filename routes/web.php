@@ -12,7 +12,7 @@ Route::get('/', function(){ return redirect('https://veddi.com.br');});
 // --- Onboarding público ---
 Route::get('/cadastro', [RegisterCompanyController::class, 'create'])->name('register.create');
 Route::post('/cadastro', [RegisterCompanyController::class, 'store'])->middleware('throttle:5,1')->name('register.store');
-Route::get('/cadastro/pendente', fn () => view('register.pending'))->name('register.pending');
+Route::get('/cadastro/pendente', \App\Livewire\Onboarding\PendingPayment::class)->name('register.pending');
 
 // --- Simulação de pagamento Asaas (somente APP_DEBUG=true) ---
 Route::post('/dev/simulate/asaas-payment', AsaasSimulatePaymentController::class)->name('dev.simulate.asaas-payment');

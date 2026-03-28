@@ -5,8 +5,12 @@ namespace App\Livewire\Onboarding;
 use App\DTOs\OnboardingDTO;
 use App\Enums\Plan;
 use App\Helpers\Validation;
+use App\Models\Company;
+use App\Services\AsaasService;
+use App\Services\CompanyService;
 use App\Services\OnboardingService;
 use Illuminate\Support\Str;
+use Livewire\Attributes\Computed;
 use Livewire\Component;
 
 class RegisterForm extends Component
@@ -45,6 +49,40 @@ class RegisterForm extends Component
 
     public bool    $submitting   = false;
     public ?string $errorMessage = null;
+
+    // Credit card modal
+    public ?int    $pendingCompanyId  = null;
+    public string  $cardNumber        = '';
+    public string  $cardExpiry        = '';
+    public string  $cardCvv           = '';
+    public string  $cardHolderName    = '';
+    public string  $cardCpfCnpj       = '';
+    public string  $cardPostalCode    = '';
+    public string  $cardAddressNumber = '';
+    public bool    $cardProcessing    = false;
+    public ?string $cardError         = null;
+    public bool    $cardSuccess       = false;
+
+    #[Computed]
+    public function firstPaymentTotal(): float
+    {
+        $planEnum = Plan::tryFrom($this->plan);
+        $setupFee = $planEnum?->setupFee() ?? 99.00;
+        $monthly  = $planEnum?->hasMonthlySubscription() ? ($planEnum?->monthlyPrice() ?? 0.0) : 0.0;
+        return $setupFee + $monthly;
+    }
+
+    #[Computed]
+    public function planMonthlyPrice(): float
+    {
+        return (float) (Plan::tryFrom($this->plan)?->monthlyPrice() ?? 0.0);
+    }
+
+    #[Computed]
+    public function planHasMonthly(): bool
+    {
+        return (bool) (Plan::tryFrom($this->plan)?->hasMonthlySubscription() ?? false);
+    }
 
     public function updatedCompanyName(string $value): void
     {
@@ -300,6 +338,19 @@ class RegisterForm extends Component
             $this->messagesForStep(4),
         );
 
+        // Revalida slug antes de chamar o Asaas (evita criar customer desnecessário)
+        $slugValid = \Illuminate\Support\Facades\Validator::make(
+            ['slug' => $this->slug],
+            ['slug' => ['required', 'unique:companies,slug']],
+            ['slug.unique' => 'Este endereço já está em uso. Volte ao passo 1 e escolha outro.'],
+        );
+
+        if ($slugValid->fails()) {
+            $this->currentStep  = 1;
+            $this->errorMessage = $slugValid->errors()->first('slug');
+            return;
+        }
+
         $this->submitting    = true;
         $this->errorMessage  = null;
 
@@ -317,15 +368,133 @@ class RegisterForm extends Component
                 paymentMethod: $this->paymentMethod,
             );
 
-            app(OnboardingService::class)->handle($dto);
+            $company = app(OnboardingService::class)->handle($dto);
 
             // All plans start as PENDING_PAYMENT (setup fee required)
-            session()->flash('payment_method', $this->paymentMethod);
+            session(['pending_company_id' => $company->id]);
+
+            if ($this->paymentMethod === 'CREDIT_CARD') {
+                $this->pendingCompanyId = $company->id;
+                $this->cardCpfCnpj      = $this->asaasCpfCnpj;
+                $this->submitting       = false;
+                $this->dispatch('open-card-modal');
+                return;
+            }
+
             $this->redirectRoute('register.pending');
         } catch (\Throwable $e) {
             $this->submitting   = false;
             $this->errorMessage = 'Ocorreu um erro ao criar sua conta. Por favor, tente novamente.';
             \Illuminate\Support\Facades\Log::error('Onboarding falhou', ['error' => $e->getMessage()]);
+        }
+    }
+
+    public function submitCard(): void
+    {
+        $this->validate([
+            'cardNumber'        => ['required', 'string', 'min:13'],
+            'cardExpiry'        => ['required', 'regex:/^\d{2}\/\d{2}$/', function ($attr, $value, $fail) {
+                [$month, $year] = explode('/', $value);
+                $month = (int) $month;
+                $year  = (int) ('20' . $year);
+                if ($month < 1 || $month > 12) {
+                    $fail('Mês de validade inválido.');
+                    return;
+                }
+                if ($year < now()->year || ($year === now()->year && $month < now()->month)) {
+                    $fail('Cartão vencido.');
+                }
+            }],
+            'cardCvv'           => ['required', 'digits_between:3,4'],
+            'cardHolderName'    => ['required', 'string', 'min:3'],
+            'cardCpfCnpj'       => ['required', 'string', function ($attr, $value, $fail) {
+                $digits = preg_replace('/\D/', '', $value);
+                if (strlen($digits) !== 11 && strlen($digits) !== 14) {
+                    $fail('CPF deve ter 11 dígitos e CNPJ 14 dígitos.');
+                }
+            }],
+            'cardPostalCode'    => ['required', 'string', 'min:8'],
+            'cardAddressNumber' => ['required', 'string'],
+        ], [
+            'cardNumber.required'        => 'Informe o número do cartão.',
+            'cardNumber.min'             => 'Número do cartão inválido.',
+            'cardExpiry.required'        => 'Informe a validade.',
+            'cardExpiry.regex'           => 'Use o formato MM/AA.',
+            'cardCvv.required'           => 'Informe o CVV.',
+            'cardCvv.digits_between'     => 'CVV deve ter 3 ou 4 dígitos.',
+            'cardHolderName.required'    => 'Informe o nome conforme está no cartão.',
+            'cardCpfCnpj.required'       => 'Informe o CPF ou CNPJ do titular.',
+            'cardPostalCode.required'    => 'Informe o CEP de cobrança.',
+            'cardPostalCode.min'         => 'CEP inválido.',
+            'cardAddressNumber.required' => 'Informe o número do endereço.',
+        ]);
+
+        $this->cardProcessing = true;
+        $this->cardError      = null;
+
+        try {
+            $company = Company::findOrFail($this->pendingCompanyId);
+            $admin   = $company->users()->first();
+            $phone   = preg_replace('/\D/', '', $this->branchPhone ?: ($company->branches()->withoutGlobalScopes()->value('phone') ?? ''));
+
+            $plan         = $company->plan;
+            $setupFee     = $plan?->setupFee() ?? 99.00;
+            $monthlyPrice = $plan?->hasMonthlySubscription() ? ($plan?->monthlyPrice() ?? 0.0) : 0.0;
+            $firstAmount  = $setupFee + $monthlyPrice;
+            $description  = $monthlyPrice > 0
+                ? "Ativação + 1º mês ({$plan?->label()}) — {$company->name}"
+                : "Taxa de ativação — {$plan?->label()} — {$company->name}";
+
+            [$month, $year] = explode('/', $this->cardExpiry);
+
+            $charge = app(AsaasService::class)->createCreditCardCharge(
+                customerId:        $company->asaas_customer_id,
+                amount:            $firstAmount,
+                description:       $description,
+                externalReference: "setup_fee_{$company->id}",
+                creditCard: [
+                    'holderName'  => $this->cardHolderName,
+                    'number'      => preg_replace('/\D/', '', $this->cardNumber),
+                    'expiryMonth' => $month,
+                    'expiryYear'  => '20' . $year,
+                    'ccv'         => $this->cardCvv,
+                ],
+                holderInfo: [
+                    'name'          => $admin?->name ?? $this->cardHolderName,
+                    'email'         => $admin?->email ?? '',
+                    'cpfCnpj'       => preg_replace('/\D/', '', $this->cardCpfCnpj),
+                    'postalCode'    => preg_replace('/\D/', '', $this->cardPostalCode),
+                    'addressNumber' => $this->cardAddressNumber,
+                    'mobilePhone'   => $phone,
+                    'phone'         => $phone,
+                ],
+            );
+
+            if (($charge['status'] ?? '') !== 'CONFIRMED') {
+                $reason = $charge['creditCard']['declineReason']
+                    ?? $charge['failReason']
+                    ?? 'verifique os dados e tente novamente';
+
+                $this->cardError      = "Pagamento recusado: {$reason}.";
+                $this->cardProcessing = false;
+                return;
+            }
+
+            $company->update([
+                'asaas_setup_charge_id' => $charge['id'],
+                'setup_fee_paid_at'     => now(),
+            ]);
+
+            app(CompanyService::class)->activate($company);
+
+            session()->forget('pending_company_id');
+            $this->cardSuccess    = true;
+            $this->cardProcessing = false;
+
+            $this->redirectRoute('login');
+        } catch (\Throwable $e) {
+            $this->cardError      = 'Erro ao processar pagamento. Por favor, tente novamente.';
+            $this->cardProcessing = false;
         }
     }
 

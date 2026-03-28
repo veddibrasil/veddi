@@ -19,29 +19,50 @@ class CreateAsaasSetupFee implements ShouldQueue
 
     public function handle(AsaasService $asaasService): void
     {
-        $plan        = $this->company->plan;
-        $setupFee    = $plan?->setupFee() ?? 99.00;
-        $description = "Taxa de ativação — {$plan?->label()} — {$this->company->name}";
-        $billingType = $this->company->subscription_payment_method ?? 'PIX';
+        $plan         = $this->company->plan;
+        $setupFee     = $plan?->setupFee() ?? 99.00;
+        $monthlyPrice = ($plan?->hasMonthlySubscription()) ? ($plan?->monthlyPrice() ?? 0.0) : 0.0;
+        $firstAmount  = $setupFee + $monthlyPrice;
+        $description  = $monthlyPrice > 0
+            ? "Ativação + 1º mês ({$plan?->label()}) — {$this->company->name}"
+            : "Taxa de ativação — {$plan?->label()} — {$this->company->name}";
+        $billingType  = $this->company->subscription_payment_method ?? 'PIX';
+
+        // Cartão de crédito é processado diretamente na página de pendente (checkout transparente)
+        if ($billingType === 'CREDIT_CARD') {
+            Log::channel('payments')->info('Taxa de ativação via cartão — aguardando processamento na página pendente', [
+                'company_id' => $this->company->id,
+            ]);
+            return;
+        }
 
         $charge = $asaasService->createCharge(
             $this->company->asaas_customer_id,
-            $setupFee,
+            $firstAmount,
             $description,
             $billingType,
         );
 
-        $this->company->update([
+        $updates = [
             'asaas_setup_charge_id'   => $charge['id'],
             'asaas_setup_invoice_url' => $charge['invoiceUrl'] ?? null,
-        ]);
+        ];
+
+        if ($billingType === 'PIX') {
+            $qr = $asaasService->getPaymentPixQrCode($charge['id']);
+            $updates['asaas_setup_pix_qr_code']    = $qr['encodedImage'];
+            $updates['asaas_setup_pix_copy_paste'] = $qr['payload'];
+        } elseif ($billingType === 'BOLETO') {
+            $updates['asaas_setup_bank_slip_url'] = $charge['bankSlipUrl'] ?? $charge['invoiceUrl'] ?? null;
+        }
+
+        $this->company->update($updates);
 
         Log::channel('payments')->info('Taxa de ativação criada no Asaas', [
             'company_id'   => $this->company->id,
             'charge_id'    => $charge['id'],
-            'amount'       => $setupFee,
+            'amount'       => $firstAmount,
             'billing_type' => $billingType,
-            'invoice_url'  => $charge['invoiceUrl'] ?? null,
         ]);
     }
 

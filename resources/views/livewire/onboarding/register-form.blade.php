@@ -375,10 +375,27 @@
                 <p class="text-sm text-red-600 -mt-2">{{ $message }}</p>
             @enderror
 
-            {{-- Setup fee notice --}}
-            <div class="rounded-xl bg-zinc-50 border border-zinc-200 p-4 text-sm text-zinc-600">
-                <p class="font-semibold text-zinc-800 mb-1">💳 Taxa de ativação única</p>
-                <p>Todos os planos incluem uma taxa de ativação de <strong class="text-zinc-900">R$ 99,00</strong> cobrada uma única vez para configuração da sua conta de pagamentos.</p>
+            {{-- Breakdown do pagamento --}}
+            <div class="rounded-xl bg-zinc-50 border border-zinc-200 p-4 text-sm text-zinc-600 space-y-2">
+                @if($this->planHasMonthly)
+                    <p class="font-semibold text-zinc-800">💳 Resumo do pagamento inicial</p>
+                    <div class="flex justify-between text-zinc-600">
+                        <span>Taxa de ativação (única)</span>
+                        <span class="font-medium">R$ {{ number_format(App\Enums\Plan::tryFrom($plan)?->setupFee() ?? 99, 2, ',', '.') }}</span>
+                    </div>
+                    <div class="flex justify-between text-zinc-600">
+                        <span>1º mês — {{ App\Enums\Plan::tryFrom($plan)?->label() }}</span>
+                        <span class="font-medium">R$ {{ number_format($this->planMonthlyPrice, 2, ',', '.') }}</span>
+                    </div>
+                    <div class="flex justify-between font-bold text-zinc-900 border-t border-zinc-200 pt-2">
+                        <span>Total hoje</span>
+                        <span>R$ {{ number_format($this->firstPaymentTotal, 2, ',', '.') }}</span>
+                    </div>
+                    <p class="text-xs text-zinc-400">A partir do 2º mês: R$ {{ number_format($this->planMonthlyPrice, 2, ',', '.') }}/mês</p>
+                @else
+                    <p class="font-semibold text-zinc-800 mb-1">💳 Taxa de ativação única</p>
+                    <p>Taxa de <strong class="text-zinc-900">R$ 99,00</strong> cobrada uma única vez. Sem mensalidade no plano Grátis.</p>
+                @endif
             </div>
 
             {{-- CPF/CNPJ --}}
@@ -486,11 +503,11 @@
                 >
                     <span wire:loading.remove wire:target="submit">
                         @if($plan === 'pro')
-                            🚀 Criar conta PRO — R$ 99 + R$ 119/mês
+                            🚀 Criar conta PRO — R$ {{ number_format($this->firstPaymentTotal, 2, ',', '.') }}
                         @elseif($plan === 'essencial')
-                            📦 Criar conta Essencial — R$ 99 + R$ 59/mês
+                            📦 Criar conta Essencial — R$ {{ number_format($this->firstPaymentTotal, 2, ',', '.') }}
                         @else
-                            Criar conta Grátis — R$ 99 ativação
+                            Criar conta Grátis — R$ {{ number_format($this->firstPaymentTotal, 2, ',', '.') }} ativação
                         @endif
                     </span>
                     <span wire:loading wire:target="submit" class="flex items-center gap-2">
@@ -506,4 +523,247 @@
         </div>
     @endif
 
+    {{-- ════════════════════════════════════
+         MODAL — Dados do cartão de crédito
+    ════════════════════════════════════ --}}
+<div
+    x-data="{ show: false }"
+    x-on:open-card-modal.window="show = true"
+    x-show="show"
+    x-transition:enter="transition ease-out duration-200"
+    x-transition:enter-start="opacity-0"
+    x-transition:enter-end="opacity-100"
+    x-transition:leave="transition ease-in duration-150"
+    x-transition:leave-start="opacity-100"
+    x-transition:leave-end="opacity-0"
+    style="display:none"
+    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+>
+    <div
+        @click.outside="show = false"
+        x-data="{
+            maskCardNumber(e) {
+                let v = e.target.value.replace(/\D/g, '').substring(0, 16);
+                v = v.replace(/(\d{4})(?=\d)/g, '$1 ');
+                e.target.value = v;
+                $wire.set('cardNumber', v);
+            },
+            maskExpiry(e) {
+                let v = e.target.value.replace(/\D/g, '').substring(0, 4);
+                if (v.length >= 3) v = v.substring(0, 2) + '/' + v.substring(2);
+                e.target.value = v;
+                $wire.set('cardExpiry', v);
+            },
+            maskCvv(e) {
+                let v = e.target.value.replace(/\D/g, '').substring(0, 4);
+                e.target.value = v;
+                $wire.set('cardCvv', v);
+            },
+            maskCpfCnpj(e) {
+                let v = e.target.value.replace(/\D/g, '');
+                if (v.length <= 11) {
+                    v = v.substring(0, 11)
+                         .replace(/(\d{3})(\d)/, '$1.$2')
+                         .replace(/(\d{3})(\d)/, '$1.$2')
+                         .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+                } else {
+                    v = v.substring(0, 14)
+                         .replace(/(\d{2})(\d)/, '$1.$2')
+                         .replace(/(\d{3})(\d)/, '$1.$2')
+                         .replace(/(\d{3})(\d)/, '$1/$2')
+                         .replace(/(\d{4})(\d{1,2})$/, '$1-$2');
+                }
+                e.target.value = v;
+                $wire.set('cardCpfCnpj', v);
+            },
+            maskCep(e) {
+                let v = e.target.value.replace(/\D/g, '').substring(0, 8);
+                if (v.length > 5) v = v.substring(0, 5) + '-' + v.substring(5);
+                e.target.value = v;
+                $wire.set('cardPostalCode', v);
+            },
+        }"
+        class="w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-y-auto max-h-[90vh]"
+    >
+
+        {{-- Header --}}
+        <div class="flex items-center justify-between p-6 border-b border-zinc-100">
+            <div>
+                <p class="text-xs font-semibold uppercase tracking-widest text-[#7A00A3] mb-1">Pagamento inicial</p>
+                <h2 class="text-xl font-extrabold text-zinc-900" style="font-family: 'Montserrat', sans-serif;">Dados do cartão</h2>
+                @if($this->planHasMonthly)
+                    <p class="text-sm text-zinc-500 mt-0.5">R$ {{ number_format($this->firstPaymentTotal, 2, ',', '.') }} (ativação + 1º mês)</p>
+                @else
+                    <p class="text-sm text-zinc-500 mt-0.5">Taxa única de ativação — R$ {{ number_format($this->firstPaymentTotal, 2, ',', '.') }}</p>
+                @endif
+            </div>
+            <button @click="show = false" class="rounded-lg p-1.5 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 transition-colors">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
+        {{-- Formulário --}}
+        <div class="p-6 space-y-5">
+
+            @if($cardSuccess)
+                <div class="flex flex-col items-center gap-3 py-8 text-center">
+                    <div class="flex h-14 w-14 items-center justify-center rounded-full bg-green-100">
+                        <svg class="h-7 w-7 text-green-600" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                        </svg>
+                    </div>
+                    <p class="font-semibold text-zinc-800">Pagamento confirmado!</p>
+                    <p class="text-sm text-zinc-500">Redirecionando para o login...</p>
+                </div>
+            @else
+
+                {{-- Erro --}}
+                @if($cardError)
+                    <div class="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                        <svg class="h-5 w-5 shrink-0 mt-0.5 text-red-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                        </svg>
+                        <span>{{ $cardError }}</span>
+                    </div>
+                @endif
+
+                {{-- Número do cartão --}}
+                <div>
+                    <flux:input
+                        wire:model="cardNumber"
+                        x-on:input="maskCardNumber($event)"
+                        label="Número do cartão"
+                        placeholder="0000 0000 0000 0000"
+                        maxlength="19"
+                        inputmode="numeric"
+                        autocomplete="cc-number"
+                    />
+                    @error('cardNumber') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+                </div>
+
+                {{-- Validade e CVV --}}
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <flux:input
+                            wire:model="cardExpiry"
+                            x-on:input="maskExpiry($event)"
+                            label="Validade"
+                            placeholder="MM/AA"
+                            maxlength="5"
+                            inputmode="numeric"
+                            autocomplete="cc-exp"
+                        />
+                        @error('cardExpiry') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+                    </div>
+                    <div>
+                        <flux:input
+                            wire:model="cardCvv"
+                            x-on:input="maskCvv($event)"
+                            label="CVV"
+                            placeholder="123"
+                            maxlength="4"
+                            inputmode="numeric"
+                            autocomplete="cc-csc"
+                            type="password"
+                            viewable
+                        />
+                        @error('cardCvv') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+                    </div>
+                </div>
+
+                {{-- Nome no cartão --}}
+                <div>
+                    <flux:input
+                        wire:model="cardHolderName"
+                        x-on:input="$wire.set('cardHolderName', $event.target.value.toUpperCase()); $event.target.value = $event.target.value.toUpperCase()"
+                        label="Nome conforme no cartão"
+                        placeholder="NOME SOBRENOME"
+                        autocomplete="cc-name"
+                    />
+                    @error('cardHolderName') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+                </div>
+
+                <hr class="border-zinc-100">
+                <p class="text-xs text-zinc-400 -mt-2">Dados do titular para cobrança</p>
+
+                {{-- CPF/CNPJ --}}
+                <div>
+                    <flux:input
+                        wire:model="cardCpfCnpj"
+                        x-on:input="maskCpfCnpj($event)"
+                        label="CPF ou CNPJ do titular"
+                        placeholder="000.000.000-00"
+                        maxlength="18"
+                        inputmode="numeric"
+                    />
+                    @error('cardCpfCnpj') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+                </div>
+
+                {{-- CEP e Número --}}
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <flux:input
+                            wire:model="cardPostalCode"
+                            x-on:input="maskCep($event)"
+                            label="CEP"
+                            placeholder="00000-000"
+                            maxlength="9"
+                            inputmode="numeric"
+                        />
+                        @error('cardPostalCode') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+                    </div>
+                    <div>
+                        <flux:input
+                            wire:model="cardAddressNumber"
+                            label="Número"
+                            placeholder="123"
+                        />
+                        @error('cardAddressNumber') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+                    </div>
+                </div>
+
+                {{-- Botão pagar --}}
+                <button
+                    wire:click="submitCard"
+                    wire:loading.attr="disabled"
+                    wire:loading.class="opacity-75 cursor-not-allowed"
+                    @if($cardProcessing) disabled @endif
+                    class="w-full flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-white shadow-sm transition-all duration-200 disabled:opacity-75"
+                    style="background: linear-gradient(135deg, #5c0079, #7A00A3);"
+                >
+                    <span wire:loading.remove wire:target="submitCard">
+                        <svg class="h-4 w-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z" />
+                        </svg>
+                        Pagar R$ {{ number_format($this->firstPaymentTotal, 2, ',', '.') }}
+                    </span>
+                    <span wire:loading wire:target="submitCard" class="flex items-center gap-2">
+                        <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4z"/>
+                        </svg>
+                        Processando...
+                    </span>
+                </button>
+
+                @if($this->planHasMonthly)
+                    <p class="text-center text-xs text-zinc-500">
+                        A partir do 2º mês: R$ {{ number_format($this->planMonthlyPrice, 2, ',', '.') }}/mês
+                    </p>
+                @endif
+
+                <p class="text-center text-xs text-zinc-400 flex items-center justify-center gap-1">
+                    <svg class="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+                    </svg>
+                    Pagamento processado com segurança via Asaas
+                </p>
+
+            @endif
+
+        </div>
+    </div>
+</div>
 </div>

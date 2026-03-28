@@ -18,6 +18,8 @@ class CompanyService
      */
     public function activate(Company $company): void
     {
+        $wasAlreadyActive = $company->status === 'ACTIVE';
+
         $company->update([
             'status' => 'ACTIVE',
             'active' => true,
@@ -31,7 +33,9 @@ class CompanyService
 
         Log::channel('payments')->info('Empresa ativada', ['company_id' => $company->id]);
 
-        CompanyActivated::dispatch($company->fresh());
+        if (! $wasAlreadyActive) {
+            CompanyActivated::dispatch($company->fresh());
+        }
     }
 
     /**

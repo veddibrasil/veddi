@@ -23,6 +23,7 @@ class AsaasWebhookController extends Controller
 
         $data  = $request->json()->all();
         $event = $data['event'] ?? null;
+        Log::channel('webhook')->info('data Asaas webhook recebido', ['data' => $data]);
 
         Log::channel('webhook')->info('Asaas webhook recebido', ['event' => $event]);
 

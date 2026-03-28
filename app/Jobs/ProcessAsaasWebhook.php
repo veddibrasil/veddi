@@ -155,7 +155,7 @@ class ProcessAsaasWebhook implements ShouldQueue
             $companyService->activate($company);
 
             // For plans with monthly subscription, kick off subscription creation now
-            if ($company->hasMonthlySubscription()) {
+            if ($company->hasMonthlySubscription() && $company->asaas_subscription_id === null) {
                 CreateAsaasSubscription::dispatch($company->fresh());
             }
 

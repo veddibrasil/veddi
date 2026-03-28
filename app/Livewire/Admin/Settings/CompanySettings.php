@@ -11,8 +11,8 @@ class CompanySettings extends Component
 
     public string $name                  = '';
     public string $slug                  = '';
-    public string $tagline               = '';
-    public string $footer_text           = '';
+    public ?string $tagline               = '';
+    public ?string $footer_text          = '';
     public string $primary_color         = '#5c347f';
     public string $primary_color_dark    = '#19273c';
     public string $primary_color_light   = '#5c347f';

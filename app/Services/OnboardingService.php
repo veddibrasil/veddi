@@ -50,6 +50,7 @@ class OnboardingService
                 'asaas_customer_id'           => $asaasCustomerId,
                 'order_prefix'                => strtoupper(substr(preg_replace('/[^a-z0-9]/i', '', $dto->slug), 0, 3)) ?: 'ORD',
                 'subscription_payment_method' => $dto->paymentMethod,
+                'owner_cpf_cnpj'              => preg_replace('/\D/', '', $dto->asaasCpfCnpj),
             ]);
 
             // withoutGlobalScopes() prevents CompanyScope from filtering the create call,

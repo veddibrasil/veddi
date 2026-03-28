@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Events\CompanyActivated;
+use App\Listeners\SendWelcomeSubscriptionEmail;
 use App\Models\Branch;
 use App\Models\Company;
 use App\Models\Order;
@@ -18,6 +20,7 @@ use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
@@ -43,6 +46,12 @@ class AppServiceProvider extends ServiceProvider
         $this->configureDefaults();
         $this->registerPolicies();
         $this->configureNotifications();
+        $this->configureEvents();
+    }
+
+    protected function configureEvents(): void
+    {
+        Event::listen(CompanyActivated::class, SendWelcomeSubscriptionEmail::class);
     }
 
     protected function registerPolicies(): void
