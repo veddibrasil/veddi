@@ -152,11 +152,23 @@ class ProcessAsaasWebhook implements ShouldQueue
                 'charge_id'  => $paymentId,
             ]);
 
+            // Apply pending plan (upgrade from free to paid via billing settings)
+            $wasUpgradeFromFree = $company->pending_plan !== null;
+            if ($wasUpgradeFromFree) {
+                $company->update([
+                    'plan'         => $company->pending_plan->value,
+                    'pending_plan' => null,
+                ]);
+                $company->refresh();
+            }
+
             $companyService->activate($company);
 
-            // For plans with monthly subscription, kick off subscription creation now
+            // For plans with monthly subscription, kick off subscription creation now.
+            // When upgrading from free, start next month (first month already paid in setup fee charge).
             if ($company->hasMonthlySubscription() && $company->asaas_subscription_id === null) {
-                CreateAsaasSubscription::dispatch($company->fresh());
+                $nextDueDate = $wasUpgradeFromFree ? now()->addMonth()->toDateString() : null;
+                CreateAsaasSubscription::dispatch($company->fresh(), $nextDueDate);
             }
 
             return;

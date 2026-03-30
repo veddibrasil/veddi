@@ -135,6 +135,9 @@ class BillingSettings extends Component
                 return;
             }
 
+            $currentPlan = Plan::tryFrom($this->plan);
+            $isFromFree  = $currentPlan === Plan::Free;
+
             // Cancel existing subscription if switching between paid plans
             if ($company->asaas_subscription_id) {
                 $asaasService->cancelSubscription($company->asaas_subscription_id);
@@ -145,14 +148,16 @@ class BillingSettings extends Component
                     ->update(['status' => 'cancelled']);
             }
 
+            $billingType = match ($this->paymentMethod) {
+                'credit_card' => 'CREDIT_CARD',
+                'boleto'      => 'BOLETO',
+                default       => 'PIX',
+            };
+
             $company->update([
                 'pending_plan'                => $targetPlan->value,
                 'asaas_subscription_id'       => null,
-                'subscription_payment_method' => match ($this->paymentMethod) {
-                    'credit_card' => 'CREDIT_CARD',
-                    'boleto'      => 'BOLETO',
-                    default       => 'PIX',
-                },
+                'subscription_payment_method' => $billingType,
             ]);
 
             $this->asaasSubscriptionId = null;
@@ -168,7 +173,27 @@ class BillingSettings extends Component
                 return;
             }
 
-            CreateAsaasSubscription::dispatch($company->fresh());
+            if ($isFromFree) {
+                // Upgrade from free: charge setup fee + first month as one-time charge.
+                // After webhook confirms, ProcessAsaasWebhook will apply pending_plan and create subscription.
+                $setupFee    = $targetPlan->setupFee();
+                $firstAmount = $setupFee + $targetPlan->monthlyPrice();
+                $description = "Taxa de ativação + 1º mês ({$targetPlan->label()}) — {$company->name}";
+
+                $charge = $asaasService->createCharge(
+                    $company->asaas_customer_id,
+                    $firstAmount,
+                    $description,
+                    $billingType,
+                );
+
+                $company->update(['asaas_setup_charge_id' => $charge['id']]);
+
+                session()->flash('success', 'Cobrança gerada! Você receberá um e-mail com as instruções de pagamento para concluir o upgrade.');
+            } else {
+                // Cross-grade between paid plans: create subscription directly (no setup fee)
+                CreateAsaasSubscription::dispatch($company->fresh());
+            }
         }
 
         $this->confirmingPlanChange = false;
@@ -256,11 +281,19 @@ class BillingSettings extends Component
                 'phone'         => $phone,
             ];
 
-            // Charge the first month immediately via transparent checkout
+            // Upgrade from free includes setup fee; cross-grade between paid plans does not
+            $isFromFree  = $company->plan === Plan::Free;
+            $setupFee    = $isFromFree ? $targetPlan->setupFee() : 0.0;
+            $chargeAmount = $setupFee + $targetPlan->monthlyPrice();
+            $description  = $isFromFree
+                ? "Taxa de ativação + 1º mês ({$targetPlan->label()}) — {$company->name}"
+                : "1º mês plano {$targetPlan->label()} — {$company->name}";
+
+            // Charge first month (+ activation fee if upgrading from free) via transparent checkout
             $charge = $asaasService->createCreditCardCharge(
                 customerId:        $company->asaas_customer_id,
-                amount:            $targetPlan->monthlyPrice(),
-                description:       "1º mês plano {$targetPlan->label()} — {$company->name}",
+                amount:            $chargeAmount,
+                description:       $description,
                 externalReference: "plan_change_{$company->id}_{$targetPlan->value}",
                 creditCard:        $creditCard,
                 holderInfo:        $holderInfo,
@@ -296,14 +329,20 @@ class BillingSettings extends Component
                 'next_due_date'         => $result['nextDueDate'],
             ]);
 
-            $company->update([
+            $companyUpdates = [
                 'plan'                        => $targetPlan->value,
                 'pending_plan'                => null,
                 'status'                      => 'ACTIVE',
                 'active'                      => true,
                 'asaas_subscription_id'       => $result['id'],
                 'subscription_payment_method' => 'CREDIT_CARD',
-            ]);
+            ];
+
+            if ($isFromFree) {
+                $companyUpdates['setup_fee_paid_at'] = now();
+            }
+
+            $company->update($companyUpdates);
 
             $this->persistTermsAcceptance($company);
 

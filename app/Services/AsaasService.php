@@ -363,7 +363,9 @@ class AsaasService
         ];
 
         $veddiWalletId = config('services.asaas.veddi_wallet_id');
-        if ($feePercentage > 0 && $veddiWalletId) {
+        $isSandbox     = config('services.asaas.sandbox', true);
+
+        if ($feePercentage > 0 && $veddiWalletId && ! $isSandbox) {
             $payload['split'] = [
                 [
                     'walletId'        => $veddiWalletId,
@@ -375,6 +377,21 @@ class AsaasService
         $response = Http::withHeaders(['access_token' => $this->apiKey])
             ->timeout(15)
             ->post("{$this->baseUrl}/payments", $payload);
+
+        if ($response->failed()) {
+            $body             = $response->json();
+            $isOwnWalletError = collect($body['errors'] ?? [])->contains('code', 'invalid_action');
+
+            if ($isOwnWalletError && isset($payload['split'])) {
+                Log::channel('payments')->warning('Split rejeitado (carteira própria), criando cobrança sem split', [
+                    'customer_id' => $customerId,
+                ]);
+                unset($payload['split']);
+                $response = Http::withHeaders(['access_token' => $this->apiKey])
+                    ->timeout(15)
+                    ->post("{$this->baseUrl}/payments", $payload);
+            }
+        }
 
         if ($response->failed()) {
             Log::channel('payments')->error('Erro ao criar cobrança de pedido no Asaas', [

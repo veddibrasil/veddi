@@ -968,28 +968,6 @@
                     @endif
                 @endif
 
-                {{-- Simular pagamento (apenas sandbox/debug) --}}
-                @if(config('app.debug') && $paymentId)
-                    <div class="border-t border-dashed border-gray-200 pt-3">
-                        <p class="text-[10px] font-bold text-orange-400 uppercase tracking-wider mb-2">Ambiente de Testes</p>
-                        <button
-                            wire:click="simulatePayment"
-                            wire:loading.attr="disabled"
-                            wire:target="simulatePayment"
-                            class="w-full px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-orange-500 hover:bg-orange-600 transition-colors flex items-center justify-center gap-2"
-                        >
-                            <span wire:loading.remove wire:target="simulatePayment">⚡ Simular pagamento aprovado</span>
-                            <span wire:loading wire:target="simulatePayment" class="flex items-center gap-2">
-                                <svg class="animate-spin w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                                </svg>
-                                Simulando...
-                            </span>
-                        </button>
-                    </div>
-                @endif
-
                 <p class="text-[11px] text-gray-400">Confirmação automática em até 5s após o pagamento.</p>
             </div>
 
@@ -1105,7 +1083,6 @@
                 @php
                     $currentOrder = $orderId ? \App\Models\Order::find($orderId) : null;
                     $canCancel = $currentOrder && in_array($currentOrder->status, ['awaiting_payment', 'paid', 'preparing']);
-                    $canRefund = $currentOrder && in_array($currentOrder->status, ['paid', 'preparing']) && $currentOrder->payment_method !== 'CASH';
                 @endphp
 
                 {{-- Confirmação de cancelamento --}}
@@ -1122,29 +1099,10 @@
                             </button>
                         </div>
                     </div>
-                @elseif ($showRefundConfirm)
-                    {{-- Confirmação de reembolso --}}
-                    <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-left space-y-2">
-                        <p class="text-sm font-semibold text-amber-700">Solicitar reembolso deste pedido?</p>
-                        <p class="text-xs text-amber-600">O valor será devolvido ao seu método de pagamento original. Essa ação não pode ser desfeita.</p>
-                        <div class="flex gap-2">
-                            <button wire:click="confirmRefund" wire:loading.attr="disabled" class="flex-1 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold py-2 rounded-lg transition-colors">
-                                Sim, reembolsar
-                            </button>
-                            <button wire:click="dismissRefund" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-semibold py-2 rounded-lg transition-colors">
-                                Não
-                            </button>
-                        </div>
-                    </div>
                 @else
                     @if ($canCancel)
                         <button wire:click="requestCancelOrder" class="w-full border border-red-300 text-red-600 hover:bg-red-50 text-sm font-medium py-2 rounded-lg transition-colors">
                             Cancelar pedido
-                        </button>
-                    @endif
-                    @if ($canRefund)
-                        <button wire:click="requestRefund" class="w-full border border-amber-300 text-amber-700 hover:bg-amber-50 text-sm font-medium py-2 rounded-lg transition-colors">
-                            Solicitar reembolso
                         </button>
                     @endif
                 @endif

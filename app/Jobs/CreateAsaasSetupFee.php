@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Company;
 use App\Services\AsaasService;
+use App\Services\CompanyService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -27,6 +28,16 @@ class CreateAsaasSetupFee implements ShouldQueue
             ? "Ativação + 1º mês ({$plan?->label()}) — {$this->company->name}"
             : "Taxa de ativação — {$plan?->label()} — {$this->company->name}";
         $billingType  = $this->company->subscription_payment_method ?? 'PIX';
+
+        // Safety net: plano sem taxa de ativação (ex: free) — ativar imediatamente
+        if ($firstAmount <= 0) {
+            $this->company->update(['setup_fee_paid_at' => now()]);
+            app(CompanyService::class)->activate($this->company);
+            Log::channel('payments')->info('Taxa de ativação zero — empresa ativada imediatamente', [
+                'company_id' => $this->company->id,
+            ]);
+            return;
+        }
 
         // Cartão de crédito é processado diretamente na página de pendente (checkout transparente)
         if ($billingType === 'CREDIT_CARD') {

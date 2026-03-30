@@ -16,7 +16,10 @@ class CreateAsaasSubscription implements ShouldQueue
     public int $tries  = 3;
     public int $backoff = 30;
 
-    public function __construct(public Company $company) {}
+    public function __construct(
+        public Company $company,
+        public ?string $nextDueDate = null,
+    ) {}
 
     public function handle(AsaasService $asaasService): void
     {
@@ -34,6 +37,7 @@ class CreateAsaasSubscription implements ShouldQueue
             $this->company->asaas_customer_id,
             $plan,
             $billingType,
+            nextDueDate: $this->nextDueDate,
         );
 
         $this->company->update(['asaas_subscription_id' => $result['id']]);

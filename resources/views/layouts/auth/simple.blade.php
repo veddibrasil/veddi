@@ -25,13 +25,11 @@
             <div class="flex w-full max-w-sm flex-col gap-4">
 
                 {{-- Logo / marca --}}
-                <a href="{{ route('admin.dashboard') }}" class="flex flex-col items-center gap-3" wire:navigate>
-                    <span class="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#7A00A3] shadow-lg shadow-purple-300">
-                        <img src="{{ asset('logo_branca.png') }}" alt="{{ config('app.name') }}" class="size-12 object-contain" />
+                <a href="{{ route('admin.dashboard') }}" class="flex flex-col items-center gap-4" wire:navigate>
+                    <span class="flex h-100 w-100 items-center justify-center rounded-2xl" >
+                        <img src="{{ asset('veddi_logo_2.png') }}" alt="{{ config('app.name') }}" class="size-12 object-contain" style="height: 100%;width: 50%;" />
                     </span>
-                    <span class="text-2xl font-bold text-[#5c0079]" style="font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px;">
-                        {{ config('app.name') }}
-                    </span>
+
                 </a>
 
                 {{-- Card de formulário --}}

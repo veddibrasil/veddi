@@ -203,7 +203,7 @@
                                         @if(in_array($payment['status'], ['PENDING', 'OVERDUE']) && !empty($payment['invoiceUrl']))
                                             <a href="{{ $payment['invoiceUrl'] }}" target="_blank" rel="noopener"
                                                class="text-xs font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 underline underline-offset-2">
-                                                Pagar via PIX
+                                                Pagar
                                             </a>
                                         @else
                                             <span class="text-xs text-neutral-400 dark:text-neutral-500">—</span>
@@ -456,15 +456,27 @@
                     <div>
                         <flux:heading size="lg">Mudar para o plano Essencial?</flux:heading>
                         <flux:subheading class="mt-1">
-                            <span x-show="method === 'credit_card'" style="display:none">
-                                Você será cobrado <strong>R$ {{ number_format(config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}/mês</strong> no cartão de crédito. O primeiro mês é cobrado imediatamente.
-                            </span>
-                            <span x-show="method === 'boleto'" style="display:none">
-                                Você será cobrado <strong>R$ {{ number_format(config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}/mês</strong> via boleto. O link será enviado por e-mail.
-                            </span>
-                            <span x-show="method === 'pix'">
-                                Você será cobrado <strong>R$ {{ number_format(config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}/mês</strong> via PIX. O link de pagamento será enviado por e-mail.
-                            </span>
+                            @if($plan === 'free')
+                                <span x-show="method === 'credit_card'" style="display:none">
+                                    Cobrança única de <strong>R$ {{ number_format(config('plans.essencial.setup_fee', 99.00) + config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}</strong> no cartão (taxa de ativação R$ {{ number_format(config('plans.essencial.setup_fee', 99.00), 2, ',', '.') }} + 1º mês R$ {{ number_format(config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}). A partir do 2º mês: R$ {{ number_format(config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}/mês.
+                                </span>
+                                <span x-show="method === 'boleto'" style="display:none">
+                                    Você receberá um boleto de <strong>R$ {{ number_format(config('plans.essencial.setup_fee', 99.00) + config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}</strong> (taxa de ativação + 1º mês). A partir do 2º mês: R$ {{ number_format(config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}/mês.
+                                </span>
+                                <span x-show="method === 'pix'">
+                                    Você receberá um PIX de <strong>R$ {{ number_format(config('plans.essencial.setup_fee', 99.00) + config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}</strong> (taxa de ativação + 1º mês). A partir do 2º mês: R$ {{ number_format(config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}/mês.
+                                </span>
+                            @else
+                                <span x-show="method === 'credit_card'" style="display:none">
+                                    Você será cobrado <strong>R$ {{ number_format(config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}/mês</strong> no cartão de crédito. O primeiro mês é cobrado imediatamente.
+                                </span>
+                                <span x-show="method === 'boleto'" style="display:none">
+                                    Você será cobrado <strong>R$ {{ number_format(config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}/mês</strong> via boleto. O link será enviado por e-mail.
+                                </span>
+                                <span x-show="method === 'pix'">
+                                    Você será cobrado <strong>R$ {{ number_format(config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}/mês</strong> via PIX. O link de pagamento será enviado por e-mail.
+                                </span>
+                            @endif
                         </flux:subheading>
                     </div>
                 </div>
@@ -504,15 +516,27 @@
                     <div>
                         <flux:heading size="lg">Fazer upgrade para PRO?</flux:heading>
                         <flux:subheading class="mt-1">
-                            <span x-show="method === 'credit_card'" style="display:none">
-                                Você será cobrado <strong>R$ {{ number_format(config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}/mês</strong> no cartão de crédito. O primeiro mês é cobrado imediatamente.
-                            </span>
-                            <span x-show="method === 'boleto'" style="display:none">
-                                Você será cobrado <strong>R$ {{ number_format(config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}/mês</strong> via boleto. O link será enviado por e-mail.
-                            </span>
-                            <span x-show="method === 'pix'">
-                                Você será cobrado <strong>R$ {{ number_format(config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}/mês</strong> via PIX. O link de pagamento será enviado por e-mail.
-                            </span>
+                            @if($plan === 'free')
+                                <span x-show="method === 'credit_card'" style="display:none">
+                                    Cobrança única de <strong>R$ {{ number_format(config('plans.pro.setup_fee', 99.00) + config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}</strong> no cartão (taxa de ativação R$ {{ number_format(config('plans.pro.setup_fee', 99.00), 2, ',', '.') }} + 1º mês R$ {{ number_format(config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}). A partir do 2º mês: R$ {{ number_format(config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}/mês.
+                                </span>
+                                <span x-show="method === 'boleto'" style="display:none">
+                                    Você receberá um boleto de <strong>R$ {{ number_format(config('plans.pro.setup_fee', 99.00) + config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}</strong> (taxa de ativação + 1º mês). A partir do 2º mês: R$ {{ number_format(config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}/mês.
+                                </span>
+                                <span x-show="method === 'pix'">
+                                    Você receberá um PIX de <strong>R$ {{ number_format(config('plans.pro.setup_fee', 99.00) + config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}</strong> (taxa de ativação + 1º mês). A partir do 2º mês: R$ {{ number_format(config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}/mês.
+                                </span>
+                            @else
+                                <span x-show="method === 'credit_card'" style="display:none">
+                                    Você será cobrado <strong>R$ {{ number_format(config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}/mês</strong> no cartão de crédito. O primeiro mês é cobrado imediatamente.
+                                </span>
+                                <span x-show="method === 'boleto'" style="display:none">
+                                    Você será cobrado <strong>R$ {{ number_format(config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}/mês</strong> via boleto. O link será enviado por e-mail.
+                                </span>
+                                <span x-show="method === 'pix'">
+                                    Você será cobrado <strong>R$ {{ number_format(config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}/mês</strong> via PIX. O link de pagamento será enviado por e-mail.
+                                </span>
+                            @endif
                         </flux:subheading>
                     </div>
                 </div>
@@ -551,48 +575,48 @@
         <div class="space-y-4">
             <flux:heading size="lg">Termos de Responsabilidade</flux:heading>
             <div class="max-h-[60vh] overflow-y-auto space-y-4 text-sm text-neutral-700 dark:text-neutral-300 pr-2">
-                <p><strong>Última atualização:</strong> 28/03/2026</p>
+                <p><strong>Última atualização:</strong> 30/03/2026</p>
 
-                <p>Ao assinar um plano pago na plataforma <strong>MisterCoxinha</strong>, você declara que leu, compreendeu e concorda com os termos e condições descritos abaixo.</p>
+                <p>Ao assinar um plano pago na plataforma <strong>Veddi</strong>, você declara que leu, compreendeu e concorda com os termos e condições descritos abaixo.</p>
 
                 <div>
                     <h3 class="font-semibold text-neutral-800 dark:text-neutral-200 mb-1">1. Contratação e Pagamento</h3>
-                    <p>A assinatura é cobrada mensalmente de forma recorrente na data de vencimento estabelecida no momento da contratação. O não pagamento dentro do prazo resultará no bloqueio temporário do acesso à plataforma até a regularização.</p>
+                    <p>A assinatura é cobrada mensalmente de forma recorrente, na data de vencimento estabelecida no momento da contratação. O não pagamento dentro do prazo resultará no bloqueio temporário do acesso à plataforma até a regularização do débito. Em caso de inadimplência superior a 30 dias, a conta poderá ser suspensa definitivamente.</p>
                 </div>
 
                 <div>
                     <h3 class="font-semibold text-neutral-800 dark:text-neutral-200 mb-1">2. Dados de Pagamento</h3>
-                    <p>Os dados do cartão de crédito são transmitidos diretamente à operadora de pagamentos (Asaas) via checkout transparente e não são armazenados em nossos servidores. Para pagamentos via PIX ou boleto, os dados bancários são gerados pela Asaas e utilizados exclusivamente para a liquidação da cobrança.</p>
+                    <p>Os dados do cartão de crédito são transmitidos diretamente à operadora de pagamentos (<strong>Asaas</strong>) via checkout transparente e não são armazenados em nossos servidores. Para pagamentos via PIX ou boleto, os dados bancários são gerados pela Asaas e utilizados exclusivamente para a liquidação da cobrança. A Veddi não tem acesso aos dados sensíveis do seu instrumento de pagamento.</p>
                 </div>
 
                 <div>
                     <h3 class="font-semibold text-neutral-800 dark:text-neutral-200 mb-1">3. Limites de Uso</h3>
-                    <p>Cada plano possui limites específicos de uso (número de pedidos mensais, filiais, funcionalidades disponíveis). O uso além dos limites do plano contratado pode resultar no bloqueio de funcionalidades ou na necessidade de upgrade para um plano superior.</p>
+                    <p>Cada plano possui limites específicos de uso, incluindo número de pedidos mensais, quantidade de filiais e funcionalidades disponíveis. O uso além dos limites do plano contratado pode resultar no bloqueio de funcionalidades ou na necessidade de upgrade para um plano superior. Pedidos que excedam 50 por mês estão sujeitos a uma taxa adicional de <strong>3%</strong> sobre o excedente, conforme política vigente.</p>
                 </div>
 
                 <div>
                     <h3 class="font-semibold text-neutral-800 dark:text-neutral-200 mb-1">4. Cancelamento</h3>
-                    <p>O cancelamento pode ser solicitado a qualquer momento pelo próprio painel, na seção de Assinatura. O acesso permanece ativo até o fim do período já pago. Não há reembolso proporcional de períodos parciais.</p>
+                    <p>O cancelamento pode ser solicitado a qualquer momento diretamente pelo painel, na seção de <strong>Assinatura</strong>. O acesso permanece ativo até o fim do período já pago. Não há reembolso proporcional de períodos parciais utilizados.</p>
                 </div>
 
                 <div>
                     <h3 class="font-semibold text-neutral-800 dark:text-neutral-200 mb-1">5. Responsabilidades do Contratante</h3>
-                    <p>É de responsabilidade do contratante manter os dados cadastrais e de pagamento atualizados, garantir o uso adequado da plataforma dentro dos limites do plano contratado e zelar pela segurança de suas credenciais de acesso.</p>
+                    <p>É de responsabilidade exclusiva do contratante: manter os dados cadastrais e de pagamento sempre atualizados; garantir o uso adequado da plataforma dentro dos limites do plano contratado; zelar pela segurança e confidencialidade de suas credenciais de acesso; garantir que os pedidos registrados estejam em conformidade com as leis aplicáveis ao seu negócio; e não utilizar a plataforma para fins ilícitos ou que violem direitos de terceiros.</p>
                 </div>
 
                 <div>
                     <h3 class="font-semibold text-neutral-800 dark:text-neutral-200 mb-1">6. Responsabilidades da Plataforma</h3>
-                    <p>A MisterCoxinha se compromete a manter a plataforma disponível e funcional, podendo realizar manutenções programadas com aviso prévio. Não nos responsabilizamos por interrupções decorrentes de força maior, falhas de terceiros ou uso indevido por parte do contratante.</p>
+                    <p>A Veddi se compromete a manter a plataforma disponível e funcional, podendo realizar manutenções programadas com aviso prévio. A plataforma não se responsabiliza por interrupções decorrentes de força maior ou caso fortuito, falhas em serviços de terceiros (operadoras de pagamento, provedores de internet), uso indevido por parte do contratante ou de seus colaboradores, ou perdas financeiras decorrentes de erros operacionais do contratante.</p>
                 </div>
 
                 <div>
                     <h3 class="font-semibold text-neutral-800 dark:text-neutral-200 mb-1">7. Proteção de Dados (LGPD)</h3>
-                    <p>Ao contratar o plano, você consente com o tratamento dos seus dados pessoais (nome, e-mail, CPF/CNPJ, endereço) para fins de cobrança, suporte e melhoria do serviço, conforme a Lei Geral de Proteção de Dados (Lei nº 13.709/2018). Os dados não serão compartilhados com terceiros, salvo com parceiros de pagamento (Asaas) necessários para a prestação do serviço.</p>
+                    <p>Ao contratar o plano, você consente com o tratamento dos seus dados pessoais — incluindo nome, e-mail, CPF/CNPJ e dados de faturamento — para fins de cobrança, suporte e melhoria do serviço, conforme a <strong>Lei Geral de Proteção de Dados (Lei nº 13.709/2018)</strong>. Os dados não serão compartilhados com terceiros, salvo com parceiros essenciais à prestação do serviço (como a Asaas). Você pode solicitar a exclusão dos seus dados mediante cancelamento da conta, respeitados os prazos legais de retenção.</p>
                 </div>
 
                 <div>
                     <h3 class="font-semibold text-neutral-800 dark:text-neutral-200 mb-1">8. Alterações nos Termos</h3>
-                    <p>Estes termos podem ser atualizados periodicamente. Em caso de alterações relevantes, notificaremos por e-mail com antecedência mínima de 15 dias.</p>
+                    <p>Estes termos podem ser atualizados periodicamente. Em caso de alterações relevantes, notificaremos por e-mail com antecedência mínima de <strong>15 dias</strong>. A continuidade do uso da plataforma após o prazo de notificação implica a aceitação automática dos novos termos.</p>
                 </div>
 
                 <p class="text-xs text-neutral-400 dark:text-neutral-500 pt-2">Em caso de dúvidas, entre em contato com nosso suporte.</p>

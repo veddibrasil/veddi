@@ -18,8 +18,8 @@ return [
         // Per-order fee deducted from the order total (1% = 0.01).
         'fee_percentage'           => 0.01,
 
-        // One-time setup fee charged on activation.
-        'setup_fee'                => (float) env('PLAN_SETUP_FEE', 99.00),
+        // One-time setup fee charged on activation (0 = sem cobrança para o plano free).
+        'setup_fee'                => 0.00,
 
         // Whether this plan has a recurring monthly Asaas subscription.
         'has_monthly_subscription' => false,

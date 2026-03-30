@@ -80,14 +80,27 @@ class OnboardingService
             return $company;
         });
 
-        // 3. Dispatch setup fee charge creation (after commit)
-        CreateAsaasSetupFee::dispatch($company);
+        // 3. Free plan: activate immediately (no setup fee). Paid plans: dispatch charge.
+        if (Plan::tryFrom($dto->plan) === Plan::Free) {
+            $company->update([
+                'status'            => 'ACTIVE',
+                'active'            => true,
+                'setup_fee_paid_at' => now(),
+            ]);
 
-        Log::channel('payments')->info('Onboarding concluído — aguardando taxa de ativação', [
-            'company_id' => $company->id,
-            'plan'       => $dto->plan,
-            'status'     => $company->status,
-        ]);
+            Log::channel('payments')->info('Onboarding concluído — plano free ativado imediatamente', [
+                'company_id' => $company->id,
+                'plan'       => $dto->plan,
+            ]);
+        } else {
+            CreateAsaasSetupFee::dispatch($company);
+
+            Log::channel('payments')->info('Onboarding concluído — aguardando taxa de ativação', [
+                'company_id' => $company->id,
+                'plan'       => $dto->plan,
+                'status'     => $company->status,
+            ]);
+        }
 
         return $company;
     }

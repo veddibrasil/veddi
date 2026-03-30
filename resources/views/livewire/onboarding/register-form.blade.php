@@ -1,4 +1,4 @@
-<div class="flex flex-col gap-8">
+<div class="flex flex-col gap-8" x-data="{ showTerms: false, termsAccepted: false }">
 
     {{-- ── Header ── --}}
     <div>
@@ -270,7 +270,7 @@
                     <p class="mt-0.5 text-2xl font-extrabold text-zinc-900" style="font-family: 'Montserrat', sans-serif;">
                         R$ 0<span class="text-sm font-normal text-zinc-400">/mês</span>
                     </p>
-                    <p class="mt-1 text-xs text-zinc-400">+ R$ 99 taxa de ativação</p>
+                    <p class="mt-1 text-xs text-green-600 font-medium">Sem taxa de ativação</p>
                     <div class="mt-4 space-y-2 text-sm text-zinc-600">
                         <div class="flex items-center gap-2">
                             <svg class="h-4 w-4 text-green-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
@@ -392,9 +392,12 @@
                         <span>R$ {{ number_format($this->firstPaymentTotal, 2, ',', '.') }}</span>
                     </div>
                     <p class="text-xs text-zinc-400">A partir do 2º mês: R$ {{ number_format($this->planMonthlyPrice, 2, ',', '.') }}/mês</p>
+                @elseif($plan === 'free')
+                    <p class="font-semibold text-zinc-800 mb-1">🎉 Plano Grátis — sem pagamento</p>
+                    <p>Nenhuma cobrança na ativação. Sua conta será criada imediatamente após o cadastro.</p>
                 @else
                     <p class="font-semibold text-zinc-800 mb-1">💳 Taxa de ativação única</p>
-                    <p>Taxa de <strong class="text-zinc-900">R$ 99,00</strong> cobrada uma única vez. Sem mensalidade no plano Grátis.</p>
+                    <p>Taxa de <strong class="text-zinc-900">R$ {{ number_format(App\Enums\Plan::tryFrom($plan)?->setupFee() ?? 99, 2, ',', '.') }}</strong> cobrada uma única vez.</p>
                 @endif
             </div>
 
@@ -434,7 +437,8 @@
                 @enderror
             </div>
 
-            {{-- Payment Method --}}
+            {{-- Payment Method (não exibido para plano free) --}}
+            @if($plan !== 'free')
             <div>
                 <p class="mb-3 text-sm font-semibold text-zinc-700">Forma de pagamento</p>
                 <div class="flex flex-cols-3 gap-3">
@@ -483,6 +487,21 @@
                     <p class="mt-1.5 text-xs text-red-600">{{ $message }}</p>
                 @enderror
             </div>
+            @endif
+
+            {{-- Termos de Responsabilidade --}}
+            @if($plan !== 'free')
+            <label class="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" x-model="termsAccepted" class="mt-0.5 accent-[#7A00A3] shrink-0">
+                <span class="text-sm text-zinc-600">
+                    Li e aceito os
+                    <button type="button" x-on:click.prevent="showTerms = true"
+                            class="text-[#7A00A3] hover:underline font-medium">
+                        Termos de Responsabilidade
+                    </button>
+                </span>
+            </label>
+            @endif
 
             {{-- Submit --}}
             <div class="flex gap-3 pt-2">
@@ -498,6 +517,8 @@
                     wire:click="submit"
                     wire:loading.attr="disabled"
                     wire:loading.class="opacity-75 cursor-not-allowed"
+                    :disabled="{{ $plan !== 'free' ? 'true' : 'false' }} && !termsAccepted"
+                    :class="{{ $plan !== 'free' ? 'true' : 'false' }} && !termsAccepted ? 'opacity-50 cursor-not-allowed' : ''"
                     class="flex-1 flex items-center justify-center gap-2 rounded-xl px-6 py-2.5 text-sm font-bold text-white shadow-sm transition-all duration-200 disabled:opacity-75"
                     style="background: linear-gradient(135deg, #5c0079, #7A00A3);"
                 >
@@ -507,7 +528,7 @@
                         @elseif($plan === 'essencial')
                             📦 Criar conta Essencial — R$ {{ number_format($this->firstPaymentTotal, 2, ',', '.') }}
                         @else
-                            Criar conta Grátis — R$ {{ number_format($this->firstPaymentTotal, 2, ',', '.') }} ativação
+                            Criar conta Grátis — sem cobrança
                         @endif
                     </span>
                     <span wire:loading wire:target="submit" class="flex items-center gap-2">
@@ -763,6 +784,97 @@
 
             @endif
 
+        </div>
+    </div>
+</div>
+
+{{-- Modal de Termos de Responsabilidade --}}
+<div
+    x-show="showTerms"
+    x-transition:enter="transition ease-out duration-200"
+    x-transition:enter-start="opacity-0"
+    x-transition:enter-end="opacity-100"
+    x-transition:leave="transition ease-in duration-150"
+    x-transition:leave-start="opacity-100"
+    x-transition:leave-end="opacity-0"
+    style="display:none"
+    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+>
+    <div
+        @click.outside="showTerms = false"
+        class="w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden"
+    >
+        <div class="flex items-center justify-between p-6 border-b border-zinc-100">
+            <h2 class="text-xl font-extrabold text-zinc-900" style="font-family: 'Montserrat', sans-serif;">Termos de Responsabilidade</h2>
+            <button @click="showTerms = false" class="rounded-lg p-1.5 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 transition-colors">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
+        <div class="p-6 max-h-[65vh] overflow-y-auto space-y-4 text-sm text-zinc-700">
+            <p><strong>Última atualização:</strong> 30/03/2026</p>
+
+            <p>Ao assinar um plano pago na plataforma <strong>Veddi</strong>, você declara que leu, compreendeu e concorda com os termos e condições descritos abaixo.</p>
+
+            <div>
+                <h3 class="font-semibold text-zinc-900 mb-1">1. Contratação e Pagamento</h3>
+                <p>A assinatura é cobrada mensalmente de forma recorrente, na data de vencimento estabelecida no momento da contratação. O não pagamento dentro do prazo resultará no bloqueio temporário do acesso à plataforma até a regularização do débito. Em caso de inadimplência superior a 30 dias, a conta poderá ser suspensa definitivamente.</p>
+            </div>
+
+            <div>
+                <h3 class="font-semibold text-zinc-900 mb-1">2. Dados de Pagamento</h3>
+                <p>Os dados do cartão de crédito são transmitidos diretamente à operadora de pagamentos (<strong>Asaas</strong>) via checkout transparente e não são armazenados em nossos servidores. Para pagamentos via PIX ou boleto, os dados bancários são gerados pela Asaas e utilizados exclusivamente para a liquidação da cobrança. A Veddi não tem acesso aos dados sensíveis do seu instrumento de pagamento.</p>
+            </div>
+
+            <div>
+                <h3 class="font-semibold text-zinc-900 mb-1">3. Limites de Uso</h3>
+                <p>Cada plano possui limites específicos de uso, incluindo número de pedidos mensais, quantidade de filiais e funcionalidades disponíveis. O uso além dos limites do plano contratado pode resultar no bloqueio de funcionalidades ou na necessidade de upgrade para um plano superior. Pedidos que excedam 50 por mês estão sujeitos a uma taxa adicional de <strong>3%</strong> sobre o excedente, conforme política vigente.</p>
+            </div>
+
+            <div>
+                <h3 class="font-semibold text-zinc-900 mb-1">4. Cancelamento</h3>
+                <p>O cancelamento pode ser solicitado a qualquer momento diretamente pelo painel, na seção de <strong>Assinatura</strong>. O acesso permanece ativo até o fim do período já pago. Não há reembolso proporcional de períodos parciais utilizados.</p>
+            </div>
+
+            <div>
+                <h3 class="font-semibold text-zinc-900 mb-1">5. Responsabilidades do Contratante</h3>
+                <p>É de responsabilidade exclusiva do contratante: manter os dados cadastrais e de pagamento sempre atualizados; garantir o uso adequado da plataforma dentro dos limites do plano contratado; zelar pela segurança e confidencialidade de suas credenciais de acesso; garantir que os pedidos registrados estejam em conformidade com as leis aplicáveis ao seu negócio; e não utilizar a plataforma para fins ilícitos ou que violem direitos de terceiros.</p>
+            </div>
+
+            <div>
+                <h3 class="font-semibold text-zinc-900 mb-1">6. Responsabilidades da Plataforma</h3>
+                <p>A Veddi se compromete a manter a plataforma disponível e funcional, podendo realizar manutenções programadas com aviso prévio. A plataforma não se responsabiliza por interrupções decorrentes de força maior ou caso fortuito, falhas em serviços de terceiros (operadoras de pagamento, provedores de internet), uso indevido por parte do contratante ou de seus colaboradores, ou perdas financeiras decorrentes de erros operacionais do contratante.</p>
+            </div>
+
+            <div>
+                <h3 class="font-semibold text-zinc-900 mb-1">7. Proteção de Dados (LGPD)</h3>
+                <p>Ao contratar o plano, você consente com o tratamento dos seus dados pessoais — incluindo nome, e-mail, CPF/CNPJ e dados de faturamento — para fins de cobrança, suporte e melhoria do serviço, conforme a <strong>Lei Geral de Proteção de Dados (Lei nº 13.709/2018)</strong>. Os dados não serão compartilhados com terceiros, salvo com parceiros essenciais à prestação do serviço (como a Asaas). Você pode solicitar a exclusão dos seus dados mediante cancelamento da conta, respeitados os prazos legais de retenção.</p>
+            </div>
+
+            <div>
+                <h3 class="font-semibold text-zinc-900 mb-1">8. Alterações nos Termos</h3>
+                <p>Estes termos podem ser atualizados periodicamente. Em caso de alterações relevantes, notificaremos por e-mail com antecedência mínima de <strong>15 dias</strong>. A continuidade do uso da plataforma após o prazo de notificação implica a aceitação automática dos novos termos.</p>
+            </div>
+
+            <p class="text-xs text-zinc-400 pt-2">Em caso de dúvidas, entre em contato com nosso suporte.</p>
+        </div>
+
+        <div class="flex items-center justify-between gap-3 p-6 border-t border-zinc-100">
+            <button
+                @click="termsAccepted = true; showTerms = false"
+                class="flex-1 rounded-xl px-6 py-2.5 text-sm font-bold text-white shadow-sm transition-all duration-200"
+                style="background: linear-gradient(135deg, #5c0079, #7A00A3);"
+            >
+                Li e aceito os termos
+            </button>
+            <button
+                @click="showTerms = false"
+                class="rounded-xl border border-zinc-200 bg-white px-5 py-2.5 text-sm font-medium text-zinc-600 hover:bg-zinc-50 transition-colors"
+            >
+                Fechar
+            </button>
         </div>
     </div>
 </div>

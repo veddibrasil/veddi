@@ -105,7 +105,6 @@ class OrderChat extends Component
     public ?string $cartError = null;
     public bool $showEndConfirm = false;
     public bool $showCancelConfirm = false;
-    public bool $showRefundConfirm = false;
     public bool $showSupportModal = false;
     public array $supportConversation = [];
 
@@ -1301,45 +1300,6 @@ class OrderChat extends Component
         $this->showCancelConfirm = false;
     }
 
-    public function requestRefund(): void
-    {
-        $order = Order::find($this->orderId);
-
-        if (! $order || ! in_array($order->status, ['paid', 'preparing'])) {
-            $this->addMessage('bot', 'Não é possível solicitar reembolso no momento. Entre em contato com a loja.');
-            return;
-        }
-
-        if ($order->payment_method === 'CASH') {
-            $this->addMessage('bot', 'Pedidos pagos em dinheiro não podem ser reembolsados eletronicamente. Entre em contato com a loja.');
-            return;
-        }
-
-        $this->showRefundConfirm = true;
-    }
-
-    public function confirmRefund(): void
-    {
-        $order = Order::find($this->orderId);
-
-        if (! $order) {
-            $this->showRefundConfirm = false;
-            $this->addMessage('bot', 'Não foi possível processar o reembolso. Entre em contato com a loja.');
-            return;
-        }
-
-        \App\Jobs\RefundPayment::dispatch($order);
-
-        $this->showRefundConfirm = false;
-        $this->lastNotifiedStatus = 'refunded';
-        $this->addMessage('bot', "Reembolso solicitado! O valor do pedido {$order->order_number} será devolvido ao seu método de pagamento em breve.");
-    }
-
-    public function dismissRefund(): void
-    {
-        $this->showRefundConfirm = false;
-    }
-
     public function retryOrder(): void
     {
         $this->cart           = [];
@@ -1419,7 +1379,6 @@ class OrderChat extends Component
         $this->cartError        = null;
         $this->showEndConfirm   = false;
         $this->showCancelConfirm   = false;
-        $this->showRefundConfirm   = false;
         $this->lastNotifiedStatus  = null;
         $this->supportMessage              = '';
         $this->lastAdminMessageId          = null;
@@ -1484,7 +1443,6 @@ class OrderChat extends Component
             'messages'             => $this->messages,
             'lastNotifiedStatus'   => $this->lastNotifiedStatus,
             'showCancelConfirm'    => $this->showCancelConfirm,
-            'showRefundConfirm'    => $this->showRefundConfirm,
             'lastAdminMessageId'         => $this->lastAdminMessageId,
             'supportTicketId'            => $this->supportTicketId,
             'lastAdminSupportMessageId'  => $this->lastAdminSupportMessageId,

@@ -268,7 +268,9 @@ class RegisterForm extends Component
             ],
             4 => [
                 'plan'          => ['required', 'in:' . implode(',', Plan::values())],
-                'paymentMethod' => ['required', 'in:PIX,BOLETO,CREDIT_CARD'],
+                'paymentMethod' => Plan::tryFrom($this->plan) === Plan::Free
+                    ? ['nullable']
+                    : ['required', 'in:PIX,BOLETO,CREDIT_CARD'],
                 'asaasCpfCnpj'  => ['required', 'string', function (string $attr, mixed $value, \Closure $fail) {
                     $digits = preg_replace('/\D/', '', $value);
                     if (strlen($digits) === 11 && ! Validation::isValidCpf($digits)) {
@@ -370,7 +372,14 @@ class RegisterForm extends Component
 
             $company = app(OnboardingService::class)->handle($dto);
 
-            // All plans start as PENDING_PAYMENT (setup fee required)
+            // Free plan: activated immediately, no payment required
+            if (Plan::tryFrom($this->plan) === Plan::Free) {
+                $this->submitting = false;
+                $this->redirectRoute('login');
+                return;
+            }
+
+            // Paid plans: wait for setup fee payment
             session(['pending_company_id' => $company->id]);
 
             if ($this->paymentMethod === 'CREDIT_CARD') {

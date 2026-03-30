@@ -177,6 +177,12 @@ class OrderService
             'order_id'    => $order->id,
             'customer_id' => $customerId,
         ]);
+
+        $payment = $order->payment;
+
+        if ($payment && $payment->status === 'paid' && $order->payment_method !== 'CASH') {
+            \App\Jobs\RefundPayment::dispatch($order);
+        }
     }
 
     /**
