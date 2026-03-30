@@ -1330,6 +1330,36 @@ class OrderChat extends Component
         $this->showCancelConfirm = false;
     }
 
+    public function changePaymentMethod(): void
+    {
+        if ($this->orderId) {
+            $order = Order::find($this->orderId);
+            if ($order && $order->status === 'pending') {
+                $order->update(['status' => 'cancelled']);
+                app(\App\Services\StockService::class)->restoreForOrder($order);
+                Log::channel('orders')->info('Pedido cancelado para trocar forma de pagamento', [
+                    'order_id'    => $order->id,
+                    'customer_id' => $this->customerId,
+                ]);
+            }
+        }
+
+        $this->orderId        = null;
+        $this->paymentId      = null;
+        $this->pixQrCode      = null;
+        $this->pixCopyPaste   = null;
+        $this->expiresAt      = null;
+        $this->submitting     = false;
+        $this->cardError      = null;
+        $this->cardNumber     = '';
+        $this->cardExpiry     = '';
+        $this->cardCvv        = '';
+        $this->cardHolderName = '';
+
+        $this->addMessage('bot', 'Escolha uma nova forma de pagamento:');
+        $this->transitionTo('CHECKOUT_PAYMENT_METHOD');
+    }
+
     public function retryOrder(): void
     {
         $this->cart           = [];

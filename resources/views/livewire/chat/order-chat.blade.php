@@ -365,21 +365,29 @@
             <div class="space-y-2">
                 <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Escolha a filial</p>
                 @foreach ($this->branches as $branch)
+                    @php $branchOpen = $branch->isOpen(); @endphp
                     <button
                         wire:click="selectBranch({{ $branch->id }})"
-                        class="w-full text-left border-2 border-gray-100 rounded-xl p-3 hover:border-red-200 hover:bg-red-50 transition-all active:scale-[0.98]"
+                        class="w-full text-left border-2 rounded-xl p-3 transition-all active:scale-[0.98] {{ $branchOpen ? 'border-gray-100 hover:border-red-200 hover:bg-red-50' : 'border-gray-100 bg-gray-50 opacity-70' }}"
                     >
                         <div class="flex items-start gap-3">
-                            <div class="w-9 h-9 rounded-lg bg-red-100 flex items-center justify-center shrink-0">
+                            <div class="w-9 h-9 rounded-lg {{ $branchOpen ? 'bg-red-100' : 'bg-gray-200' }} flex items-center justify-center shrink-0">
                                 <span class="text-lg">🏪</span>
                             </div>
                             <div class="flex-1 min-w-0">
-                                <p class="font-bold text-sm text-gray-800">{{ $branch->name }}</p>
+                                <div class="flex items-center gap-2">
+                                    <p class="font-bold text-sm {{ $branchOpen ? 'text-gray-800' : 'text-gray-400' }}">{{ $branch->name }}</p>
+                                    @if ($branchOpen)
+                                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">Aberto</span>
+                                    @else
+                                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">Fechado</span>
+                                    @endif
+                                </div>
                                 <p class="text-xs text-gray-500 truncate">{{ $branch->address }}, {{ $branch->city }}</p>
                                 @if ($branch->phone)
                                     <p class="text-xs text-gray-400 mt-0.5">📞 {{ $branch->phone }}</p>
                                 @endif
-                                <p class="text-xs text-green-600 mt-0.5 font-medium">🕐 {{ $branch->opens_at }} – {{ $branch->closes_at }}</p>
+                                <p class="text-xs mt-0.5 font-medium {{ $branchOpen ? 'text-green-600' : 'text-gray-400' }}">🕐 {{ $branch->opens_at }} – {{ $branch->closes_at }}</p>
                             </div>
                             <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-gray-300 shrink-0 mt-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -1006,6 +1014,14 @@
                 @endif
 
                 <p class="text-[11px] text-gray-400">Confirmação automática em até 5s após o pagamento.</p>
+
+                <button
+                    wire:click="changePaymentMethod"
+                    wire:loading.attr="disabled"
+                    class="w-full text-xs text-center text-gray-400 hover:text-gray-600 py-1 transition-colors"
+                >
+                    ← Trocar forma de pagamento
+                </button>
             </div>
 
         {{-- ── PAYMENT_CARD_FORM ── --}}
@@ -1093,6 +1109,14 @@
                 >
                     <span wire:loading.remove wire:target="submitCardPayment">Pagar com cartão</span>
                     <span wire:loading wire:target="submitCardPayment">Processando...</span>
+                </button>
+
+                <button
+                    wire:click="changePaymentMethod"
+                    wire:loading.attr="disabled"
+                    class="w-full text-xs text-center text-gray-400 hover:text-gray-600 py-1 transition-colors"
+                >
+                    ← Trocar forma de pagamento
                 </button>
             </div>
 
