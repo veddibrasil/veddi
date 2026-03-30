@@ -19,6 +19,21 @@ class Index extends Component
     public ?int $selectedTicketId = null;
     public array $conversation    = [];
     public string $replyMessage   = '';
+    public bool $canView          = false;
+    public bool $canReply         = false;
+
+    public function mount(): void
+    {
+        $user = auth()->user();
+
+        if ($user->isSuperAdmin()) {
+            $this->canView = $this->canReply = true;
+        } elseif (app()->bound('current.company')) {
+            $company = app('current.company');
+            $this->authorize('viewAny', SupportTicket::class);            
+            $this->canReply = $user->hasPermission('support.reply', $company);
+        }
+    }
 
     public function getListeners(): array
     {
@@ -85,6 +100,8 @@ class Index extends Component
 
     public function sendReply(): void
     {
+        abort_unless($this->canReply, 403);
+
         $this->validate(['replyMessage' => ['required', 'string', 'max:500']]);
 
         if (! $this->selectedTicketId) {
@@ -112,6 +129,8 @@ class Index extends Component
 
     public function closeTicket(int $ticketId): void
     {
+        abort_unless($this->canReply, 403);
+
         $ticket = SupportTicket::find($ticketId);
 
         if (! $ticket) {
@@ -131,6 +150,8 @@ class Index extends Component
 
     public function reopenTicket(int $ticketId): void
     {
+        abort_unless($this->canReply, 403);
+
         SupportTicket::find($ticketId)?->update(['status' => 'open']);
         $this->resetPage();
     }

@@ -14,6 +14,7 @@ use App\Services\UserPermissionService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use App\Rules\ReservedSlug;
 use Illuminate\Support\Str;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -57,7 +58,7 @@ class Form extends Component
         $ignoreId = $this->company?->id ?? 'NULL';
         $rules = [
             'name'                     => ['required', 'string', 'max:100'],
-            'slug'                     => ['required', 'string', 'max:100', 'regex:/^[a-z0-9\-]+$/', "unique:companies,slug,{$ignoreId}"],
+            'slug'                     => ['required', 'string', 'max:100', 'regex:/^[a-z0-9\-]+$/', new ReservedSlug, "unique:companies,slug,{$ignoreId}"],
             'subdomain'                => ['nullable', 'string', 'max:63', 'regex:/^[a-z0-9\-]*$/', "unique:companies,subdomain,{$ignoreId}"],
             'tagline'                  => ['nullable', 'string', 'max:255'],
             'footer_text'              => ['nullable', 'string', 'max:255'],

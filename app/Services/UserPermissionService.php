@@ -17,7 +17,7 @@ class UserPermissionService
     public static function assignRolePermissions(User $user, Company $company, string $roleSlug): void
     {
         $role = Role::where('slug', $roleSlug)
-            ->whereNull('company_id')
+            ->where(fn ($q) => $q->whereNull('company_id')->orWhere('company_id', $company->id))
             ->with('permissions')
             ->first();
 

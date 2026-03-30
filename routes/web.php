@@ -72,20 +72,24 @@ Route::middleware(['auth', 'verified', 'company.active'])
 
         // Gestão completa: só company_admin
         Route::middleware('company.role:company_admin')->group(function () {
-            Route::get('/branches', \App\Livewire\Admin\Branches\Index::class)->name('branches.index');
-            Route::get('/branches/create', \App\Livewire\Admin\Branches\Form::class)->name('branches.create');
-            Route::get('/branches/{branch}/edit', \App\Livewire\Admin\Branches\Form::class)->name('branches.edit');
-            Route::get('/branches/{branch}/delivery', \App\Livewire\Admin\Branches\DeliverySettings::class)->name('branches.delivery');
-
             Route::get('/settings', \App\Livewire\Admin\Settings\CompanySettings::class)->name('settings');
 
-            Route::get('/coupons', \App\Livewire\Admin\Coupons\Index::class)->name('coupons.index');
 
             Route::get('/roles', \App\Livewire\Admin\Roles\Index::class)->name('roles.index');
 
             Route::get('/users', \App\Livewire\Admin\Users\Index::class)->name('users.index');
             Route::get('/users/{user}/permissions', \App\Livewire\Admin\Users\Permissions::class)->name('users.permissions');
+
         });
+
+        Route::get('/branches', \App\Livewire\Admin\Branches\Index::class)->name('branches.index');
+        Route::get('/branches/create', \App\Livewire\Admin\Branches\Form::class)->name('branches.create');
+        Route::get('/branches/{branch}/edit', \App\Livewire\Admin\Branches\Form::class)->name('branches.edit');
+        Route::get('/branches/{branch}/delivery', \App\Livewire\Admin\Branches\DeliverySettings::class)->name('branches.delivery');
+
+
+        Route::get('/coupons', \App\Livewire\Admin\Coupons\Index::class)->name('coupons.index');
+
     });
 
 // --- Super Admin Panel (sem CompanyScope, sem identify.company) ---

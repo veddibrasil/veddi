@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Enums\Plan;
+use App\Rules\ReservedSlug;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rules\Password;
 
@@ -17,7 +18,7 @@ class RegisterCompanyRequest extends FormRequest
     {
         return [
             'company_name'   => ['required', 'string', 'max:100'],
-            'slug'           => ['required', 'string', 'max:100', 'regex:/^[a-z0-9\-]+$/', 'unique:companies,slug'],
+            'slug'           => ['required', 'string', 'max:100', 'regex:/^[a-z0-9\-]+$/', new ReservedSlug, 'unique:companies,slug'],
             'plan'           => ['required', 'in:' . implode(',', Plan::values())],
             'asaas_cpf_cnpj' => ['required', 'string', 'min:11', 'max:18'],
             'branch_name'    => ['required', 'string', 'max:100'],
@@ -33,6 +34,7 @@ class RegisterCompanyRequest extends FormRequest
         return [
             'slug.unique'              => 'Este endereço já está em uso.',
             'slug.regex'               => 'O endereço só pode conter letras minúsculas, números e hífens.',
+            'slug.reserved_slug'       => 'Este endereço é reservado pelo sistema e não pode ser utilizado.',
             'user_email.unique'        => 'Este e-mail já está cadastrado.',
             'plan.in'                  => 'Selecione um plano válido.',
             'asaas_cpf_cnpj.required'  => 'CPF ou CNPJ é obrigatório para criação da conta de pagamento.',

@@ -43,6 +43,7 @@ class OrderChat extends Component
     public string $name         = '';
     public string $email        = '';
     public string $address      = '';
+    public string $number       = '';
     public string $complement   = '';
     public string $neighborhood = '';
     public string $city         = '';
@@ -202,6 +203,7 @@ class OrderChat extends Component
             ],
             'REGISTER_ADDRESS' => [
                 'address'      => ['required', 'string', 'min:5', 'max:255'],
+                'number'       => ['required', 'string', 'max:20'],
                 'complement'   => ['nullable', 'string', 'max:100'],
                 'neighborhood' => ['required', 'string', 'max:100'],
                 'city'         => ['required', 'string', 'max:100'],
@@ -209,6 +211,7 @@ class OrderChat extends Component
             ],
             'CHECKOUT_DELIVERY_ADDRESS' => [
                 'address'      => ['required', 'string', 'min:5', 'max:255'],
+                'number'       => ['required', 'string', 'max:20'],
                 'complement'   => ['nullable', 'string', 'max:100'],
                 'neighborhood' => ['required', 'string', 'max:100'],
                 'city'         => ['required', 'string', 'max:100'],
@@ -223,6 +226,7 @@ class OrderChat extends Component
             'EDIT_PROFILE' => [
                 'name'         => ['required', 'string', 'min:3', 'max:100'],
                 'address'      => ['required', 'string', 'min:5', 'max:255'],
+                'number'       => ['required', 'string', 'max:20'],
                 'complement'   => ['nullable', 'string', 'max:100'],
                 'neighborhood' => ['required', 'string', 'max:100'],
                 'city'         => ['required', 'string', 'max:100'],
@@ -243,6 +247,7 @@ class OrderChat extends Component
             'email.email'    => 'E-mail inválido.',
             'email.unique'   => 'Esse e-mail já está cadastrado. Use outro.',
             'address.required'      => 'Informe o endereço.',
+            'number.required'       => 'Informe o número.',
             'neighborhood.required' => 'Informe o bairro.',
             'city.required'         => 'Informe a cidade.',
             'cep.required'          => 'Informe o CEP.',
@@ -268,6 +273,7 @@ class OrderChat extends Component
             $this->address      = $customer->address ?? '';
             $this->complement   = $customer->complement ?? '';
             $this->neighborhood = $customer->neighborhood ?? '';
+            $this->number       = $customer->number ?? '';
             $this->city         = $customer->city ?? '';
             $this->cep          = $customer->cep ?? '';
             $this->taxId        = $customer->tax_id ?? '';
@@ -286,6 +292,7 @@ class OrderChat extends Component
                     'address'      => $existing->address,
                     'complement'   => $existing->complement,
                     'neighborhood' => $existing->neighborhood,
+                    'number'       => $existing->number,
                     'city'         => $existing->city,
                     'cep'          => $existing->cep,
                     'tax_id'       => $existing->tax_id,
@@ -297,6 +304,7 @@ class OrderChat extends Component
                 $this->address      = $customer->address ?? '';
                 $this->complement   = $customer->complement ?? '';
                 $this->neighborhood = $customer->neighborhood ?? '';
+                $this->number       = $customer->number ?? '';
                 $this->city         = $customer->city ?? '';
                 $this->cep          = $customer->cep ?? '';
                 $this->taxId        = $customer->tax_id ?? '';
@@ -351,6 +359,7 @@ class OrderChat extends Component
                 'complement'   => $this->complement,
                 'neighborhood' => $this->neighborhood,
                 'city'         => $this->city,
+                'number'       => $this->number,
                 'cep'          => preg_replace('/\D/', '', $this->cep),
             ]
         );
@@ -361,7 +370,7 @@ class OrderChat extends Component
         if ($this->complement) {
             $addressSummary .= ", {$this->complement}";
         }
-        $addressSummary .= " — {$this->neighborhood}, {$this->city} — CEP {$this->cep}";
+        $addressSummary .= " — {$this->neighborhood}, {$this->number}, {$this->city} — CEP {$this->cep}";
         $this->addMessage('user', $addressSummary);
         $this->addMessage('bot', "Cadastro criado com sucesso! Escolha uma filial para continuar.");
         $this->transitionTo('BRANCH_SELECT');
@@ -385,6 +394,7 @@ class OrderChat extends Component
             'address'      => $this->address,
             'complement'   => $this->complement,
             'neighborhood' => $this->neighborhood,
+            'number'       => $this->number,
             'city'         => $this->city,
             'cep'          => preg_replace('/\D/', '', $this->cep),
         ]);
@@ -573,6 +583,7 @@ class OrderChat extends Component
                 'address'      => $this->address,
                 'complement'   => $this->complement,
                 'neighborhood' => $this->neighborhood,
+                'number'       => $this->number,
                 'city'         => $this->city,
                 'cep'          => preg_replace('/\D/', '', $this->cep),
             ]);
@@ -1352,6 +1363,7 @@ class OrderChat extends Component
         $this->address          = '';
         $this->complement       = '';
         $this->neighborhood     = '';
+        $this->number           = '';
         $this->city             = '';
         $this->cep              = '';
         $this->selectedBranchId = null;
@@ -1421,6 +1433,7 @@ class OrderChat extends Component
             'address'          => $this->address,
             'complement'       => $this->complement,
             'neighborhood'     => $this->neighborhood,
+            'number'           => $this->number,
             'city'             => $this->city,
             'cep'              => $this->cep,
             'selectedBranchId' => $this->selectedBranchId,

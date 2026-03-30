@@ -5,6 +5,7 @@ namespace App\Livewire\Onboarding;
 use App\DTOs\OnboardingDTO;
 use App\Enums\Plan;
 use App\Helpers\Validation;
+use App\Rules\ReservedSlug;
 use App\Models\Company;
 use App\Services\AsaasService;
 use App\Services\CompanyService;
@@ -255,7 +256,7 @@ class RegisterForm extends Component
         return match ($step) {
             1 => [
                 'companyName' => ['required', 'string', 'max:100'],
-                'slug'        => ['required', 'string', 'max:100', 'regex:/^[a-z0-9\-]+$/', 'unique:companies,slug'],
+                'slug'        => ['required', 'string', 'max:100', 'regex:/^[a-z0-9\-]+$/', new ReservedSlug, 'unique:companies,slug'],
             ],
             2 => [
                 'branchName'  => ['required', 'string', 'max:100'],
@@ -343,7 +344,7 @@ class RegisterForm extends Component
         // Revalida slug antes de chamar o Asaas (evita criar customer desnecessário)
         $slugValid = \Illuminate\Support\Facades\Validator::make(
             ['slug' => $this->slug],
-            ['slug' => ['required', 'unique:companies,slug']],
+            ['slug' => ['required', new ReservedSlug, 'unique:companies,slug']],
             ['slug.unique' => 'Este endereço já está em uso. Volte ao passo 1 e escolha outro.'],
         );
 

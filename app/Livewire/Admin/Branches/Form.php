@@ -22,6 +22,7 @@ class Form extends Component
     public string $closes_at = '20:00';
 
     public bool $needsCompanySelect = false;
+    public bool $canSave            = false;
     public ?int $company_id         = null;
 
     protected function rules(): array
@@ -61,6 +62,7 @@ class Form extends Component
         $user = auth()->user();
 
         if ($user->isSuperAdmin()) {
+            $this->canSave = true;
             $this->needsCompanySelect = true;
             $this->company_id = Company::withoutGlobalScope(CompanyScope::class)
                 ->where('active', true)
@@ -70,6 +72,13 @@ class Form extends Component
             // Usuário possui empresa vinculada — pegar a primeira
             $company = $user->companies()->first();
             $this->company_id = $company?->id;
+
+            if ($company) {
+                $isEditing = $branch?->exists ?? false;
+                $this->canSave = $isEditing
+                    ? $user->hasPermission('branches.update', $company)
+                    : $user->hasPermission('branches.create', $company);
+            }
         }
 
         if ($branch?->exists) {
@@ -82,6 +91,8 @@ class Form extends Component
 
     public function save(): void
     {
+        abort_unless($this->canSave, 403);
+
         $validated = $this->validate($this->rules(), $this->messages());
 
         if ($this->isEditing) {
@@ -118,6 +129,7 @@ class Form extends Component
 
     public function render()
     {
+
         $companies = $this->needsCompanySelect
             ? Company::withoutGlobalScope(CompanyScope::class)
                 ->where('active', true)

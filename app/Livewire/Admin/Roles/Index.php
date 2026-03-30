@@ -6,6 +6,8 @@ use App\Models\Company;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
+use App\Models\UserPermission;
+use App\Services\UserPermissionService;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
@@ -22,8 +24,23 @@ class Index extends Component
     public string $assignUserEmail = '';
     public string $assignUserRole = '';
 
+    public bool $canManage = false;
+
+    public function mount(): void
+    {
+        $user = auth()->user();
+
+        if ($user->isSuperAdmin()) {
+            $this->canManage = true;
+        } elseif (app()->bound('current.company')) {
+            $this->canManage = $user->hasPermission('roles.manage', app('current.company'));
+        }
+    }
+
     public function save(): void
     {
+        abort_unless($this->canManage, 403);
+
         $this->validate([
             'name' => 'required|string|max:100',
         ], [
@@ -65,6 +82,8 @@ class Index extends Component
 
     public function edit(int $id): void
     {
+        abort_unless($this->canManage, 403);
+
         $company = app('current.company');
         $role    = Role::where('id', $id)->where('company_id', $company->id)->firstOrFail();
 
@@ -90,6 +109,8 @@ class Index extends Component
 
     public function delete(): void
     {
+        abort_unless($this->canManage, 403);
+
         if (! $this->deletingId) return;
 
         $company = app('current.company');
@@ -108,6 +129,8 @@ class Index extends Component
 
     public function assignUser(): void
     {
+        abort_unless($this->canManage, 403);
+
         $this->validate([
             'assignUserEmail' => 'required|email|exists:users,email',
         ], [
@@ -126,6 +149,12 @@ class Index extends Component
         } else {
             $user->companies()->updateExistingPivot($company->id, ['role' => $role->slug]);
         }
+
+        UserPermission::where('user_id', $user->id)
+            ->where('company_id', $company->id)
+            ->delete();
+
+        UserPermissionService::assignRolePermissions($user, $company, $role->slug);
 
         $this->reset(['assignRoleId', 'assignUserEmail']);
         session()->flash('status', 'Usuário atribuído ao tipo com sucesso.');

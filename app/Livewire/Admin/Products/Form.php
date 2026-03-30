@@ -20,6 +20,7 @@ class Form extends Component
     public bool $isEditing    = false;
 
     public bool $isSuperAdmin          = false;
+    public bool $canSave               = false;
     public ?int $company_id            = null;
     public ?int $branchManagerBranchId = null; // null = não é branch_manager
 
@@ -73,6 +74,16 @@ class Form extends Component
         $user = auth()->user();
         $this->isSuperAdmin = $user->isSuperAdmin();
 
+        if ($this->isSuperAdmin) {
+            $this->canSave = true;
+        } elseif (app()->bound('current.company')) {
+            $company = app('current.company');
+            $isEditing = $product?->exists ?? false;
+            $this->canSave = $isEditing
+                ? $user->hasPermission('products.update', $company)
+                : $user->hasPermission('products.create', $company);
+        }
+
         if (! $this->isSuperAdmin) {
             $this->company_id = $user->companies()->first()?->id;
         }
@@ -97,6 +108,8 @@ class Form extends Component
 
     public function save(): void
     {
+        abort_unless($this->canSave, 403);
+
         $validated = $this->validate($this->rules(), $this->messages());
 
         $imagePath = $this->isEditing ? $this->product->image_path : null;

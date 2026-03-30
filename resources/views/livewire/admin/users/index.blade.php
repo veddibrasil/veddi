@@ -42,10 +42,6 @@
                     @error('newEmail') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
                 <div>
-                    <flux:input wire:model="newPassword" label="Senha" type="password" placeholder="Mínimo 8 caracteres" />
-                    @error('newPassword') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-                </div>
-                <div>
                     <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Tipo de usuário</label>
                     <select wire:model.live="newRole" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 dark:bg-zinc-700 dark:border-zinc-600 dark:text-neutral-100">
                         <option value="">Selecione...</option>

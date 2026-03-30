@@ -5,6 +5,7 @@ namespace App\Policies;
 use App\Models\Branch;
 use App\Models\Company;
 use App\Models\User;
+use Illuminate\Support\Facades\Log;
 
 class BranchPolicy
 {
@@ -13,7 +14,14 @@ class BranchPolicy
         return $user->hasPermission('branches.view', $this->company());
     }
 
-    public function create(User $user): bool
+    public function view(User $user, Branch $branch): bool
+    {
+        return $user->hasPermission('branches.view', $this->company())
+                    && $branch->company_id === $this->company()->id;
+
+    }
+
+    public function create(User $user, Branch $branch): bool
     {
         return $user->hasPermission('branches.create', $this->company());
     }

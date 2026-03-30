@@ -14,10 +14,19 @@ class Show extends Component
 {
     public Order $order;
     public string $adminMessage = '';
-    public array $chatMessages = [];
+    public array $chatMessages  = [];
+    public bool $canUpdate      = false;
 
     public function mount(): void
     {
+        $user = auth()->user();
+
+        if ($user->isSuperAdmin()) {
+            $this->canUpdate = true;
+        } elseif (app()->bound('current.company')) {
+            $this->canUpdate = $user->hasPermission('orders.update', app('current.company'));
+        }
+
         $this->loadMessages();
     }
 
@@ -61,6 +70,8 @@ class Show extends Component
 
     public function updateStatus(string $status): void
     {
+        abort_unless($this->canUpdate, 403);
+
         $allowed = ['pending', 'awaiting_payment', 'paid', 'preparing', 'ready', 'delivered', 'cancelled'];
 
         if (! in_array($status, $allowed)) {
@@ -98,6 +109,8 @@ class Show extends Component
 
     public function manualRefund(): void
     {
+        abort_unless($this->canUpdate, 403);
+
         $this->order->loadMissing('payment');
 
         $payment = $this->order->payment;

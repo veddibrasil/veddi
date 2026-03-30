@@ -8,6 +8,7 @@ use App\Jobs\CreateAsaasSetupFee;
 use App\Models\Branch;
 use App\Models\Company;
 use App\Models\User;
+use App\Services\CompanyService;
 use App\Services\UserPermissionService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -15,7 +16,10 @@ use Illuminate\Support\Facades\Log;
 
 class OnboardingService
 {
-    public function __construct(private AsaasService $asaasService) {}
+    public function __construct(
+        private AsaasService $asaasService,
+        private CompanyService $companyService,
+    ) {}
 
     /**
      * Handle the full onboarding flow atomically:
@@ -82,11 +86,8 @@ class OnboardingService
 
         // 3. Free plan: activate immediately (no setup fee). Paid plans: dispatch charge.
         if (Plan::tryFrom($dto->plan) === Plan::Free) {
-            $company->update([
-                'status'            => 'ACTIVE',
-                'active'            => true,
-                'setup_fee_paid_at' => now(),
-            ]);
+            $company->update(['setup_fee_paid_at' => now()]);
+            $this->companyService->activate($company);
 
             Log::channel('payments')->info('Onboarding concluído — plano free ativado imediatamente', [
                 'company_id' => $company->id,

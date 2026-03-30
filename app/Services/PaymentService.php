@@ -16,7 +16,7 @@ class PaymentService
      */
     public function dispatchPayment(Order $order, Customer $customer, ?Company $company, string $paymentMethod): void
     {
-        ProcessOrder::dispatch($order, $customer, $company, $paymentMethod);
+        ProcessOrder::dispatch($order, $customer, $company, $paymentMethod)->onQueue('high');
     }
 
     /**
@@ -47,7 +47,7 @@ class PaymentService
         session()->forget('payment_token_' . $order->id);
 
         if (in_array($order->status, ['pending', 'awaiting_payment'])) {
-            ProcessOrder::dispatch($order, $customer, $company, $paymentMethod);
+            ProcessOrder::dispatch($order, $customer, $company, $paymentMethod)->onQueue('high');
         }
     }
 }

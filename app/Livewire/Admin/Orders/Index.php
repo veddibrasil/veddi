@@ -18,10 +18,21 @@ class Index extends Component
     public string $companyFilter = '';
 
     public bool $isSuperAdmin = false;
+    public bool $canView      = false;
+    public bool $canUpdate    = false;
 
     public function mount(): void
     {
-        $this->isSuperAdmin = auth()->user()->isSuperAdmin();
+        $user = auth()->user();
+        $this->isSuperAdmin = $user->isSuperAdmin();
+
+        if ($this->isSuperAdmin) {
+            $this->canView = $this->canUpdate = true;
+        } elseif (app()->bound('current.company')) {
+            $company = app('current.company');
+            $this->canView   = $user->hasPermission('orders.view', $company);
+            $this->canUpdate = $user->hasPermission('orders.update', $company);
+        }
     }
 
     public function updatingSearch(): void { $this->resetPage(); }

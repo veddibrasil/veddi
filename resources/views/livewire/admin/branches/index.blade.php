@@ -1,3 +1,5 @@
+
+
 <div class="space-y-4"
     x-data="{}"
     x-init="$watch(() => $wire.deletingId, val => val ? $flux.modal('confirm-delete-branch').show() : $flux.modal('confirm-delete-branch').close())">

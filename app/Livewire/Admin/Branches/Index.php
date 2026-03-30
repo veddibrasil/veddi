@@ -4,6 +4,7 @@ namespace App\Livewire\Admin\Branches;
 
 use App\Enums\Plan;
 use App\Models\Branch;
+use App\Models\Coupon;
 use App\Models\Scopes\CompanyScope;
 use Livewire\Component;
 
@@ -13,6 +14,7 @@ class Index extends Component
     public bool $canCreate            = false;
     public bool $canUpdate            = false;
     public bool $canDelete            = false;
+    public bool $canView              = false;
     public bool $canCreateMoreBranches = false;
     public bool $deliveryEnabled      = false;
     public int  $branchCount          = 0;
@@ -27,6 +29,7 @@ class Index extends Component
             $this->deliveryEnabled       = true;
         } elseif (app()->bound('current.company')) {
             $company = app('current.company');
+            $this->authorize('viewAny', Coupon::class);
             $this->canCreate = $user->hasPermission('branches.create', $company);
             $this->canUpdate = $user->hasPermission('branches.update', $company);
             $this->canDelete = $user->hasPermission('branches.delete', $company);
@@ -59,6 +62,7 @@ class Index extends Component
 
     public function render()
     {
+
         $isSuperAdmin = auth()->user()->isSuperAdmin();
 
         $query = $isSuperAdmin

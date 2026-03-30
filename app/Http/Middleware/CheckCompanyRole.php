@@ -26,7 +26,17 @@ class CheckCompanyRole
         $userRole = $user->roleForCompany($company);
 
         if (! $userRole || ! in_array($userRole, $roles)) {
-            abort(403, 'Acesso não autorizado.');
+            // Aceitar roles customizados da empresa em rotas que permitem branch_manager
+            if ($userRole && in_array('branch_manager', $roles)) {
+                $isCustomRole = \App\Models\Role::where('slug', $userRole)
+                    ->where('company_id', $company->id)
+                    ->exists();
+                if (! $isCustomRole) {
+                    abort(403, 'Acesso não autorizado.');
+                }
+            } else {
+                abort(403, 'Acesso não autorizado.');
+            }
         }
 
         // Branch manager: bind their branch to the container

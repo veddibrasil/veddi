@@ -311,11 +311,28 @@
                     />
                     @error('cep') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
                 </div>
-                <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1">Rua e número</label>
-                    <input wire:model="address" type="text" placeholder="Ex: Av. Brasil, 100" class="mc-input" autocomplete="street-address" />
-                    @error('address') <p class="text-red-600 text-xs mt-0.5 flex items-center gap-1"><span>⚠</span> {{ $message }}</p> @enderror
+                 <div class="flex gap-2">
+                    <div class="flex-1">
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Rua</label>
+                        <input wire:model="address" type="text" placeholder="Ex: Av. Brasil, 100" class="mc-input w-full" autocomplete="street-address" />
+                        @error('address') 
+                            <p class="text-red-600 text-xs mt-0.5 flex items-center gap-1">
+                                <span>⚠</span> {{ $message }}
+                            </p> 
+                        @enderror
+                    </div>
+
+                    <div class="w-24">
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Número</label>
+                        <input wire:model="number" type="text" placeholder="123" class="mc-input w-full" autocomplete="number-address" />
+                        @error('number') 
+                            <p class="text-red-600 text-xs mt-0.5">
+                                <span>⚠</span> {{ $message }}
+                            </p> 
+                        @enderror
+                    </div>
                 </div>
+                
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Complemento <span class="text-gray-400 font-normal">(opcional)</span></label>
                     <input wire:model="complement" type="text" placeholder="Apto 12, Bloco B..." class="mc-input" autocomplete="address-line2" />
@@ -584,11 +601,27 @@
                     />
                     @error('cep') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
                 </div>
-                <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1">Rua e número</label>
-                    <input wire:model="address" type="text" placeholder="Ex: Av. Brasil, 100" class="mc-input" autocomplete="street-address" />
-                    @error('address') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
+              <div class="flex gap-2">
+                <div class="flex-1">
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Rua</label>
+                    <input wire:model="address" type="text" placeholder="Ex: Av. Brasil, 100" class="mc-input w-full" autocomplete="street-address" />
+                    @error('address') 
+                        <p class="text-red-600 text-xs mt-0.5 flex items-center gap-1">
+                            <span>⚠</span> {{ $message }}
+                        </p> 
+                    @enderror
                 </div>
+
+                <div class="w-24">
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Número</label>
+                    <input wire:model="number" type="text" placeholder="123" class="mc-input w-full" autocomplete="number-address" />
+                    @error('number') 
+                        <p class="text-red-600 text-xs mt-0.5">
+                            <span>⚠</span> {{ $message }}
+                        </p> 
+                    @enderror
+                </div>
+            </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Complemento <span class="text-gray-400 font-normal">(opcional)</span></label>
                     <input wire:model="complement" type="text" placeholder="Apto 12, Bloco B..." class="mc-input" autocomplete="address-line2" />
@@ -1196,10 +1229,26 @@
                     />
                     @error('cep') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
                 </div>
-                <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1">Rua e número</label>
-                    <input wire:model="address" type="text" class="mc-input" autocomplete="street-address" />
-                    @error('address') <p class="text-red-600 text-xs mt-0.5 flex items-center gap-1"><span>⚠</span> {{ $message }}</p> @enderror
+                <div class="flex gap-2">
+                    <div class="flex-1">
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Rua</label>
+                        <input wire:model="address" type="text" placeholder="Ex: Av. Brasil, 100" class="mc-input w-full" autocomplete="street-address" />
+                        @error('address') 
+                            <p class="text-red-600 text-xs mt-0.5 flex items-center gap-1">
+                                <span>⚠</span> {{ $message }}
+                            </p> 
+                        @enderror
+                    </div>
+
+                    <div class="w-24">
+                        <label class="block text-xs font-semibold text-gray-600 mb-1">Número</label>
+                        <input wire:model="number" type="text" placeholder="123" class="mc-input w-full" autocomplete="number-address" />
+                        @error('number') 
+                            <p class="text-red-600 text-xs mt-0.5">
+                                <span>⚠</span> {{ $message }}
+                            </p> 
+                        @enderror
+                    </div>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1">Complemento <span class="text-gray-400 font-normal">(opcional)</span></label>

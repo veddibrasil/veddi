@@ -253,7 +253,7 @@
                 {{-- FREE --}}
                 <label class="relative flex flex-col cursor-pointer rounded-2xl border-2 p-5 transition-all duration-200 select-none
                     {{ $plan === 'free'
-                        ? 'border-[#7A00A3] bg-purple-50 shadow-md shadow-purple-100'
+                        ? 'border-[#7A00A3] shadow-md shadow-purple-100'
                         : 'border-zinc-200 bg-white hover:border-zinc-300 hover:shadow-sm' }}">
                     <input type="radio" wire:model.live="plan" value="free" class="sr-only" />
 
@@ -290,7 +290,7 @@
                 {{-- ESSENCIAL --}}
                 <label class="relative flex flex-col cursor-pointer rounded-2xl border-2 p-5 transition-all duration-200 select-none
                     {{ $plan === 'essencial'
-                        ? 'border-[#7A00A3] bg-purple-50 shadow-md shadow-purple-100'
+                        ? 'border-[#7A00A3]  shadow-md shadow-purple-100'
                         : 'border-zinc-200 bg-white hover:border-purple-200 hover:shadow-sm' }}">
                     <input type="radio" wire:model.live="plan" value="essencial" class="sr-only" />
 
@@ -335,7 +335,7 @@
                 {{-- PRO --}}
                 <label class="relative flex flex-col cursor-pointer rounded-2xl border-2 p-5 transition-all duration-200 select-none
                     {{ $plan === 'pro'
-                        ? 'border-[#7A00A3] bg-purple-50 shadow-md shadow-purple-100'
+                        ? 'border-[#7A00A3] shadow-md shadow-purple-100'
                         : 'border-zinc-200 bg-white hover:border-zinc-300 hover:shadow-sm' }}">
                     <input type="radio" wire:model.live="plan" value="pro" class="sr-only" />
 
@@ -446,7 +446,7 @@
                     {{-- PIX --}}
                     <label class="relative flex flex-col items-center gap-2 cursor-pointer rounded-xl border-2 p-4 text-center transition-all duration-200 select-none
                         {{ $paymentMethod === 'PIX'
-                            ? 'border-[#7A00A3] bg-purple-50 shadow-sm shadow-purple-100'
+                            ? 'border-[#7A00A3] shadow-sm shadow-purple-100'
                             : 'border-zinc-200 bg-white hover:border-zinc-300' }}">
                         <input type="radio" wire:model.live="paymentMethod" value="PIX" class="sr-only" />
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 {{ $paymentMethod === 'PIX' ? 'text-[#7A00A3]' : 'text-zinc-400' }}" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -459,7 +459,7 @@
                     {{-- Boleto --}}
                     <label class="relative flex flex-col items-center gap-2 cursor-pointer rounded-xl border-2 p-4 text-center transition-all duration-200 select-none
                         {{ $paymentMethod === 'BOLETO'
-                            ? 'border-[#7A00A3] bg-purple-50 shadow-sm shadow-purple-100'
+                            ? 'border-[#7A00A3] shadow-sm shadow-purple-100'
                             : 'border-zinc-200 bg-white hover:border-zinc-300' }}">
                         <input type="radio" wire:model.live="paymentMethod" value="BOLETO" class="sr-only" />
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 {{ $paymentMethod === 'BOLETO' ? 'text-[#7A00A3]' : 'text-zinc-400' }}" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -472,7 +472,7 @@
                     {{-- Cartão --}}
                     <label class="relative flex flex-col items-center gap-2 cursor-pointer rounded-xl border-2 p-4 text-center transition-all duration-200 select-none
                         {{ $paymentMethod === 'CREDIT_CARD'
-                            ? 'border-[#7A00A3] bg-purple-50 shadow-sm shadow-purple-100'
+                            ? 'border-[#7A00A3] shadow-sm shadow-purple-100'
                             : 'border-zinc-200 bg-white hover:border-zinc-300' }}">
                         <input type="radio" wire:model.live="paymentMethod" value="CREDIT_CARD" class="sr-only" />
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 {{ $paymentMethod === 'CREDIT_CARD' ? 'text-[#7A00A3]' : 'text-zinc-400' }}" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">

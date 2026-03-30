@@ -27,7 +27,6 @@ class Index extends Component
     // Formulário de criação de usuário
     public string $newName     = '';
     public string $newEmail    = '';
-    public string $newPassword = '';
     public string $newRole     = '';
     public int    $newBranchId = 0;
     public bool   $showCreateForm = false;
@@ -46,6 +45,22 @@ class Index extends Component
     // Exclusão (desvincular)
     public ?int $removingUserId = null;
 
+    public bool $canView   = false;
+    public bool $canManage = false;
+
+    public function mount(): void
+    {
+        $user = auth()->user();
+
+        if ($user->isSuperAdmin()) {
+            $this->canView = $this->canManage = true;
+        } elseif (app()->bound('current.company')) {
+            $company = app('current.company');
+            $this->canView   = $user->hasPermission('users.view', $company);
+            $this->canManage = $user->hasPermission('users.manage', $company);
+        }
+    }
+
     public function updatingSearch(): void
     {
         $this->resetPage();
@@ -53,22 +68,21 @@ class Index extends Component
 
     public function createUser(): void
     {
+        abort_unless($this->canManage, 403);
+
         $this->validate([
-            'newName'     => 'required|string|max:255',
-            'newEmail'    => 'required|email|unique:users,email',
-            'newPassword' => 'required|string|min:8',
-            'newRole'     => 'required|string',
+            'newName'  => 'required|string|max:255',
+            'newEmail' => 'required|email|unique:users,email',
+            'newRole'  => 'required|string',
         ], [
-            'newName.required'     => 'Informe o nome.',
-            'newEmail.required'    => 'Informe o e-mail.',
-            'newEmail.unique'      => 'Este e-mail já está em uso.',
-            'newPassword.required' => 'Informe a senha.',
-            'newPassword.min'      => 'A senha deve ter pelo menos 8 caracteres.',
-            'newRole.required'     => 'Selecione o tipo de usuário.',
+            'newName.required'  => 'Informe o nome.',
+            'newEmail.required' => 'Informe o e-mail.',
+            'newEmail.unique'   => 'Este e-mail já está em uso.',
+            'newRole.required'  => 'Selecione o tipo de usuário.',
         ]);
 
         $company           = app('current.company');
-        $temporaryPassword = $this->newPassword;
+        $temporaryPassword = Str::password(12);
 
         $user = User::create([
             'name'     => $this->newName,
@@ -87,12 +101,14 @@ class Index extends Component
 
         Mail::to($user->email)->send(new WelcomeUser($user, $company, $temporaryPassword));
 
-        $this->reset(['newName', 'newEmail', 'newPassword', 'newRole', 'newBranchId', 'showCreateForm']);
+        $this->reset(['newName', 'newEmail', 'newRole', 'newBranchId', 'showCreateForm']);
         session()->flash('status', 'Usuário criado e e-mail de boas-vindas enviado.');
     }
 
     public function linkUser(): void
     {
+        abort_unless($this->canManage, 403);
+
         $this->validate([
             'linkEmail' => 'required|email|exists:users,email',
             'linkRole'  => 'required|string',
@@ -133,6 +149,8 @@ class Index extends Component
 
     public function saveEditRole(): void
     {
+        abort_unless($this->canManage, 403);
+
         $this->validate([
             'editRole' => 'required|string',
         ], [
@@ -178,6 +196,8 @@ class Index extends Component
 
     public function removeUser(): void
     {
+        abort_unless($this->canManage, 403);
+
         $company = app('current.company');
         $user    = User::findOrFail($this->removingUserId);
         User::clearPermissionCache($this->removingUserId, $company->id);

@@ -12,6 +12,7 @@ use Livewire\Component;
 class DeliverySettings extends Component
 {
     public Branch $branch;
+    public bool $canSave               = false;
 
     public string $fee_type            = 'flat';
     public string $flat_fee            = '0';
@@ -69,6 +70,13 @@ class DeliverySettings extends Component
 
         $this->branch = $branch;
 
+        $user = auth()->user();
+        if ($user->isSuperAdmin()) {
+            $this->canSave = true;
+        } elseif (app()->bound('current.company')) {
+            $this->canSave = $user->hasPermission('branches.update', app('current.company'));
+        }
+
         $settings = $branch->deliverySetting;
 
         if (! $settings) {
@@ -120,6 +128,8 @@ class DeliverySettings extends Component
 
     public function save(): void
     {
+        abort_unless($this->canSave, 403);
+
         $this->validate($this->rules(), $this->messages());
 
         $companyId = $this->branch->company_id;

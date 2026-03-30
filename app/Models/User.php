@@ -109,6 +109,7 @@ class User extends Authenticatable
         $userId    = $this->id;
         $companyId = $company->id;
 
+        self::clearPermissionCache($userId, $companyId);
         $perms = Cache::remember($cacheKey, now()->addMinutes(5), function () use ($userId, $companyId, $roleSlug) {
             $overrides = UserPermission::where('user_id', $userId)
                 ->where('company_id', $companyId)

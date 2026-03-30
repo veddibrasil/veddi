@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Admin\Settings;
 
+use App\Rules\ReservedSlug;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -51,7 +52,7 @@ class CompanySettings extends Component
         $company = app('current.company');
         return [
             'name'                  => ['required', 'string', 'max:100'],
-            'slug'                  => ['required', 'string', 'max:100', 'regex:/^[a-z0-9\-]+$/', "unique:companies,slug,{$company->id}"],
+            'slug'                  => ['required', 'string', 'max:100', 'regex:/^[a-z0-9\-]+$/', new ReservedSlug, "unique:companies,slug,{$company->id}"],
             'tagline'               => ['nullable', 'string', 'max:255'],
             'footer_text'           => ['nullable', 'string', 'max:255'],
             'primary_color'         => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],

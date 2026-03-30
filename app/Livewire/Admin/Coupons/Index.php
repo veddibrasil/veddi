@@ -6,6 +6,7 @@ use App\Models\Coupon;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\Scopes\CompanyScope;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Livewire\Component;
@@ -14,6 +15,7 @@ use Livewire\WithPagination;
 class Index extends Component
 {
     use WithPagination;
+    use AuthorizesRequests;
 
     // --- List filters ---
     public string $filterStatus = '';
@@ -53,6 +55,8 @@ class Index extends Component
             $this->canCreate = $this->canUpdate = $this->canDelete = true;
         } elseif (app()->bound('current.company')) {
             $company = app('current.company');
+            
+            $this->authorize('viewAny', Coupon::class);            
             $this->canCreate = $user->hasPermission('coupons.create', $company);
             $this->canUpdate = $user->hasPermission('coupons.update', $company);
             $this->canDelete = $user->hasPermission('coupons.delete', $company);
