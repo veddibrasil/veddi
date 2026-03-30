@@ -3,6 +3,7 @@
 namespace App\Livewire\Admin\Settings;
 
 use App\Rules\ReservedSlug;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -83,6 +84,9 @@ class CompanySettings extends Component
         }
 
         if ($this->logo) {
+            if ($company->logo_path) {
+                Storage::disk('s3')->delete($company->logo_path);
+            }
             $data['logo_path'] = $this->logo->storeAs('logos', "company_{$company->id}." . $this->logo->getClientOriginalExtension(), 's3');
         }
 

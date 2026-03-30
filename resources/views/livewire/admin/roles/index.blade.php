@@ -1,4 +1,8 @@
-<div class="max-w-5xl mx-auto py-8 px-4 space-y-6">
+<div class="max-w-5xl mx-auto py-8 px-4 space-y-6"
+    x-init="
+        $watch(() => $wire.assignRoleId, val => val ? $flux.modal('assign-user-modal').show() : $flux.modal('assign-user-modal').close());
+        $watch(() => $wire.deletingId, val => val ? $flux.modal('confirm-delete-role').show() : $flux.modal('confirm-delete-role').close());
+    ">
 
     <div>
         <h1 class="text-xl font-semibold text-neutral-900 dark:text-neutral-100">Tipos de Usuário</h1>
@@ -156,28 +160,26 @@
     @endif
 
     {{-- Modal: Atribuir usuário --}}
-    @if($assignRoleId)
-        <flux:modal name="assign-user-modal" class="max-w-sm">
-            <div class="space-y-5">
-                <div>
-                    <flux:heading size="lg">Atribuir Usuário</flux:heading>
-                    <flux:subheading>Informe o e-mail do usuário para atribuí-lo a este tipo.</flux:subheading>
-                </div>
-                <div>
-                    <flux:input wire:model="assignUserEmail" label="E-mail do usuário" type="email" placeholder="usuario@exemplo.com" />
-                    @error('assignUserEmail')
-                        <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
-                    @enderror
-                </div>
-                <div class="flex justify-end gap-3">
-                    <flux:modal.close>
-                        <flux:button wire:click="cancelAssign" variant="ghost">Cancelar</flux:button>
-                    </flux:modal.close>
-                    <flux:button wire:click="assignUser" variant="primary">Atribuir</flux:button>
-                </div>
+    <flux:modal name="assign-user-modal" class="max-w-sm">
+        <div class="space-y-5">
+            <div>
+                <flux:heading size="lg">Atribuir Usuário</flux:heading>
+                <flux:subheading>Informe o e-mail do usuário para atribuí-lo a este tipo.</flux:subheading>
             </div>
-        </flux:modal>
-    @endif
+            <div>
+                <flux:input wire:model="assignUserEmail" label="E-mail do usuário" type="email" placeholder="usuario@exemplo.com" />
+                @error('assignUserEmail')
+                    <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                @enderror
+            </div>
+            <div class="flex justify-end gap-3">
+                <flux:modal.close>
+                    <flux:button wire:click="cancelAssign" variant="ghost">Cancelar</flux:button>
+                </flux:modal.close>
+                <flux:button wire:click="assignUser" variant="primary">Atribuir</flux:button>
+            </div>
+        </div>
+    </flux:modal>
 
     {{-- Modal: Confirmar exclusão --}}
     <flux:modal name="confirm-delete-role" class="max-w-sm">

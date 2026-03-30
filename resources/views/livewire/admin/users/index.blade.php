@@ -1,4 +1,5 @@
-<div class="max-w-5xl mx-auto py-8 px-4 space-y-6">
+<div class="max-w-5xl mx-auto py-8 px-4 space-y-6"
+    x-init="$watch(() => $wire.removingUserId, val => val ? $flux.modal('confirm-remove-user').show() : $flux.modal('confirm-remove-user').close())">
 
     <div class="flex items-center justify-between">
         <div>

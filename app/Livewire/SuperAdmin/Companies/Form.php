@@ -13,6 +13,7 @@ use App\Services\AsaasService;
 use App\Services\UserPermissionService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Mail;
 use App\Rules\ReservedSlug;
 use Illuminate\Support\Str;
@@ -110,6 +111,9 @@ class Form extends Component
         $companyData['subdomain'] = $this->subdomain ?: null;
 
         if ($this->logo) {
+            if ($this->isEditing && $this->company->logo_path) {
+                Storage::disk('s3')->delete($this->company->logo_path);
+            }
             $companyData['logo_path'] = $this->logo->store('logos', 's3');
         }
 

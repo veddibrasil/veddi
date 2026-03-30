@@ -9,6 +9,7 @@ use App\Models\ProductCategory;
 use App\Models\Scopes\CompanyScope;
 use App\Services\StockService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -114,6 +115,9 @@ class Form extends Component
 
         $imagePath = $this->isEditing ? $this->product->image_path : null;
         if ($this->image) {
+            if ($this->isEditing && $this->product->image_path) {
+                Storage::disk('s3')->delete($this->product->image_path);
+            }
             $stored = $this->image->store('products', 's3');
             if ($stored === false) {
                 $this->addError('image', 'Falha ao fazer upload da imagem. Verifique a configuração do storage.');
