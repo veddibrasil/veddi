@@ -10,7 +10,10 @@
         sm:w-[420px] sm:h-[90vh] sm:max-h-[820px] sm:rounded-2xl sm:shadow-2xl
     "
     x-data="{ ...chatApp(), snakeOpen: false, productSidebarOpen: false, productSidebarSide: 'right' }"
-    x-init="$watch('$wire.step', v => { if (v === 'MENU_BROWSE') productSidebarOpen = true; })"
+    x-init="
+        $nextTick(() => { if ($wire.step === 'MENU_BROWSE') productSidebarOpen = true; });
+        $watch('$wire.step', v => { if (v === 'MENU_BROWSE') productSidebarOpen = true; });
+    "
 >
 
     {{-- ═══════════════════════════════ HEADER ══════════════════════════════ --}}
@@ -45,7 +48,7 @@
             </div>
 
             {{-- Restart + End chat buttons --}}
-            @if ($step !== 'IDENTIFY_PHONE' && $step !== 'CLOSED')
+            @if ($step !== 'CLOSED')
                 <div class="flex items-center gap-1" x-data="{ confirmEnd: false }">
                     {{-- Support icon --}}
                     @if ($customerId && !in_array($step, ['IDENTIFY_PHONE', 'CLOSED', 'EDIT_PROFILE']) && !$showSupportModal)
@@ -133,9 +136,9 @@
 
         {{-- Step progress dots --}}
         @php
-            $steps = ['IDENTIFY_PHONE','BRANCH_SELECT','MENU_BROWSE','CART_REVIEW','PAYMENT_PIX'];
+            $steps = ['BRANCH_SELECT','MENU_BROWSE','CART_REVIEW','IDENTIFY_PHONE','PAYMENT_PIX'];
             $currentIdx = array_search($step, $steps);
-            if ($currentIdx === false) $currentIdx = in_array($step, ['REGISTER_NAME','REGISTER_EMAIL','REGISTER_ADDRESS']) ? 0 : (in_array($step, ['CHECKOUT_COUPON','CHECKOUT_ORDER_TYPE','CHECKOUT_DELIVERY_ADDRESS','CHECKOUT_DELIVERY_FEE','CHECKOUT_NOTES','CHECKOUT_CPF','CHECKOUT_PAYMENT_METHOD']) ? 3 : ($step === 'ORDER_CONFIRMED' ? 5 : $currentIdx));
+            if ($currentIdx === false) $currentIdx = in_array($step, ['REGISTER_NAME','REGISTER_EMAIL','REGISTER_ADDRESS']) ? 3 : (in_array($step, ['CHECKOUT_COUPON','CHECKOUT_ORDER_TYPE','CHECKOUT_DELIVERY_ADDRESS','CHECKOUT_DELIVERY_FEE','CHECKOUT_NOTES','CHECKOUT_CPF','CHECKOUT_PAYMENT_METHOD']) ? 3 : ($step === 'ORDER_CONFIRMED' ? 5 : $currentIdx));
         @endphp
         <div class="flex items-center justify-center gap-1.5 pb-3 px-4">
             @for ($i = 0; $i < 5; $i++)
@@ -196,6 +199,7 @@
         {{-- ── IDENTIFY_PHONE ── --}}
         @if ($step === 'IDENTIFY_PHONE')
             <div wire:key="step-identify-phone" class="space-y-2.5">
+                <p class="text-xs text-center text-gray-500 pb-1">Informe seu telefone para continuar com o pedido</p>
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1.5">Telefone com DDD</label>
                     <input

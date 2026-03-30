@@ -180,7 +180,17 @@ class OrderChat extends Component
             return;
         }
 
-        $this->addMessage('bot', "Olá! Bem-vindo ao {$companyName}! Para começar, informe seu número de telefone com DDD.");
+        $branches = $this->branches;
+
+        if ($branches->count() === 1) {
+            $branch = $branches->first();
+            $this->selectedBranchId = $branch->id;
+            $this->addMessage('bot', "Olá! Bem-vindo ao {$companyName}! 🛍️ Explore o cardápio e monte seu pedido.");
+            $this->transitionTo('MENU_BROWSE');
+        } else {
+            $this->addMessage('bot', "Olá! Bem-vindo ao {$companyName}! 🏪 Escolha uma filial para ver o cardápio.");
+            $this->transitionTo('BRANCH_SELECT');
+        }
     }
 
     // --- Validation rules per step ---
@@ -279,8 +289,9 @@ class OrderChat extends Component
             $this->taxId        = $customer->tax_id ?? '';
             Log::channel('chat')->info('Cliente identificado pelo telefone', ['customer_id' => $customer->id, 'phone' => $this->phone]);
             $this->addMessage('user', $this->phone);
-            $this->addMessage('bot', "Que bom te ver de volta, {$customer->name}! Escolha uma filial para continuar.");
-            $this->transitionTo('BRANCH_SELECT');
+            $nextStep = !empty($this->cart) ? 'CHECKOUT_COUPON' : 'MENU_BROWSE';
+            $this->addMessage('bot', "Que bom te ver de volta, {$customer->name}! Continuando com seu pedido...");
+            $this->transitionTo($nextStep);
         } else {
             $existing = Customer::findByPhoneGlobally($this->phone);
 
@@ -315,8 +326,9 @@ class OrderChat extends Component
                     'phone'             => $this->phone,
                 ]);
                 $this->addMessage('user', $this->phone);
-                $this->addMessage('bot', "Que bom te ver de novo, {$customer->name}! Escolha uma filial para continuar.");
-                $this->transitionTo('BRANCH_SELECT');
+                $nextStep = !empty($this->cart) ? 'CHECKOUT_COUPON' : 'MENU_BROWSE';
+                $this->addMessage('bot', "Que bom te ver de novo, {$customer->name}! Continuando com seu pedido...");
+                $this->transitionTo($nextStep);
             } else {
                 Log::channel('chat')->info('Telefone não encontrado — iniciando cadastro', ['phone' => $this->phone]);
                 $this->addMessage('user', $this->phone);
@@ -372,8 +384,9 @@ class OrderChat extends Component
         }
         $addressSummary .= " — {$this->neighborhood}, {$this->number}, {$this->city} — CEP {$this->cep}";
         $this->addMessage('user', $addressSummary);
-        $this->addMessage('bot', "Cadastro criado com sucesso! Escolha uma filial para continuar.");
-        $this->transitionTo('BRANCH_SELECT');
+        $nextStep = !empty($this->cart) ? 'CHECKOUT_COUPON' : 'MENU_BROWSE';
+        $this->addMessage('bot', "Cadastro criado com sucesso! Continuando com seu pedido...");
+        $this->transitionTo($nextStep);
     }
 
     // --- Step: Edit Profile ---
@@ -482,6 +495,12 @@ class OrderChat extends Component
 
     public function confirmCart(): void
     {
+        if (! $this->customerId) {
+            $this->addMessage('bot', 'Ótimo pedido! Para continuar, preciso do seu número de telefone com DDD.');
+            $this->transitionTo('IDENTIFY_PHONE');
+            return;
+        }
+
         $this->couponInput   = '';
         $this->appliedCoupon = null;
         $this->couponDiscount = 0.0;

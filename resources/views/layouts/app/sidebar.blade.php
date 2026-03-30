@@ -36,7 +36,7 @@
                         $can = fn(string $perm) => $company && $user?->hasPermission($perm, $company);
                     @endphp
 
-                    <flux:sidebar.group :heading="__('Platform')" class="grid">
+                    <flux:sidebar.group :heading="__('Plataforma')" class="grid">
                         <flux:sidebar.item icon="home" :href="route('admin.dashboard')" :current="request()->routeIs('admin.dashboard')" wire:navigate>
                             {{ __('Dashboard') }}
                         </flux:sidebar.item>
