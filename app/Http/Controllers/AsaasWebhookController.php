@@ -33,6 +33,11 @@ class AsaasWebhookController extends Controller
 
         ProcessAsaasWebhook::dispatch($event, $data);
 
+        Log::channel('webhook')->info('Asaas webhook enfileirado para processamento', [
+            'event'      => $event,
+            'payment_id' => $data['payment']['id'] ?? null,
+        ]);
+
         return response()->json(['status' => 'queued']);
     }
 }

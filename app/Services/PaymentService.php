@@ -8,6 +8,7 @@ use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Payment;
+use Illuminate\Support\Facades\Log;
 
 class PaymentService
 {
@@ -17,6 +18,13 @@ class PaymentService
     public function dispatchPayment(Order $order, Customer $customer, ?Company $company, string $paymentMethod): void
     {
         ProcessOrder::dispatch($order, $customer, $company, $paymentMethod)->onQueue('high');
+
+        Log::channel('payments')->info('Job de pagamento enfileirado', [
+            'order_id'       => $order->id,
+            'payment_method' => $paymentMethod,
+            'total'          => $order->total,
+            'queue'          => 'high',
+        ]);
     }
 
     /**
@@ -48,6 +56,11 @@ class PaymentService
 
         if (in_array($order->status, ['pending', 'awaiting_payment'])) {
             ProcessOrder::dispatch($order, $customer, $company, $paymentMethod)->onQueue('high');
+
+            Log::channel('payments')->info('Cobrança expirada — nova gerada', [
+                'order_id'       => $order->id,
+                'payment_method' => $paymentMethod,
+            ]);
         }
     }
 }

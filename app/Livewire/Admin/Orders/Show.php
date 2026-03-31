@@ -91,6 +91,13 @@ class Show extends Component
 
         OrderStatusUpdated::dispatch($this->order);
 
+        Log::channel('orders')->info('Status do pedido alterado pelo admin', [
+            'order_id'       => $this->order->id,
+            'admin_id'       => auth()->id(),
+            'status_anterior' => $previousStatus,
+            'status_novo'    => $status,
+        ]);
+
         session()->flash('status', 'Status atualizado.');
     }
 
@@ -131,8 +138,10 @@ class Show extends Component
         }
 
         Log::channel('payments')->info('Reembolso manual marcado pelo admin', [
-            'order_id'   => $this->order->id,
+            'order_id'         => $this->order->id,
+            'admin_id'         => auth()->id(),
             'asaas_payment_id' => $payment->asaas_payment_id,
+            'amount'           => $payment->amount,
         ]);
 
         session()->flash('status', 'Pagamento marcado como reembolsado.');

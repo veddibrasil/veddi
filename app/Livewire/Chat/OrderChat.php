@@ -769,6 +769,13 @@ class OrderChat extends Component
                 $coupon,
             );
         } catch (RuntimeException $e) {
+            Log::channel('orders')->error('Falha ao criar pedido no chat', [
+                'customer_id'    => $this->customerId,
+                'branch_id'      => $this->selectedBranchId,
+                'payment_method' => $this->paymentMethod,
+                'order_type'     => $this->orderType,
+                'error'          => $e->getMessage(),
+            ]);
             $this->addMessage('bot', 'Não foi possível criar o pedido: ' . $e->getMessage());
             $this->submitting = false;
             $this->isLoading  = false;
@@ -1253,6 +1260,13 @@ class OrderChat extends Component
 
                 OrderStatusUpdated::dispatch($order->fresh());
 
+                Log::channel('payments')->info('Cartão aprovado no chat', [
+                    'order_id'         => $order->id,
+                    'customer_id'      => $customer->id,
+                    'asaas_payment_id' => $charge['id'],
+                    'amount'           => $order->total,
+                ]);
+
                 $this->cardNumber     = '';
                 $this->cardExpiry     = '';
                 $this->cardCvv        = '';
@@ -1262,6 +1276,11 @@ class OrderChat extends Component
                 $this->transitionTo('ORDER_CONFIRMED');
             } else {
                 $declineReason = $charge['creditCard']['declineReason'] ?? $charge['declineReason'] ?? null;
+                Log::channel('payments')->warning('Cartão recusado no chat', [
+                    'order_id'      => $this->orderId,
+                    'customer_id'   => $this->customerId,
+                    'decline_reason' => $declineReason,
+                ]);
                 $this->cardError = $this->friendlyDeclineMessage($declineReason);
             }
         } catch (\Throwable $e) {
