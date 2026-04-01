@@ -55,6 +55,13 @@ class Index extends Component
     {
         $branch = Branch::withoutGlobalScope(CompanyScope::class)->findOrFail($this->deletingId);
         $this->authorize('delete', $branch);
+
+        $totalBranches = Branch::withoutGlobalScope(CompanyScope::class)
+            ->where('company_id', $branch->company_id)
+            ->count();
+
+        abort_if($totalBranches <= 1, 422, 'Não é possível excluir a única filial.');
+
         $branch->delete();
         $this->deletingId = null;
         session()->flash('status', 'Filial removida.');
@@ -69,9 +76,19 @@ class Index extends Component
             ? Branch::withoutGlobalScope(CompanyScope::class)->with('company')->orderBy('name')
             : Branch::orderBy('name');
 
+        $branches = $query->get();
+
+        $branchCountPerCompany = $isSuperAdmin
+            ? Branch::withoutGlobalScope(CompanyScope::class)
+                ->selectRaw('company_id, count(*) as total')
+                ->groupBy('company_id')
+                ->pluck('total', 'company_id')
+            : collect([$this->branchCount]);
+
         return view('livewire.admin.branches.index', [
-            'branches'     => $query->get(),
-            'isSuperAdmin' => $isSuperAdmin,
+            'branches'             => $branches,
+            'isSuperAdmin'         => $isSuperAdmin,
+            'branchCountPerCompany' => $branchCountPerCompany,
         ])->layout('layouts.app', ['title' => 'Filiais']);
     }
 }

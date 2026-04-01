@@ -14,7 +14,7 @@
             <select
                 wire:model.live="selectedCompanyId"
                 wire:key="company-{{ $selectedCompanyId }}"
-                class="w-full rounded-lg border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    class="w-full rounded-md border border-neutral-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-neutral-800 dark:text-neutral-100 px-3 py-2 text-sm"
             >
                 @foreach($companies as $company)
                     <option value="{{ $company->id }}">
@@ -40,7 +40,7 @@
     <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
 
         {{-- ── Taxas de Cartão de Crédito ── --}}
-        <div class="border-t border-neutral-200 dark:border-zinc-700 pt-8 space-y-6 pb-8">
+        <div class="pt-8 space-y-6 pb-8">
 
             <div>
                 <h2 class="text-base font-semibold text-neutral-800 dark:text-neutral-100">

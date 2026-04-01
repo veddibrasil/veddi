@@ -33,7 +33,9 @@ class ProcessOrder implements ShouldQueue
         public string $paymentMethod = 'pix',
         public int $installments = 1,
         public array $cardData = [],
-    ) {}
+    ) {
+        $this->onQueue('critical');
+    }
 
     public function handle(AsaasService $asaas): void
     {

@@ -30,10 +30,28 @@ class AnticipationService
      *   net_after_fee: float,
      * }>
      */
+    /**
+     * Retorna as faixas de taxa de antecipação configuradas para a empresa.
+     * Útil para exibir a tabela de taxas no modal antes de selecionar transações.
+     *
+     * @return array{d2: float, d7: float, d15: float, d30: float}
+     */
+    public function getRates(Company $company): array
+    {
+        $settings = $company->loadMissing('paymentSettings')->paymentSettings ?? null;
+
+        return [
+            'd2'  => round($this->anticipationRate(2,  $settings) * 100, 2),
+            'd7'  => round($this->anticipationRate(7,  $settings) * 100, 2),
+            'd15' => round($this->anticipationRate(15, $settings) * 100, 2),
+            'd30' => round($this->anticipationRate(30, $settings) * 100, 2),
+        ];
+    }
+
     public function getEligibleTransactions(Company $company): Collection
     {
         $today    = now()->toDateString();
-        $settings = $company->paymentSettings ?? null;
+        $settings = $company->loadMissing('paymentSettings')->paymentSettings ?? null;
 
         return CompanyTransaction::withoutGlobalScopes()
             ->where('company_id', $company->id)
@@ -103,7 +121,7 @@ class AnticipationService
         }
 
         $today    = now()->toDateString();
-        $settings = $company->paymentSettings ?? null;
+        $settings = $company->loadMissing('paymentSettings')->paymentSettings ?? null;
 
         return DB::transaction(function () use ($company, $transactionIds, $today, $settings) {
             $transactions = CompanyTransaction::withoutGlobalScopes()

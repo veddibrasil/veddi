@@ -13,6 +13,11 @@ class UpdateCompanyBalancesJob implements ShouldQueue
 
     public int $tries = 1;
 
+    public function __construct()
+    {
+        $this->onQueue('low');
+    }
+
     public function handle(BalanceService $balanceService): void
     {
         Log::channel('payments')->info('Iniciando atualização de snapshots de saldo');

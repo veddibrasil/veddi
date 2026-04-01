@@ -13,6 +13,11 @@ class ReleaseCompanyTransactionsJob implements ShouldQueue
 
     public int $tries = 1;
 
+    public function __construct()
+    {
+        $this->onQueue('low');
+    }
+
     public function handle(ReleaseService $releaseService): void
     {
         Log::channel('payments')->info('Iniciando liberação de transações');

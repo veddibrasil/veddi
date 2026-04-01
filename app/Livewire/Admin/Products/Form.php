@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\Scopes\CompanyScope;
 use App\Services\StockService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Component;
@@ -144,6 +145,8 @@ class Form extends Component
                 ->where('id', $this->product->id)
                 ->update($data);
             $product = $this->product->refresh();
+
+
             session()->flash('status', 'Produto atualizado.');
         } else {
             if ($this->isSuperAdmin) {
@@ -171,6 +174,9 @@ class Form extends Component
                     'min_quantity' => $existing?->min_quantity ?? 0,
                     'quantity'     => $existing?->quantity ?? 0,
                 ];
+
+            Cache::forget("menu:branch:{$branchId}:company:{$this->company_id}");
+
             }
         } else {
             foreach ($this->selectedBranches as $branchId) {
@@ -180,6 +186,9 @@ class Form extends Component
                     'min_quantity' => (int) $this->minQuantity,
                     'quantity'     => 0,
                 ];
+
+                Cache::forget("menu:branch:{$branchId}:company:{$this->company_id}");
+
             }
         }
         $product->branches()->sync($branchSync);
@@ -194,6 +203,7 @@ class Form extends Component
                 }
             }
         }
+
 
         $this->redirect(route('admin.products.index'));
     }

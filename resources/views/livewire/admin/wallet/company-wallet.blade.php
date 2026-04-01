@@ -174,6 +174,35 @@
                 </div>
 
                 @if(!empty($eligibleTransactions))
+                    {{-- Tabela de taxas por faixa --}}
+                    @if(!empty($anticipationRates))
+                        <div class="px-6 pt-4 pb-4">
+                            <div class="grid grid-cols-4 gap-2 text-center text-xs">
+                                @foreach([
+                                    ['label' => 'Até 2 dias', 'key' => 'd2',  'color' => 'red'],
+                                    ['label' => 'Até 7 dias', 'key' => 'd7',  'color' => 'orange'],
+                                    ['label' => 'Até 15 dias','key' => 'd15', 'color' => 'amber'],
+                                    ['label' => '+15 dias',   'key' => 'd30', 'color' => 'green'],
+                                ] as $faixa)
+                                    <div class="rounded-lg border border-neutral-200 dark:border-zinc-600 p-2">
+                                        <p class="text-neutral-500 dark:text-neutral-400">
+                                            {{ $faixa['label'] }}
+                                        </p>
+
+                                        <p class="font-bold text-sm mt-0.5
+                                            {{ $faixa['color'] === 'red'    ? 'text-red-600 dark:text-red-400' : '' }}
+                                            {{ $faixa['color'] === 'orange' ? 'text-orange-600 dark:text-orange-400' : '' }}
+                                            {{ $faixa['color'] === 'amber'  ? 'text-amber-600 dark:text-amber-400' : '' }}
+                                            {{ $faixa['color'] === 'green'  ? 'text-green-600 dark:text-green-400' : '' }}
+                                        ">
+                                            {{ $anticipationRates[$faixa['key']] }}%
+                                        </p>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endif
+
                     {{-- Lista de transações --}}
                     <div class="overflow-y-auto flex-1">
                         <table class="w-full text-sm">
@@ -385,5 +414,19 @@
             </div>
         </div>
     @endif
+
+    {{-- Broadcast: atualiza saldo automaticamente quando o job de balanço rodar --}}
+    <div
+        wire:ignore
+        x-data
+        x-init="
+            if (window.Echo) {
+                window.Echo.private('wallet.{{ $companyId }}')
+                    .listen('WalletBalanceUpdated', () => {
+                        $wire.refreshWallet();
+                    });
+            }
+        "
+    ></div>
 
 </div>

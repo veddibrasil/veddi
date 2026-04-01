@@ -11,6 +11,7 @@ use Livewire\Component;
 
 class CompanyWallet extends Component
 {
+    public int    $companyId        = 0;
     public float  $availableBalance = 0.0;
     public float  $pendingBalance   = 0.0;
     public float  $pixWithdrawalFee = 0.0;
@@ -21,6 +22,7 @@ class CompanyWallet extends Component
     public bool  $showAnticipationModal  = false;
     public array $eligibleTransactions   = [];   // lista completa calculada
     public array $selectedTransactionIds = [];   // IDs marcados pelo lojista
+    public array $anticipationRates      = [];   // faixas de taxa da empresa
 
     // Withdrawal modal
     public bool   $showWithdrawalModal = false;
@@ -40,6 +42,7 @@ class CompanyWallet extends Component
     {
         $company = app('current.company');
 
+        $this->companyId = $company->id;
         $this->refreshBalances($balanceService, $company);
 
         $this->pixWithdrawalFee = (float) config('payments.pix_withdrawal_fee', 1.99);
@@ -67,6 +70,7 @@ class CompanyWallet extends Component
         $company = app('current.company');
 
         $this->eligibleTransactions   = $anticipationService->getEligibleTransactions($company)->all();
+        $this->anticipationRates      = $anticipationService->getRates($company);
         $this->selectedTransactionIds = collect($this->eligibleTransactions)->pluck('id')->map(fn ($id) => (string) $id)->all();
         $this->showAnticipationModal  = true;
     }
@@ -76,6 +80,7 @@ class CompanyWallet extends Component
         $this->showAnticipationModal  = false;
         $this->eligibleTransactions   = [];
         $this->selectedTransactionIds = [];
+        $this->anticipationRates      = [];
     }
 
     public function toggleAll(): void
@@ -130,6 +135,7 @@ class CompanyWallet extends Component
         $this->showAnticipationModal  = false;
         $this->eligibleTransactions   = [];
         $this->selectedTransactionIds = [];
+        $this->anticipationRates      = [];
 
         // Atualiza o saldo no dashboard (mesmo componente de roteamento)
         $this->dispatch('balance-updated');
@@ -208,6 +214,15 @@ class CompanyWallet extends Component
         $this->withdrawals         = $company->withdrawals()->latest()->limit(20)->get()->toArray();
 
         session()->flash('success', 'Saque solicitado com sucesso. Será processado em instantes.');
+    }
+
+    // ─── Broadcast ───────────────────────────────────────────────────────────
+
+    public function refreshWallet(BalanceService $balanceService): void
+    {
+        $company = app('current.company');
+        $this->refreshBalances($balanceService, $company);
+        $this->loadHistory($company);
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────

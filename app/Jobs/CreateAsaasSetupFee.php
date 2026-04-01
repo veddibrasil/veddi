@@ -16,7 +16,10 @@ class CreateAsaasSetupFee implements ShouldQueue
     public int $tries  = 3;
     public int $backoff = 30;
 
-    public function __construct(public Company $company) {}
+    public function __construct(public Company $company)
+    {
+        $this->onQueue('default');
+    }
 
     public function handle(AsaasService $asaasService): void
     {

@@ -19,7 +19,9 @@ class CreateAsaasSubscription implements ShouldQueue
     public function __construct(
         public Company $company,
         public ?string $nextDueDate = null,
-    ) {}
+    ) {
+        $this->onQueue('default');
+    }
 
     public function handle(AsaasService $asaasService): void
     {

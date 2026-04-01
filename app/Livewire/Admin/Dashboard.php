@@ -9,6 +9,30 @@ use Livewire\Component;
 
 class Dashboard extends Component
 {
+    public float $availableBalance = 0.0;
+    public int   $companyId        = 0;
+
+    public function mount(): void
+    {
+        $company = app()->bound('current.company') ? app('current.company') : null;
+        $user    = auth()->user();
+
+        if ($company && !$user?->isSuperAdmin() && $user?->hasPermission('company.settings', $company)) {
+            $this->companyId        = $company->id;
+            $this->availableBalance = app(BalanceService::class)->calculateBalance($company)['available_balance'];
+        }
+    }
+
+    public function refreshBalance(): void
+    {
+        $company = app()->bound('current.company') ? app('current.company') : null;
+        $user    = auth()->user();
+
+        if ($company && !$user?->isSuperAdmin() && $user?->hasPermission('company.settings', $company)) {
+            $this->availableBalance = app(BalanceService::class)->calculateBalance($company)['available_balance'];
+        }
+    }
+
     public function render()
     {
         $company      = app()->bound('current.company') ? app('current.company') : null;
@@ -74,17 +98,10 @@ class Dashboard extends Component
                 ->count();
         }
 
-        // Wallet balance
-        $walletBalance = null;
-        if ($company && ! $isSuperAdmin && $canSettings) {
-            $balanceData   = app(BalanceService::class)->calculateBalance($company);
-            $walletBalance = $balanceData['total_balance'];
-        }
-
         return view('livewire.admin.dashboard', compact(
             'todayOrders', 'todayRevenue', 'pendingOrders', 'totalOrders',
             'canViewOrders', 'canViewBranches', 'canViewProducts', 'canSettings',
-            'monthlyOrderCount', 'monthlyOrderLimit', 'walletBalance'
+            'monthlyOrderCount', 'monthlyOrderLimit'
         ) + ['currentCompany' => $company])->layout('layouts.app', ['title' => 'Dashboard Admin']);
     }
 }

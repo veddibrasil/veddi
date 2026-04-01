@@ -205,13 +205,13 @@
         </a>
     @endif
 
-    @if($walletBalance !== null)
+    @if($companyId !== 0)
         <a href="{{ route('admin.wallet') }}"
            class="flex items-center justify-between bg-white border rounded-xl p-4 shadow-sm hover:border-purple-300 transition-colors dark:bg-zinc-800 dark:border-zinc-700 dark:hover:border-purple-700">
             <div>
-                <p class="text-xs text-neutral-500 uppercase tracking-wide dark:text-neutral-400">Saldo na carteira</p>
-                <p class="text-2xl font-bold mt-1 {{ $walletBalance < 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400' }}">
-                    R$ {{ number_format($walletBalance, 2, ',', '.') }}
+                <p class="text-xs text-neutral-500 uppercase tracking-wide dark:text-neutral-400">Disponível para saque</p>
+                <p class="text-2xl font-bold mt-1 {{ $availableBalance < 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400' }}">
+                    R$ {{ number_format($availableBalance, 2, ',', '.') }}
                 </p>
             </div>
             <div class="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-xl shrink-0">
@@ -269,5 +269,21 @@
                 @endforelse
             </div>
         </div>
+    @endif
+
+    @if($companyId !== 0)
+        {{-- Broadcast: atualiza saldo da carteira em tempo real --}}
+        <div
+            wire:ignore
+            x-data
+            x-init="
+                if (window.Echo) {
+                    window.Echo.private('wallet.{{ $companyId }}')
+                        .listen('WalletBalanceUpdated', () => {
+                            $wire.refreshBalance();
+                        });
+                }
+            "
+        ></div>
     @endif
 </div>

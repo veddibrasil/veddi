@@ -46,7 +46,7 @@ class Branch extends Model
 
     public function isOpen(): bool
     {
-        $now = now()->format('H:i');
+        $now = now(config('app.timezone'))->format('H:i');
         return $now >= $this->opens_at && $now <= $this->closes_at;
     }
 }

@@ -23,7 +23,9 @@ class ProcessAsaasWebhook implements ShouldQueue
     public function __construct(
         public string $event,
         public array  $payload,
-    ) {}
+    ) {
+        $this->onQueue('critical');
+    }
 
     public function handle(CompanyService $companyService): void
     {

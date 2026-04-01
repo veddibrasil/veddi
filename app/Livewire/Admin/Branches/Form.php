@@ -104,6 +104,7 @@ class Form extends Component
                 ->where('id', $this->branch->id)
                 ->update($data);
             $companyId = $this->company_id ?? $this->branch->company_id;
+
             session()->flash('status', 'Filial atualizada.');
         } else {
             $data = collect($validated)->except('company_id')->toArray();
@@ -120,6 +121,7 @@ class Form extends Component
 
             session()->flash('status', 'Filial criada.');
         }
+        session()->forget('chat_state');
 
         Cache::forget("branches:company:{$companyId}");
         Cache::forget("open_branches:company:{$companyId}");

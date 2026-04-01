@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Events\WalletBalanceUpdated;
 use App\Models\Company;
 use App\Models\CompanyBalance;
 use App\Models\CompanyTransaction;
@@ -72,11 +73,11 @@ class BalanceService
             array_merge($data, ['last_calculated_at' => now()])
         );
 
-        // Log::channel('payments')->debug('Snapshot de saldo atualizado', [
-        //     'company_id' => $company->id,
-        //     'available'  => $data['available_balance'],
-        //     'total'      => $data['total_balance'],
-        // ]);
+        WalletBalanceUpdated::dispatch(
+            $company->id,
+            $data['available_balance'],
+            $data['blocked_balance'],
+        );
 
         return $balance;
     }

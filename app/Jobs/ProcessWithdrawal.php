@@ -19,7 +19,9 @@ class ProcessWithdrawal implements ShouldQueue
 
     public function __construct(
         public int $withdrawalId,
-    ) {}
+    ) {
+        $this->onQueue('default');
+    }
 
     public function handle(AsaasService $asaas): void
     {

@@ -134,6 +134,7 @@ class OrderChat extends Component
     {
         $slug = request()->route('company');
 
+
         if (! $slug) {
             abort(404);
         }
@@ -158,8 +159,8 @@ class OrderChat extends Component
             }
             return;
         }
-
         session()->forget('chat_state');
+
         $this->companyId = $currentCompanyId;
         $this->initialize();
     }
@@ -171,14 +172,15 @@ class OrderChat extends Component
         $companyId   = $this->companyId;
 
 
-        $hasOpenBranch = Cache::remember("open_branches:company:{$companyId}", now()->addMinutes(1), fn () =>
-            Branch::withoutGlobalScopes()
+        $hasOpenBranch = Cache::remember("open_branches:company:{$companyId}", now()->addMinutes(1), function () use ($companyId) {
+            $nowTime = now(config('app.timezone'))->format('H:i:s');
+            return Branch::withoutGlobalScopes()
                 ->where('active', true)
                 ->where('company_id', $companyId)
-                ->where('opens_at', '<=', now()->format('H:i:s'))
-                ->where('closes_at', '>=', now()->format('H:i:s'))
-                ->exists()
-        );
+                ->where('opens_at', '<=', $nowTime)
+                ->where('closes_at', '>=', $nowTime)
+                ->exists();
+        });
 
         if (! $hasOpenBranch) {
             $this->addMessage('bot', "Olá! Bem-vindo ao {$companyName}! No momento estamos fora do horário de atendimento. Consulte os horários de cada filial e volte mais tarde. 😊");
@@ -1162,7 +1164,7 @@ class OrderChat extends Component
 
         $messages = [
             'awaiting_payment' => "⏳ Pedido {$order->order_number} recebido! Aguardando confirmação do pagamento.",
-            'paid'      => "✅ Pagamento confirmado! Seu pedido {$order->order_number} está sendo preparado. Obrigado!",
+            'paid'      => "✅ Pagamento confirmado! Seu pedido {$order->order_number} já será preparado. Obrigado!",
             'preparing' => "👨‍🍳 Seu pedido {$order->order_number} está sendo preparado! Em breve ficará pronto.",
             'ready'     => "🛵 Pedido {$order->order_number} pronto e saiu para entrega! Aguarde em breve.",
             'delivered' => "🎉 Pedido {$order->order_number} entregue! Bom apetite e obrigado pela preferência!",

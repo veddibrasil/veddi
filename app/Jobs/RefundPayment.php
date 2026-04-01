@@ -18,7 +18,10 @@ class RefundPayment implements ShouldQueue
 
     public int $backoff = 10;
 
-    public function __construct(public Order $order) {}
+    public function __construct(public Order $order)
+    {
+        $this->onQueue('critical');
+    }
 
     public function handle(): void
     {
