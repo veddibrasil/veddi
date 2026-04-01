@@ -184,6 +184,70 @@
         @endif
     </div>
 
+    {{-- Pagamentos PIX --}}
+    <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
+        <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Pagamentos PIX</h2>
+
+        <div class="flex items-start justify-between gap-4">
+            <div>
+                <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">Absorver a taxa PIX de R$ 1,99</p>
+                <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
+                    Se ativado, os R$ 1,99 serão descontados do seu repasse e o cliente pagará apenas o valor do pedido.<br>
+                    Se desativado, o cliente pagará R$ 1,99 a mais no momento do pagamento.
+                </p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
+                <flux:field variant="inline">
+
+                    <flux:switch wire:model.live="pixFeeAbsorbedByCompany" />
+
+                    <flux:error name="pixFeeAbsorbedByCompany" />
+                </flux:field>
+                <div class="w-11 h-6 bg-neutral-200 peer-focus:outline-none rounded-full dark:bg-zinc-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600 dark:peer-checked:bg-green-500"></div>
+            </label>
+        </div>
+
+        <div class="rounded-lg bg-neutral-50 dark:bg-zinc-700/50 border border-neutral-100 dark:border-zinc-600 px-4 py-3 text-xs text-neutral-500 dark:text-neutral-400 flex items-start gap-2">
+            <svg class="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span>
+                Pagamentos PIX ficam disponíveis para saque <strong>1 dia</strong> após a confirmação. Saques via PIX também possuem uma taxa de <strong>R$ 1,99</strong>.
+            </span>
+        </div>
+    </div>
+
+    {{-- Pagamentos Cartão de Crédito --}}
+    <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
+        <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Pagamentos Cartão de Crédito</h2>
+
+        <div class="flex items-start justify-between gap-4">
+            <div>
+                <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">Absorver a taxa de cartão</p>
+                <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
+                    Se ativado, as taxas de cartão serão descontadas do seu repasse e o cliente pagará apenas o valor do pedido.<br>
+                    Se desativado, o valor cobrado do cliente já inclui as taxas de processamento do cartão.
+                </p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
+                <flux:field variant="inline">
+                    <flux:switch wire:model.live="cardFeeAbsorbedByCompany" />
+                    <flux:error name="cardFeeAbsorbedByCompany" />
+                </flux:field>
+                <div class="w-11 h-6 bg-neutral-200 peer-focus:outline-none rounded-full dark:bg-zinc-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600 dark:peer-checked:bg-green-500"></div>
+            </label>
+        </div>
+
+        <div class="rounded-lg bg-neutral-50 dark:bg-zinc-700/50 border border-neutral-100 dark:border-zinc-600 px-4 py-3 text-xs text-neutral-500 dark:text-neutral-400 flex items-start gap-2">
+            <svg class="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span>
+                Pagamentos via cartão ficam disponíveis para saque conforme o prazo de antecipação configurado (padrão: <strong>15 dias</strong>).
+            </span>
+        </div>
+    </div>
+
     <div class="flex gap-3 pb-8">
         <flux:button wire:click="save" class="bg-amber-500! text-white! hover:bg-amber-600!"
             wire:loading.attr="disabled">
@@ -191,4 +255,5 @@
             <span wire:loading wire:target="save">Salvando...</span>
         </flux:button>
     </div>
+
 </div>

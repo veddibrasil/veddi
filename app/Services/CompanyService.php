@@ -6,6 +6,7 @@ use App\Events\CompanyActivated;
 use App\Events\CompanyBlocked;
 use App\Models\Company;
 use App\Models\Subscription;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
 class CompanyService
@@ -36,6 +37,31 @@ class CompanyService
         if ($updated > 0) {
             CompanyActivated::dispatch($company->fresh());
         }
+    }
+
+    /**
+     * Mark a company as overdue, starting the 3-business-day grace period.
+     *
+     * The company remains accessible during this window. A scheduled command
+     * (companies:block-overdue) will call block() once the grace period expires.
+     */
+    public function markOverdue(Company $company, Carbon $dueDate): void
+    {
+        $company->update([
+            'status'        => 'OVERDUE',
+            'overdue_since' => $dueDate->toDateString(),
+        ]);
+
+        if ($company->asaas_subscription_id) {
+            Subscription::where('company_id', $company->id)
+                ->where('asaas_subscription_id', $company->asaas_subscription_id)
+                ->update(['status' => 'overdue']);
+        }
+
+        Log::channel('payments')->warning('Empresa em atraso — carência de 3 dias úteis iniciada', [
+            'company_id'    => $company->id,
+            'overdue_since' => $dueDate->toDateString(),
+        ]);
     }
 
     /**

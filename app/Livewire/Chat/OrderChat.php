@@ -22,7 +22,9 @@ use App\Services\OrderService;
 use App\Events\OrderStatusUpdated;
 use App\Models\Payment;
 use App\Services\AsaasService;
+use App\Services\PaymentCalculatorService;
 use App\Services\PaymentService;
+use App\Services\TransactionService;
 use App\Services\WalletService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -77,11 +79,14 @@ class OrderChat extends Component
     public ?string $expiresAt    = null;
 
     // --- Card payment ---
-    public string  $cardNumber     = '';
-    public string  $cardExpiry     = '';
-    public string  $cardCvv        = '';
-    public string  $cardHolderName = '';
-    public ?string $cardError      = null;
+    public string  $cardNumber        = '';
+    public string  $cardExpiry        = '';
+    public string  $cardCvv           = '';
+    public string  $cardHolderName    = '';
+    public string  $cardPostalCode    = '';
+    public string  $cardAddressNumber = '';
+    public array   $cardFeeBreakdown  = [];
+    public ?string $cardError         = null;
 
     // --- Support chat (order-based) ---
     public string $supportMessage    = '';
@@ -164,6 +169,7 @@ class OrderChat extends Component
         $company     = app()->bound('current.company') ? app('current.company') : null;
         $companyName = $company?->name ?? config('app.name');
         $companyId   = $this->companyId;
+
 
         $hasOpenBranch = Cache::remember("open_branches:company:{$companyId}", now()->addMinutes(1), fn () =>
             Branch::withoutGlobalScopes()
@@ -733,9 +739,33 @@ class OrderChat extends Component
             return;
         }
 
+        if ($method === 'CARD') {
+            $this->recalculateCardFee();
+        }
+
         $label = $method === 'CARD' ? 'Cartão de Crédito' : 'PIX';
         $this->addMessage('user', $label);
         $this->placeOrder('pending');
+    }
+
+    private function recalculateCardFee(): void
+    {
+        $company  = app()->bound('current.company') ? app('current.company') : null;
+        $settings = $company?->paymentSettings;
+        $total    = (float) $this->getOrderTotalProperty();
+
+        if ($total <= 0) {
+            $this->cardFeeBreakdown = [];
+            return;
+        }
+
+        $anticipationDays = $settings?->default_anticipation_days ?? 15;
+
+        $this->cardFeeBreakdown = app(PaymentCalculatorService::class)->calculate(
+            $total,
+            $anticipationDays,
+            $settings
+        );
     }
 
     /**
@@ -769,7 +799,8 @@ class OrderChat extends Component
                 $coupon,
             );
         } catch (RuntimeException $e) {
-            Log::channel('orders')->error('Falha ao criar pedido no chat', [
+            Log::channel('discord')->error('Falha ao criar pedido no chat', [
+                'type'           => 'orders',
                 'customer_id'    => $this->customerId,
                 'branch_id'      => $this->selectedBranchId,
                 'payment_method' => $this->paymentMethod,
@@ -1205,6 +1236,15 @@ class OrderChat extends Component
             return;
         }
 
+        // Recalcular taxas no backend — nunca confiar em valores do frontend
+        $settings         = $company?->paymentSettings;
+        $anticipationDays = $settings?->default_anticipation_days ?? 15;
+        $breakdown        = app(PaymentCalculatorService::class)->calculate(
+            (float) $order->total,
+            $anticipationDays,
+            $settings
+        );
+
         // Parse expiry MM/YY → expiryMonth, expiryYear (4 digits)
         [$expMonth, $expYear] = explode('/', $this->cardExpiry);
         $expiryYear = strlen($expYear) === 2 ? '20' . $expYear : $expYear;
@@ -1220,43 +1260,50 @@ class OrderChat extends Component
             ]);
 
             $charge = $asaas->createCreditCardCharge(
-                $asaasCustomerId,
-                (float) $order->total,
-                "Pedido #{$order->order_number}" . ($company ? " - {$company->name}" : ''),
-                (string) $order->id,
-                [
+                customerId:        $asaasCustomerId,
+                amount:            $breakdown['final_amount'],
+                description:       "Pedido #{$order->order_number}" . ($company ? " - {$company->name}" : ''),
+                externalReference: (string) $order->id,
+                creditCard: [
                     'holderName'  => $this->cardHolderName,
                     'number'      => $this->cardNumber,
                     'expiryMonth' => $expMonth,
                     'expiryYear'  => $expiryYear,
                     'ccv'         => $this->cardCvv,
                 ],
-                [
+                holderInfo: [
                     'name'          => $customer->name,
                     'email'         => $customer->email ?? '',
                     'cpfCnpj'       => $customer->tax_id ?? '',
-                    'postalCode'    => $customer->cep ?? '',
-                    'addressNumber' => 'S/N',
+                    'postalCode'    => $this->cardPostalCode ?: ($customer->cep ?? ''),
+                    'addressNumber' => $this->cardAddressNumber ?: 'S/N',
                     'phone'         => $customer->phone ?? null,
-                ]
+                ],
+                installments: 1,
             );
 
             $status = $charge['status'] ?? null;
 
             if ($status === 'CONFIRMED' || $status === 'RECEIVED') {
                 $newPayment = Payment::create([
-                    'order_id'         => $order->id,
-                    'asaas_payment_id' => $charge['id'],
-                    'payment_gateway'  => 'asaas',
-                    'amount'           => $order->total,
-                    'status'           => 'paid',
-                    'paid_at'          => now(),
-                    'payment_token'    => hash('sha256', $order->id . $customer->id . uniqid()),
+                    'order_id'          => $order->id,
+                    'asaas_payment_id'  => $charge['id'],
+                    'payment_gateway'   => 'asaas',
+                    'amount'            => $breakdown['final_amount'],
+                    'original_amount'   => $breakdown['original_amount'],
+                    'card_fee'          => $breakdown['fee_amount'],
+                    'card_fee_rate'     => $breakdown['total_rate'],
+                    'installments'      => 1,
+                    'anticipation_days' => $anticipationDays,
+                    'status'            => 'paid',
+                    'paid_at'           => now(),
+                    'payment_token'     => hash('sha256', $order->id . $customer->id . uniqid()),
                 ]);
 
                 $order->update(['status' => 'paid']);
 
                 app(WalletService::class)->creditForOrder($order->fresh(), $newPayment);
+                app(TransactionService::class)->createForPayment($order->fresh(), $newPayment);
 
                 OrderStatusUpdated::dispatch($order->fresh());
 
@@ -1264,27 +1311,33 @@ class OrderChat extends Component
                     'order_id'         => $order->id,
                     'customer_id'      => $customer->id,
                     'asaas_payment_id' => $charge['id'],
-                    'amount'           => $order->total,
+                    'original_amount'  => $breakdown['original_amount'],
+                    'final_amount'     => $breakdown['final_amount'],
+                    'card_fee'         => $breakdown['fee_amount'],
                 ]);
 
-                $this->cardNumber     = '';
-                $this->cardExpiry     = '';
-                $this->cardCvv        = '';
-                $this->cardHolderName = '';
+                $this->cardNumber        = '';
+                $this->cardExpiry        = '';
+                $this->cardCvv           = '';
+                $this->cardHolderName    = '';
+                $this->cardPostalCode    = '';
+                $this->cardAddressNumber = '';
+                $this->cardFeeBreakdown  = [];
 
-                $this->addMessage('bot', '✅ Pagamento aprovado! Seu pedido está confirmado.');
+                $this->addMessage('bot', 'Pagamento aprovado! Seu pedido está confirmado.');
                 $this->transitionTo('ORDER_CONFIRMED');
             } else {
                 $declineReason = $charge['creditCard']['declineReason'] ?? $charge['declineReason'] ?? null;
                 Log::channel('payments')->warning('Cartão recusado no chat', [
-                    'order_id'      => $this->orderId,
-                    'customer_id'   => $this->customerId,
+                    'order_id'       => $this->orderId,
+                    'customer_id'    => $this->customerId,
                     'decline_reason' => $declineReason,
                 ]);
                 $this->cardError = $this->friendlyDeclineMessage($declineReason);
             }
         } catch (\Throwable $e) {
-            Log::channel('payments')->error('Erro ao processar cartão no chat', [
+            Log::channel('discord')->error('Erro ao processar cartão no chat', [
+                'type'     => 'payments',
                 'order_id' => $this->orderId,
                 'error'    => $e->getMessage(),
             ]);
@@ -1369,11 +1422,14 @@ class OrderChat extends Component
         $this->pixCopyPaste   = null;
         $this->expiresAt      = null;
         $this->submitting     = false;
-        $this->cardError      = null;
-        $this->cardNumber     = '';
-        $this->cardExpiry     = '';
-        $this->cardCvv        = '';
-        $this->cardHolderName = '';
+        $this->cardError         = null;
+        $this->cardNumber        = '';
+        $this->cardExpiry        = '';
+        $this->cardCvv           = '';
+        $this->cardHolderName    = '';
+        $this->cardPostalCode    = '';
+        $this->cardAddressNumber = '';
+        $this->cardFeeBreakdown  = [];
 
         $this->addMessage('bot', 'Escolha uma nova forma de pagamento:');
         $this->transitionTo('CHECKOUT_PAYMENT_METHOD');
@@ -1467,6 +1523,14 @@ class OrderChat extends Component
         $this->lastAdminSupportMessageId   = null;
         $this->showSupportModal            = false;
         $this->supportConversation         = [];
+        $this->cardNumber                  = '';
+        $this->cardExpiry                  = '';
+        $this->cardCvv                     = '';
+        $this->cardHolderName              = '';
+        $this->cardPostalCode              = '';
+        $this->cardAddressNumber           = '';
+        $this->cardError                   = null;
+        $this->cardFeeBreakdown            = [];
         $this->resetErrorBag();
     }
 

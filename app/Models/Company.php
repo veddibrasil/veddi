@@ -6,6 +6,7 @@ use App\Enums\Plan;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use App\Models\Subscription;
 
 class Company extends Model
@@ -39,6 +40,7 @@ class Company extends Model
         'asaas_setup_invoice_url',
         'asaas_setup_pix_qr_code',
         'asaas_setup_pix_copy_paste',
+        'overdue_since',
         'asaas_setup_bank_slip_url',
         // Payout defaults
         'default_payout_type',
@@ -54,16 +56,21 @@ class Company extends Model
         'terms_accepted_at',
         'terms_accepted_by_user_id',
         'terms_version',
+        'pix_fee_absorbed_by_company',
+        'card_fee_absorbed_by_company',
     ];
 
     protected $casts = [
-        'active'            => 'boolean',
+        'active'                       => 'boolean',
+        'pix_fee_absorbed_by_company'  => 'boolean',
+        'card_fee_absorbed_by_company' => 'boolean',
         'chat_highlights'   => 'array',
         'plan'              => Plan::class,
         'pending_plan'      => Plan::class,
         'status'            => 'string',
         'setup_fee_paid_at' => 'datetime',
         'terms_accepted_at' => 'datetime',
+        'overdue_since'     => 'date',
     ];
 
     public function getLogoUrlAttribute(): ?string
@@ -126,9 +133,24 @@ class Company extends Model
         return $this->hasMany(CompanyWithdrawal::class);
     }
 
+    public function transactions(): HasMany
+    {
+        return $this->hasMany(CompanyTransaction::class);
+    }
+
+    public function balance(): HasOne
+    {
+        return $this->hasOne(CompanyBalance::class);
+    }
+
+    public function paymentSettings(): HasOne
+    {
+        return $this->hasOne(PaymentSettings::class);
+    }
+
     public function walletBalance(): float
     {
-        return CompanyWalletEntry::balanceFor($this->id);
+        return app(\App\Services\BalanceService::class)->calculateBalance($this)['total_balance'];
     }
 
     public function isPro(): bool
@@ -196,6 +218,11 @@ class Company extends Model
     public function isPendingPayment(): bool
     {
         return $this->status === 'PENDING_PAYMENT';
+    }
+
+    public function isOverdue(): bool
+    {
+        return $this->status === 'OVERDUE';
     }
 
     public function isBlocked(): bool

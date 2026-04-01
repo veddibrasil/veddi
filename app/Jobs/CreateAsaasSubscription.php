@@ -24,7 +24,8 @@ class CreateAsaasSubscription implements ShouldQueue
     public function handle(AsaasService $asaasService): void
     {
         if (! $this->company->asaas_customer_id) {
-            Log::channel('payments')->error('CreateAsaasSubscription: empresa sem asaas_customer_id', [
+            Log::channel('discord')->error('CreateAsaasSubscription: empresa sem asaas_customer_id', [
+                'type'       => 'payments',
                 'company_id' => $this->company->id,
             ]);
             return;
@@ -61,7 +62,8 @@ class CreateAsaasSubscription implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        Log::channel('payments')->error('Falha ao criar assinatura Asaas', [
+        Log::channel('discord')->error('Falha ao criar assinatura Asaas', [
+            'type'       => 'payments',
             'company_id' => $this->company->id,
             'error'      => $exception->getMessage(),
         ]);

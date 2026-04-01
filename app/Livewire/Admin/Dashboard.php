@@ -3,6 +3,7 @@
 namespace App\Livewire\Admin;
 
 use App\Models\Order;
+use App\Services\BalanceService;
 use Illuminate\Support\Facades\Cache;
 use Livewire\Component;
 
@@ -76,7 +77,8 @@ class Dashboard extends Component
         // Wallet balance
         $walletBalance = null;
         if ($company && ! $isSuperAdmin && $canSettings) {
-            $walletBalance = $company->walletBalance();
+            $balanceData   = app(BalanceService::class)->calculateBalance($company);
+            $walletBalance = $balanceData['total_balance'];
         }
 
         return view('livewire.admin.dashboard', compact(

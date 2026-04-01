@@ -14,14 +14,24 @@ class PaymentService
 {
     /**
      * Enfileira o job de processamento de pagamento.
+     *
+     * @param  array  $cardData  Dados do cartão (holderName, number, expiryMonth, expiryYear, ccv, cpfCnpj, postalCode, addressNumber)
      */
-    public function dispatchPayment(Order $order, Customer $customer, ?Company $company, string $paymentMethod): void
-    {
-        ProcessOrder::dispatch($order, $customer, $company, $paymentMethod)->onQueue('high');
+    public function dispatchPayment(
+        Order $order,
+        Customer $customer,
+        ?Company $company,
+        string $paymentMethod,
+        int $installments = 1,
+        array $cardData = []
+    ): void {
+        
+        ProcessOrder::dispatch($order, $customer, $company, $paymentMethod, $installments, $cardData);
 
         Log::channel('payments')->info('Job de pagamento enfileirado', [
             'order_id'       => $order->id,
             'payment_method' => $paymentMethod,
+            'installments'   => $installments,
             'total'          => $order->total,
             'queue'          => 'high',
         ]);

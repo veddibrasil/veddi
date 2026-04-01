@@ -25,10 +25,23 @@ class WalletService
             return;
         }
 
-        $orderAmount  = (float) $payment->amount;
-        $feeRate      = $company->plan?->feePercentage() ?? 0.0;
-        $feeAmount    = round($orderAmount * $feeRate, 2);
-        $creditAmount = round($orderAmount - $feeAmount, 2);
+        // Para cartão: usar o valor original do pedido (antes das taxas de cartão).
+        // As taxas de cartão já foram cobradas do cliente e vão direto ao Asaas.
+        $baseAmount      = (float) ($payment->original_amount ?? $payment->amount);
+        $feeRate         = $company->plan?->feePercentage() ?? 0.0;
+        $isCardPayment   = $payment->original_amount !== null;
+        $pixFeeAbsorbed  = $company->pix_fee_absorbed_by_company ?? false;
+        $cardFeeAbsorbed = $company->card_fee_absorbed_by_company ?? false;
+
+        $pixFee  = (! $isCardPayment && $pixFeeAbsorbed)
+            ? (float) config('payments.pix_payment_fee', 1.99)
+            : 0.0;
+        $cardFee = ($isCardPayment && $cardFeeAbsorbed && $payment->card_fee)
+            ? (float) $payment->card_fee
+            : 0.0;
+
+        $feeAmount    = round(($baseAmount - $pixFee - $cardFee) * $feeRate, 2);
+        $creditAmount = round(($baseAmount - $pixFee - $cardFee) * (1 - $feeRate), 2);
 
         CompanyWalletEntry::create([
             'company_id'  => $company->id,
@@ -51,11 +64,12 @@ class WalletService
         }
 
         Log::channel('payments')->info('Carteira da empresa creditada', [
-            'company_id'    => $company->id,
-            'order_id'      => $order->id,
-            'order_amount'  => $orderAmount,
-            'fee_amount'    => $feeAmount,
-            'credit_amount' => $creditAmount,
+            'company_id'      => $company->id,
+            'order_id'        => $order->id,
+            'base_amount'     => $baseAmount,
+            'fee_amount'      => $feeAmount,
+            'credit_amount'   => $creditAmount,
+            'is_card_payment' => $payment->original_amount !== null,
         ]);
     }
 

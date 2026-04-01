@@ -1,0 +1,173 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Company;
+use App\Models\CompanyTransaction;
+use App\Models\CompanyWalletEntry;
+use App\Models\PaymentSettings;
+use Carbon\Carbon;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+
+class AnticipationService
+{
+    /**
+     * Retorna todas as transações elegíveis para antecipação com os dados de taxa calculados.
+     * Não persiste nada — use para montar a lista no modal.
+     *
+     * @return Collection<int, array{
+     *   id: int,
+     *   type: string,
+     *   description: string,
+     *   net_value: float,
+     *   release_date: string,
+     *   days_remaining: int,
+     *   rate: float,
+     *   rate_pct: float,
+     *   fee: float,
+     *   net_after_fee: float,
+     * }>
+     */
+    public function getEligibleTransactions(Company $company): Collection
+    {
+        $today    = now()->toDateString();
+        $settings = $company->paymentSettings ?? null;
+
+        return CompanyTransaction::withoutGlobalScopes()
+            ->where('company_id', $company->id)
+            ->where('status', 'confirmed')
+            ->where('withdrawn', false)
+            ->where('release_date', '>', $today)
+            ->orderBy('release_date')
+            ->get()
+            ->map(function ($tx) use ($settings) {
+                $netValue      = (float) $tx->net_value;
+                $daysRemaining = (int) Carbon::today()->diffInDays(Carbon::parse($tx->release_date), false);
+                $rate          = $this->anticipationRate($daysRemaining, $settings);
+                $fee           = round($netValue * $rate, 2);
+
+                return [
+                    'id'            => $tx->id,
+                    'type'          => $tx->type,
+                    'description'   => $tx->description ?? '',
+                    'net_value'     => $netValue,
+                    'release_date'  => Carbon::parse($tx->release_date)->toDateString(),
+                    'days_remaining'=> $daysRemaining,
+                    'rate'          => $rate,
+                    'rate_pct'      => round($rate * 100, 2),
+                    'fee'           => $fee,
+                    'net_after_fee' => round($netValue - $fee, 2),
+                ];
+            });
+    }
+
+    /**
+     * Calcula o resumo de antecipação para um subconjunto de transações (por ID),
+     * a partir dos dados já calculados por getEligibleTransactions().
+     *
+     * @param  Collection  $eligibleTransactions  Retorno de getEligibleTransactions()
+     * @param  array<int>  $selectedIds
+     * @return array{transactions_count: int, gross_amount: float, fee_amount: float, net_amount: float, has_eligible: bool}
+     */
+    public function calculateSummary(Collection $eligibleTransactions, array $selectedIds): array
+    {
+        $selected = $eligibleTransactions->whereIn('id', $selectedIds)->values();
+
+        $grossAmount = round($selected->sum('net_value'), 2);
+        $feeAmount   = round($selected->sum('fee'), 2);
+        $netAmount   = round($grossAmount - $feeAmount, 2);
+
+        return [
+            'transactions_count' => $selected->count(),
+            'gross_amount'       => $grossAmount,
+            'fee_amount'         => $feeAmount,
+            'net_amount'         => $netAmount,
+            'has_eligible'       => $selected->isNotEmpty(),
+        ];
+    }
+
+    /**
+     * Executa a antecipação para os IDs de transações selecionados.
+     * - Ajusta release_date para hoje, marca is_anticipated, deduz anticipation_fee do net_value
+     * - Cria uma entrada de débito de taxa na CompanyWalletEntry
+     *
+     * @param  array<int>  $transactionIds
+     * @return int Número de transações antecipadas
+     */
+    public function anticipateSelected(Company $company, array $transactionIds): int
+    {
+        if (empty($transactionIds)) {
+            return 0;
+        }
+
+        $today    = now()->toDateString();
+        $settings = $company->paymentSettings ?? null;
+
+        return DB::transaction(function () use ($company, $transactionIds, $today, $settings) {
+            $transactions = CompanyTransaction::withoutGlobalScopes()
+                ->where('company_id', $company->id)
+                ->whereIn('id', $transactionIds)
+                ->where('status', 'confirmed')
+                ->where('withdrawn', false)
+                ->where('release_date', '>', $today)
+                ->get();
+
+            if ($transactions->isEmpty()) {
+                return 0;
+            }
+
+            $totalFee = 0.0;
+
+            foreach ($transactions as $tx) {
+                $netValue      = (float) $tx->net_value;
+                $daysRemaining = (int) Carbon::today()->diffInDays(Carbon::parse($tx->release_date), false);
+                $rate          = $this->anticipationRate($daysRemaining, $settings);
+                $fee           = round($netValue * $rate, 2);
+
+                $tx->update([
+                    'release_date'     => $today,
+                    'is_anticipated'   => true,
+                    'anticipation_fee' => $fee,
+                    'net_value'        => round($netValue - $fee, 2),
+                ]);
+
+                $totalFee += $fee;
+            }
+
+            $totalFee = round($totalFee, 2);
+
+            if ($totalFee > 0) {
+                CompanyWalletEntry::create([
+                    'company_id'  => $company->id,
+                    'type'        => 'anticipation_fee',
+                    'amount'      => -$totalFee,
+                    'description' => 'Taxa de antecipação de recebíveis',
+                ]);
+            }
+
+            Log::channel('payments')->info('Antecipação de recebíveis executada', [
+                'company_id' => $company->id,
+                'count'      => $transactions->count(),
+                'total_fee'  => $totalFee,
+            ]);
+
+            return $transactions->count();
+        });
+    }
+
+    /**
+     * Taxa de antecipação com base nos dias restantes até a release_date.
+     * Mesma lógica do PaymentCalculatorService.
+     */
+    private function anticipationRate(int $days, ?PaymentSettings $settings): float
+    {
+        return match (true) {
+            $days <= 2  => (float) ($settings?->anticipation_rate_d2  ?? config('payments.credit_card.anticipation_d2')),
+            $days <= 7  => (float) ($settings?->anticipation_rate_d7  ?? config('payments.credit_card.anticipation_d7')),
+            $days <= 15 => (float) ($settings?->anticipation_rate_d15 ?? config('payments.credit_card.anticipation_d15')),
+            default     => (float) ($settings?->anticipation_rate_d30 ?? config('payments.credit_card.anticipation_d30')),
+        };
+    }
+}

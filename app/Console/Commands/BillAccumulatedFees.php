@@ -75,7 +75,7 @@ class BillAccumulatedFees extends Command
                 ]);
             } catch (Throwable $e) {
                 $this->error("Erro ao cobrar empresa {$company->name}: {$e->getMessage()}");
-                Log::channel('payments')->error('Falha ao faturar taxa de plataforma', [
+                Log::channel('discord')->error('Falha ao faturar taxa de plataforma', [
                     'company_id' => $company->id,
                     'error'      => $e->getMessage(),
                 ]);

@@ -79,7 +79,8 @@ class ProcessWithdrawal implements ShouldQueue
         } catch (\Throwable $e) {
             $withdrawal->update(['status' => 'failed']);
 
-            Log::channel('payments')->error('Falha ao processar saque', [
+            Log::channel('discord')->error('Falha ao processar saque', [
+                'type'       => 'payments',
                 'withdrawal_id' => $withdrawal->id,
                 'error'         => $e->getMessage(),
             ]);
@@ -120,9 +121,11 @@ class ProcessWithdrawal implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        Log::channel('payments')->error('Job de saque falhou definitivamente', [
+        Log::channel('discord')->error('Job de saque falhou definitivamente', [
+            'type'       => 'payments',
             'withdrawal_id' => $this->withdrawalId,
             'error'         => $exception->getMessage(),
+            
         ]);
 
         CompanyWithdrawal::where('id', $this->withdrawalId)

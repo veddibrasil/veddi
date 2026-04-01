@@ -12,7 +12,7 @@ class EnsureCompanyIsActive
     {
         $company = app()->bound('current.company') ? app('current.company') : null;
 
-        if (! $company || $company->isActive()) {
+        if (! $company || $company->isActive() || $company->isOverdue()) {
             return $next($request);
         }
 

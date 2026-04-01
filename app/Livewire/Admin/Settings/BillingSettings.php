@@ -7,6 +7,7 @@ use App\Jobs\CreateAsaasSubscription;
 use App\Models\Subscription;
 use App\Services\AsaasService;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 use Livewire\Component;
 
@@ -129,11 +130,14 @@ class BillingSettings extends Component
         } else {
             // Upgrade or cross-grade to a paid plan (Essencial or PRO)
             if (! $company->asaas_customer_id) {
+                // Log::channel('discord')->critical('Esta empresa não possui cadastro no Asaas. Entre em contato com o suporte.');
                 session()->flash('error', 'Esta empresa não possui cadastro no Asaas. Entre em contato com o suporte.');
                 $this->confirmingPlanChange = false;
                 $this->targetPlan           = '';
                 return;
             }
+              
+
 
             $currentPlan = Plan::tryFrom($this->plan);
             $isFromFree  = $currentPlan === Plan::Free;
@@ -165,6 +169,7 @@ class BillingSettings extends Component
             $this->nextDueDate         = null;
             $this->lastPaymentAt       = null;
             $this->payments            = [];
+
 
             if ($this->paymentMethod === 'credit_card') {
                 $this->confirmingPlanChange = false;

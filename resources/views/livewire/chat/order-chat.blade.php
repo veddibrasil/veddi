@@ -884,7 +884,12 @@
                     </div>
                     <div>
                         <p class="font-bold text-gray-800 text-sm">PIX</p>
-                        <p class="text-xs text-gray-500">Pagamento instantâneo</p>
+                        <p class="text-xs text-gray-500">
+                            Pagamento instantâneo
+                            @if(!($currentCompany?->pix_fee_absorbed_by_company))
+                                · <span class="text-amber-600">+ R$ {{ number_format(config('payments.pix_payment_fee', 1.99), 2, ',', '.') }} de taxa</span>
+                            @endif
+                        </p>
                     </div>
                     <div class="ml-auto">
                         <span class="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full">Instantâneo</span>
@@ -975,6 +980,31 @@
                     </div>
                 @endif
 
+                {{-- Breakdown do valor --}}
+                @if ($paymentMethod !== 'CARD')
+                    @php
+                        $pixFeeCharged = !($currentCompany?->pix_fee_absorbed_by_company);
+                        $pixFeeAmount  = $pixFeeCharged ? (float) config('payments.pix_payment_fee', 1.99) : 0.0;
+                        $totalWithFee  = $this->orderTotal + $pixFeeAmount;
+                    @endphp
+                    <div class="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100 text-left space-y-1">
+                        <div class="flex justify-between text-xs text-gray-500">
+                            <span>Subtotal do pedido</span>
+                            <span>R$ {{ number_format($this->orderTotal, 2, ',', '.') }}</span>
+                        </div>
+                        @if($pixFeeCharged)
+                            <div class="flex justify-between text-xs text-amber-600">
+                                <span>Taxa PIX</span>
+                                <span>+ R$ {{ number_format($pixFeeAmount, 2, ',', '.') }}</span>
+                            </div>
+                        @endif
+                        <div class="flex justify-between text-sm font-bold text-gray-800 border-t border-gray-200 pt-1.5 mt-1">
+                            <span>Total a pagar</span>
+                            <span class="mc-text-primary">R$ {{ number_format($totalWithFee, 2, ',', '.') }}</span>
+                        </div>
+                    </div>
+                @endif
+
                 {{-- QR Code --}}
                 @if ($pixQrCode)
                     <div class="flex justify-center">
@@ -1027,7 +1057,7 @@
         {{-- ── PAYMENT_CARD_FORM ── --}}
         @elseif ($step === 'PAYMENT_CARD_FORM')
             <div class="space-y-4 px-1 py-2">
-                <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">💳 Insira os dados do cartão:</p>
+                <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">Insira os dados do cartão:</p>
 
                 {{-- Número do cartão --}}
                 <div>
@@ -1089,15 +1119,32 @@
                     @error('cardHolderName')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
                 </div>
 
-                {{-- Total à vista --}}
-                <p class="text-xs text-neutral-500">
-                    Total à vista: <span class="font-semibold text-neutral-700 dark:text-neutral-200">R$ {{ number_format($this->orderTotal, 2, ',', '.') }}</span>
-                </p>
+                {{-- Breakdown de taxas --}}
+                @if (!empty($cardFeeBreakdown))
+                    <div class="rounded-lg bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 px-3 py-2.5 space-y-1">
+                        <div class="flex justify-between text-xs text-neutral-500">
+                            <span>Valor do pedido</span>
+                            <span>R$ {{ number_format($cardFeeBreakdown['original_amount'], 2, ',', '.') }}</span>
+                        </div>
+                        <div class="flex justify-between text-xs text-neutral-500">
+                            <span>Taxa do cartão ({{ round($cardFeeBreakdown['total_rate'] * 100, 2) }}%)</span>
+                            <span>+ R$ {{ number_format($cardFeeBreakdown['fee_amount'], 2, ',', '.') }}</span>
+                        </div>
+                        <div class="flex justify-between text-sm font-semibold text-neutral-800 dark:text-neutral-100 border-t border-neutral-200 dark:border-neutral-700 pt-1 mt-1">
+                            <span>Total cobrado</span>
+                            <span>R$ {{ number_format($cardFeeBreakdown['final_amount'], 2, ',', '.') }}</span>
+                        </div>
+                        </div>
+                @else
+                    <p class="text-xs text-neutral-500">
+                        Total à vista: <span class="font-semibold text-neutral-700 dark:text-neutral-200">R$ {{ number_format($this->orderTotal, 2, ',', '.') }}</span>
+                    </p>
+                @endif
 
                 {{-- Erro da API / recusa --}}
                 @if ($cardError)
                     <div class="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-3 py-2">
-                        <p class="text-sm text-red-600 dark:text-red-400 font-medium">⚠ {{ $cardError }}</p>
+                        <p class="text-sm text-red-600 dark:text-red-400 font-medium">{{ $cardError }}</p>
                     </div>
                 @endif
 
@@ -1107,7 +1154,13 @@
                     wire:loading.attr="disabled"
                     class="w-full rounded-lg bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white font-semibold py-2.5 text-sm transition-colors"
                 >
-                    <span wire:loading.remove wire:target="submitCardPayment">Pagar com cartão</span>
+                    <span wire:loading.remove wire:target="submitCardPayment">
+                        @if (!empty($cardFeeBreakdown))
+                            Pagar R$ {{ number_format($cardFeeBreakdown['final_amount'], 2, ',', '.') }}
+                        @else
+                            Pagar com cartão
+                        @endif
+                    </span>
                     <span wire:loading wire:target="submitCardPayment">Processando...</span>
                 </button>
 

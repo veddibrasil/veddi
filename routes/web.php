@@ -104,7 +104,25 @@ Route::middleware(['auth', 'verified', 'super.admin'])
         Route::get('/users/{user}/permissions', \App\Livewire\SuperAdmin\Permissions\UserPermissions::class)->name('users.permissions');
         Route::get('/permissions', \App\Livewire\SuperAdmin\Permissions\Index::class)->name('permissions.index');
 
+        Route::get('/card-taxas', \App\Livewire\SuperAdmin\Card\index::class)->name('card.index');
+
+
         Route::post('/simulate/asaas-payment', AsaasSimulatePaymentController::class)->name('simulate.asaas-payment');
+    });
+
+// --- API Financeira (escrow/marketplace) ---
+Route::middleware(['auth', 'verified', 'company.role:company_admin'])
+    ->prefix('api/company')
+    ->name('api.company.')
+    ->group(function () {
+        Route::get('/balance', [\App\Http\Controllers\Api\CompanyBalanceController::class, 'balance'])
+             ->name('balance');
+        Route::get('/balance/forecast', [\App\Http\Controllers\Api\CompanyBalanceController::class, 'forecast'])
+             ->name('balance.forecast');
+        Route::post('/withdraw', [\App\Http\Controllers\Api\CompanyBalanceController::class, 'withdraw'])
+             ->name('withdraw');
+        Route::post('/anticipate', [\App\Http\Controllers\Api\CompanyBalanceController::class, 'anticipate'])
+             ->name('anticipate');
     });
 
 require __DIR__.'/settings.php';

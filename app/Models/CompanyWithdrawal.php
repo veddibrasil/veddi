@@ -10,6 +10,7 @@ class CompanyWithdrawal extends Model
     protected $fillable = [
         'company_id',
         'amount',
+        'pix_fee',
         'status',
         'payout_type',
         'pix_key',
@@ -28,6 +29,7 @@ class CompanyWithdrawal extends Model
 
     protected $casts = [
         'amount'       => 'decimal:2',
+        'pix_fee'      => 'decimal:2',
         'asaas_response' => 'array',
         'processed_at' => 'datetime',
     ];

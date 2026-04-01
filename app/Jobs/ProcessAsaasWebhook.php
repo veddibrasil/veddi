@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Services\CompanyService;
+use App\Services\TransactionService;
 use App\Services\WalletService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -118,6 +119,19 @@ class ProcessAsaasWebhook implements ShouldQueue
 
         app(WalletService::class)->creditForOrder($order, $payment);
 
+        // Cria transação de escrow para controle de liberação (D+2 Pix / D+15 Cartão)
+        try {
+            app(TransactionService::class)->createForPayment($order, $payment);
+        } catch (\Throwable $e) {
+            Log::channel('discord')->error('Falha ao criar CompanyTransaction (não-fatal)', [
+                'type'       => 'payments',
+                'order_id'   => $order->id,
+                'payment_id' => $payment->id,
+                'error'      => $e->getMessage(),
+            ]);
+            // Não propaga: WalletEntry já criada com sucesso
+        }
+
         OrderStatusUpdated::dispatch($order->fresh());
     }
 
@@ -200,12 +214,20 @@ class ProcessAsaasWebhook implements ShouldQueue
             return;
         }
 
-        $companyService->block($company);
+        // Use the actual due date from the Asaas payload so the grace period is
+        // measured from the real due date, not from when the webhook was delivered.
+        $rawDueDate = $this->payload['payment']['dueDate'] ?? null;
+        $dueDate    = $rawDueDate
+            ? \Carbon\Carbon::parse($rawDueDate)
+            : now();
+
+        $companyService->markOverdue($company, $dueDate);
     }
 
     public function failed(\Throwable $exception): void
     {
-        Log::channel('webhook')->error('Falha ao processar webhook Asaas', [
+        Log::channel('discord')->error('Falha ao processar webhook Asaas', [
+            'type'       => 'webhook',
             'event' => $this->event,
             'error' => $exception->getMessage(),
         ]);

@@ -38,7 +38,8 @@ class AsaasService
             ], fn ($v) => $v !== null));
 
         if ($response->failed()) {
-            Log::channel('payments')->error('Erro ao criar cliente no Asaas', [
+            Log::channel('discord')->error('Erro ao criar cliente no Asaas', [
+                'type'     => 'payments',
                 'status' => $response->status(),
                 'body'   => $response->body(),
             ]);
@@ -113,7 +114,8 @@ class AsaasService
             ->post("{$this->baseUrl}/subscriptions", $payload);
 
         if ($response->failed()) {
-            Log::channel('payments')->error('Erro ao criar assinatura no Asaas', [
+            Log::channel('discord')->error('Erro ao criar assinatura no Asaas', [
+                'type'     => 'payments',
                 'customer_id' => $customerId,
                 'status'      => $response->status(),
                 'body'        => $response->body(),
@@ -179,7 +181,8 @@ class AsaasService
             ->delete("{$this->baseUrl}/subscriptions/{$subscriptionId}");
 
         if ($response->failed()) {
-            Log::channel('payments')->error('Erro ao cancelar assinatura no Asaas', [
+            Log::channel('discord')->error('Erro ao cancelar assinatura no Asaas', [
+                'type'            => 'payments',
                 'subscription_id' => $subscriptionId,
                 'status'          => $response->status(),
                 'body'            => $response->body(),
@@ -215,7 +218,8 @@ class AsaasService
             ]);
 
         if ($response->failed()) {
-            Log::channel('payments')->error('Erro ao criar cobrança avulsa no Asaas', [
+            Log::channel('discord')->error('Erro ao criar cobrança avulsa no Asaas', [
+                'type'     => 'payments',
                 'customer_id' => $customerId,
                 'status'      => $response->status(),
                 'body'        => $response->body(),
@@ -247,46 +251,56 @@ class AsaasService
         string $description,
         string $externalReference,
         array $creditCard,
-        array $holderInfo
+        array $holderInfo,
+        int $installments = 1
     ): array {
         Log::channel('payments')->info('Criando cobrança de cartão de crédito no Asaas', [
             'customer_id'        => $customerId,
             'amount'             => $amount,
+            'installments'       => $installments,
             'external_reference' => $externalReference,
         ]);
 
+        $payload = [
+            'customer'          => $customerId,
+            'billingType'       => 'CREDIT_CARD',
+            'value'             => $amount,
+            'dueDate'           => now()->toDateString(),
+            'description'       => $description,
+            'externalReference' => $externalReference,
+            'creditCard'        => [
+                'holderName'  => strtoupper($creditCard['holderName']),
+                'number'      => preg_replace('/\D/', '', $creditCard['number']),
+                'expiryMonth' => $creditCard['expiryMonth'],
+                'expiryYear'  => $creditCard['expiryYear'],
+                'ccv'         => $creditCard['ccv'],
+            ],
+            'creditCardHolderInfo' => array_filter([
+                'name'          => $holderInfo['name'],
+                'email'         => $holderInfo['email'],
+                'cpfCnpj'       => preg_replace('/\D/', '', $holderInfo['cpfCnpj'] ?? ''),
+                'postalCode'    => preg_replace('/\D/', '', $holderInfo['postalCode'] ?? ''),
+                'addressNumber' => $holderInfo['addressNumber'] ?? 'S/N',
+                'mobilePhone'   => $holderInfo['mobilePhone'] ?? $holderInfo['phone'] ?? null,
+                'phone'         => $holderInfo['phone'] ?? $holderInfo['mobilePhone'] ?? null,
+            ], fn ($v) => $v !== null && $v !== ''),
+        ];
+
+        if ($installments > 1) {
+            $payload['installmentCount'] = $installments;
+            $payload['totalValue']       = $amount;
+        }
+
         $response = Http::withHeaders(['access_token' => $this->apiKey])
             ->timeout(30)
-            ->post("{$this->baseUrl}/payments", [
-                'customer'          => $customerId,
-                'billingType'       => 'CREDIT_CARD',
-                'value'             => $amount,
-                'dueDate'           => now()->toDateString(),
-                'description'       => $description,
-                'externalReference' => $externalReference,
-                'creditCard'        => [
-                    'holderName'  => strtoupper($creditCard['holderName']),
-                    'number'      => preg_replace('/\D/', '', $creditCard['number']),
-                    'expiryMonth' => $creditCard['expiryMonth'],
-                    'expiryYear'  => $creditCard['expiryYear'],
-                    'ccv'         => $creditCard['ccv'],
-                ],
-                'creditCardHolderInfo' => array_filter([
-                    'name'          => $holderInfo['name'],
-                    'email'         => $holderInfo['email'],
-                    'cpfCnpj'       => preg_replace('/\D/', '', $holderInfo['cpfCnpj'] ?? ''),
-                    'postalCode'    => preg_replace('/\D/', '', $holderInfo['postalCode'] ?? ''),
-                    'addressNumber' => $holderInfo['addressNumber'] ?? 'S/N',
-                    'mobilePhone'   => $holderInfo['mobilePhone'] ?? $holderInfo['phone'] ?? null,
-                    'phone'         => $holderInfo['phone'] ?? $holderInfo['mobilePhone'] ?? null,
-                ], fn ($v) => $v !== null && $v !== ''),
-            ]);
+            ->post("{$this->baseUrl}/payments", $payload);
 
         $data = $response->json();
 
         if ($response->failed()) {
             $errors = collect($data['errors'] ?? [])->pluck('description')->implode('; ');
-            Log::channel('payments')->error('Erro ao criar cobrança de cartão no Asaas', [
+            Log::channel('discord')->error('Erro ao criar cobrança de cartão no Asaas', [
+                'type'        => 'payments',
                 'customer_id' => $customerId,
                 'status'      => $response->status(),
                 'errors'      => $errors,
@@ -394,7 +408,8 @@ class AsaasService
         }
 
         if ($response->failed()) {
-            Log::channel('payments')->error('Erro ao criar cobrança de pedido no Asaas', [
+            Log::channel('discord')->error('Erro ao criar cobrança de pedido no Asaas', [
+                'type'        => 'payments',
                 'customer_id' => $customerId,
                 'status'      => $response->status(),
                 'body'        => $response->body(),
@@ -467,7 +482,8 @@ class AsaasService
             ->post("{$this->baseUrl}/transfers", $data);
 
         if ($response->failed()) {
-            Log::channel('payments')->error('Erro ao criar transferência no Asaas', [
+            Log::channel('discord')->error('Erro ao criar transferência no Asaas', [
+                'type'     => 'payments',
                 'status' => $response->status(),
                 'body'   => $response->body(),
             ]);
@@ -505,7 +521,8 @@ class AsaasService
             ->post("{$this->baseUrl}/payments/{$asaasPaymentId}/refund", $body);
 
         if ($response->failed()) {
-            Log::channel('payments')->error('Erro ao solicitar reembolso no Asaas', [
+            Log::channel('discord')->error('Erro ao solicitar reembolso no Asaas', [
+                'type'     => 'payments',
                 'asaas_payment_id' => $asaasPaymentId,
                 'status'           => $response->status(),
                 'body'             => $response->body(),

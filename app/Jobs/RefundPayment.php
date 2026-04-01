@@ -53,7 +53,8 @@ class RefundPayment implements ShouldQueue
         $refundStatuses = ['REFUND_REQUESTED', 'REFUNDED', 'REFUND_IN_PROGRESS'];
 
         if (! in_array($result['status'] ?? '', $refundStatuses)) {
-            Log::channel('payments')->error('Resposta inesperada do Asaas ao reembolsar', [
+            Log::channel('discord')->error('Resposta inesperada do Asaas ao reembolsar', [
+                'type'       => 'payments',
                 'order_id'         => $this->order->id,
                 'asaas_payment_id' => $payment->asaas_payment_id,
                 'result'           => $result,
