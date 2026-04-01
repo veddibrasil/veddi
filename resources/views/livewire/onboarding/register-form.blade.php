@@ -791,90 +791,93 @@
 {{-- Modal de Termos de Responsabilidade --}}
 <div
     x-show="showTerms"
-    x-transition:enter="transition ease-out duration-200"
+    x-transition:enter="transition ease-out duration-300"
     x-transition:enter-start="opacity-0"
     x-transition:enter-end="opacity-100"
-    x-transition:leave="transition ease-in duration-150"
+    x-transition:leave="transition ease-in duration-200"
     x-transition:leave-start="opacity-100"
     x-transition:leave-end="opacity-0"
     style="display:none"
-    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+    class="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm p-4 sm:p-6"
 >
-    <div
-        @click.outside="showTerms = false"
-        class="w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden"
-    >
-        <div class="flex items-center justify-between p-6 border-b border-zinc-100">
-            <h2 class="text-xl font-extrabold text-zinc-900" style="font-family: 'Montserrat', sans-serif;">Termos de Responsabilidade</h2>
-            <button @click="showTerms = false" class="rounded-lg p-1.5 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 transition-colors">
-                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
-                </svg>
-            </button>
-        </div>
-
-        <div class="p-6 max-h-[65vh] overflow-y-auto space-y-4 text-sm text-zinc-700">
-            <p><strong>Última atualização:</strong> 30/03/2026</p>
-
-            <p>Ao assinar um plano pago na plataforma <strong>Veddi</strong>, você declara que leu, compreendeu e concorda com os termos e condições descritos abaixo.</p>
-
-            <div>
-                <h3 class="font-semibold text-zinc-900 mb-1">1. Contratação e Pagamento</h3>
-                <p>A assinatura é cobrada mensalmente de forma recorrente, na data de vencimento estabelecida no momento da contratação. O não pagamento dentro do prazo resultará no bloqueio temporário do acesso à plataforma até a regularização do débito. Em caso de inadimplência superior a 30 dias, a conta poderá ser suspensa definitivamente.</p>
+    <div class="flex min-h-full items-center justify-center">
+        
+        <div
+            @click.outside="showTerms = false"
+            class="relative w-full max-w-2xl transform rounded-2xl bg-white shadow-2xl transition-all"
+        >
+            <div class="flex items-center justify-between p-6 border-b border-zinc-100">
+                <h2 class="text-xl font-extrabold text-zinc-900" style="font-family: 'Montserrat', sans-serif;">Termos de Responsabilidade</h2>
+                <button @click="showTerms = false" class="rounded-lg p-1.5 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 transition-colors">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                    </svg>
+                </button>
             </div>
 
-            <div>
-                <h3 class="font-semibold text-zinc-900 mb-1">2. Dados de Pagamento</h3>
-                <p>Os dados do cartão de crédito são transmitidos diretamente à operadora de pagamentos (<strong>Asaas</strong>) via checkout transparente e não são armazenados em nossos servidores. Para pagamentos via PIX ou boleto, os dados bancários são gerados pela Asaas e utilizados exclusivamente para a liquidação da cobrança. A Veddi não tem acesso aos dados sensíveis do seu instrumento de pagamento.</p>
+            <div class="p-6 space-y-4 text-sm text-zinc-700">
+                <p><strong>Última atualização:</strong> 30/03/2026</p>
+
+                <p>Ao assinar um plano pago na plataforma <strong>Veddi</strong>, você declara que leu, compreendeu e concorda com os termos e condições descritos abaixo.</p>
+
+                <div>
+                    <h3 class="font-semibold text-zinc-900 mb-1">1. Contratação e Pagamento</h3>
+                    <p>A assinatura é cobrada mensalmente de forma recorrente, na data de vencimento estabelecida no momento da contratação. O não pagamento dentro do prazo resultará no bloqueio temporário do acesso à plataforma até a regularização do débito.</p>
+                </div>
+
+                <div>
+                    <h3 class="font-semibold text-zinc-900 mb-1">2. Dados de Pagamento</h3>
+                    <p>Os dados do cartão de crédito são transmitidos diretamente à operadora de pagamentos (<strong>Asaas</strong>) via checkout transparente e não são armazenados em nossos servidores.</p>
+                </div>
+
+                <div>
+                    <h3 class="font-semibold text-zinc-900 mb-1">3. Limites de Uso</h3>
+                    <p>Cada plano possui limites específicos de uso, incluindo número de pedidos mensais, quantidade de filiais e funcionalidades disponíveis. Pedidos que excedam 50 por mês estão sujeitos a uma taxa adicional de <strong>3%</strong>.</p>
+                </div>
+
+                <div>
+                    <h3 class="font-semibold text-zinc-900 mb-1">4. Cancelamento</h3>
+                    <p>O cancelamento pode ser solicitado a qualquer momento diretamente pelo painel. Não há reembolso proporcional de períodos parciais utilizados.</p>
+                </div>
+
+                <div>
+                    <h3 class="font-semibold text-zinc-900 mb-1">5. Responsabilidades do Contratante</h3>
+                    <p>É de responsabilidade exclusiva do contratante: manter dados atualizados, garantir uso adequado e zelar pela segurança das credenciais.</p>
+                </div>
+
+                <div>
+                    <h3 class="font-semibold text-zinc-900 mb-1">6. Responsabilidades da Plataforma</h3>
+                    <p>A Veddi se compromete a manter a plataforma funcional, mas não se responsabiliza por falhas de terceiros ou mau uso do contratante.</p>
+                </div>
+
+                <div>
+                    <h3 class="font-semibold text-zinc-900 mb-1">7. Proteção de Dados (LGPD)</h3>
+                    <p>Ao contratar, você consente com o tratamento de dados para fins de cobrança e suporte, conforme a <strong>Lei nº 13.709/2018</strong>.</p>
+                </div>
+
+                <div>
+                    <h3 class="font-semibold text-zinc-900 mb-1">8. Alterações nos Termos</h3>
+                    <p>Notificaremos por e-mail com antecedência mínima de <strong>15 dias</strong> sobre alterações relevantes.</p>
+                </div>
+
+                <p class="text-xs text-zinc-400 pt-2 border-t border-zinc-50">Em caso de dúvidas, entre em contato com nosso suporte.</p>
             </div>
 
-            <div>
-                <h3 class="font-semibold text-zinc-900 mb-1">3. Limites de Uso</h3>
-                <p>Cada plano possui limites específicos de uso, incluindo número de pedidos mensais, quantidade de filiais e funcionalidades disponíveis. O uso além dos limites do plano contratado pode resultar no bloqueio de funcionalidades ou na necessidade de upgrade para um plano superior. Pedidos que excedam 50 por mês estão sujeitos a uma taxa adicional de <strong>3%</strong> sobre o excedente, conforme política vigente.</p>
+            <div class=" flex-col sm:flex-row items-center justify-between gap-3 p-6 border-t border-zinc-100 bg-zinc-50/50 rounded-b-2xl">
+                <button
+                    @click="termsAccepted = true; showTerms = false"
+                    class="w-full sm:flex-1 rounded-xl px-6 py-3 text-sm font-bold text-white shadow-md transition-all duration-200 active:scale-95"
+                    style="background: linear-gradient(135deg, #5c0079, #7A00A3);"
+                >
+                    Li e aceito os termos
+                </button>
+                <button
+                    @click="showTerms = false"
+                    class="w-full sm:w-auto rounded-xl border border-zinc-200 bg-white px-8 py-3 text-sm font-medium text-zinc-600 hover:bg-zinc-50 transition-colors"
+                >
+                    Fechar
+                </button>
             </div>
-
-            <div>
-                <h3 class="font-semibold text-zinc-900 mb-1">4. Cancelamento</h3>
-                <p>O cancelamento pode ser solicitado a qualquer momento diretamente pelo painel, na seção de <strong>Assinatura</strong>. O acesso permanece ativo até o fim do período já pago. Não há reembolso proporcional de períodos parciais utilizados.</p>
-            </div>
-
-            <div>
-                <h3 class="font-semibold text-zinc-900 mb-1">5. Responsabilidades do Contratante</h3>
-                <p>É de responsabilidade exclusiva do contratante: manter os dados cadastrais e de pagamento sempre atualizados; garantir o uso adequado da plataforma dentro dos limites do plano contratado; zelar pela segurança e confidencialidade de suas credenciais de acesso; garantir que os pedidos registrados estejam em conformidade com as leis aplicáveis ao seu negócio; e não utilizar a plataforma para fins ilícitos ou que violem direitos de terceiros.</p>
-            </div>
-
-            <div>
-                <h3 class="font-semibold text-zinc-900 mb-1">6. Responsabilidades da Plataforma</h3>
-                <p>A Veddi se compromete a manter a plataforma disponível e funcional, podendo realizar manutenções programadas com aviso prévio. A plataforma não se responsabiliza por interrupções decorrentes de força maior ou caso fortuito, falhas em serviços de terceiros (operadoras de pagamento, provedores de internet), uso indevido por parte do contratante ou de seus colaboradores, ou perdas financeiras decorrentes de erros operacionais do contratante.</p>
-            </div>
-
-            <div>
-                <h3 class="font-semibold text-zinc-900 mb-1">7. Proteção de Dados (LGPD)</h3>
-                <p>Ao contratar o plano, você consente com o tratamento dos seus dados pessoais — incluindo nome, e-mail, CPF/CNPJ e dados de faturamento — para fins de cobrança, suporte e melhoria do serviço, conforme a <strong>Lei Geral de Proteção de Dados (Lei nº 13.709/2018)</strong>. Os dados não serão compartilhados com terceiros, salvo com parceiros essenciais à prestação do serviço (como a Asaas). Você pode solicitar a exclusão dos seus dados mediante cancelamento da conta, respeitados os prazos legais de retenção.</p>
-            </div>
-
-            <div>
-                <h3 class="font-semibold text-zinc-900 mb-1">8. Alterações nos Termos</h3>
-                <p>Estes termos podem ser atualizados periodicamente. Em caso de alterações relevantes, notificaremos por e-mail com antecedência mínima de <strong>15 dias</strong>. A continuidade do uso da plataforma após o prazo de notificação implica a aceitação automática dos novos termos.</p>
-            </div>
-
-            <p class="text-xs text-zinc-400 pt-2">Em caso de dúvidas, entre em contato com nosso suporte.</p>
-        </div>
-
-        <div class="flex items-center justify-between gap-3 p-6 border-t border-zinc-100">
-            <button
-                @click="termsAccepted = true; showTerms = false"
-                class="flex-1 rounded-xl px-6 py-2.5 text-sm font-bold text-white shadow-sm transition-all duration-200"
-                style="background: linear-gradient(135deg, #5c0079, #7A00A3);"
-            >
-                Li e aceito os termos
-            </button>
-            <button
-                @click="showTerms = false"
-                class="rounded-xl border border-zinc-200 bg-white px-5 py-2.5 text-sm font-medium text-zinc-600 hover:bg-zinc-50 transition-colors"
-            >
-                Fechar
-            </button>
         </div>
     </div>
 </div>

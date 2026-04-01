@@ -72,11 +72,11 @@ class BalanceService
             array_merge($data, ['last_calculated_at' => now()])
         );
 
-        Log::channel('payments')->debug('Snapshot de saldo atualizado', [
-            'company_id' => $company->id,
-            'available'  => $data['available_balance'],
-            'total'      => $data['total_balance'],
-        ]);
+        // Log::channel('payments')->debug('Snapshot de saldo atualizado', [
+        //     'company_id' => $company->id,
+        //     'available'  => $data['available_balance'],
+        //     'total'      => $data['total_balance'],
+        // ]);
 
         return $balance;
     }
