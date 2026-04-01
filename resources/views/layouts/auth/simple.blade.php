@@ -26,7 +26,7 @@
 
                 {{-- Logo / marca --}}
                 <a href="{{ route('admin.dashboard') }}" class="flex flex-col items-center gap-4" wire:navigate>
-                    <span class="flex h-100 w-100 items-center justify-center rounded-2xl" >
+                    <span class="flex w-100 items-center justify-center rounded-2xl" >
                         <img src="{{ asset('veddi_logo_2.png') }}" alt="{{ config('app.name') }}" class="size-12 object-contain" style="height: 100%;width: 50%;" />
                     </span>
 

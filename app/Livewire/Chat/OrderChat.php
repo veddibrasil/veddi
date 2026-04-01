@@ -171,16 +171,40 @@ class OrderChat extends Component
         $companyName = $company?->name ?? config('app.name');
         $companyId   = $this->companyId;
 
+        $hasOpenBranch = Cache::remember(
+            "open_branches:company:{$companyId}",
+            now()->addMinutes(1),
+            function () use ($companyId) {
 
-        $hasOpenBranch = Cache::remember("open_branches:company:{$companyId}", now()->addMinutes(1), function () use ($companyId) {
-            $nowTime = now(config('app.timezone'))->format('H:i:s');
-            return Branch::withoutGlobalScopes()
-                ->where('active', true)
-                ->where('company_id', $companyId)
-                ->where('opens_at', '<=', $nowTime)
-                ->where('closes_at', '>=', $nowTime)
-                ->exists();
-        });
+                $nowTime = now(config('app.timezone'))->format('H:i:s');
+
+                return Branch::withoutGlobalScopes()
+                    ->where('active', true)
+                    ->where('company_id', $companyId)
+                    ->where(function ($query) use ($nowTime) {
+
+                        // 🟢 Caso normal (mesmo dia)
+                        $query->where(function ($q) use ($nowTime) {
+                            $q->whereColumn('opens_at', '<=', 'closes_at')
+                            ->where('opens_at', '<=', $nowTime)
+                            ->where('closes_at', '>=', $nowTime);
+                        })
+
+                        // 🌙 Caso vira madrugada
+                        ->orWhere(function ($q) use ($nowTime) {
+                            $q->whereColumn('opens_at', '>', 'closes_at')
+                            ->where(function ($sub) use ($nowTime) {
+                                $sub->where('opens_at', '<=', $nowTime)
+                                    ->orWhere('closes_at', '>=', $nowTime);
+                            });
+                        });
+
+                    })
+                    ->exists();
+            }
+        );
+
+
 
         if (! $hasOpenBranch) {
             $this->addMessage('bot', "Olá! Bem-vindo ao {$companyName}! No momento estamos fora do horário de atendimento. Consulte os horários de cada filial e volte mais tarde. 😊");
