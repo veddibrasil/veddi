@@ -686,12 +686,18 @@
                     </div>
                     <div class="flex justify-between text-sm">
                         <span class="text-gray-600">Taxa de entrega</span>
-                        @if ($freeDelivery || $deliveryFee == 0)
+                        @if ($freeDelivery || ($appliedCoupon && $appliedCoupon['type'] === 'free_delivery') || $deliveryFee == 0)
                             <span class="font-bold text-green-600">Grátis</span>
                         @else
                             <span class="font-bold text-gray-800">R$ {{ number_format($deliveryFee, 2, ',', '.') }}</span>
                         @endif
                     </div>
+                    @if ($appliedCoupon && $appliedCoupon['type'] !== 'free_delivery' && $this->couponDiscount > 0)
+                        <div class="flex justify-between text-sm text-green-600">
+                            <span>Desconto ({{ $appliedCoupon['code'] }})</span>
+                            <span>- R$ {{ number_format($this->couponDiscount, 2, ',', '.') }}</span>
+                        </div>
+                    @endif
                     <div class="flex justify-between text-base font-black border-t border-gray-200 pt-2 mt-1">
                         <span class="text-gray-800">Total</span>
                         <span class="mc-text-primary">R$ {{ number_format($this->orderTotal, 2, ',', '.') }}</span>
@@ -740,6 +746,17 @@
                     </div>
                 @endif
 
+                @if ($appliedCoupon && $this->couponDiscount > 0)
+                    <div class="flex items-center justify-between bg-green-50 border border-green-100 rounded-lg px-3 py-1.5">
+                        <span class="text-xs text-green-700 font-medium">Desconto ({{ $appliedCoupon['code'] }})</span>
+                        <span class="text-sm font-bold text-green-600">- R$ {{ number_format($this->couponDiscount, 2, ',', '.') }}</span>
+                    </div>
+                @elseif ($appliedCoupon && $appliedCoupon['type'] === 'free_delivery')
+                    <div class="flex items-center justify-between bg-green-50 border border-green-100 rounded-lg px-3 py-1.5">
+                        <span class="text-xs text-green-700 font-medium">Frete grátis ({{ $appliedCoupon['code'] }})</span>
+                        <span class="text-sm font-bold text-green-600">Aplicado</span>
+                    </div>
+                @endif
                 <div class="flex items-center justify-between mc-bg-primary-light rounded-lg px-3 py-2">
                     <span class="text-xs text-gray-600 font-medium">Total a pagar</span>
                     <span class="text-lg font-black mc-text-primary">R$ {{ number_format($this->orderTotal, 2, ',', '.') }}</span>
@@ -989,10 +1006,27 @@
                     @endphp
                     <div class="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100 text-left space-y-1">
                         <div class="flex justify-between text-xs text-gray-500">
-                            <span>Subtotal do pedido</span>
-                            <span>R$ {{ number_format($this->orderTotal, 2, ',', '.') }}</span>
+                            <span>Subtotal dos itens</span>
+                            <span>R$ {{ number_format($this->cartTotal, 2, ',', '.') }}</span>
                         </div>
-                        @if($pixFeeCharged)
+                        @if ($orderType === 'delivery' && $deliveryFee > 0 && !($appliedCoupon && $appliedCoupon['type'] === 'free_delivery') && !$freeDelivery)
+                            <div class="flex justify-between text-xs text-gray-500">
+                                <span>Taxa de entrega</span>
+                                <span>+ R$ {{ number_format($deliveryFee, 2, ',', '.') }}</span>
+                            </div>
+                        @elseif ($orderType === 'delivery' && ($freeDelivery || ($appliedCoupon && $appliedCoupon['type'] === 'free_delivery')))
+                            <div class="flex justify-between text-xs text-green-600">
+                                <span>Taxa de entrega</span>
+                                <span>Grátis</span>
+                            </div>
+                        @endif
+                        @if ($appliedCoupon && $appliedCoupon['type'] !== 'free_delivery' && $this->couponDiscount > 0)
+                            <div class="flex justify-between text-xs text-green-600">
+                                <span>Desconto ({{ $appliedCoupon['code'] }})</span>
+                                <span>- R$ {{ number_format($this->couponDiscount, 2, ',', '.') }}</span>
+                            </div>
+                        @endif
+                        @if ($pixFeeCharged)
                             <div class="flex justify-between text-xs text-amber-600">
                                 <span>Taxa PIX</span>
                                 <span>+ R$ {{ number_format($pixFeeAmount, 2, ',', '.') }}</span>

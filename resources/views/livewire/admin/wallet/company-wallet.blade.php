@@ -144,7 +144,7 @@
                         <span @class([
                             'text-sm font-semibold',
                             'text-green-600 dark:text-green-400' => $entry['type'] === 'credit',
-                            'text-red-500 dark:text-red-400' => in_array($entry['type'], ['fee', 'withdrawal', 'anticipation_fee', 'refund']),
+                            'text-red-500 dark:text-red-400' => in_array($entry['type'], ['fee', 'withdrawal', 'anticipation_fee', 'refund', 'pix_fee', 'card_fee']),
                         ])>
                             {{ $entry['type'] === 'credit' ? '+' : '-' }}
                             R$ {{ number_format(abs($entry['amount']), 2, ',', '.') }}

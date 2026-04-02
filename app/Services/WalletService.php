@@ -40,17 +40,40 @@ class WalletService
             ? (float) $payment->card_fee
             : 0.0;
 
-        $feeAmount    = round(($baseAmount - $pixFee - $cardFee) * $feeRate, 2);
-        $creditAmount = round(($baseAmount - $pixFee - $cardFee) * (1 - $feeRate), 2);
+        $feeAmount = round(($baseAmount - $pixFee - $cardFee) * $feeRate, 2);
 
+        // Crédito bruto: valor cheio do pedido (sem descontar taxas absorvidas).
+        // As taxas absorvidas entram como lançamentos negativos separados.
         CompanyWalletEntry::create([
             'company_id'  => $company->id,
             'order_id'    => $order->id,
             'type'        => 'credit',
-            'amount'      => $creditAmount,
+            'amount'      => $baseAmount,
             'description' => "Pedido #{$order->order_number}",
             'reference'   => $payment->asaas_payment_id,
         ]);
+
+        if ($pixFee > 0) {
+            CompanyWalletEntry::create([
+                'company_id'  => $company->id,
+                'order_id'    => $order->id,
+                'type'        => 'pix_fee',
+                'amount'      => $pixFee,
+                'description' => "Taxa PIX absorvida - Pedido #{$order->order_number}",
+                'reference'   => $payment->asaas_payment_id,
+            ]);
+        }
+
+        if ($cardFee > 0) {
+            CompanyWalletEntry::create([
+                'company_id'  => $company->id,
+                'order_id'    => $order->id,
+                'type'        => 'card_fee',
+                'amount'      => $cardFee,
+                'description' => "Taxa cartão absorvida - Pedido #{$order->order_number}",
+                'reference'   => $payment->asaas_payment_id,
+            ]);
+        }
 
         if ($feeAmount > 0) {
             CompanyWalletEntry::create([
@@ -67,8 +90,9 @@ class WalletService
             'company_id'      => $company->id,
             'order_id'        => $order->id,
             'base_amount'     => $baseAmount,
+            'pix_fee'         => $pixFee,
+            'card_fee'        => $cardFee,
             'fee_amount'      => $feeAmount,
-            'credit_amount'   => $creditAmount,
             'is_card_payment' => $payment->original_amount !== null,
         ]);
     }
