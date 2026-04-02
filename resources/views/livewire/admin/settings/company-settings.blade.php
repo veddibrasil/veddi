@@ -203,7 +203,6 @@
 
                     <flux:error name="pixFeeAbsorbedByCompany" />
                 </flux:field>
-                <div class="w-11 h-6 bg-neutral-200 peer-focus:outline-none rounded-full dark:bg-zinc-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600 dark:peer-checked:bg-green-500"></div>
             </label>
         </div>
 
@@ -234,7 +233,6 @@
                     <flux:switch wire:model.live="cardFeeAbsorbedByCompany" />
                     <flux:error name="cardFeeAbsorbedByCompany" />
                 </flux:field>
-                <div class="w-11 h-6 bg-neutral-200 peer-focus:outline-none rounded-full dark:bg-zinc-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600 dark:peer-checked:bg-green-500"></div>
             </label>
         </div>
 
