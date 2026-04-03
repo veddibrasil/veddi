@@ -2,10 +2,8 @@
 
 namespace App\Livewire\Admin\Support;
 
-use App\Events\AdminSupportMessageSent;
-use App\Events\SupportTicketClosed;
-use App\Models\SupportMessage;
 use App\Models\SupportTicket;
+use App\Services\SupportService;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -30,7 +28,7 @@ class Index extends Component
             $this->canView = $this->canReply = true;
         } elseif (app()->bound('current.company')) {
             $company = app('current.company');
-            $this->authorize('viewAny', SupportTicket::class);            
+            $this->authorize('viewAny', SupportTicket::class);
             $this->canReply = $user->hasPermission('support.reply', $company);
         }
     }
@@ -59,10 +57,7 @@ class Index extends Component
         $this->replyMessage     = '';
         $this->loadConversation();
 
-        SupportMessage::where('ticket_id', $ticketId)
-            ->where('sender', 'customer')
-            ->whereNull('read_at')
-            ->update(['read_at' => now()]);
+        app(SupportService::class)->markMessagesAsRead($ticketId, 'admin');
     }
 
     public function loadConversation(): void
@@ -71,9 +66,8 @@ class Index extends Component
             return;
         }
 
-        $this->conversation = SupportMessage::where('ticket_id', $this->selectedTicketId)
-            ->orderBy('created_at')
-            ->get()
+        $this->conversation = app(SupportService::class)
+            ->getConversation($this->selectedTicketId)
             ->map(fn ($m) => [
                 'sender'     => $m->sender,
                 'message'    => $m->message,
@@ -91,10 +85,7 @@ class Index extends Component
         ];
 
         if ($this->selectedTicketId) {
-            SupportMessage::where('ticket_id', $this->selectedTicketId)
-                ->where('sender', 'customer')
-                ->whereNull('read_at')
-                ->update(['read_at' => now()]);
+            app(SupportService::class)->markMessagesAsRead($this->selectedTicketId, 'admin');
         }
     }
 
@@ -111,14 +102,7 @@ class Index extends Component
         $text = $this->replyMessage;
         $this->replyMessage = '';
 
-        $msg = SupportMessage::create([
-            'ticket_id' => $this->selectedTicketId,
-            'sender'    => 'admin',
-            'message'   => $text,
-            'read_at'   => now(),
-        ]);
-
-        AdminSupportMessageSent::dispatch($msg);
+        app(SupportService::class)->sendAdminMessage($this->selectedTicketId, $text);
 
         $this->conversation[] = [
             'sender'     => 'admin',
@@ -131,14 +115,7 @@ class Index extends Component
     {
         abort_unless($this->canReply, 403);
 
-        $ticket = SupportTicket::find($ticketId);
-
-        if (! $ticket) {
-            return;
-        }
-
-        $ticket->update(['status' => 'closed']);
-        SupportTicketClosed::dispatch($ticket);
+        app(SupportService::class)->closeTicket($ticketId);
 
         if ($this->selectedTicketId === $ticketId) {
             $this->selectedTicketId = null;
@@ -152,7 +129,7 @@ class Index extends Component
     {
         abort_unless($this->canReply, 403);
 
-        SupportTicket::find($ticketId)?->update(['status' => 'open']);
+        app(SupportService::class)->reopenTicket($ticketId);
         $this->resetPage();
     }
 

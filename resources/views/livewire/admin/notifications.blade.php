@@ -10,6 +10,8 @@
                 show: false,
                 init() {
                     this.$nextTick(() => { this.show = true });
+                    playNotificationSound();
+                    incrementTabBadge();
                     setTimeout(() => {
                         this.show = false;
                         setTimeout(() => $wire.dismiss('{{ $notification['id'] }}'), 400);
@@ -76,3 +78,37 @@
         </div>
     @endforeach
 </div>
+
+<script>
+    window.__notifCount = window.__notifCount || 0;
+    window.__origTitle = window.__origTitle || document.title;
+
+    function playNotificationSound() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.frequency.setValueAtTime(880, ctx.currentTime);
+            osc.frequency.setValueAtTime(660, ctx.currentTime + 0.12);
+            gain.gain.setValueAtTime(0.3, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.45);
+        } catch (e) {}
+    }
+
+    function incrementTabBadge() {
+        window.__notifCount++;
+        document.title = '(' + window.__notifCount + ') ' + window.__origTitle;
+    }
+
+    if (!window.__notifFocusListenerAdded) {
+        window.__notifFocusListenerAdded = true;
+        window.addEventListener('focus', () => {
+            window.__notifCount = 0;
+            document.title = window.__origTitle;
+        });
+    }
+</script>
