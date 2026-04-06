@@ -47,8 +47,11 @@
 
                     @if($can('orders.view'))
                         <flux:sidebar.group heading="Pedidos" class="grid">
-                            <flux:sidebar.item icon="list-bullet" :href="route('admin.orders.index')" :current="request()->routeIs('admin.orders.*')" wire:navigate>
+                            <flux:sidebar.item icon="list-bullet" :href="route('admin.orders.index')" :current="request()->routeIs('admin.orders.index') || request()->routeIs('admin.orders.show')" wire:navigate>
                                 Pedidos
+                            </flux:sidebar.item>
+                            <flux:sidebar.item icon="chart-bar" :href="route('admin.orders.report')" :current="request()->routeIs('admin.orders.report')" wire:navigate>
+                                Relatório
                             </flux:sidebar.item>
                             <flux:sidebar.item icon="chat-bubble-left-right" :href="route('admin.support.index')" :current="request()->routeIs('admin.support.*')" wire:navigate>
                                 Suporte

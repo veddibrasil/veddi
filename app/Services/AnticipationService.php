@@ -149,6 +149,7 @@ class AnticipationService
                     'is_anticipated'   => true,
                     'anticipation_fee' => $fee,
                     'net_value'        => round($netValue - $fee, 2),
+                    'status'           => 'released',
                 ]);
 
                 $totalFee += $fee;
