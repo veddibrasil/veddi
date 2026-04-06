@@ -8,6 +8,14 @@ use Monolog\LogRecord;
 
 class DiscordWebhookHandler extends AbstractProcessingHandler
 {
+    /** Maximum messages per minute per unique message signature */
+    private const RATE_LIMIT = 5;
+    private const RATE_WINDOW = 60; // seconds
+
+    /** In-memory counter keyed by message signature (resets each process/request) */
+    private static array $counts = [];
+    private static array $windows = [];
+
     public function __construct(
         private readonly string $webhookUrl,
         int|string|Level $level = Level::Critical,
@@ -19,6 +27,10 @@ class DiscordWebhookHandler extends AbstractProcessingHandler
     protected function write(LogRecord $record): void
     {
         if (empty($this->webhookUrl)) {
+            return;
+        }
+
+        if ($this->isRateLimited($record)) {
             return;
         }
 
@@ -79,6 +91,21 @@ class DiscordWebhookHandler extends AbstractProcessingHandler
             Level::Info     => 0x2ECC71,
             default         => 0x95A5A6,
         };
+    }
+
+    private function isRateLimited(LogRecord $record): bool
+    {
+        $key = md5($record->channel . ':' . substr($record->message, 0, 100));
+        $now = time();
+
+        if (! isset(self::$windows[$key]) || ($now - self::$windows[$key]) >= self::RATE_WINDOW) {
+            self::$windows[$key] = $now;
+            self::$counts[$key]  = 0;
+        }
+
+        self::$counts[$key]++;
+
+        return self::$counts[$key] > self::RATE_LIMIT;
     }
 
     private function sendToDiscord(string $payload): void

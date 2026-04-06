@@ -95,6 +95,16 @@ class WalletService
             'fee_amount'      => $feeAmount,
             'is_card_payment' => $payment->original_amount !== null,
         ]);
+
+        Log::channel('audit')->info('wallet.credit', [
+            'company_id'       => $company->id,
+            'order_id'         => $order->id,
+            'asaas_payment_id' => $payment->asaas_payment_id,
+            'base_amount'      => $baseAmount,
+            'pix_fee'          => $pixFee,
+            'card_fee'         => $cardFee,
+            'platform_fee'     => $feeAmount,
+        ]);
     }
 
     /**
@@ -130,6 +140,13 @@ class WalletService
             'company_id'   => $company->id,
             'order_id'     => $order->id,
             'debit_amount' => $creditAmount,
+        ]);
+
+        Log::channel('audit')->info('wallet.refund', [
+            'company_id'       => $company->id,
+            'order_id'         => $order->id,
+            'asaas_payment_id' => $payment->asaas_payment_id,
+            'debit_amount'     => $creditAmount,
         ]);
     }
 }

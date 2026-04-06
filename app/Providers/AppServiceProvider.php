@@ -40,6 +40,8 @@ class AppServiceProvider extends ServiceProvider
             \Illuminate\Contracts\Debug\ExceptionHandler::class,
             \App\Exceptions\Handler::class,
         );
+
+        $this->app->singleton(\App\Services\AsaasCircuitBreaker::class);
     }
 
     /**

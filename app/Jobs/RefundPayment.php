@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Events\OrderStatusUpdated;
+use App\Exceptions\AsaasCircuitOpenException;
 use App\Models\Order;
 use App\Services\AsaasService;
 use App\Services\WalletService;
@@ -14,9 +15,10 @@ class RefundPayment implements ShouldQueue
 {
     use Queueable;
 
-    public int $tries = 3;
-
-    public int $backoff = 10;
+    public function retryUntil(): \DateTimeInterface
+    {
+        return now()->addHours(24);
+    }
 
     public function __construct(public Order $order)
     {
@@ -51,7 +53,16 @@ class RefundPayment implements ShouldQueue
             return;
         }
 
-        $result = app(AsaasService::class)->refundPayment($payment->asaas_payment_id);
+        try {
+            $result = app(AsaasService::class)->refundPayment($payment->asaas_payment_id);
+        } catch (AsaasCircuitOpenException $e) {
+            Log::channel('payments')->warning('Circuit aberto — RefundPayment adiado 15 min', [
+                'order_id'         => $this->order->id,
+                'asaas_payment_id' => $payment->asaas_payment_id,
+            ]);
+            $this->release(900);
+            return;
+        }
 
         $refundStatuses = ['REFUND_REQUESTED', 'REFUNDED', 'REFUND_IN_PROGRESS'];
 

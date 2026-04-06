@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Events\OrderStatusUpdated;
+use App\Exceptions\AsaasCircuitOpenException;
 use App\Mail\OrderConfirmation;
 use App\Models\Company;
 use App\Models\Customer;
@@ -20,9 +21,10 @@ class ProcessOrder implements ShouldQueue
 {
     use Queueable;
 
-    public int $tries = 3;
-
-    public int $backoff = 10;
+    public function retryUntil(): \DateTimeInterface
+    {
+        return now()->addHours(24);
+    }
 
     const PIX_FEE = 1.99;
 
@@ -82,6 +84,12 @@ class ProcessOrder implements ShouldQueue
 
             // Notifica o componente Livewire via Reverb para carregar os dados de pagamento
             OrderStatusUpdated::dispatch($this->order->fresh());
+        } catch (AsaasCircuitOpenException $e) {
+            Log::channel('payments')->warning('Circuit aberto — ProcessOrder adiado 15 min', [
+                'order_id' => $this->order->id,
+            ]);
+            $this->release(900);
+            return;
         } catch (\Throwable $e) {
             Log::channel('discord')->error('Falha ao processar pedido — cancelado', [
                 'channel'  => 'orders',

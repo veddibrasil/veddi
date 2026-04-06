@@ -3,6 +3,9 @@
 namespace App\Services;
 
 use App\Enums\Plan;
+use App\Exceptions\AsaasCircuitOpenException;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -12,10 +15,58 @@ class AsaasService
     private string $apiKey;
     private string $baseUrl;
 
-    public function __construct()
+    public function __construct(private AsaasCircuitBreaker $circuitBreaker)
     {
         $this->apiKey  = config('services.asaas.api_key', '');
         $this->baseUrl = config('services.asaas.base_url', 'https://sandbox.asaas.com/api/v3');
+    }
+
+    /**
+     * Wrapper centralizado para chamadas HTTP ao Asaas.
+     * Verifica o circuit breaker antes de cada chamada e registra falhas/sucessos.
+     * Apenas respostas 5xx e ConnectionException abrem o circuit.
+     *
+     * @throws AsaasCircuitOpenException se o circuit estiver aberto
+     * @throws RuntimeException em falha de conexão
+     */
+    private function request(string $method, string $endpoint, array $data = [], int $timeout = 15): Response
+    {
+        if ($this->circuitBreaker->isOpen()) {
+            throw new AsaasCircuitOpenException();
+        }
+
+        try {
+            $response = Http::withHeaders(['access_token' => $this->apiKey])
+                ->timeout($timeout)
+                ->{$method}("{$this->baseUrl}/{$endpoint}", $data);
+
+            // Apenas 5xx indica indisponibilidade do serviço; 4xx são erros de negócio
+            if ($response->serverError()) {
+                $this->circuitBreaker->recordFailure();
+            } else {
+                $this->circuitBreaker->recordSuccess();
+            }
+
+            return $response;
+        } catch (ConnectionException $e) {
+            $this->circuitBreaker->recordFailure();
+            throw new RuntimeException('Asaas connection error: ' . $e->getMessage(), 0, $e);
+        }
+    }
+
+    /**
+     * Probe leve para verificar se o Asaas está respondendo.
+     * Usado pelo scheduler de recovery automático.
+     * Retorna true se o Asaas está acessível (qualquer status < 500).
+     */
+    public function probeHealth(): bool
+    {
+        try {
+            $response = $this->request('get', 'payments', ['limit' => 1], 10);
+            return ! $response->serverError();
+        } catch (AsaasCircuitOpenException) {
+            return false;
+        }
     }
 
     /**
@@ -28,18 +79,16 @@ class AsaasService
     {
         Log::channel('payments')->info('Criando cliente no Asaas', ['email' => $data['email']]);
 
-        $response = Http::withHeaders(['access_token' => $this->apiKey])
-            ->timeout(15)
-            ->post("{$this->baseUrl}/customers", array_filter([
-                'name'     => $data['name'],
-                'email'    => $data['email'],
-                'cpfCnpj'  => preg_replace('/\D/', '', $data['cpfCnpj']),
-                'mobilePhone' => $data['phone'] ?? null,
-            ], fn ($v) => $v !== null));
+        $response = $this->request('post', 'customers', array_filter([
+            'name'        => $data['name'],
+            'email'       => $data['email'],
+            'cpfCnpj'     => preg_replace('/\D/', '', $data['cpfCnpj']),
+            'mobilePhone' => $data['phone'] ?? null,
+        ], fn ($v) => $v !== null));
 
         if ($response->failed()) {
             Log::channel('discord')->error('Erro ao criar cliente no Asaas', [
-                'type'     => 'payments',
+                'type'   => 'payments',
                 'status' => $response->status(),
                 'body'   => $response->body(),
             ]);
@@ -109,13 +158,11 @@ class AsaasService
             ], fn ($v) => $v !== null && $v !== '');
         }
 
-        $response = Http::withHeaders(['access_token' => $this->apiKey])
-            ->timeout(15)
-            ->post("{$this->baseUrl}/subscriptions", $payload);
+        $response = $this->request('post', 'subscriptions', $payload);
 
         if ($response->failed()) {
             Log::channel('discord')->error('Erro ao criar assinatura no Asaas', [
-                'type'     => 'payments',
+                'type'        => 'payments',
                 'customer_id' => $customerId,
                 'status'      => $response->status(),
                 'body'        => $response->body(),
@@ -143,11 +190,7 @@ class AsaasService
     public function getSubscriptionPayments(string $subscriptionId): array
     {
         try {
-            $response = Http::withHeaders(['access_token' => $this->apiKey])
-                ->timeout(10)
-                ->get("{$this->baseUrl}/subscriptions/{$subscriptionId}/payments", [
-                    'limit' => 12,
-                ]);
+            $response = $this->request('get', "subscriptions/{$subscriptionId}/payments", ['limit' => 12], 10);
 
             if ($response->failed()) {
                 Log::channel('payments')->warning('Falha ao buscar cobranças Asaas', [
@@ -159,6 +202,8 @@ class AsaasService
             }
 
             return $response->json('data', []);
+        } catch (AsaasCircuitOpenException) {
+            return [];
         } catch (\Throwable $e) {
             Log::channel('payments')->warning('Exceção ao buscar cobranças Asaas', [
                 'subscription_id' => $subscriptionId,
@@ -176,9 +221,7 @@ class AsaasService
     {
         Log::channel('payments')->info('Cancelando assinatura no Asaas', ['subscription_id' => $subscriptionId]);
 
-        $response = Http::withHeaders(['access_token' => $this->apiKey])
-            ->timeout(15)
-            ->delete("{$this->baseUrl}/subscriptions/{$subscriptionId}");
+        $response = $this->request('delete', "subscriptions/{$subscriptionId}");
 
         if ($response->failed()) {
             Log::channel('discord')->error('Erro ao cancelar assinatura no Asaas', [
@@ -207,19 +250,17 @@ class AsaasService
             'billing_type' => $billingType,
         ]);
 
-        $response = Http::withHeaders(['access_token' => $this->apiKey])
-            ->timeout(15)
-            ->post("{$this->baseUrl}/payments", [
-                'customer'    => $customerId,
-                'billingType' => $billingType,
-                'value'       => $amount,
-                'dueDate'     => now()->addDays(3)->toDateString(),
-                'description' => $description,
-            ]);
+        $response = $this->request('post', 'payments', [
+            'customer'    => $customerId,
+            'billingType' => $billingType,
+            'value'       => $amount,
+            'dueDate'     => now()->addDays(3)->toDateString(),
+            'description' => $description,
+        ]);
 
         if ($response->failed()) {
             Log::channel('discord')->error('Erro ao criar cobrança avulsa no Asaas', [
-                'type'     => 'payments',
+                'type'        => 'payments',
                 'customer_id' => $customerId,
                 'status'      => $response->status(),
                 'body'        => $response->body(),
@@ -291,9 +332,7 @@ class AsaasService
             $payload['totalValue']       = $amount;
         }
 
-        $response = Http::withHeaders(['access_token' => $this->apiKey])
-            ->timeout(30)
-            ->post("{$this->baseUrl}/payments", $payload);
+        $response = $this->request('post', 'payments', $payload, 30);
 
         $data = $response->json();
 
@@ -330,9 +369,7 @@ class AsaasService
 
         if ($cpfCnpj) {
             try {
-                $response = Http::withHeaders(['access_token' => $this->apiKey])
-                    ->timeout(10)
-                    ->get("{$this->baseUrl}/customers", ['cpfCnpj' => $cpfCnpj, 'limit' => 1]);
+                $response = $this->request('get', 'customers', ['cpfCnpj' => $cpfCnpj, 'limit' => 1], 10);
 
                 if ($response->successful()) {
                     $existing = $response->json('data.0.id');
@@ -340,6 +377,8 @@ class AsaasService
                         return $existing;
                     }
                 }
+            } catch (AsaasCircuitOpenException $e) {
+                throw $e; // propaga — não chamar Asaas se circuit está aberto
             } catch (\Throwable) {
                 // fall through to create
             }
@@ -388,9 +427,7 @@ class AsaasService
             ];
         }
 
-        $response = Http::withHeaders(['access_token' => $this->apiKey])
-            ->timeout(15)
-            ->post("{$this->baseUrl}/payments", $payload);
+        $response = $this->request('post', 'payments', $payload);
 
         if ($response->failed()) {
             $body             = $response->json();
@@ -401,9 +438,7 @@ class AsaasService
                     'customer_id' => $customerId,
                 ]);
                 unset($payload['split']);
-                $response = Http::withHeaders(['access_token' => $this->apiKey])
-                    ->timeout(15)
-                    ->post("{$this->baseUrl}/payments", $payload);
+                $response = $this->request('post', 'payments', $payload);
             }
         }
 
@@ -437,9 +472,7 @@ class AsaasService
     public function getPaymentPixQrCode(string $paymentId): array
     {
         try {
-            $response = Http::withHeaders(['access_token' => $this->apiKey])
-                ->timeout(10)
-                ->get("{$this->baseUrl}/payments/{$paymentId}/pixQrCode");
+            $response = $this->request('get', "payments/{$paymentId}/pixQrCode", [], 10);
 
             if ($response->failed()) {
                 Log::channel('payments')->warning('Falha ao buscar QR Code PIX do Asaas', [
@@ -453,6 +486,8 @@ class AsaasService
                 'encodedImage' => $response->json('encodedImage'),
                 'payload'      => $response->json('payload'),
             ];
+        } catch (AsaasCircuitOpenException) {
+            return ['encodedImage' => null, 'payload' => null];
         } catch (\Throwable $e) {
             Log::channel('payments')->warning('Exceção ao buscar QR Code PIX do Asaas', [
                 'payment_id' => $paymentId,
@@ -473,17 +508,15 @@ class AsaasService
     public function createTransfer(array $data): array
     {
         Log::channel('payments')->info('Criando transferência no Asaas', [
-            'value'         => $data['value'] ?? null,
-            'operation'     => $data['operationType'] ?? null,
+            'value'     => $data['value'] ?? null,
+            'operation' => $data['operationType'] ?? null,
         ]);
 
-        $response = Http::withHeaders(['access_token' => $this->apiKey])
-            ->timeout(15)
-            ->post("{$this->baseUrl}/transfers", $data);
+        $response = $this->request('post', 'transfers', $data);
 
         if ($response->failed()) {
             Log::channel('discord')->error('Erro ao criar transferência no Asaas', [
-                'type'     => 'payments',
+                'type'   => 'payments',
                 'status' => $response->status(),
                 'body'   => $response->body(),
             ]);
@@ -516,13 +549,11 @@ class AsaasService
 
         $body = $value !== null ? ['value' => $value] : [];
 
-        $response = Http::withHeaders(['access_token' => $this->apiKey])
-            ->timeout(15)
-            ->post("{$this->baseUrl}/payments/{$asaasPaymentId}/refund", $body);
+        $response = $this->request('post', "payments/{$asaasPaymentId}/refund", $body);
 
         if ($response->failed()) {
             Log::channel('discord')->error('Erro ao solicitar reembolso no Asaas', [
-                'type'     => 'payments',
+                'type'             => 'payments',
                 'asaas_payment_id' => $asaasPaymentId,
                 'status'           => $response->status(),
                 'body'             => $response->body(),

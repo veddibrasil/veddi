@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Exceptions\AsaasCircuitOpenException;
 use App\Models\Company;
 use App\Services\AsaasService;
 use App\Services\CompanyService;
@@ -13,8 +14,10 @@ class CreateAsaasSetupFee implements ShouldQueue
 {
     use Queueable;
 
-    public int $tries  = 3;
-    public int $backoff = 30;
+    public function retryUntil(): \DateTimeInterface
+    {
+        return now()->addHours(24);
+    }
 
     public function __construct(public Company $company)
     {
@@ -50,12 +53,20 @@ class CreateAsaasSetupFee implements ShouldQueue
             return;
         }
 
-        $charge = $asaasService->createCharge(
-            $this->company->asaas_customer_id,
-            $firstAmount,
-            $description,
-            $billingType,
-        );
+        try {
+            $charge = $asaasService->createCharge(
+                $this->company->asaas_customer_id,
+                $firstAmount,
+                $description,
+                $billingType,
+            );
+        } catch (AsaasCircuitOpenException $e) {
+            Log::channel('payments')->warning('Circuit aberto — CreateAsaasSetupFee adiado 15 min', [
+                'company_id' => $this->company->id,
+            ]);
+            $this->release(900);
+            return;
+        }
 
         $updates = [
             'asaas_setup_charge_id'   => $charge['id'],

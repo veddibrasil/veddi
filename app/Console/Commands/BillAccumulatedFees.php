@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Exceptions\AsaasCircuitOpenException;
 use App\Models\Order;
 use App\Services\AsaasService;
 use Illuminate\Console\Command;
@@ -73,6 +74,10 @@ class BillAccumulatedFees extends Command
                     'total_fee'    => $totalFee,
                     'order_count'  => $row->order_count,
                 ]);
+            } catch (AsaasCircuitOpenException $e) {
+                $this->error('Asaas circuit aberto — faturamento interrompido. Tente novamente quando o Asaas voltar: php artisan asaas:close');
+                Log::channel('discord')->error('fees:bill interrompido: Asaas circuit aberto', ['type' => 'payments']);
+                return self::FAILURE;
             } catch (Throwable $e) {
                 $this->error("Erro ao cobrar empresa {$company->name}: {$e->getMessage()}");
                 Log::channel('discord')->error('Falha ao faturar taxa de plataforma', [

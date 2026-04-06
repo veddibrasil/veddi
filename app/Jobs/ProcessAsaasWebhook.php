@@ -11,14 +11,16 @@ use App\Services\TransactionService;
 use App\Services\WalletService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class ProcessAsaasWebhook implements ShouldQueue
 {
     use Queueable;
 
-    public int $tries  = 3;
-    public int $backoff = 10;
+    public int $tries = 3;
+
+    public array $backoff = [10, 60, 300];
 
     public function __construct(
         public string $event,
@@ -105,21 +107,23 @@ class ProcessAsaasWebhook implements ShouldQueue
             return;
         }
 
-        $payment->update([
-            'status'          => 'paid',
-            'paid_at'         => now(),
-            'webhook_payload' => $this->payload,
-        ]);
+        DB::transaction(function () use ($order, $payment, $orderId, $asaasPaymentId) {
+            $payment->update([
+                'status'          => 'paid',
+                'paid_at'         => now(),
+                'webhook_payload' => $this->payload,
+            ]);
 
-        $order->update(['status' => 'paid']);
+            $order->update(['status' => 'paid']);
 
-        Log::channel('payments')->info('Pagamento de pedido confirmado via Asaas', [
-            'order_id'         => $orderId,
-            'asaas_payment_id' => $asaasPaymentId,
-            'amount'           => $payment->amount,
-        ]);
+            Log::channel('payments')->info('Pagamento de pedido confirmado via Asaas', [
+                'order_id'         => $orderId,
+                'asaas_payment_id' => $asaasPaymentId,
+                'amount'           => $payment->amount,
+            ]);
 
-        app(WalletService::class)->creditForOrder($order, $payment);
+            app(WalletService::class)->creditForOrder($order, $payment);
+        });
 
         // Cria transação de escrow para controle de liberação (D+2 Pix / D+15 Cartão)
         try {

@@ -16,11 +16,26 @@ Schedule::command('companies:block-overdue')->dailyAt('08:00');
 
 Schedule::job(new \App\Jobs\ReleaseCompanyTransactionsJob)
     ->everyMinute()
-    ->withoutOverlapping()
+    ->withoutOverlapping(expiresAt: 30)
     ->onOneServer();
 
 // Atualiza snapshots de saldo de todas as empresas (após liberação das transações)
 Schedule::job(new \App\Jobs\UpdateCompanyBalancesJob)
     ->everyMinute()
-    ->withoutOverlapping()
+    ->withoutOverlapping(expiresAt: 30)
     ->onOneServer();
+
+// Probe de recovery automático do Asaas — executa apenas se o circuit não estiver fechado
+Schedule::call(function () {
+    $cb = app(\App\Services\AsaasCircuitBreaker::class);
+
+    if ($cb->getState() === 'closed') {
+        return;
+    }
+
+    try {
+        app(\App\Services\AsaasService::class)->probeHealth();
+    } catch (\Throwable) {
+        // recordFailure() já foi chamado dentro de AsaasService::request()
+    }
+})->everyFiveMinutes()->withoutOverlapping()->onOneServer()->name('asaas-health-probe');

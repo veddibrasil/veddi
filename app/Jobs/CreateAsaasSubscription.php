@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Exceptions\AsaasCircuitOpenException;
 use App\Models\Company;
 use App\Models\Subscription;
 use App\Services\AsaasService;
@@ -13,8 +14,10 @@ class CreateAsaasSubscription implements ShouldQueue
 {
     use Queueable;
 
-    public int $tries  = 3;
-    public int $backoff = 30;
+    public function retryUntil(): \DateTimeInterface
+    {
+        return now()->addHours(24);
+    }
 
     public function __construct(
         public Company $company,
@@ -36,12 +39,20 @@ class CreateAsaasSubscription implements ShouldQueue
         $plan        = $this->company->pending_plan ?? $this->company->plan;
         $billingType = $this->company->subscription_payment_method ?? 'PIX';
 
-        $result = $asaasService->createSubscription(
-            $this->company->asaas_customer_id,
-            $plan,
-            $billingType,
-            nextDueDate: $this->nextDueDate,
-        );
+        try {
+            $result = $asaasService->createSubscription(
+                $this->company->asaas_customer_id,
+                $plan,
+                $billingType,
+                nextDueDate: $this->nextDueDate,
+            );
+        } catch (AsaasCircuitOpenException $e) {
+            Log::channel('payments')->warning('Circuit aberto — CreateAsaasSubscription adiado 15 min', [
+                'company_id' => $this->company->id,
+            ]);
+            $this->release(900);
+            return;
+        }
 
         $this->company->update(['asaas_subscription_id' => $result['id']]);
 

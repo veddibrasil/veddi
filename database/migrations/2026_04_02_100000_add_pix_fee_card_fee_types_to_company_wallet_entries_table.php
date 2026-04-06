@@ -7,11 +7,19 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (DB::getDriverName() !== 'mysql') {
+            return;
+        }
+
         DB::statement("ALTER TABLE company_wallet_entries MODIFY COLUMN type ENUM('credit', 'fee', 'withdrawal', 'refund', 'anticipation_fee', 'pix_fee', 'card_fee')");
     }
 
     public function down(): void
     {
+        if (DB::getDriverName() !== 'mysql') {
+            return;
+        }
+
         DB::statement("ALTER TABLE company_wallet_entries MODIFY COLUMN type ENUM('credit', 'fee', 'withdrawal', 'refund', 'anticipation_fee')");
     }
 };

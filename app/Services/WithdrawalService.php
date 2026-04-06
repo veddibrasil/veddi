@@ -107,6 +107,14 @@ class WithdrawalService
                 'amount'        => $amount,
             ]);
 
+            Log::channel('audit')->info('withdrawal.requested', [
+                'company_id'    => $company->id,
+                'withdrawal_id' => $withdrawal->id,
+                'amount'        => $amount,
+                'payout_type'   => $payoutType,
+                'pix_fee'       => $pixFee,
+            ]);
+
             ProcessWithdrawal::dispatch($withdrawal->id);
 
             return $withdrawal;
@@ -160,6 +168,12 @@ class WithdrawalService
             }
 
             Log::channel('payments')->info('Antecipação realizada', [
+                'company_id'      => $company->id,
+                'transaction_ids' => $transactionIds,
+                'count'           => $transactions->count(),
+            ]);
+
+            Log::channel('audit')->info('anticipation.requested', [
                 'company_id'      => $company->id,
                 'transaction_ids' => $transactionIds,
                 'count'           => $transactions->count(),

@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Exceptions\AsaasCircuitOpenException;
 use App\Models\CompanyWalletEntry;
 use App\Models\CompanyWithdrawal;
 use App\Services\AsaasService;
@@ -14,8 +15,10 @@ class ProcessWithdrawal implements ShouldQueue
 {
     use Queueable;
 
-    public int $tries  = 3;
-    public int $backoff = 30;
+    public function retryUntil(): \DateTimeInterface
+    {
+        return now()->addHours(24);
+    }
 
     public function __construct(
         public int $withdrawalId,
@@ -78,6 +81,13 @@ class ProcessWithdrawal implements ShouldQueue
                 'asaas_transfer_id' => $transfer['id'] ?? null,
                 'amount'           => $withdrawal->amount,
             ]);
+        } catch (AsaasCircuitOpenException $e) {
+            $withdrawal->update(['status' => 'pending']);
+            Log::channel('payments')->warning('Circuit aberto — ProcessWithdrawal adiado 15 min', [
+                'withdrawal_id' => $withdrawal->id,
+            ]);
+            $this->release(900);
+            return;
         } catch (\Throwable $e) {
             $withdrawal->update(['status' => 'failed']);
 

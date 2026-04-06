@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', function(){ return redirect('https://veddi.com.br');});
 
+Route::get('/health', \App\Http\Controllers\HealthController::class)->name('health');
+
 // --- Onboarding público ---
 Route::get('/cadastro', [RegisterCompanyController::class, 'create'])->name('register.create');
 Route::post('/cadastro', [RegisterCompanyController::class, 'store'])->middleware('throttle:5,1')->name('register.store');
@@ -111,7 +113,7 @@ Route::middleware(['auth', 'verified', 'super.admin'])
     });
 
 // --- API Financeira (escrow/marketplace) ---
-Route::middleware(['auth', 'verified', 'company.role:company_admin'])
+Route::middleware(['auth', 'verified', 'company.role:company_admin', 'throttle:60,1'])
     ->prefix('api/company')
     ->name('api.company.')
     ->group(function () {
@@ -120,8 +122,10 @@ Route::middleware(['auth', 'verified', 'company.role:company_admin'])
         Route::get('/balance/forecast', [\App\Http\Controllers\Api\CompanyBalanceController::class, 'forecast'])
              ->name('balance.forecast');
         Route::post('/withdraw', [\App\Http\Controllers\Api\CompanyBalanceController::class, 'withdraw'])
+             ->middleware('throttle:10,1')
              ->name('withdraw');
         Route::post('/anticipate', [\App\Http\Controllers\Api\CompanyBalanceController::class, 'anticipate'])
+             ->middleware('throttle:10,1')
              ->name('anticipate');
     });
 
