@@ -15,14 +15,16 @@ Schedule::command('fees:bill')->monthlyOn(1, '08:00');
 Schedule::command('companies:block-overdue')->dailyAt('08:00');
 
 Schedule::job(new \App\Jobs\ReleaseCompanyTransactionsJob)
+    ->name('release-company-transactions')
     ->everyMinute()
-    ->withoutOverlapping(expiresAt: 30)
+    ->withoutOverlapping(expiresAt: 5)
     ->onOneServer();
 
 // Atualiza snapshots de saldo de todas as empresas (após liberação das transações)
 Schedule::job(new \App\Jobs\UpdateCompanyBalancesJob)
+    ->name('update-company-balances')
     ->everyMinute()
-    ->withoutOverlapping(expiresAt: 30)
+    ->withoutOverlapping(expiresAt: 5)
     ->onOneServer();
 
 // Probe de recovery automático do Asaas — executa apenas se o circuit não estiver fechado
@@ -38,4 +40,8 @@ Schedule::call(function () {
     } catch (\Throwable) {
         // recordFailure() já foi chamado dentro de AsaasService::request()
     }
-})->everyFiveMinutes()->withoutOverlapping()->onOneServer()->name('asaas-health-probe');
+})
+->name('asaas-health-probe') 
+->everyFiveMinutes()
+->withoutOverlapping()
+->onOneServer();
