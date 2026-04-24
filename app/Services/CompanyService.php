@@ -48,7 +48,7 @@ class CompanyService
     public function markOverdue(Company $company, Carbon $dueDate): void
     {
         $company->update([
-            'status'        => 'OVERDUE',
+            'status' => 'OVERDUE',
             'overdue_since' => $dueDate->toDateString(),
         ]);
 
@@ -59,7 +59,7 @@ class CompanyService
         }
 
         Log::channel('payments')->warning('Empresa em atraso — carência de 3 dias úteis iniciada', [
-            'company_id'    => $company->id,
+            'company_id' => $company->id,
             'overdue_since' => $dueDate->toDateString(),
         ]);
     }

@@ -13,29 +13,33 @@ class Index extends Component
 {
     use WithPagination;
 
-    public string $search    = '';
-    public bool   $showModal = false;
+    public string $search = '';
 
-    public ?int $editUserId       = null;
-    public int  $assignCompanyId  = 0;
-    public string $assignRole     = 'company_admin';
-    public int  $assignBranchId   = 0;
+    public bool $showModal = false;
+
+    public ?int $editUserId = null;
+
+    public int $assignCompanyId = 0;
+
+    public string $assignRole = 'company_admin';
+
+    public int $assignBranchId = 0;
 
     public function openAssign(int $userId): void
     {
-        $this->editUserId      = $userId;
+        $this->editUserId = $userId;
         $this->assignCompanyId = 0;
-        $this->assignRole      = 'company_admin';
-        $this->assignBranchId  = 0;
-        $this->showModal       = true;
+        $this->assignRole = 'company_admin';
+        $this->assignBranchId = 0;
+        $this->showModal = true;
     }
 
     public function saveAssign(): void
     {
         $this->validate([
             'assignCompanyId' => ['required', 'integer', 'exists:companies,id'],
-            'assignRole'      => ['required', 'in:company_admin,branch_manager'],
-            'assignBranchId'  => ['nullable', 'integer'],
+            'assignRole' => ['required', 'in:company_admin,branch_manager'],
+            'assignBranchId' => ['nullable', 'integer'],
         ]);
 
         $user = User::findOrFail($this->editUserId);
@@ -43,7 +47,7 @@ class Index extends Component
 
         $user->companies()->syncWithoutDetaching([
             $this->assignCompanyId => [
-                'role'      => $this->assignRole,
+                'role' => $this->assignRole,
                 'branch_id' => $this->assignRole === 'branch_manager' && $this->assignBranchId
                     ? $this->assignBranchId
                     : null,

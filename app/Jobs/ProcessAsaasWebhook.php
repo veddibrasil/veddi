@@ -2,13 +2,13 @@
 
 namespace App\Jobs;
 
+use App\Contracts\TransactionServiceInterface;
+use App\Contracts\WalletServiceInterface;
 use App\Events\OrderStatusUpdated;
 use App\Models\Company;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Services\CompanyService;
-use App\Services\TransactionService;
-use App\Services\WalletService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
@@ -24,7 +24,7 @@ class ProcessAsaasWebhook implements ShouldQueue
 
     public function __construct(
         public string $event,
-        public array  $payload,
+        public array $payload,
     ) {
         $this->onQueue('critical');
     }
@@ -38,6 +38,7 @@ class ProcessAsaasWebhook implements ShouldQueue
             if (in_array($this->event, ['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED'])) {
                 $this->handleOrderPayment((int) $externalRef);
             }
+
             return;
         }
 
@@ -48,9 +49,10 @@ class ProcessAsaasWebhook implements ShouldQueue
 
         if (! $customerId) {
             Log::channel('webhook')->warning('Asaas webhook: customer ID ausente', [
-                'event'   => $this->event,
+                'event' => $this->event,
                 'payload' => $this->payload,
             ]);
+
             return;
         }
 
@@ -58,17 +60,18 @@ class ProcessAsaasWebhook implements ShouldQueue
 
         if (! $company) {
             Log::channel('webhook')->warning('Asaas webhook: empresa não encontrada', [
-                'event'       => $this->event,
+                'event' => $this->event,
                 'customer_id' => $customerId,
             ]);
+
             return;
         }
 
         match ($this->event) {
             'PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED' => $this->handlePaymentConfirmed($company, $companyService),
-            'PAYMENT_OVERDUE'                        => $this->handlePaymentOverdue($company, $companyService),
+            'PAYMENT_OVERDUE' => $this->handlePaymentOverdue($company, $companyService),
             default => Log::channel('webhook')->debug('Asaas webhook: evento ignorado', [
-                'event'      => $this->event,
+                'event' => $this->event,
                 'company_id' => $company->id,
             ]),
         };
@@ -82,9 +85,10 @@ class ProcessAsaasWebhook implements ShouldQueue
 
         if (! $order) {
             Log::channel('webhook')->warning('Asaas webhook: pedido não encontrado', [
-                'event'    => $this->event,
+                'event' => $this->event,
                 'order_id' => $orderId,
             ]);
+
             return;
         }
 
@@ -92,48 +96,50 @@ class ProcessAsaasWebhook implements ShouldQueue
 
         if (! $payment) {
             Log::channel('webhook')->warning('Asaas webhook: payment não encontrado para pedido', [
-                'event'           => $this->event,
+                'event' => $this->event,
                 'asaas_payment_id' => $asaasPaymentId,
-                'order_id'        => $orderId,
+                'order_id' => $orderId,
             ]);
+
             return;
         }
 
         if ($payment->status === 'paid') {
             Log::channel('webhook')->info('Asaas webhook: pagamento de pedido já confirmado (duplicado ignorado)', [
-                'order_id'         => $orderId,
+                'order_id' => $orderId,
                 'asaas_payment_id' => $asaasPaymentId,
             ]);
+
             return;
         }
 
         DB::transaction(function () use ($order, $payment, $orderId, $asaasPaymentId) {
             $payment->update([
-                'status'          => 'paid',
-                'paid_at'         => now(),
+                'status' => 'paid',
+                'paid_at' => now(),
                 'webhook_payload' => $this->payload,
             ]);
 
             $order->update(['status' => 'paid']);
 
             Log::channel('payments')->info('Pagamento de pedido confirmado via Asaas', [
-                'order_id'         => $orderId,
+                'order_id' => $orderId,
                 'asaas_payment_id' => $asaasPaymentId,
-                'amount'           => $payment->amount,
+                'amount' => $payment->amount,
             ]);
 
-            app(WalletService::class)->creditForOrder($order, $payment);
+            app(WalletServiceInterface::class)->creditForOrder($order, $payment);
         });
 
         // Cria transação de escrow para controle de liberação (D+2 Pix / D+15 Cartão)
         try {
-            app(TransactionService::class)->createForPayment($order, $payment);
+            app(TransactionServiceInterface::class)->createForPayment($order, $payment);
         } catch (\Throwable $e) {
             Log::channel('discord')->error('Falha ao criar CompanyTransaction (não-fatal)', [
-                'type'       => 'payments',
-                'order_id'   => $order->id,
+                'type' => 'payments',
+                'order_id' => $order->id,
                 'payment_id' => $payment->id,
-                'error'      => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
             // Não propaga: WalletEntry já criada com sucesso
         }
@@ -143,7 +149,7 @@ class ProcessAsaasWebhook implements ShouldQueue
 
     private function handlePaymentConfirmed(Company $company, CompanyService $companyService): void
     {
-        $paymentId      = $this->payload['payment']['id'] ?? null;
+        $paymentId = $this->payload['payment']['id'] ?? null;
         $subscriptionId = $this->payload['payment']['subscription'] ?? null;
 
         // Identify setup fee payment: charge ID matches stored setup charge,
@@ -169,14 +175,14 @@ class ProcessAsaasWebhook implements ShouldQueue
 
             Log::channel('payments')->info('Taxa de ativação confirmada', [
                 'company_id' => $company->id,
-                'charge_id'  => $paymentId,
+                'charge_id' => $paymentId,
             ]);
 
             // Apply pending plan (upgrade from free to paid via billing settings)
             $wasUpgradeFromFree = $company->pending_plan !== null;
             if ($wasUpgradeFromFree) {
                 $company->update([
-                    'plan'         => $company->pending_plan->value,
+                    'plan' => $company->pending_plan->value,
                     'pending_plan' => null,
                 ]);
                 $company->refresh();
@@ -197,7 +203,7 @@ class ProcessAsaasWebhook implements ShouldQueue
         // Recurring subscription payment — apply pending plan change if any, then activate
         if ($company->pending_plan !== null) {
             $company->update([
-                'plan'         => $company->pending_plan->value,
+                'plan' => $company->pending_plan->value,
                 'pending_plan' => null,
             ]);
         }
@@ -213,7 +219,7 @@ class ProcessAsaasWebhook implements ShouldQueue
             $company->update(['pending_plan' => null]);
 
             Log::channel('payments')->warning('Pagamento da troca de plano não confirmado — empresa mantida no plano atual', [
-                'company_id'   => $company->id,
+                'company_id' => $company->id,
                 'current_plan' => $company->plan->value,
             ]);
 
@@ -223,7 +229,7 @@ class ProcessAsaasWebhook implements ShouldQueue
         // Use the actual due date from the Asaas payload so the grace period is
         // measured from the real due date, not from when the webhook was delivered.
         $rawDueDate = $this->payload['payment']['dueDate'] ?? null;
-        $dueDate    = $rawDueDate
+        $dueDate = $rawDueDate
             ? \Carbon\Carbon::parse($rawDueDate)
             : now();
 
@@ -233,7 +239,7 @@ class ProcessAsaasWebhook implements ShouldQueue
     public function failed(\Throwable $exception): void
     {
         Log::channel('discord')->error('Falha ao processar webhook Asaas', [
-            'type'       => 'webhook',
+            'type' => 'webhook',
             'event' => $this->event,
             'error' => $exception->getMessage(),
         ]);

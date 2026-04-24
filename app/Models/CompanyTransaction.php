@@ -30,15 +30,15 @@ class CompanyTransaction extends Model
     ];
 
     protected $casts = [
-        'value'            => 'decimal:2',
-        'net_value'        => 'decimal:2',
+        'value' => 'decimal:2',
+        'net_value' => 'decimal:2',
         'anticipation_fee' => 'decimal:2',
-        'payment_date'     => 'date',
-        'release_date'     => 'date',
-        'withdrawn'        => 'boolean',
-        'withdrawn_at'     => 'datetime',
-        'is_anticipated'   => 'boolean',
-        'metadata'         => 'array',
+        'payment_date' => 'date',
+        'release_date' => 'date',
+        'withdrawn' => 'boolean',
+        'withdrawn_at' => 'datetime',
+        'is_anticipated' => 'boolean',
+        'metadata' => 'array',
     ];
 
     public function order(): BelongsTo
@@ -56,12 +56,35 @@ class CompanyTransaction extends Model
         return $this->belongsTo(CompanyWithdrawal::class);
     }
 
-    public function isPending(): bool    { return $this->status === 'pending'; }
-    public function isConfirmed(): bool  { return $this->status === 'confirmed'; }
-    public function isReleased(): bool   { return $this->status === 'released'; }
-    public function isWithdrawn(): bool  { return $this->status === 'withdrawn'; }
-    public function isRefunded(): bool   { return $this->status === 'refunded'; }
-    public function isChargeback(): bool { return $this->status === 'chargeback'; }
+    public function isPending(): bool
+    {
+        return $this->status === 'pending';
+    }
+
+    public function isConfirmed(): bool
+    {
+        return $this->status === 'confirmed';
+    }
+
+    public function isReleased(): bool
+    {
+        return $this->status === 'released';
+    }
+
+    public function isWithdrawn(): bool
+    {
+        return $this->status === 'withdrawn';
+    }
+
+    public function isRefunded(): bool
+    {
+        return $this->status === 'refunded';
+    }
+
+    public function isChargeback(): bool
+    {
+        return $this->status === 'chargeback';
+    }
 
     public function scopeReleased($query)
     {

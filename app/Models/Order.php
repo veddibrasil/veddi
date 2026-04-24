@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Str;
 
 class Order extends Model
 {
@@ -31,10 +32,11 @@ class Order extends Model
 
     private static function generateOrderNumber(): string
     {
-        $year   = now()->year;
+        $year = now()->year;
         $prefix = app()->bound('current.company') ? app('current.company')->order_prefix : 'ORD';
-        $count  = static::whereYear('created_at', $year)->count() + 1;
-        return sprintf('%s-%d-%05d', $prefix, $year, $count);
+        $suffix = Str::upper(Str::ulid()->toBase32());
+
+        return sprintf('%s-%d-%s', $prefix, $year, $suffix);
     }
 
     public function customer(): BelongsTo
@@ -65,15 +67,15 @@ class Order extends Model
     public function getStatusLabelAttribute(): string
     {
         return match ($this->status) {
-            'pending'          => 'Pendente',
+            'pending' => 'Pendente',
             'awaiting_payment' => 'Aguardando Pagamento',
-            'paid'             => 'Pago',
-            'preparing'        => 'Preparando',
-            'ready'            => 'Pronto',
-            'delivered'        => 'Entregue',
-            'cancelled'        => 'Cancelado',
-            'refunded'         => 'Reembolsado',
-            default            => $this->status,
+            'paid' => 'Pago',
+            'preparing' => 'Preparando',
+            'ready' => 'Pronto',
+            'delivered' => 'Entregue',
+            'cancelled' => 'Cancelado',
+            'refunded' => 'Reembolsado',
+            default => $this->status,
         };
     }
 }

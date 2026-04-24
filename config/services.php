@@ -32,13 +32,27 @@ return [
         'token' => env('MAPBOX_TOKEN'),
     ],
 
+    'stark' => [
+        'project_id' => env('STARK_PROJECT_ID'),
+        'private_key' => env('STARK_PRIVATE_KEY'),
+        'sandbox' => env('STARK_SANDBOX', true),
+        'webhook_token' => env('STARK_WEBHOOK_TOKEN'),
+        'environment' => env('STARK_SANDBOX', true) ? 'sandbox' : 'production',
+    ],
+
+    'zapi' => [
+        'instance_id' => env('ZAPI_INSTANCE_ID'),
+        'token' => env('ZAPI_TOKEN'),
+        'client_token' => env('ZAPI_CLIENT_TOKEN'),
+    ],
+
     'asaas' => [
-        'api_key'           => env('ASAAS_API_KEY'),
-        'sandbox'           => env('ASAAS_SANDBOX', true),
-        'webhook_token'     => env('ASAAS_WEBHOOK_TOKEN'),
+        'api_key' => env('ASAAS_API_KEY'),
+        'sandbox' => env('ASAAS_SANDBOX', true),
+        'webhook_token' => env('ASAAS_WEBHOOK_TOKEN'),
         'pro_monthly_value' => env('ASAAS_PRO_MONTHLY_VALUE', 49.90),
-        'veddi_wallet_id'   => env('ASAAS_VEDDI_WALLET_ID'),
-        'base_url'          => env('ASAAS_SANDBOX', true)
+        'veddi_wallet_id' => env('ASAAS_VEDDI_WALLET_ID'),
+        'base_url' => env('ASAAS_SANDBOX', true)
             ? 'https://sandbox.asaas.com/api/v3'
             : 'https://api.asaas.com/v3',
     ],

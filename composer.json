@@ -20,7 +20,8 @@
         "livewire/blaze": "^1.0",
         "livewire/flux": "^2.9.0",
         "livewire/livewire": "^4.0",
-        "predis/predis": "^3.4"
+        "predis/predis": "^3.4",
+        "starkbank/sdk": "^2.25"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

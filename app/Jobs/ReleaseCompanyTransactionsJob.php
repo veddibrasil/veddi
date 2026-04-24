@@ -30,7 +30,7 @@ class ReleaseCompanyTransactionsJob implements ShouldQueue
     public function failed(\Throwable $exception): void
     {
         Log::channel('discord')->error('Job de liberação de transações falhou', [
-            'type'       => 'payments',
+            'type' => 'payments',
             'error' => $exception->getMessage(),
             'trace' => $exception->getTraceAsString(),
         ]);

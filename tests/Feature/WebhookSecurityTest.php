@@ -56,7 +56,7 @@ test('webhook retorna 422 quando campo event está ausente', function () {
 
 test('webhook aceita token válido com payload completo', function () {
     $this->postJson('/webhooks/asaas', [
-        'event'   => 'PAYMENT_CONFIRMED',
+        'event' => 'PAYMENT_CONFIRMED',
         'payment' => ['id' => 'pay_123', 'value' => 100.00],
     ], [
         'asaas-access-token' => 'valid-test-token',
@@ -67,7 +67,7 @@ test('webhook aceita token válido com payload completo', function () {
 
 test('webhook enfileira o job ao receber payload válido', function () {
     $this->postJson('/webhooks/asaas', [
-        'event'   => 'PAYMENT_RECEIVED',
+        'event' => 'PAYMENT_RECEIVED',
         'payment' => ['id' => 'pay_456'],
     ], [
         'asaas-access-token' => 'valid-test-token',
@@ -79,7 +79,7 @@ test('webhook enfileira o job ao receber payload válido', function () {
 
 test('webhook não enfileira job com token inválido', function () {
     $this->postJson('/webhooks/asaas', [
-        'event'   => 'PAYMENT_CONFIRMED',
+        'event' => 'PAYMENT_CONFIRMED',
         'payment' => ['id' => 'pay_789'],
     ], [
         'asaas-access-token' => 'token-invalido',

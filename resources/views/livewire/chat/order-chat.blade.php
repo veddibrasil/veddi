@@ -9,7 +9,7 @@
         w-full h-full
         sm:w-[420px] sm:h-[90vh] sm:max-h-[820px] sm:rounded-2xl sm:shadow-2xl
     "
-    x-data="{ ...chatApp(), snakeOpen: false, productSidebarOpen: false, productSidebarSide: 'right' }"
+    x-data="{ ...chatApp(), snakeOpen: false, productSidebarOpen: false, productSidebarSide: 'right', selectingProduct: null, pendingSelections: {} }"
     x-init="
         $nextTick(() => { if ($wire.step === 'MENU_BROWSE') productSidebarOpen = true; });
         $watch('$wire.step', v => { if (v === 'MENU_BROWSE') productSidebarOpen = true; });
@@ -138,7 +138,7 @@
         @php
             $steps = ['BRANCH_SELECT','MENU_BROWSE','CART_REVIEW','IDENTIFY_PHONE','PAYMENT_PIX'];
             $currentIdx = array_search($step, $steps);
-            if ($currentIdx === false) $currentIdx = in_array($step, ['REGISTER_NAME','REGISTER_EMAIL','REGISTER_ADDRESS']) ? 3 : (in_array($step, ['CHECKOUT_COUPON','CHECKOUT_ORDER_TYPE','CHECKOUT_DELIVERY_ADDRESS','CHECKOUT_DELIVERY_FEE','CHECKOUT_NOTES','CHECKOUT_CPF','CHECKOUT_PAYMENT_METHOD']) ? 3 : ($step === 'ORDER_CONFIRMED' ? 5 : $currentIdx));
+            if ($currentIdx === false) $currentIdx = in_array($step, ['REGISTER_NAME','REGISTER_EMAIL','REGISTER_ADDRESS']) ? 3 : (in_array($step, ['CHECKOUT_COUPON','CHECKOUT_ORDER_TYPE','CHECKOUT_DELIVERY_ADDRESS','CHECKOUT_DELIVERY_FEE','CHECKOUT_NOTES','CHECKOUT_CPF','CHECKOUT_PAYMENT_METHOD','CHECKOUT_CONFIRM']) ? 3 : ($step === 'ORDER_CONFIRMED' ? 5 : $currentIdx));
         @endphp
         <div class="flex items-center justify-center gap-1.5 pb-3 px-4">
             @for ($i = 0; $i < 5; $i++)
@@ -432,19 +432,31 @@
         {{-- ── CART_REVIEW ── --}}
         @elseif ($step === 'CART_REVIEW')
             <div class="max-h-52 overflow-y-auto mc-scrollbar space-y-1.5 pr-0.5 mb-2">
-                @foreach ($cart as $productId => $item)
-                    <div class="flex items-center gap-2.5 bg-gray-50 rounded-xl p-2.5 border border-gray-100">
+                @foreach ($cart as $cartKey => $item)
+                    @php $hasItemOptions = !empty($item['options']); @endphp
+                    <div class="flex items-start gap-2.5 bg-gray-50 rounded-xl p-2.5 border border-gray-100">
                         <div class="flex-1 min-w-0">
                             <p class="font-semibold text-sm text-gray-800 truncate">{{ $item['name'] }}</p>
-                            <p class="text-xs text-gray-400">R$ {{ number_format($item['price'], 2, ',', '.') }} cada</p>
+                            @if ($hasItemOptions)
+                                @foreach ($item['options'] as $group)
+                                    <p class="text-xs font-medium text-gray-500 mt-0.5">{{ $group['group_name'] }}:</p>
+                                    @foreach ($group['selections'] as $sel)
+                                        <p class="text-xs text-gray-400 leading-tight">
+                                            {{ $sel['qty'] }}× {{ $sel['name'] }}@if ($sel['additional_price'] > 0) <span class="text-amber-600">(+R$ {{ number_format($sel['additional_price'], 2, ',', '.') }})</span>@endif
+                                        </p>
+                                    @endforeach
+                                @endforeach
+                            @else
+                                <p class="text-xs text-gray-400">R$ {{ number_format($item['price'], 2, ',', '.') }} cada</p>
+                            @endif
                         </div>
                         <div class="flex items-center gap-1 shrink-0">
-                            <button wire:click="updateCartQty({{ $productId }}, {{ $item['qty'] - 1 }})"
+                            <button wire:click="updateCartQty('{{ $cartKey }}', {{ $item['qty'] - 1 }})"
                                 class="w-7 h-7 rounded-full bg-gray-200 hover:bg-gray-300 font-bold text-sm flex items-center justify-center">−</button>
                             <span class="w-6 text-center text-sm font-bold">{{ $item['qty'] }}</span>
-                            <button wire:click="updateCartQty({{ $productId }}, {{ $item['qty'] + 1 }})"
+                            <button wire:click="updateCartQty('{{ $cartKey }}', {{ $item['qty'] + 1 }})"
                                 class="w-7 h-7 rounded-full mc-bg-primary-light font-bold text-sm mc-text-primary flex items-center justify-center">+</button>
-                            <button wire:click="removeFromCart({{ $productId }})"
+                            <button wire:click="removeFromCart('{{ $cartKey }}')"
                                 class="w-7 h-7 rounded-full bg-red-50 hover:bg-red-100 text-red-500 text-sm flex items-center justify-center ml-0.5">✕</button>
                         </div>
                     </div>
@@ -904,7 +916,7 @@
                         <p class="text-xs text-gray-500">
                             Pagamento instantâneo
                             @if(!($currentCompany?->pix_fee_absorbed_by_company))
-                                · <span class="text-amber-600">+ R$ {{ number_format(config('payments.pix_payment_fee', 1.99), 2, ',', '.') }} de taxa</span>
+                                · <span class="text-amber-600">+ R$ {{ number_format(config('payments.pix_payment_fee', 0.50), 2, ',', '.') }} de taxa</span>
                             @endif
                         </p>
                     </div>
@@ -941,6 +953,116 @@
                     class="w-full text-xs text-center text-gray-400 hover:text-gray-600 py-1">
                     ← Voltar
                 </button>
+            </div>
+
+        {{-- ── CHECKOUT_CONFIRM ── --}}
+        @elseif ($step === 'CHECKOUT_CONFIRM')
+            <div wire:key="step-confirm" class="space-y-3">
+                <p class="text-xs font-semibold text-gray-500 text-center uppercase tracking-wider">Confirme seu pedido</p>
+
+                {{-- Itens --}}
+                <div class="max-h-44 overflow-y-auto mc-scrollbar space-y-1.5 pr-0.5">
+                    @foreach ($cart as $item)
+                        @php $hasItemOptions = !empty($item['options']); @endphp
+                        <div class="flex items-start gap-2.5 bg-gray-50 rounded-xl p-2.5 border border-gray-100">
+                            <div class="flex-1 min-w-0">
+                                <p class="font-semibold text-sm text-gray-800 truncate">{{ $item['name'] }}</p>
+                                @if ($hasItemOptions)
+                                    @foreach ($item['options'] as $group)
+                                        <p class="text-xs font-medium text-gray-500 mt-0.5">{{ $group['group_name'] }}:</p>
+                                        @foreach ($group['selections'] as $sel)
+                                            <p class="text-xs text-gray-400 leading-tight">
+                                                {{ $sel['qty'] }}× {{ $sel['name'] }}@if ($sel['additional_price'] > 0) <span class="text-amber-600">(+R$ {{ number_format($sel['additional_price'], 2, ',', '.') }})</span>@endif
+                                            </p>
+                                        @endforeach
+                                    @endforeach
+                                @else
+                                    <p class="text-xs text-gray-400">R$ {{ number_format($item['price'], 2, ',', '.') }} cada</p>
+                                @endif
+                            </div>
+                            <span class="text-sm font-bold text-gray-700 shrink-0">{{ $item['qty'] }}×</span>
+                        </div>
+                    @endforeach
+                </div>
+
+                {{-- Resumo de valores --}}
+                <div class="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5 space-y-1.5">
+                    <div class="flex justify-between text-sm text-gray-600">
+                        <span>Subtotal</span>
+                        <span>R$ {{ number_format($this->cartTotal, 2, ',', '.') }}</span>
+                    </div>
+
+                    @if ($orderType === 'delivery')
+                        <div class="flex justify-between text-sm text-gray-600">
+                            <span>Taxa de entrega</span>
+                            @if ($freeDelivery || ($appliedCoupon && $appliedCoupon['type'] === 'free_delivery'))
+                                <span class="text-green-600 font-semibold">Grátis</span>
+                            @else
+                                <span>R$ {{ number_format($deliveryFee, 2, ',', '.') }}</span>
+                            @endif
+                        </div>
+                    @endif
+
+                    @if ($appliedCoupon && $appliedCoupon['discount'] > 0)
+                        <div class="flex justify-between text-sm text-green-600">
+                            <span>Cupom ({{ $appliedCoupon['code'] }})</span>
+                            <span>− R$ {{ number_format($appliedCoupon['discount'], 2, ',', '.') }}</span>
+                        </div>
+                    @endif
+
+                    @if ($paymentMethod === 'CARD' && !empty($cardFeeBreakdown))
+                        <div class="flex justify-between text-sm text-gray-600">
+                            <span>Taxa do cartão ({{ round($cardFeeBreakdown['total_rate'] * 100, 2) }}%)</span>
+                            <span>+ R$ {{ number_format($cardFeeBreakdown['fee_amount'], 2, ',', '.') }}</span>
+                        </div>
+                    @endif
+
+                    <div class="flex justify-between items-center pt-1.5 border-t border-gray-200">
+                        <span class="font-bold text-gray-800">Total</span>
+                        <span class="text-lg font-black mc-text-primary">
+                            @if ($paymentMethod === 'CARD' && !empty($cardFeeBreakdown))
+                                R$ {{ number_format($cardFeeBreakdown['final_amount'], 2, ',', '.') }}
+                            @else
+                                R$ {{ number_format($this->orderTotal, 2, ',', '.') }}
+                            @endif
+                        </span>
+                    </div>
+                </div>
+
+                {{-- Detalhes do pedido --}}
+                <div class="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5 space-y-1">
+                    <div class="flex justify-between text-xs text-gray-600">
+                        <span class="font-medium">Pagamento</span>
+                        <span>
+                            @if ($paymentMethod === 'CASH') Dinheiro
+                            @elseif ($paymentMethod === 'CARD') Cartão de Crédito
+                            @else PIX
+                            @endif
+                        </span>
+                    </div>
+                    <div class="flex justify-between text-xs text-gray-600">
+                        <span class="font-medium">Tipo</span>
+                        <span>{{ $orderType === 'delivery' ? 'Entrega' : 'Retirada' }}</span>
+                    </div>
+                    @if ($notes)
+                        <div class="flex justify-between text-xs text-gray-600 gap-2">
+                            <span class="font-medium shrink-0">Obs.</span>
+                            <span class="text-right text-gray-500 truncate">{{ $notes }}</span>
+                        </div>
+                    @endif
+                </div>
+
+                <div class="flex gap-2">
+                    <button wire:click="backToPaymentMethod"
+                        wire:loading.attr="disabled"
+                        class="mc-btn-secondary flex-1">← Voltar</button>
+                    <button wire:click="confirmOrder"
+                        wire:loading.attr="disabled"
+                        class="mc-btn-primary flex-1">
+                        <span wire:loading.remove wire:target="confirmOrder">Confirmar pedido →</span>
+                        <span wire:loading wire:target="confirmOrder">Enviando...</span>
+                    </button>
+                </div>
             </div>
 
         {{-- ── PAYMENT_PIX ── --}}
@@ -1001,7 +1123,7 @@
                 @if ($paymentMethod !== 'CARD')
                     @php
                         $pixFeeCharged = !($currentCompany?->pix_fee_absorbed_by_company);
-                        $pixFeeAmount  = $pixFeeCharged ? (float) config('payments.pix_payment_fee', 1.99) : 0.0;
+                        $pixFeeAmount  = $pixFeeCharged ? (float) config('payments.pix_payment_fee', 0.50) : 0.0;
                         $totalWithFee  = $this->orderTotal + $pixFeeAmount;
                     @endphp
                     <div class="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100 text-left space-y-1">
@@ -1655,7 +1777,14 @@
                             @foreach ($category->products as $product)
                                 @php
                                     $sbOutOfStock = $product->track_stock && ($product->quantity <= 0 || !$product->available);
-                                    $sbCartQty = $cart[$product->id]['qty'] ?? 0;
+                                    // Soma qty de todas as entradas do cart que pertencem a este produto
+                                    $sbCartQty = 0;
+                                    foreach ($cart as $__key => $__item) {
+                                        $__pid = (int) ($__item['product_id'] ?? $__key);
+                                        if ($__pid === $product->id) {
+                                            $sbCartQty += $__item['qty'];
+                                        }
+                                    }
                                     $sbInsufficientStock = !$sbOutOfStock && $product->track_stock && $sbCartQty > 0 && $sbCartQty >= $product->quantity;
                                     $sbDisabled = $sbOutOfStock || $sbInsufficientStock;
                                 @endphp
@@ -1681,26 +1810,93 @@
                                         @if ($product->description)
                                             <p class="text-[11px] text-gray-400 leading-snug mt-0.5 line-clamp-2">{{ $product->description }}</p>
                                         @endif
+                                     
                                         <p class="text-sm font-black {{ $sbDisabled ? 'text-gray-400' : 'mc-text-primary' }} mt-0.5">
                                             R$ {{ number_format($product->price, 2, ',', '.') }}
                                         </p>
                                         @if ($sbInsufficientStock)
                                             <p class="text-[10px] text-amber-500 mt-0.5">Máx. disponível: {{ $product->quantity }}</p>
                                         @endif
+                                        @if ($product->optionGroups->isNotEmpty())
+                                            <div class="flex flex-wrap gap-1 mt-1">
+                                                @foreach ($product->optionGroups as $optGroup)
+                                                    <span class="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full {{ $sbDisabled ? 'bg-gray-100 text-gray-400' : 'mc-bg-primary-light mc-text-primary' }}">
+                                                        {{ $optGroup->name }}
+                                                        <span class="opacity-60">({{ $optGroup->total_qty }})</span>
+                                                    </span>
+                                                @endforeach
+                                            </div>
+                                        @endif
                                     </div>
                                     {{-- Qty controls --}}
+                                    @php
+                                        $hasOptions = $product->optionGroups->isNotEmpty();
+                                        if ($hasOptions) {
+                                            // Seleções já existentes no carrinho: [groupId][optionId] => qty
+                                            $existingSels = [];
+                                            foreach ($cart[$product->id]['options'] ?? [] as $gId => $gData) {
+                                                foreach ($gData['selections'] ?? [] as $oId => $sel) {
+                                                    $existingSels[(int)$gId][(int)$oId] = (int)($sel['qty'] ?? 0);
+                                                }
+                                            }
+                                            $allFixed = $product->optionGroups->every(fn ($g) => $g->fixed);
+                                            $productData = [
+                                                'id'       => $product->id,
+                                                'name'     => $product->name,
+                                                'price'    => (float) $product->price,
+                                                'allFixed' => $allFixed,
+                                                'groups'   => $product->optionGroups->map(fn ($g) => [
+                                                    'id'        => $g->id,
+                                                    'name'      => $g->name,
+                                                    'total_qty' => $g->total_qty,
+                                                    'fixed'     => (bool) $g->fixed,
+                                                    'options'   => $g->options->map(fn ($o) => [
+                                                        'id'               => $o->id,
+                                                        'name'             => $o->name,
+                                                        'additional_price' => (float) $o->additional_price,
+                                                        // fixo: usa default_qty; variável: usa seleção existente no carrinho
+                                                        'prefilledQty'     => $g->fixed
+                                                            ? (int) $o->default_qty
+                                                            : ($existingSels[$g->id][$o->id] ?? 0),
+                                                    ])->toArray(),
+                                                ])->toArray(),
+                                            ];
+                                        } else {
+                                            $productData = null;
+                                            $allFixed    = false;
+                                        }
+                                    @endphp
                                     <div class="flex items-center gap-0.5 shrink-0">
                                         @if (! $sbOutOfStock)
-                                            @if ($sbCartQty > 0)
-                                                <button wire:click="updateCartQty({{ $product->id }}, {{ $sbCartQty - 1 }})"
-                                                    class="w-6 h-6 rounded-full mc-bg-primary-light mc-text-primary font-bold text-sm flex items-center justify-center">−</button>
-                                                <span class="w-5 text-center text-xs font-bold text-gray-800">{{ $sbCartQty }}</span>
+                                            @if ($hasOptions)
+                                                {{-- Produtos com opções: mesmos controles visuais dos produtos simples --}}
+                                                @if ($sbCartQty > 0)
+                                                    <button wire:click="updateCartQty('{{ $product->id }}', {{ $sbCartQty - 1 }})"
+                                                        class="w-6 h-6 rounded-full mc-bg-primary-light mc-text-primary font-bold text-sm flex items-center justify-center">−</button>
+                                                    <span class="w-5 text-center text-xs font-bold text-gray-800">{{ $sbCartQty }}</span>
+                                                @endif
+                                                <button
+                                                    @if (! $sbInsufficientStock)
+                                                        @click="addOrOpenOptionSelector(@js($productData), $wire)"
+                                                    @endif
+                                                    @disabled($sbInsufficientStock)
+                                                    class="w-6 h-6 rounded-full font-bold text-sm flex items-center justify-center transition-colors {{ $sbInsufficientStock ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white active:scale-90' }}"
+                                                >+</button>
+                                            @else
+                                                {{-- Produtos simples: controles de quantidade normais --}}
+                                                @if ($sbCartQty > 0)
+                                                    <button wire:click="updateCartQty('{{ $product->id }}', {{ $sbCartQty - 1 }})"
+                                                        class="w-6 h-6 rounded-full mc-bg-primary-light mc-text-primary font-bold text-sm flex items-center justify-center">−</button>
+                                                    <span class="w-5 text-center text-xs font-bold text-gray-800">{{ $sbCartQty }}</span>
+                                                @endif
+                                                <button
+                                                    @if (! $sbInsufficientStock)
+                                                        wire:click="addToCart({{ $product->id }})"
+                                                    @endif
+                                                    @disabled($sbInsufficientStock)
+                                                    class="w-6 h-6 rounded-full font-bold text-sm flex items-center justify-center transition-colors {{ $sbInsufficientStock ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white active:scale-90' }}"
+                                                >+</button>
                                             @endif
-                                            <button
-                                                @if (! $sbInsufficientStock) wire:click="addToCart({{ $product->id }})" @endif
-                                                @disabled($sbInsufficientStock)
-                                                class="w-6 h-6 rounded-full font-bold text-sm flex items-center justify-center transition-colors {{ $sbInsufficientStock ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white active:scale-90' }}"
-                                            >+</button>
                                         @else
                                             <div class="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center">
                                                 <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1720,6 +1916,106 @@
                     <p class="text-sm text-gray-500">Nenhum produto disponível.</p>
                 </div>
             @endforelse
+        </div>
+
+        {{-- ── Painel de seleção de opções ── --}}
+        <div
+            x-show="selectingProduct !== null"
+            x-transition:enter="transition ease-out duration-200"
+            x-transition:enter-start="translate-x-full opacity-0"
+            x-transition:enter-end="translate-x-0 opacity-100"
+            x-transition:leave="transition ease-in duration-150"
+            x-transition:leave-start="translate-x-0 opacity-100"
+            x-transition:leave-end="translate-x-full opacity-0"
+            class="absolute inset-0 z-50 bg-white flex flex-col overflow-hidden"
+            style="display:none"
+        >
+            {{-- Header --}}
+            <div class="shrink-0 px-4 py-3 flex items-center gap-3" style="background: linear-gradient(135deg, var(--mc-red-dark) 0%, var(--mc-red) 60%, var(--mc-red-light) 100%);">
+                <button @click="selectingProduct = null; pendingSelections = {}"
+                    class="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+                    </svg>
+                </button>
+                <div class="flex-1 min-w-0">
+                    <p class="text-white font-bold text-sm truncate" x-text="selectingProduct?.name"></p>
+                    <p class="text-white/70 text-xs" x-text="'R$ ' + (selectingProduct?.price?.toFixed(2) ?? '').replace('.', ',')"></p>
+                </div>
+            </div>
+
+            {{-- Grupos --}}
+            <div class="flex-1 overflow-y-auto px-4 py-4 space-y-5 mc-scrollbar">
+                <template x-if="selectingProduct">
+                    <div class="space-y-5">
+                        <template x-for="group in selectingProduct.groups" :key="group.id">
+                            <div>
+                                {{-- Cabeçalho do grupo --}}
+                                <div class="flex items-center justify-between mb-3">
+                                    <div>
+                                        <p class="font-bold text-sm text-gray-800" x-text="group.name"></p>
+                                        <p class="text-xs text-gray-400 mt-0.5">
+                                            Distribua exatamente <span class="font-semibold" x-text="group.total_qty"></span> unidades
+                                        </p>
+                                    </div>
+                                    <span class="text-xs font-bold px-2 py-1 rounded-full"
+                                        :class="getGroupTotal(group.id) === group.total_qty
+                                            ? 'bg-green-100 text-green-700'
+                                            : 'bg-gray-100 text-gray-500'">
+                                        <span x-text="getGroupTotal(group.id)"></span>/<span x-text="group.total_qty"></span>
+                                    </span>
+                                </div>
+
+                                {{-- Opções --}}
+                                <div class="space-y-1">
+                                    <template x-for="option in group.options" :key="option.id">
+                                        <div class="flex items-center gap-3 p-2.5 rounded-xl border border-gray-100 bg-gray-50">
+                                            <div class="flex-1 min-w-0">
+                                                <p class="text-sm font-medium text-gray-800" x-text="option.name"></p>
+                                                <p class="text-xs text-gray-400 mt-0.5"
+                                                    x-show="option.additional_price > 0"
+                                                    x-text="'+R$ ' + option.additional_price.toFixed(2).replace('.', ',')"></p>
+                                            </div>
+                                            <div class="flex items-center gap-1.5 shrink-0">
+                                                <template x-if="group.fixed">
+                                                    {{-- Fixo: apenas exibe a quantidade --}}
+                                                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 text-xs font-semibold">
+                                                        <span x-text="option.prefilledQty"></span> un.
+                                                    </span>
+                                                </template>
+                                                <template x-if="!group.fixed">
+                                                    {{-- Variável: controles de quantidade --}}
+                                                    <div class="flex items-center gap-1.5">
+                                                        <button
+                                                            @click="if ((pendingSelections[group.id]?.[option.id] || 0) > 0) pendingSelections[group.id][option.id]--"
+                                                            class="w-7 h-7 rounded-full mc-bg-primary-light mc-text-primary font-bold text-base flex items-center justify-center">−</button>
+                                                        <span class="w-7 text-center text-sm font-bold text-gray-800"
+                                                            x-text="pendingSelections[group.id]?.[option.id] || 0"></span>
+                                                        <button
+                                                            @click="if (!pendingSelections[group.id]) pendingSelections[group.id] = {}; pendingSelections[group.id][option.id] = (pendingSelections[group.id]?.[option.id] || 0) + 1"
+                                                            class="w-7 h-7 rounded-full mc-bg-primary text-white font-bold text-base flex items-center justify-center">+</button>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+            </div>
+
+            {{-- Footer --}}
+            <div class="shrink-0 border-t border-gray-100 px-4 py-3">
+                <button
+                    @click="confirmOptions($wire)"
+                    :disabled="!canConfirm()"
+                    class="mc-btn-primary w-full"
+                    :class="!canConfirm() ? 'opacity-50 cursor-not-allowed' : ''">
+                    Adicionar ao carrinho
+                </button>
+            </div>
         </div>
 
         {{-- Sidebar footer: go to cart --}}
@@ -1768,6 +2064,79 @@
             if (v.length <= 6) return v.slice(0,3) + '.' + v.slice(3);
             if (v.length <= 9) return v.slice(0,3) + '.' + v.slice(3,6) + '.' + v.slice(6);
             return v.slice(0,3) + '.' + v.slice(3,6) + '.' + v.slice(6,9) + '-' + v.slice(9);
+        },
+
+        openOptionSelector(product) {
+            this.selectingProduct = product;
+            this.pendingSelections = {};
+            product.groups.forEach(group => {
+                this.pendingSelections[group.id] = {};
+                group.options.forEach(opt => {
+                    // fixo: usa prefilledQty (= default_qty); variável: usa seleção anterior no carrinho
+                    this.pendingSelections[group.id][opt.id] = opt.prefilledQty || 0;
+                });
+            });
+        },
+
+        addOrOpenOptionSelector(product, wire) {
+            if (product.allFixed) {
+                // Monta seleções diretamente dos default_qty, sem abrir painel
+                const selections = {};
+                product.groups.forEach(group => {
+                    selections[group.id] = { group_name: group.name, total_qty: group.total_qty, selections: {} };
+                    group.options.forEach(opt => {
+                        if (opt.prefilledQty > 0) {
+                            selections[group.id].selections[opt.id] = {
+                                name: opt.name, qty: opt.prefilledQty, additional_price: opt.additional_price,
+                            };
+                        }
+                    });
+                });
+                wire.addToCartWithOptions(product.id, selections);
+            } else {
+                this.openOptionSelector(product);
+            }
+        },
+
+        getGroupTotal(groupId) {
+            const sels = this.pendingSelections[groupId] || {};
+            return Object.values(sels).reduce((sum, qty) => sum + (parseInt(qty) || 0), 0);
+        },
+
+        canConfirm() {
+            if (!this.selectingProduct) return false;
+            // Grupos fixos já estão preenchidos; apenas grupos variáveis precisam de validação
+            return this.selectingProduct.groups.every(
+                group => group.fixed || this.getGroupTotal(group.id) === group.total_qty
+            );
+        },
+
+        confirmOptions(wire) {
+            if (!this.canConfirm()) return;
+            const selections = {};
+            this.selectingProduct.groups.forEach(group => {
+                selections[group.id] = {
+                    group_name: group.name,
+                    total_qty: group.total_qty,
+                    selections: {},
+                };
+                group.options.forEach(opt => {
+                    // fixo: usa prefilledQty; variável: usa o que o cliente escolheu
+                    const qty = group.fixed
+                        ? (opt.prefilledQty || 0)
+                        : (parseInt(this.pendingSelections[group.id]?.[opt.id]) || 0);
+                    if (qty > 0) {
+                        selections[group.id].selections[opt.id] = {
+                            name: opt.name,
+                            qty: qty,
+                            additional_price: opt.additional_price,
+                        };
+                    }
+                });
+            });
+            wire.addToCartWithOptions(this.selectingProduct.id, selections);
+            this.selectingProduct = null;
+            this.pendingSelections = {};
         },
 
         async lookupCep(cep, wire) {

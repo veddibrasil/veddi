@@ -11,17 +11,17 @@ uses(RefreshDatabase::class);
 function makeCompany(): Company
 {
     return Company::create([
-        'name'         => 'Empresa Teste ' . uniqid(),
-        'slug'         => 'empresa-' . uniqid(),
+        'name' => 'Empresa Teste '.uniqid(),
+        'slug' => 'empresa-'.uniqid(),
         'order_prefix' => 'TST',
-        'active'       => true,
+        'active' => true,
     ]);
 }
 
 function makeUserWithRole(string $role): array
 {
     $company = makeCompany();
-    $user    = User::factory()->create();
+    $user = User::factory()->create();
     $user->companies()->attach($company->id, ['role' => $role]);
 
     return [$company, $user];
@@ -47,7 +47,7 @@ test('visitante é redirecionado para login ao acessar admin settings', function
 
 test('usuário sem papel na empresa recebe 403 no admin dashboard', function () {
     $company = makeCompany();
-    $user    = User::factory()->create();
+    $user = User::factory()->create();
     // Sem attach — usuário não tem papel nesta empresa
 
     // A empresa será resolvida via fallback "primeira empresa ativa"

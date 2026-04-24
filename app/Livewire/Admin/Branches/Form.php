@@ -11,19 +11,28 @@ use Livewire\Component;
 class Form extends Component
 {
     public ?Branch $branch = null;
-    public bool $isEditing  = false;
 
-    public string $name      = '';
-    public string $address   = '';
-    public string $city      = '';
-    public string $phone     = '';
-    public bool   $active    = true;
-    public string $opens_at  = '08:00';
+    public bool $isEditing = false;
+
+    public string $name = '';
+
+    public string $address = '';
+
+    public string $city = '';
+
+    public string $phone = '';
+
+    public bool $active = true;
+
+    public string $opens_at = '08:00';
+
     public string $closes_at = '20:00';
 
     public bool $needsCompanySelect = false;
-    public bool $canSave            = false;
-    public ?int $company_id         = null;
+
+    public bool $canSave = false;
+
+    public ?int $company_id = null;
 
     protected function rules(): array
     {
@@ -33,27 +42,27 @@ class Form extends Component
 
         return [
             'company_id' => $companyRule,
-            'name'       => ['required', 'string', 'max:100'],
-            'address'    => ['required', 'string', 'max:255'],
-            'city'       => ['required', 'string', 'max:100'],
-            'phone'      => ['nullable', 'regex:/^\(?\d{2}\)?[\s\-]?\d{4,5}[\-]?\d{4}$/'],
-            'active'     => ['boolean'],
-            'opens_at'   => ['required', 'date_format:H:i'],
-            'closes_at'  => ['required', 'date_format:H:i'],
+            'name' => ['required', 'string', 'max:100'],
+            'address' => ['required', 'string', 'max:255'],
+            'city' => ['required', 'string', 'max:100'],
+            'phone' => ['nullable', 'regex:/^\(?\d{2}\)?[\s\-]?\d{4,5}[\-]?\d{4}$/'],
+            'active' => ['boolean'],
+            'opens_at' => ['required', 'date_format:H:i'],
+            'closes_at' => ['required', 'date_format:H:i'],
         ];
     }
 
     protected function messages(): array
     {
         return [
-            'company_id.required'  => 'Selecione uma empresa.',
-            'company_id.exists'    => 'Empresa inválida.',
-            'name.required'        => 'Informe o nome da filial.',
-            'address.required'     => 'Informe o endereço.',
-            'city.required'        => 'Informe a cidade.',
-            'phone.regex'          => 'Telefone inválido.',
-            'opens_at.required'    => 'Informe o horário de abertura.',
-            'closes_at.required'   => 'Informe o horário de fechamento.',
+            'company_id.required' => 'Selecione uma empresa.',
+            'company_id.exists' => 'Empresa inválida.',
+            'name.required' => 'Informe o nome da filial.',
+            'address.required' => 'Informe o endereço.',
+            'city.required' => 'Informe a cidade.',
+            'phone.regex' => 'Telefone inválido.',
+            'opens_at.required' => 'Informe o horário de abertura.',
+            'closes_at.required' => 'Informe o horário de fechamento.',
         ];
     }
 
@@ -82,7 +91,7 @@ class Form extends Component
         }
 
         if ($branch?->exists) {
-            $this->branch    = $branch;
+            $this->branch = $branch;
             $this->isEditing = true;
             $this->company_id = $branch->company_id;
             $this->fill($branch->only('name', 'address', 'city', 'phone', 'active', 'opens_at', 'closes_at'));

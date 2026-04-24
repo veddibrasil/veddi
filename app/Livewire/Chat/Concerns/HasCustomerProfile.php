@@ -14,16 +14,17 @@ trait HasCustomerProfile
         $this->phone = preg_replace('/\D/', '', $this->phone);
         $this->validate($this->rules(), $this->messages());
 
-        $service  = app(CustomerService::class);
+        $service = app(CustomerService::class);
         $customer = $service->findByPhone($this->phone);
 
         if ($customer) {
             $this->fillCustomerData($customer);
             Log::channel('chat')->info('Cliente identificado pelo telefone', ['customer_id' => $customer->id, 'phone' => $this->phone]);
             $this->addMessage('user', $this->phone);
-            $nextStep = !empty($this->cart) ? 'CHECKOUT_COUPON' : 'MENU_BROWSE';
+            $nextStep = ! empty($this->cart) ? 'CHECKOUT_COUPON' : 'MENU_BROWSE';
             $this->addMessage('bot', "Que bom te ver de volta, {$customer->name}! Continuando com seu pedido...");
             $this->transitionTo($nextStep);
+
             return;
         }
 
@@ -33,9 +34,10 @@ trait HasCustomerProfile
             $customer = $service->createFromGlobal($this->phone, $existing);
             $this->fillCustomerData($customer);
             $this->addMessage('user', $this->phone);
-            $nextStep = !empty($this->cart) ? 'CHECKOUT_COUPON' : 'MENU_BROWSE';
+            $nextStep = ! empty($this->cart) ? 'CHECKOUT_COUPON' : 'MENU_BROWSE';
             $this->addMessage('bot', "Que bom te ver de novo, {$customer->name}! Continuando com seu pedido...");
             $this->transitionTo($nextStep);
+
             return;
         }
 
@@ -70,14 +72,14 @@ trait HasCustomerProfile
         $customer = Customer::updateOrCreate(
             ['phone' => $normalized],
             [
-                'name'         => $this->name,
-                'email'        => $this->email,
-                'address'      => $this->address,
-                'complement'   => $this->complement,
+                'name' => $this->name,
+                'email' => $this->email,
+                'address' => $this->address,
+                'complement' => $this->complement,
                 'neighborhood' => $this->neighborhood,
-                'city'         => $this->city,
-                'number'       => $this->number,
-                'cep'          => preg_replace('/\D/', '', $this->cep),
+                'city' => $this->city,
+                'number' => $this->number,
+                'cep' => preg_replace('/\D/', '', $this->cep),
             ]
         );
 
@@ -90,8 +92,8 @@ trait HasCustomerProfile
         }
         $addressSummary .= " — {$this->neighborhood}, {$this->number}, {$this->city} — CEP {$this->cep}";
         $this->addMessage('user', $addressSummary);
-        $nextStep = !empty($this->cart) ? 'CHECKOUT_COUPON' : 'MENU_BROWSE';
-        $this->addMessage('bot', "Cadastro criado com sucesso! Continuando com seu pedido...");
+        $nextStep = ! empty($this->cart) ? 'CHECKOUT_COUPON' : 'MENU_BROWSE';
+        $this->addMessage('bot', 'Cadastro criado com sucesso! Continuando com seu pedido...');
         $this->transitionTo($nextStep);
     }
 
@@ -106,16 +108,16 @@ trait HasCustomerProfile
         $this->validate($this->rules(), $this->messages());
 
         app(CustomerService::class)->updateProfile($this->customerId, [
-            'name'         => $this->name,
-            'address'      => $this->address,
-            'complement'   => $this->complement,
+            'name' => $this->name,
+            'address' => $this->address,
+            'complement' => $this->complement,
             'neighborhood' => $this->neighborhood,
-            'number'       => $this->number,
-            'city'         => $this->city,
-            'cep'          => $this->cep,
+            'number' => $this->number,
+            'city' => $this->city,
+            'cep' => $this->cep,
         ]);
 
-        $this->addMessage('bot', "Cadastro atualizado com sucesso!");
+        $this->addMessage('bot', 'Cadastro atualizado com sucesso!');
         $this->transitionTo($this->previousStep ?? 'BRANCH_SELECT');
         $this->previousStep = null;
     }
@@ -136,6 +138,7 @@ trait HasCustomerProfile
 
         if (! $branch->isOpen()) {
             $this->addMessage('bot', "A filial {$branch->name} está fechada no momento. Horário: {$branch->opens_at} às {$branch->closes_at}. Escolha outra filial ou tente mais tarde.");
+
             return;
         }
 
@@ -148,15 +151,15 @@ trait HasCustomerProfile
 
     private function fillCustomerData(Customer $customer): void
     {
-        $this->customerId   = $customer->id;
-        $this->name         = $customer->name;
-        $this->email        = $customer->email ?? '';
-        $this->address      = $customer->address ?? '';
-        $this->complement   = $customer->complement ?? '';
+        $this->customerId = $customer->id;
+        $this->name = $customer->name;
+        $this->email = $customer->email ?? '';
+        $this->address = $customer->address ?? '';
+        $this->complement = $customer->complement ?? '';
         $this->neighborhood = $customer->neighborhood ?? '';
-        $this->number       = $customer->number ?? '';
-        $this->city         = $customer->city ?? '';
-        $this->cep          = $customer->cep ?? '';
-        $this->taxId        = $customer->tax_id ?? '';
+        $this->number = $customer->number ?? '';
+        $this->city = $customer->city ?? '';
+        $this->cep = $customer->cep ?? '';
+        $this->taxId = $customer->tax_id ?? '';
     }
 }

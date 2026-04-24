@@ -41,7 +41,7 @@ Schedule::call(function () {
         // recordFailure() já foi chamado dentro de AsaasService::request()
     }
 })
-->name('asaas-health-probe') 
-->everyFiveMinutes()
-->withoutOverlapping()
-->onOneServer();
+    ->name('asaas-health-probe')
+    ->everyFiveMinutes()
+    ->withoutOverlapping()
+    ->onOneServer();

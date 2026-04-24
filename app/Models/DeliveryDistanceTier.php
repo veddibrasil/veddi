@@ -17,7 +17,7 @@ class DeliveryDistanceTier extends Model
     protected $casts = [
         'min_km' => 'float',
         'max_km' => 'float',
-        'fee'    => 'float',
+        'fee' => 'float',
     ];
 
     public function deliverySetting(): BelongsTo

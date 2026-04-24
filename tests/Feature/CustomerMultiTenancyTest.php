@@ -9,10 +9,10 @@ uses(RefreshDatabase::class);
 function createCompany(string $suffix = ''): Company
 {
     return Company::create([
-        'name'         => "Empresa {$suffix}",
-        'slug'         => "empresa-{$suffix}-" . uniqid(),
+        'name' => "Empresa {$suffix}",
+        'slug' => "empresa-{$suffix}-".uniqid(),
         'order_prefix' => 'TST',
-        'active'       => true,
+        'active' => true,
     ]);
 }
 
@@ -20,9 +20,9 @@ function createCustomerFor(Company $company, string $phone, string $emailSuffix 
 {
     return Customer::withoutGlobalScopes()->create([
         'company_id' => $company->id,
-        'name'       => 'Cliente',
-        'phone'      => $phone,
-        'email'      => "cliente{$emailSuffix}@teste.com",
+        'name' => 'Cliente',
+        'phone' => $phone,
+        'email' => "cliente{$emailSuffix}@teste.com",
     ]);
 }
 

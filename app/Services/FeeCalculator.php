@@ -26,10 +26,10 @@ class FeeCalculator
         }
 
         if ($feePercentage > 0) {
-            $fee      = round($productBase * $feePercentage, 2);
+            $fee = round($productBase * $feePercentage, 2);
             $netValue = round($orderTotal - $fee, 2);
         } else {
-            $fee      = 0.0;
+            $fee = 0.0;
             $netValue = $orderTotal;
         }
 

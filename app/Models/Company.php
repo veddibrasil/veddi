@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
-use App\Models\Subscription;
 
 class Company extends Model
 {
@@ -60,17 +59,22 @@ class Company extends Model
         'card_fee_absorbed_by_company',
     ];
 
+    protected $attributes = [
+        'pix_fee_absorbed_by_company' => true,
+        'card_fee_absorbed_by_company' => true,
+    ];
+
     protected $casts = [
-        'active'                       => 'boolean',
-        'pix_fee_absorbed_by_company'  => 'boolean',
+        'active' => 'boolean',
+        'pix_fee_absorbed_by_company' => 'boolean',
         'card_fee_absorbed_by_company' => 'boolean',
-        'chat_highlights'   => 'array',
-        'plan'              => Plan::class,
-        'pending_plan'      => Plan::class,
-        'status'            => 'string',
+        'chat_highlights' => 'array',
+        'plan' => Plan::class,
+        'pending_plan' => Plan::class,
+        'status' => 'string',
         'setup_fee_paid_at' => 'datetime',
         'terms_accepted_at' => 'datetime',
-        'overdue_since'     => 'date',
+        'overdue_since' => 'date',
     ];
 
     public function getLogoUrlAttribute(): ?string
@@ -79,7 +83,8 @@ class Company extends Model
             return null;
         }
         $base = rtrim(config('filesystems.disks.s3.url', ''), '/');
-        return $base . '/' . ltrim($this->logo_path, '/');
+
+        return $base.'/'.ltrim($this->logo_path, '/');
     }
 
     public function getFaviconUrlAttribute(): ?string
@@ -88,7 +93,8 @@ class Company extends Model
             return null;
         }
         $base = rtrim(config('filesystems.disks.s3.url', ''), '/');
-        return $base . '/' . ltrim($this->favicon_path, '/');
+
+        return $base.'/'.ltrim($this->favicon_path, '/');
     }
 
     public function branches(): HasMany
@@ -146,6 +152,11 @@ class Company extends Model
     public function paymentSettings(): HasOne
     {
         return $this->hasOne(PaymentSettings::class);
+    }
+
+    public function whatsappSetting(): HasOne
+    {
+        return $this->hasOne(WhatsAppSetting::class);
     }
 
     public function walletBalance(): float

@@ -1,7 +1,9 @@
 <?php
 
-it('returns a successful response', function () {
+uses(\Illuminate\Foundation\Testing\RefreshDatabase::class);
+
+it('root redirects to marketing site', function () {
     $response = $this->get('/');
 
-    $response->assertStatus(200);
+    $response->assertRedirect();
 });

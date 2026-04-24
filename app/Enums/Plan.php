@@ -4,19 +4,19 @@ namespace App\Enums;
 
 enum Plan: string
 {
-    case Free     = 'free';
+    case Free = 'free';
     case Essencial = 'essencial';
-    case Pro      = 'pro';
+    case Pro = 'pro';
 
     /**
      * Human-readable label for this plan.
      */
     public function label(): string
     {
-        return match($this) {
-            Plan::Free      => 'Grátis',
+        return match ($this) {
+            Plan::Free => 'Grátis',
             Plan::Essencial => 'Essencial',
-            Plan::Pro       => 'PRO',
+            Plan::Pro => 'PRO',
         };
     }
 

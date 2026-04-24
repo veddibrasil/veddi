@@ -50,8 +50,8 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
-            'password'          => 'hashed',
-            'is_super_admin'    => 'boolean',
+            'password' => 'hashed',
+            'is_super_admin' => 'boolean',
         ];
     }
 
@@ -70,12 +70,14 @@ class User extends Authenticatable
     public function roleForCompany(Company $company): ?string
     {
         $pivot = $this->companies()->where('companies.id', $company->id)->first()?->pivot;
+
         return $pivot?->role;
     }
 
     public function branchIdForCompany(Company $company): ?int
     {
         $pivot = $this->companies()->where('companies.id', $company->id)->first()?->pivot;
+
         return $pivot?->branch_id;
     }
 
@@ -105,8 +107,8 @@ class User extends Authenticatable
             return false;
         }
 
-        $cacheKey  = "user:{$this->id}:permissions:company:{$company->id}";
-        $userId    = $this->id;
+        $cacheKey = "user:{$this->id}:permissions:company:{$company->id}";
+        $userId = $this->id;
         $companyId = $company->id;
 
         // self::clearPermissionCache($userId, $companyId);

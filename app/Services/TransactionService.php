@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Contracts\TransactionServiceInterface;
 use App\Models\Company;
 use App\Models\CompanyTransaction;
 use App\Models\Order;
@@ -10,7 +11,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
-class TransactionService
+class TransactionService implements TransactionServiceInterface
 {
     /**
      * Cria uma CompanyTransaction quando um pagamento é confirmado.
@@ -18,61 +19,61 @@ class TransactionService
      */
     public function createForPayment(Order $order, Payment $payment): CompanyTransaction
     {
-        $company     = Company::find($order->company_id);
-        $type        = $this->resolvePaymentType($order, $payment);
+        $company = Company::find($order->company_id);
+        $type = $this->resolvePaymentType($order, $payment);
         $paymentDate = now()->toDateString();
         $releaseDate = $this->resolveReleaseDate($type, $paymentDate, $payment->anticipation_days);
 
-        $feeRate  = $company->plan?->feePercentage() ?? 0.0;
+        $feeRate = $company->plan?->feePercentage() ?? 0.0;
 
         // Para cartão: value = valor cobrado do cliente; net_value = valor original (o que o lojista recebe)
         // Para PIX: value = amount normal; PIX fee é deduzida se absorvida pela empresa
         if ($type === 'cartao' && $payment->original_amount !== null) {
-            $value           = (float) $payment->amount;
+            $value = (float) $payment->amount;
             $cardFeeAbsorbed = $company->card_fee_absorbed_by_company ?? false;
             $effectiveAmount = ($cardFeeAbsorbed && $payment->card_fee)
                 ? (float) $payment->original_amount - (float) $payment->card_fee
                 : (float) $payment->original_amount;
             $netValue = round($effectiveAmount * (1 - $feeRate), 2);
         } else {
-            $value  = (float) $payment->amount;
+            $value = (float) $payment->amount;
             $pixFee = ($type === 'pix' && ($company->pix_fee_absorbed_by_company ?? false))
-                ? (float) config('payments.pix_payment_fee', 1.99)
+                ? (float) config('payments.pix_payment_fee', 0.50)
                 : 0.0;
             $netValue = round(($value - $pixFee) * (1 - $feeRate), 2);
         }
 
         return DB::transaction(function () use ($order, $payment, $company, $type, $value, $netValue, $paymentDate, $releaseDate) {
             $transaction = CompanyTransaction::withoutGlobalScopes()->create([
-                'company_id'   => $company->id,
-                'order_id'     => $order->id,
-                'payment_id'   => $payment->id,
-                'type'         => $type,
-                'status'       => 'confirmed',
-                'value'        => $value,
-                'net_value'    => $netValue,
+                'company_id' => $company->id,
+                'order_id' => $order->id,
+                'payment_id' => $payment->id,
+                'type' => $type,
+                'status' => 'confirmed',
+                'value' => $value,
+                'net_value' => $netValue,
                 'payment_date' => $paymentDate,
                 'release_date' => $releaseDate,
-                'description'  => "Pedido #{$order->order_number}",
-                'metadata'     => [
-                    'asaas_payment_id'  => $payment->asaas_payment_id,
-                    'payment_method'    => $order->payment_method,
-                    'installments'      => $payment->installments,
+                'description' => "Pedido #{$order->order_number}",
+                'metadata' => [
+                    'asaas_payment_id' => $payment->asaas_payment_id,
+                    'payment_method' => $order->payment_method,
+                    'installments' => $payment->installments,
                     'anticipation_days' => $payment->anticipation_days,
-                    'card_fee'          => $payment->card_fee,
-                    'card_fee_rate'     => $payment->card_fee_rate,
-                    'original_amount'   => $payment->original_amount,
+                    'card_fee' => $payment->card_fee,
+                    'card_fee_rate' => $payment->card_fee_rate,
+                    'original_amount' => $payment->original_amount,
                 ],
             ]);
 
             Log::channel('payments')->info('CompanyTransaction criada', [
                 'transaction_id' => $transaction->id,
-                'company_id'     => $company->id,
-                'order_id'       => $order->id,
-                'type'           => $type,
-                'value'          => $value,
-                'net_value'      => $netValue,
-                'release_date'   => $releaseDate,
+                'company_id' => $company->id,
+                'order_id' => $order->id,
+                'type' => $type,
+                'value' => $value,
+                'net_value' => $netValue,
+                'release_date' => $releaseDate,
             ]);
 
             return $transaction;
@@ -87,15 +88,15 @@ class TransactionService
     {
         $method = strtolower($order->payment_method ?? '');
 
-        return match(true) {
-            str_contains($method, 'pix')                                    => 'pix',
+        return match (true) {
+            str_contains($method, 'pix') => 'pix',
             str_contains($method, 'credit'),
             str_contains($method, 'cartao'),
-            str_contains($method, 'card')                                   => 'cartao',
+            str_contains($method, 'card') => 'cartao',
             str_contains($method, 'boleto'),
             str_contains($method, 'bank_slip'),
-            str_contains($method, 'bankslip')                               => 'boleto',
-            default                                                          => 'pix',
+            str_contains($method, 'bankslip') => 'boleto',
+            default => 'pix',
         };
     }
 
@@ -105,10 +106,10 @@ class TransactionService
      */
     private function resolveReleaseDate(string $type, string $paymentDate, ?int $anticipationDays = null): string
     {
-        $days = match($type) {
+        $days = match ($type) {
             'cartao' => $anticipationDays ?? (int) config('payments.release_days.cartao', 15),
-            'pix'    => (int) config('payments.release_days.pix', 1),
-            default  => (int) config('payments.release_days.boleto', 2),
+            'pix' => (int) config('payments.release_days.pix', 1),
+            default => (int) config('payments.release_days.boleto', 2),
         };
 
         return Carbon::parse($paymentDate)->addDays($days)->toDateString();

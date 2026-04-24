@@ -2,14 +2,14 @@
 
 namespace App\Jobs;
 
-use App\Exceptions\AsaasCircuitOpenException;
+use App\Models\CompanyTransaction;
 use App\Models\CompanyWalletEntry;
 use App\Models\CompanyWithdrawal;
-use App\Services\AsaasService;
+use App\Services\StarkService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use RuntimeException;
 
 class ProcessWithdrawal implements ShouldQueue
 {
@@ -26,18 +26,18 @@ class ProcessWithdrawal implements ShouldQueue
         $this->onQueue('default');
     }
 
-    public function handle(AsaasService $asaas): void
+    public function handle(StarkService $stark): void
     {
         $withdrawal = CompanyWithdrawal::findOrFail($this->withdrawalId);
 
-        Log::channel('payments')->info('Processando saque', [
+        Log::channel('payments')->info('Processando saque via Stark Bank', [
             'withdrawal_id' => $withdrawal->id,
-            'company_id'    => $withdrawal->company_id,
-            'amount'        => $withdrawal->amount,
-            'payout_type'   => $withdrawal->payout_type,
+            'company_id' => $withdrawal->company_id,
+            'amount' => $withdrawal->amount,
+            'payout_type' => $withdrawal->payout_type,
         ]);
 
-        // Verify available balance
+        // Verificar saldo disponível
         $balance = CompanyWalletEntry::balanceFor($withdrawal->company_id);
 
         if ($balance < (float) $withdrawal->amount) {
@@ -45,9 +45,9 @@ class ProcessWithdrawal implements ShouldQueue
 
             Log::channel('payments')->warning('Saldo insuficiente para saque', [
                 'withdrawal_id' => $withdrawal->id,
-                'company_id'    => $withdrawal->company_id,
-                'balance'       => $balance,
-                'requested'     => $withdrawal->amount,
+                'company_id' => $withdrawal->company_id,
+                'balance' => $balance,
+                'requested' => $withdrawal->amount,
             ]);
 
             return;
@@ -56,92 +56,110 @@ class ProcessWithdrawal implements ShouldQueue
         $withdrawal->update(['status' => 'processing']);
 
         try {
-            $transferData = $this->buildTransferData($withdrawal);
-            $transfer     = $asaas->createTransfer($transferData);
+            $transferData = $this->buildStarkTransferData($withdrawal);
+            $transfer = $stark->createTransfer($transferData);
 
-            $withdrawal->update([
-                'status'           => 'done',
-                'asaas_transfer_id' => $transfer['id'] ?? null,
-                'asaas_response'   => $transfer,
-                'processed_at'     => now(),
-            ]);
+            DB::transaction(function () use ($withdrawal, $transfer) {
+                CompanyTransaction::withoutGlobalScopes()
+                    ->where('withdrawal_id', $withdrawal->id)
+                    ->lockForUpdate()
+                    ->update([
+                        'withdrawn' => true,
+                        'withdrawn_at' => now(),
+                        'status' => 'withdrawn',
+                        'updated_at' => now(),
+                    ]);
 
-            // Debit the withdrawal from the ledger
-            CompanyWalletEntry::create([
-                'company_id'  => $withdrawal->company_id,
-                'order_id'    => null,
-                'type'        => 'withdrawal',
-                'amount'      => $withdrawal->amount,
-                'description' => 'Saque #' . $withdrawal->id,
-                'reference'   => $transfer['id'] ?? (string) $withdrawal->id,
-            ]);
+                $withdrawal->update([
+                    'status' => 'done',
+                    'stark_transfer_id' => $transfer['id'] ?? null,
+                    'stark_response' => $transfer,
+                    'processed_at' => now(),
+                ]);
 
-            Log::channel('payments')->info('Saque processado com sucesso', [
-                'withdrawal_id'    => $withdrawal->id,
-                'asaas_transfer_id' => $transfer['id'] ?? null,
-                'amount'           => $withdrawal->amount,
-            ]);
-        } catch (AsaasCircuitOpenException $e) {
-            $withdrawal->update(['status' => 'pending']);
-            Log::channel('payments')->warning('Circuit aberto — ProcessWithdrawal adiado 15 min', [
+                // O lançamento definitivo só acontece depois da confirmação do repasse.
+                CompanyWalletEntry::create([
+                    'company_id' => $withdrawal->company_id,
+                    'order_id' => null,
+                    'type' => 'withdrawal',
+                    'amount' => $withdrawal->amount,
+                    'description' => 'Saque #'.$withdrawal->id,
+                    'reference' => $transfer['id'] ?? (string) $withdrawal->id,
+                ]);
+            });
+
+            Log::channel('payments')->info('Saque processado com sucesso via Stark Bank', [
                 'withdrawal_id' => $withdrawal->id,
+                'stark_transfer_id' => $transfer['id'] ?? null,
+                'amount' => $withdrawal->amount,
             ]);
-            $this->release(900);
-            return;
         } catch (\Throwable $e) {
-            $withdrawal->update(['status' => 'failed']);
+            DB::transaction(function () use ($withdrawal) {
+                CompanyTransaction::withoutGlobalScopes()
+                    ->where('withdrawal_id', $withdrawal->id)
+                    ->lockForUpdate()
+                    ->update([
+                        'withdrawal_id' => null,
+                        'updated_at' => now(),
+                    ]);
 
-            Log::channel('discord')->error('Falha ao processar saque', [
-                'type'       => 'payments',
+                $withdrawal->update(['status' => 'failed']);
+            });
+
+            Log::channel('discord')->error('Falha ao processar saque via Stark Bank', [
+                'type' => 'payments',
                 'withdrawal_id' => $withdrawal->id,
-                'error'         => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
 
             throw $e;
         }
     }
 
-    private function buildTransferData(CompanyWithdrawal $withdrawal): array
+    private function buildStarkTransferData(CompanyWithdrawal $withdrawal): array
     {
         $base = [
-            'value'         => (float) $withdrawal->amount,
-            'operationType' => $withdrawal->payout_type,
-            'description'   => 'Saque #' . $withdrawal->id,
+            'amount' => (float) $withdrawal->amount,
+            'owner_name' => $withdrawal->bank_owner_name ?? '',
+            'owner_cpf_cnpj' => $withdrawal->bank_owner_cpf_cnpj ?? '',
+            'external_id' => 'withdrawal-'.$withdrawal->id,
         ];
 
         if ($withdrawal->payout_type === 'PIX') {
             return array_merge($base, [
-                'pixAddressKey'     => $withdrawal->pix_key,
-                'pixAddressKeyType' => $withdrawal->pix_key_type,
+                'pix_key' => $withdrawal->pix_key,
+                'pix_key_type' => $withdrawal->pix_key_type,
             ]);
         }
 
-        // TED
+        // TED / transferência bancária
         return array_merge($base, [
-            'bankAccount' => [
-                'bank'            => ['code' => $withdrawal->bank_code],
-                'accountName'     => $withdrawal->bank_owner_name,
-                'ownerName'       => $withdrawal->bank_owner_name,
-                'cpfCnpj'         => preg_replace('/\D/', '', $withdrawal->bank_owner_cpf_cnpj ?? ''),
-                'agency'          => $withdrawal->bank_agency,
-                'account'         => $withdrawal->bank_account,
-                'accountDigit'    => $withdrawal->bank_account_digit,
-                'bankAccountType' => $withdrawal->bank_account_type,
-            ],
+            'bank_code' => $withdrawal->bank_code,
+            'bank_agency' => $withdrawal->bank_agency,
+            'bank_account' => $withdrawal->bank_account,
+            'account_type' => $withdrawal->bank_account_type ?? 'checking',
+            'account_digit' => $withdrawal->bank_account_digit,
         ]);
     }
 
     public function failed(\Throwable $exception): void
     {
         Log::channel('discord')->error('Job de saque falhou definitivamente', [
-            'type'       => 'payments',
+            'type' => 'payments',
             'withdrawal_id' => $this->withdrawalId,
-            'error'         => $exception->getMessage(),
-            
+            'error' => $exception->getMessage(),
         ]);
 
         CompanyWithdrawal::where('id', $this->withdrawalId)
             ->where('status', 'processing')
             ->update(['status' => 'failed']);
+
+        CompanyTransaction::withoutGlobalScopes()
+            ->where('withdrawal_id', $this->withdrawalId)
+            ->where('withdrawn', false)
+            ->update([
+                'withdrawal_id' => null,
+                'updated_at' => now(),
+            ]);
     }
 }

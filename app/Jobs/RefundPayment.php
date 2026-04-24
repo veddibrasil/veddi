@@ -2,11 +2,11 @@
 
 namespace App\Jobs;
 
+use App\Contracts\AsaasServiceInterface;
+use App\Contracts\WalletServiceInterface;
 use App\Events\OrderStatusUpdated;
 use App\Exceptions\AsaasCircuitOpenException;
 use App\Models\Order;
-use App\Services\AsaasService;
-use App\Services\WalletService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -33,7 +33,7 @@ class RefundPayment implements ShouldQueue
 
         if (! $payment || $payment->status !== 'paid') {
             Log::channel('payments')->info('Reembolso ignorado: pagamento não está pago', [
-                'order_id'       => $this->order->id,
+                'order_id' => $this->order->id,
                 'payment_status' => $payment?->status,
             ]);
 
@@ -42,7 +42,7 @@ class RefundPayment implements ShouldQueue
 
         if (str_starts_with((string) $payment->asaas_payment_id, 'sim_')) {
             Log::channel('payments')->info('Reembolso simulado (ambiente de desenvolvimento)', [
-                'order_id'         => $this->order->id,
+                'order_id' => $this->order->id,
                 'asaas_payment_id' => $payment->asaas_payment_id,
             ]);
 
@@ -54,13 +54,14 @@ class RefundPayment implements ShouldQueue
         }
 
         try {
-            $result = app(AsaasService::class)->refundPayment($payment->asaas_payment_id);
+            $result = app(AsaasServiceInterface::class)->refundPayment($payment->asaas_payment_id);
         } catch (AsaasCircuitOpenException $e) {
             Log::channel('payments')->warning('Circuit aberto — RefundPayment adiado 15 min', [
-                'order_id'         => $this->order->id,
+                'order_id' => $this->order->id,
                 'asaas_payment_id' => $payment->asaas_payment_id,
             ]);
             $this->release(900);
+
             return;
         }
 
@@ -68,10 +69,10 @@ class RefundPayment implements ShouldQueue
 
         if (! in_array($result['status'] ?? '', $refundStatuses)) {
             Log::channel('discord')->error('Resposta inesperada do Asaas ao reembolsar', [
-                'type'       => 'payments',
-                'order_id'         => $this->order->id,
+                'type' => 'payments',
+                'order_id' => $this->order->id,
                 'asaas_payment_id' => $payment->asaas_payment_id,
-                'result'           => $result,
+                'result' => $result,
             ]);
 
             return;
@@ -80,12 +81,12 @@ class RefundPayment implements ShouldQueue
         $payment->update(['status' => 'refunded']);
         $this->order->update(['status' => 'refunded']);
 
-        app(WalletService::class)->debitForRefund($this->order, $payment);
+        app(WalletServiceInterface::class)->debitForRefund($this->order, $payment);
 
         OrderStatusUpdated::dispatch($this->order);
 
         Log::channel('payments')->info('Reembolso processado com sucesso', [
-            'order_id'         => $this->order->id,
+            'order_id' => $this->order->id,
             'asaas_payment_id' => $payment->asaas_payment_id,
         ]);
     }

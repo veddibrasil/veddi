@@ -7,6 +7,7 @@ use Livewire\Component;
 class Notifications extends Component
 {
     public int $companyId = 0;
+
     public array $notifications = [];
 
     public function mount(): void
@@ -30,12 +31,12 @@ class Notifications extends Component
     public function onNewOrder(array $data): void
     {
         $this->notifications[] = [
-            'id'            => uniqid('notif_'),
-            'order_id'      => $data['order_id'],
-            'order_number'  => $data['order_number'],
+            'id' => uniqid('notif_'),
+            'order_id' => $data['order_id'],
+            'order_number' => $data['order_number'],
             'customer_name' => $data['customer_name'],
-            'total'         => $data['total'],
-            'created_at'    => now()->format('H:i'),
+            'total' => $data['total'],
+            'created_at' => now()->format('H:i'),
         ];
 
         if (count($this->notifications) > 5) {

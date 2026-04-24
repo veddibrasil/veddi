@@ -31,12 +31,12 @@ class ReportPdfController extends Controller
             : Order::with(['customer', 'branch']);
 
         $orders = $query
-            ->when($request->date_start,     fn ($q) => $q->whereDate('created_at', '>=', $request->date_start))
-            ->when($request->date_end,       fn ($q) => $q->whereDate('created_at', '<=', $request->date_end))
-            ->when($request->status,         fn ($q) => $q->where('status', $request->status))
-            ->when($request->branch_id,      fn ($q) => $q->where('branch_id', $request->branch_id))
+            ->when($request->date_start, fn ($q) => $q->whereDate('created_at', '>=', $request->date_start))
+            ->when($request->date_end, fn ($q) => $q->whereDate('created_at', '<=', $request->date_end))
+            ->when($request->status, fn ($q) => $q->where('status', $request->status))
+            ->when($request->branch_id, fn ($q) => $q->where('branch_id', $request->branch_id))
             ->when($request->payment_method, fn ($q) => $q->where('payment_method', $request->payment_method))
-            ->when($request->order_type,     fn ($q) => $q->where('order_type', $request->order_type))
+            ->when($request->order_type, fn ($q) => $q->where('order_type', $request->order_type))
             ->latest()
             ->get();
 
@@ -45,6 +45,6 @@ class ReportPdfController extends Controller
         $pdf = Pdf::loadView('livewire.admin.orders.report-pdf', compact('orders', 'company'))
             ->setPaper('a4', 'landscape');
 
-        return $pdf->download('relatorio-pedidos-' . now()->format('Y-m-d') . '.pdf');
+        return $pdf->download('relatorio-pedidos-'.now()->format('Y-m-d').'.pdf');
     }
 }

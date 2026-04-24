@@ -13,12 +13,17 @@ class Index extends Component
 {
     use WithPagination;
 
-    public string $statusFilter   = 'open';
+    public string $statusFilter = 'open';
+
     public ?int $selectedTicketId = null;
-    public array $conversation    = [];
-    public string $replyMessage   = '';
-    public bool $canView          = false;
-    public bool $canReply         = false;
+
+    public array $conversation = [];
+
+    public string $replyMessage = '';
+
+    public bool $canView = false;
+
+    public bool $canReply = false;
 
     public function mount(): void
     {
@@ -48,13 +53,13 @@ class Index extends Component
     {
         $this->resetPage();
         $this->selectedTicketId = null;
-        $this->conversation     = [];
+        $this->conversation = [];
     }
 
     public function selectTicket(int $ticketId): void
     {
         $this->selectedTicketId = $ticketId;
-        $this->replyMessage     = '';
+        $this->replyMessage = '';
         $this->loadConversation();
 
         app(SupportService::class)->markMessagesAsRead($ticketId, 'admin');
@@ -69,8 +74,8 @@ class Index extends Component
         $this->conversation = app(SupportService::class)
             ->getConversation($this->selectedTicketId)
             ->map(fn ($m) => [
-                'sender'     => $m->sender,
-                'message'    => $m->message,
+                'sender' => $m->sender,
+                'message' => $m->message,
                 'created_at' => $m->created_at->format('H:i'),
             ])
             ->toArray();
@@ -79,8 +84,8 @@ class Index extends Component
     public function onCustomerMessage(array $data): void
     {
         $this->conversation[] = [
-            'sender'     => 'customer',
-            'message'    => $data['message'],
+            'sender' => 'customer',
+            'message' => $data['message'],
             'created_at' => $data['created_at'],
         ];
 
@@ -105,8 +110,8 @@ class Index extends Component
         app(SupportService::class)->sendAdminMessage($this->selectedTicketId, $text);
 
         $this->conversation[] = [
-            'sender'     => 'admin',
-            'message'    => $text,
+            'sender' => 'admin',
+            'message' => $text,
             'created_at' => now()->format('H:i'),
         ];
     }
@@ -119,7 +124,7 @@ class Index extends Component
 
         if ($this->selectedTicketId === $ticketId) {
             $this->selectedTicketId = null;
-            $this->conversation     = [];
+            $this->conversation = [];
         }
 
         $this->resetPage();

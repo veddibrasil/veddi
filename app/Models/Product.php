@@ -6,6 +6,7 @@ use App\Models\Concerns\BelongsToCompany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Product extends Model
 {
@@ -16,7 +17,7 @@ class Product extends Model
     ];
 
     protected $casts = [
-        'price'  => 'decimal:2',
+        'price' => 'decimal:2',
         'active' => 'boolean',
     ];
 
@@ -26,7 +27,8 @@ class Product extends Model
             return null;
         }
         $base = rtrim(config('filesystems.disks.s3.url', ''), '/');
-        return $base . '/' . ltrim($this->image_path, '/');
+
+        return $base.'/'.ltrim($this->image_path, '/');
     }
 
     public function category(): BelongsTo
@@ -37,5 +39,10 @@ class Product extends Model
     public function branches(): BelongsToMany
     {
         return $this->belongsToMany(Branch::class)->withPivot(['available', 'quantity', 'min_quantity', 'track_stock']);
+    }
+
+    public function optionGroups(): HasMany
+    {
+        return $this->hasMany(ProductOptionGroup::class)->orderBy('sort_order');
     }
 }

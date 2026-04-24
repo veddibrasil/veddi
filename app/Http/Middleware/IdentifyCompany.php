@@ -14,11 +14,11 @@ class IdentifyCompany
         $company = null;
 
         // 1. Try subdomain resolution
-        $host    = $request->getHost();
+        $host = $request->getHost();
         $appHost = config('app.host', parse_url(config('app.url'), PHP_URL_HOST));
 
-        if ($appHost && str_ends_with($host, '.' . $appHost)) {
-            $subdomain = str_replace('.' . $appHost, '', $host);
+        if ($appHost && str_ends_with($host, '.'.$appHost)) {
+            $subdomain = str_replace('.'.$appHost, '', $host);
             if ($subdomain && $subdomain !== $appHost) {
                 $company = Company::where('subdomain', $subdomain)->where('active', true)->first();
             }
@@ -26,7 +26,7 @@ class IdentifyCompany
 
         // 2. Try slug from route parameter or query string
         if (! $company) {
-            $slug    = $request->route('company') ?? $request->query('company');
+            $slug = $request->route('company') ?? $request->query('company');
             $company = $slug
                 ? Company::where('slug', $slug)->where('active', true)->first()
                 : null;

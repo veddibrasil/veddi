@@ -18,17 +18,17 @@ class NewOrderPlaced implements ShouldBroadcastNow
     public function broadcastOn(): array
     {
         return [
-            new Channel('orders.' . $this->order->company_id),
+            new Channel('orders.'.$this->order->company_id),
         ];
     }
 
     public function broadcastWith(): array
     {
         return [
-            'order_id'       => $this->order->id,
-            'order_number'   => $this->order->order_number,
-            'customer_name'  => $this->order->customer?->name ?? 'Cliente',
-            'total'          => $this->order->total,
+            'order_id' => $this->order->id,
+            'order_number' => $this->order->order_number,
+            'customer_name' => $this->order->customer?->name ?? 'Cliente',
+            'total' => $this->order->total,
             'payment_method' => $this->order->payment_method,
         ];
     }

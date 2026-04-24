@@ -20,11 +20,11 @@ class Coupon extends Model
     ];
 
     protected $casts = [
-        'scope_ids'           => 'array',
-        'starts_at'           => 'datetime',
-        'expires_at'          => 'datetime',
-        'active'              => 'boolean',
-        'discount_value'      => 'float',
+        'scope_ids' => 'array',
+        'starts_at' => 'datetime',
+        'expires_at' => 'datetime',
+        'active' => 'boolean',
+        'discount_value' => 'float',
         'minimum_order_value' => 'float',
     ];
 
@@ -68,11 +68,11 @@ class Coupon extends Model
     public function getTypeLabel(): string
     {
         return match ($this->type) {
-            'percentage'    => 'Percentual (%)',
-            'fixed'         => 'Valor Fixo (R$)',
+            'percentage' => 'Percentual (%)',
+            'fixed' => 'Valor Fixo (R$)',
             'free_delivery' => 'Frete Grátis',
-            'free_product'  => 'Produto Grátis',
-            default         => $this->type,
+            'free_product' => 'Produto Grátis',
+            default => $this->type,
         };
     }
 }

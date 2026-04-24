@@ -25,15 +25,15 @@ class PaymentService
         int $installments = 1,
         array $cardData = []
     ): void {
-        
-        ProcessOrder::dispatch($order, $customer, $company, $paymentMethod, $installments, $cardData);
+        ProcessOrder::dispatch($order, $customer, $company, $paymentMethod, $installments, $cardData)
+            ->onQueue('critical');
 
         Log::channel('payments')->info('Job de pagamento enfileirado', [
-            'order_id'       => $order->id,
+            'order_id' => $order->id,
             'payment_method' => $paymentMethod,
-            'installments'   => $installments,
-            'total'          => $order->total,
-            'queue'          => 'high',
+            'installments' => $installments,
+            'total' => $order->total,
+            'queue' => 'critical',
         ]);
     }
 
@@ -62,14 +62,15 @@ class PaymentService
     {
         $order->payment?->update(['status' => 'expired']);
 
-        session()->forget('payment_token_' . $order->id);
+        session()->forget('payment_token_'.$order->id);
 
         if (in_array($order->status, ['pending', 'awaiting_payment'])) {
-            ProcessOrder::dispatch($order, $customer, $company, $paymentMethod)->onQueue('high');
+            ProcessOrder::dispatch($order, $customer, $company, $paymentMethod)->onQueue('critical');
 
             Log::channel('payments')->info('Cobrança expirada — nova gerada', [
-                'order_id'       => $order->id,
+                'order_id' => $order->id,
                 'payment_method' => $paymentMethod,
+                'queue' => 'critical',
             ]);
         }
     }

@@ -20,6 +20,7 @@ trait HasOrderFlow
             $this->addMessage('user', '1 - Fazer pedido');
             $this->addMessage('bot', 'Ótimo! Escolha uma filial para continuar.');
             $this->transitionTo('BRANCH_SELECT');
+
             return;
         }
 
@@ -36,13 +37,14 @@ trait HasOrderFlow
         if (! $this->customerId) {
             $this->addMessage('bot', 'Ótimo pedido! Para continuar, preciso do seu número de telefone com DDD.');
             $this->transitionTo('IDENTIFY_PHONE');
+
             return;
         }
 
-        $this->couponInput    = '';
-        $this->appliedCoupon  = null;
+        $this->couponInput = '';
+        $this->appliedCoupon = null;
         $this->couponDiscount = 0.0;
-        $this->couponError    = null;
+        $this->couponError = null;
         $this->transitionTo('CHECKOUT_COUPON');
     }
 
@@ -55,6 +57,7 @@ trait HasOrderFlow
 
         if ($code === '') {
             $this->couponError = 'Informe um código de cupom.';
+
             return;
         }
 
@@ -76,18 +79,18 @@ trait HasOrderFlow
             );
 
             $this->appliedCoupon = [
-                'id'       => $coupon->id,
-                'code'     => $coupon->code,
-                'type'     => $coupon->type,
+                'id' => $coupon->id,
+                'code' => $coupon->code,
+                'type' => $coupon->type,
                 'discount' => $discount,
-                'label'    => $coupon->name,
+                'label' => $coupon->name,
             ];
             $this->couponDiscount = $discount;
-            $this->couponError    = null;
+            $this->couponError = null;
 
             $discountLabel = $coupon->type === 'free_delivery'
                 ? 'Frete grátis aplicado!'
-                : 'Desconto de R$ ' . number_format($discount, 2, ',', '.') . ' aplicado!';
+                : 'Desconto de R$ '.number_format($discount, 2, ',', '.').' aplicado!';
 
             $this->addMessage('user', "Cupom: {$coupon->code}");
             $this->addMessage('bot', "✅ {$discountLabel} Escolha o tipo de entrega:");
@@ -99,19 +102,19 @@ trait HasOrderFlow
 
     public function skipCoupon(): void
     {
-        $this->appliedCoupon  = null;
+        $this->appliedCoupon = null;
         $this->couponDiscount = 0.0;
-        $this->couponError    = null;
-        $this->couponInput    = '';
+        $this->couponError = null;
+        $this->couponInput = '';
         $this->transitionTo('CHECKOUT_ORDER_TYPE');
     }
 
     public function removeCoupon(): void
     {
-        $this->appliedCoupon  = null;
+        $this->appliedCoupon = null;
         $this->couponDiscount = 0.0;
-        $this->couponError    = null;
-        $this->couponInput    = '';
+        $this->couponError = null;
+        $this->couponInput = '';
     }
 
     // --- Order type ---
@@ -123,10 +126,11 @@ trait HasOrderFlow
         $this->addMessage('user', $label);
 
         if ($type === 'pickup') {
-            $this->deliveryFee  = 0.0;
+            $this->deliveryFee = 0.0;
             $this->freeDelivery = false;
             $this->addMessage('bot', 'Alguma observação sobre o pedido?');
             $this->transitionTo('CHECKOUT_NOTES');
+
             return;
         }
 
@@ -142,12 +146,12 @@ trait HasOrderFlow
         if ($this->customerId) {
             $customer = Customer::findOrFail($this->customerId);
             $customer->update([
-                'address'      => $this->address,
-                'complement'   => $this->complement,
+                'address' => $this->address,
+                'complement' => $this->complement,
                 'neighborhood' => $this->neighborhood,
-                'number'       => $this->number,
-                'city'         => $this->city,
-                'cep'          => preg_replace('/\D/', '', $this->cep),
+                'number' => $this->number,
+                'city' => $this->city,
+                'cep' => preg_replace('/\D/', '', $this->cep),
             ]);
         }
 
@@ -163,14 +167,15 @@ trait HasOrderFlow
 
     private function resolveDeliveryFee(): void
     {
-        $branch   = Branch::find($this->selectedBranchId);
+        $branch = Branch::find($this->selectedBranchId);
         $settings = $branch?->deliverySetting;
 
         if (! $settings || ! $settings->active) {
-            $this->deliveryFee  = 0.0;
+            $this->deliveryFee = 0.0;
             $this->freeDelivery = false;
             $this->addMessage('bot', 'Alguma observação sobre o pedido?');
             $this->transitionTo('CHECKOUT_NOTES');
+
             return;
         }
 
@@ -181,7 +186,7 @@ trait HasOrderFlow
                 $this->cartTotal
             );
 
-            $this->deliveryFee  = $result['fee'];
+            $this->deliveryFee = $result['fee'];
             $this->freeDelivery = $result['free'];
 
             $this->transitionTo('CHECKOUT_DELIVERY_FEE');
@@ -206,6 +211,7 @@ trait HasOrderFlow
         if ($this->taxId !== '') {
             $this->addMessage('bot', 'Escolha a forma de pagamento:');
             $this->transitionTo('CHECKOUT_PAYMENT_METHOD');
+
             return;
         }
 

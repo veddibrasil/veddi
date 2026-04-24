@@ -7,7 +7,8 @@ use Symfony\Component\Process\Process;
 
 class DevStart extends Command
 {
-    protected $signature   = 'dev:start';
+    protected $signature = 'dev:start';
+
     protected $description = 'Inicia todos os serviços de desenvolvimento: schedule, reverb, queue e npm dev';
 
     /** @var Process[] */
@@ -17,9 +18,9 @@ class DevStart extends Command
     {
         $services = [
             'schedule' => ['./vendor/bin/sail', 'artisan', 'schedule:work'],
-            'reverb'   => ['./vendor/bin/sail', 'artisan', 'reverb:start', '--debug'],
-            'queue'    => ['./vendor/bin/sail', 'artisan', 'queue:work',  '--queue=critical,default,low --sleep=10 --tries=3'],
-            'npm'      => ['npm', 'run', 'dev'],
+            'reverb' => ['./vendor/bin/sail', 'artisan', 'reverb:start', '--debug'],
+            'queue' => ['./vendor/bin/sail', 'artisan', 'queue:work',  '--queue=critical,default,low --sleep=10 --tries=3'],
+            'npm' => ['npm', 'run', 'dev'],
         ];
 
         $this->info('Iniciando serviços...');
@@ -29,7 +30,7 @@ class DevStart extends Command
             $process->start(function (string $type, string $output) use ($name) {
                 $prefix = match ($type) {
                     Process::ERR => "<fg=red>[{$name}]</>",
-                    default      => "<fg=cyan>[{$name}]</>",
+                    default => "<fg=cyan>[{$name}]</>",
                 };
                 $this->output->write("{$prefix} {$output}");
             });

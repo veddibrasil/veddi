@@ -81,17 +81,17 @@ class PermissionSeeder extends Seeder
 
         $roles = [
             [
-                'name'        => 'Administrador da Empresa',
-                'slug'        => 'company_admin',
-                'company_id'  => null,
-                'is_system'   => true,
+                'name' => 'Administrador da Empresa',
+                'slug' => 'company_admin',
+                'company_id' => null,
+                'is_system' => true,
                 'permissions' => $companyAdminPermissions,
             ],
             [
-                'name'        => 'Gerente de Filial',
-                'slug'        => 'branch_manager',
-                'company_id'  => null,
-                'is_system'   => true,
+                'name' => 'Gerente de Filial',
+                'slug' => 'branch_manager',
+                'company_id' => null,
+                'is_system' => true,
                 'permissions' => $branchManagerPermissions,
             ],
         ];

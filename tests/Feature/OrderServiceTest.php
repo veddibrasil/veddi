@@ -17,52 +17,52 @@ uses(RefreshDatabase::class);
 function setupOrderContext(): array
 {
     $company = Company::create([
-        'name'         => 'Empresa Teste',
-        'slug'         => 'empresa-teste',
+        'name' => 'Empresa Teste',
+        'slug' => 'empresa-teste',
         'order_prefix' => 'TST',
-        'active'       => true,
+        'active' => true,
     ]);
 
     app()->instance('current.company', $company);
 
     $branch = Branch::withoutGlobalScopes()->create([
         'company_id' => $company->id,
-        'name'       => 'Filial Central',
-        'address'    => 'Rua A, 1',
-        'city'       => 'SP',
-        'active'     => true,
-        'opens_at'   => '00:00:00',
-        'closes_at'  => '23:59:59',
+        'name' => 'Filial Central',
+        'address' => 'Rua A, 1',
+        'city' => 'SP',
+        'active' => true,
+        'opens_at' => '00:00:00',
+        'closes_at' => '23:59:59',
     ]);
 
     $customer = Customer::withoutGlobalScopes()->create([
         'company_id' => $company->id,
-        'name'       => 'João',
-        'phone'      => '11999990001',
-        'email'      => 'joao@teste.com',
+        'name' => 'João',
+        'phone' => '11999990001',
+        'email' => 'joao@teste.com',
     ]);
 
     $category = ProductCategory::withoutGlobalScopes()->create([
         'company_id' => $company->id,
-        'name'       => 'Lanches',
-        'active'     => true,
+        'name' => 'Lanches',
+        'active' => true,
         'sort_order' => 1,
     ]);
 
     $product = Product::withoutGlobalScopes()->create([
-        'company_id'          => $company->id,
+        'company_id' => $company->id,
         'product_category_id' => $category->id,
-        'name'                => 'X-Burguer',
-        'price'               => 25.00,
-        'active'              => true,
-        'sort_order'          => 1,
+        'name' => 'X-Burguer',
+        'price' => 25.00,
+        'active' => true,
+        'sort_order' => 1,
     ]);
 
     // Disponibiliza o produto na filial (inserção direta para evitar problema de timestamps no pivot)
     DB::table('branch_product')->insert([
-        'branch_id'  => $branch->id,
+        'branch_id' => $branch->id,
         'product_id' => $product->id,
-        'available'  => 1,
+        'available' => 1,
     ]);
 
     return compact('company', 'branch', 'customer', 'category', 'product');
@@ -125,12 +125,12 @@ test('createOrder lança exceção para produto não disponível na filial', fun
 
     // Produto sem vínculo com a filial
     $produtoIndisponivel = Product::withoutGlobalScopes()->create([
-        'company_id'          => app('current.company')->id,
+        'company_id' => app('current.company')->id,
         'product_category_id' => $category->id,
-        'name'                => 'Produto Bloqueado',
-        'price'               => 15.00,
-        'active'              => true,
-        'sort_order'          => 2,
+        'name' => 'Produto Bloqueado',
+        'price' => 15.00,
+        'active' => true,
+        'sort_order' => 2,
     ]);
 
     $service = app(OrderService::class);
@@ -149,15 +149,15 @@ test('cancelOrder altera status para cancelled', function () {
     ['customer' => $customer, 'branch' => $branch, 'product' => $product] = setupOrderContext();
 
     $order = Order::withoutGlobalScopes()->create([
-        'company_id'     => app('current.company')->id,
-        'customer_id'    => $customer->id,
-        'branch_id'      => $branch->id,
-        'subtotal'       => 50.00,
-        'total'          => 50.00,
-        'status'         => 'paid',
+        'company_id' => app('current.company')->id,
+        'customer_id' => $customer->id,
+        'branch_id' => $branch->id,
+        'subtotal' => 50.00,
+        'total' => 50.00,
+        'status' => 'paid',
         'payment_method' => 'pix',
-        'order_type'     => 'delivery',
-        'order_number'   => 'TST-2026-00001',
+        'order_type' => 'delivery',
+        'order_number' => 'TST-2026-00001',
     ]);
 
     app(OrderService::class)->cancelOrder($order, $customer->id);
@@ -169,15 +169,15 @@ test('cancelOrder lança exceção se pedido não pode ser cancelado', function 
     ['customer' => $customer, 'branch' => $branch] = setupOrderContext();
 
     $order = Order::withoutGlobalScopes()->create([
-        'company_id'     => app('current.company')->id,
-        'customer_id'    => $customer->id,
-        'branch_id'      => $branch->id,
-        'subtotal'       => 50.00,
-        'total'          => 50.00,
-        'status'         => 'delivered',
+        'company_id' => app('current.company')->id,
+        'customer_id' => $customer->id,
+        'branch_id' => $branch->id,
+        'subtotal' => 50.00,
+        'total' => 50.00,
+        'status' => 'delivered',
         'payment_method' => 'pix',
-        'order_type'     => 'delivery',
-        'order_number'   => 'TST-2026-00002',
+        'order_type' => 'delivery',
+        'order_number' => 'TST-2026-00002',
     ]);
 
     expect(fn () => app(OrderService::class)->cancelOrder($order, $customer->id))

@@ -18,15 +18,15 @@ class SupportMessageSent implements ShouldBroadcastNow
     public function broadcastOn(): array
     {
         return [
-            new Channel('support.' . $this->supportMessage->ticket_id),
+            new Channel('support.'.$this->supportMessage->ticket_id),
         ];
     }
 
     public function broadcastWith(): array
     {
         return [
-            'id'         => $this->supportMessage->id,
-            'message'    => $this->supportMessage->message,
+            'id' => $this->supportMessage->id,
+            'message' => $this->supportMessage->message,
             'created_at' => $this->supportMessage->created_at->format('H:i'),
         ];
     }

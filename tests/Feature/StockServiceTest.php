@@ -20,45 +20,45 @@ uses(RefreshDatabase::class);
 function setupStockContext(): array
 {
     $company = Company::create([
-        'name'         => 'Empresa Estoque',
-        'slug'         => 'empresa-estoque',
+        'name' => 'Empresa Estoque',
+        'slug' => 'empresa-estoque',
         'order_prefix' => 'EST',
-        'active'       => true,
+        'active' => true,
     ]);
 
     app()->instance('current.company', $company);
 
     $branch = Branch::withoutGlobalScopes()->create([
         'company_id' => $company->id,
-        'name'       => 'Filial Central',
-        'address'    => 'Rua A, 1',
-        'city'       => 'SP',
-        'active'     => true,
-        'opens_at'   => '00:00:00',
-        'closes_at'  => '23:59:59',
+        'name' => 'Filial Central',
+        'address' => 'Rua A, 1',
+        'city' => 'SP',
+        'active' => true,
+        'opens_at' => '00:00:00',
+        'closes_at' => '23:59:59',
     ]);
 
     $category = ProductCategory::withoutGlobalScopes()->create([
         'company_id' => $company->id,
-        'name'       => 'Lanches',
-        'active'     => true,
+        'name' => 'Lanches',
+        'active' => true,
         'sort_order' => 1,
     ]);
 
     $product = Product::withoutGlobalScopes()->create([
-        'company_id'          => $company->id,
+        'company_id' => $company->id,
         'product_category_id' => $category->id,
-        'name'                => 'X-Burguer',
-        'price'               => 25.00,
-        'active'              => true,
-        'sort_order'          => 1,
+        'name' => 'X-Burguer',
+        'price' => 25.00,
+        'active' => true,
+        'sort_order' => 1,
     ]);
 
     $customer = Customer::withoutGlobalScopes()->create([
         'company_id' => $company->id,
-        'name'       => 'Cliente Teste',
-        'phone'      => '11999990001',
-        'email'      => 'cliente@teste.com',
+        'name' => 'Cliente Teste',
+        'phone' => '11999990001',
+        'email' => 'cliente@teste.com',
     ]);
 
     return compact('company', 'branch', 'product', 'customer');
@@ -67,36 +67,36 @@ function setupStockContext(): array
 function insertBranchProduct(int $branchId, int $productId, int $quantity = 10, bool $trackStock = true): void
 {
     DB::table('branch_product')->insert([
-        'branch_id'    => $branchId,
-        'product_id'   => $productId,
-        'available'    => 1,
-        'quantity'     => $quantity,
+        'branch_id' => $branchId,
+        'product_id' => $productId,
+        'available' => 1,
+        'quantity' => $quantity,
         'min_quantity' => 2,
-        'track_stock'  => $trackStock,
+        'track_stock' => $trackStock,
     ]);
 }
 
 function createOrder(array $context, int $quantity = 1): Order
 {
     $order = Order::withoutGlobalScopes()->create([
-        'company_id'     => $context['company']->id,
-        'branch_id'      => $context['branch']->id,
-        'customer_id'    => $context['customer']->id,
-        'subtotal'       => 25.00 * $quantity,
-        'total'          => 25.00 * $quantity,
-        'status'         => 'paid',
+        'company_id' => $context['company']->id,
+        'branch_id' => $context['branch']->id,
+        'customer_id' => $context['customer']->id,
+        'subtotal' => 25.00 * $quantity,
+        'total' => 25.00 * $quantity,
+        'status' => 'paid',
         'payment_method' => 'pix',
-        'order_type'     => 'delivery',
-        'order_number'   => 'EST-2026-00001',
+        'order_type' => 'delivery',
+        'order_number' => 'EST-2026-00001',
     ]);
 
     OrderItem::withoutGlobalScopes()->create([
-        'order_id'   => $order->id,
+        'order_id' => $order->id,
         'product_id' => $context['product']->id,
-        'quantity'   => $quantity,
+        'quantity' => $quantity,
         'unit_price' => 25.00,
-        'subtotal'      => 25.00 * $quantity,
-        'product_name'  => 'X-Burguer',
+        'subtotal' => 25.00 * $quantity,
+        'product_name' => 'X-Burguer',
     ]);
 
     return $order;

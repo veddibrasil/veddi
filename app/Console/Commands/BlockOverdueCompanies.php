@@ -9,7 +9,8 @@ use Illuminate\Console\Command;
 
 class BlockOverdueCompanies extends Command
 {
-    protected $signature   = 'companies:block-overdue';
+    protected $signature = 'companies:block-overdue';
+
     protected $description = 'Bloqueia empresas inadimplentes após 3 dias úteis do vencimento';
 
     public function handle(CompanyService $companyService): int
@@ -20,6 +21,7 @@ class BlockOverdueCompanies extends Command
 
         if ($companies->isEmpty()) {
             $this->info('Nenhuma empresa em atraso.');
+
             return self::SUCCESS;
         }
 
@@ -47,7 +49,7 @@ class BlockOverdueCompanies extends Command
     private function addBusinessDays(Carbon $date, int $days): Carbon
     {
         $result = $date->copy();
-        $added  = 0;
+        $added = 0;
 
         while ($added < $days) {
             $result->addDay();

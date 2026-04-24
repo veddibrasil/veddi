@@ -21,7 +21,7 @@ class AdminMessageSent implements ShouldBroadcastNow
     public function broadcastOn(): array
     {
         return [
-            new Channel('order.' . $this->order->id),
+            new Channel('order.'.$this->order->id),
         ];
     }
 

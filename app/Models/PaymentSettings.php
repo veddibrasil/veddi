@@ -19,12 +19,12 @@ class PaymentSettings extends Model
     ];
 
     protected $casts = [
-        'card_rate_1x'              => 'float',
-        'anticipation_rate_d2'      => 'float',
-        'anticipation_rate_d7'      => 'float',
-        'anticipation_rate_d15'     => 'float',
-        'anticipation_rate_d30'     => 'float',
-        'system_fee_rate'           => 'float',
+        'card_rate_1x' => 'float',
+        'anticipation_rate_d2' => 'float',
+        'anticipation_rate_d7' => 'float',
+        'anticipation_rate_d15' => 'float',
+        'anticipation_rate_d30' => 'float',
+        'system_fee_rate' => 'float',
         'default_anticipation_days' => 'integer',
     ];
 

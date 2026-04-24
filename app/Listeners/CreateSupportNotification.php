@@ -11,10 +11,10 @@ class CreateSupportNotification
     {
         CompanyNotification::create([
             'company_id' => $event->companyId,
-            'type'       => 'support',
-            'title'      => 'Mensagem de suporte',
-            'subtitle'   => $event->ticket->customer?->name ?? 'Cliente',
-            'link'       => route('admin.support.index'),
+            'type' => 'support',
+            'title' => 'Mensagem de suporte',
+            'subtitle' => $event->ticket->customer?->name ?? 'Cliente',
+            'link' => route('admin.support.index'),
         ]);
     }
 }

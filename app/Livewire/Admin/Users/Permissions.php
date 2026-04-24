@@ -15,6 +15,7 @@ use Livewire\Component;
 class Permissions extends Component
 {
     public User $user;
+
     public array $overrides = [];
 
     public function mount(User $user): void
@@ -44,7 +45,9 @@ class Permissions extends Component
 
         foreach ($this->overrides as $permName => $value) {
             $permission = Permission::where('name', $permName)->first();
-            if (! $permission) continue;
+            if (! $permission) {
+                continue;
+            }
 
             if ($value === 'default') {
                 UserPermission::where('user_id', $this->user->id)
@@ -54,8 +57,8 @@ class Permissions extends Component
             } else {
                 UserPermission::updateOrCreate(
                     [
-                        'user_id'       => $this->user->id,
-                        'company_id'    => $company->id,
+                        'user_id' => $this->user->id,
+                        'company_id' => $company->id,
                         'permission_id' => $permission->id,
                     ],
                     ['granted' => $value === 'grant']
@@ -66,10 +69,10 @@ class Permissions extends Component
         Cache::forget("user:{$this->user->id}:permissions:company:{$company->id}");
 
         Log::channel('audit')->info('Permissões de usuário atualizadas', [
-            'admin_id'   => auth()->id(),
-            'user_id'    => $this->user->id,
+            'admin_id' => auth()->id(),
+            'user_id' => $this->user->id,
             'company_id' => $company->id,
-            'overrides'  => $this->overrides,
+            'overrides' => $this->overrides,
         ]);
 
         session()->flash('status', 'Permissões atualizadas com sucesso.');
@@ -77,7 +80,7 @@ class Permissions extends Component
 
     public function render()
     {
-        $company     = app('current.company');
+        $company = app('current.company');
         $permissions = Permission::orderBy('group')->orderBy('label')->get()->groupBy('group');
 
         $roleSlug = $this->user->roleForCompany($company);
@@ -94,7 +97,7 @@ class Permissions extends Component
         }
 
         return view('livewire.admin.users.permissions', [
-            'permissions'  => $permissions,
+            'permissions' => $permissions,
             'roleDefaults' => $roleDefaults,
         ]);
     }

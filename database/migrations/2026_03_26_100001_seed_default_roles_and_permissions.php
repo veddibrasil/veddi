@@ -33,6 +33,8 @@ return new class extends Migration
             ['name' => 'coupons.create',       'group' => 'coupons',    'label' => 'Criar cupom'],
             ['name' => 'coupons.update',       'group' => 'coupons',    'label' => 'Editar cupom'],
             ['name' => 'coupons.delete',       'group' => 'coupons',    'label' => 'Remover cupom'],
+            ['name' => 'support.view',         'group' => 'support',    'label' => 'Visualizar tickets de suporte'],
+            ['name' => 'support.reply',        'group' => 'support',    'label' => 'Responder e gerenciar tickets'],
         ];
 
         $now = now();
@@ -54,6 +56,7 @@ return new class extends Migration
             'roles.manage',
             'stock.view', 'stock.adjust', 'stock.toggle',
             'coupons.view', 'coupons.create', 'coupons.update', 'coupons.delete',
+            'support.view', 'support.reply',
         ];
 
         $branchManagerPerms = [
@@ -62,6 +65,7 @@ return new class extends Migration
             'categories.view', 'categories.create', 'categories.update', 'categories.delete',
             'branches.view',
             'stock.view', 'stock.adjust', 'stock.toggle',
+            'support.view', 'support.reply',
         ];
 
         $roles = [
@@ -74,10 +78,10 @@ return new class extends Migration
 
             if (! $roleId) {
                 $roleId = DB::table('roles')->insertGetId([
-                    'name'       => $roleData['name'],
-                    'slug'       => $roleData['slug'],
+                    'name' => $roleData['name'],
+                    'slug' => $roleData['slug'],
                     'company_id' => null,
-                    'is_system'  => true,
+                    'is_system' => true,
                     'created_at' => $now,
                     'updated_at' => $now,
                 ]);

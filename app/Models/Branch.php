@@ -25,7 +25,6 @@ class Branch extends Model
     {
         return $value ? substr($value, 0, 5) : null;
     }
-    
 
     public function products(): BelongsToMany
     {
@@ -47,6 +46,7 @@ class Branch extends Model
     public function isOpen(): bool
     {
         $now = now(config('app.timezone'))->format('H:i');
+
         return $now >= $this->opens_at && $now <= $this->closes_at;
     }
 }

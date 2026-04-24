@@ -2,10 +2,10 @@
 
 namespace App\Jobs;
 
+use App\Contracts\AsaasServiceInterface;
 use App\Exceptions\AsaasCircuitOpenException;
 use App\Models\Company;
 use App\Models\Subscription;
-use App\Services\AsaasService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -26,17 +26,18 @@ class CreateAsaasSubscription implements ShouldQueue
         $this->onQueue('default');
     }
 
-    public function handle(AsaasService $asaasService): void
+    public function handle(AsaasServiceInterface $asaasService): void
     {
         if (! $this->company->asaas_customer_id) {
             Log::channel('discord')->error('CreateAsaasSubscription: empresa sem asaas_customer_id', [
-                'type'       => 'payments',
+                'type' => 'payments',
                 'company_id' => $this->company->id,
             ]);
+
             return;
         }
 
-        $plan        = $this->company->pending_plan ?? $this->company->plan;
+        $plan = $this->company->pending_plan ?? $this->company->plan;
         $billingType = $this->company->subscription_payment_method ?? 'PIX';
 
         try {
@@ -51,34 +52,35 @@ class CreateAsaasSubscription implements ShouldQueue
                 'company_id' => $this->company->id,
             ]);
             $this->release(900);
+
             return;
         }
 
         $this->company->update(['asaas_subscription_id' => $result['id']]);
 
         Subscription::create([
-            'company_id'            => $this->company->id,
+            'company_id' => $this->company->id,
             'asaas_subscription_id' => $result['id'],
-            'plan'                  => $this->company->plan,
-            'status'                => 'active',
-            'amount'                => $result['value'],
-            'billing_cycle'         => 'MONTHLY',
-            'next_due_date'         => $result['nextDueDate'],
+            'plan' => $this->company->plan,
+            'status' => 'active',
+            'amount' => $result['value'],
+            'billing_cycle' => 'MONTHLY',
+            'next_due_date' => $result['nextDueDate'],
         ]);
 
         Log::channel('payments')->info('Assinatura Asaas criada', [
-            'company_id'            => $this->company->id,
+            'company_id' => $this->company->id,
             'asaas_subscription_id' => $result['id'],
-            'amount'                => $result['value'],
+            'amount' => $result['value'],
         ]);
     }
 
     public function failed(\Throwable $exception): void
     {
         Log::channel('discord')->error('Falha ao criar assinatura Asaas', [
-            'type'       => 'payments',
+            'type' => 'payments',
             'company_id' => $this->company->id,
-            'error'      => $exception->getMessage(),
+            'error' => $exception->getMessage(),
         ]);
     }
 }

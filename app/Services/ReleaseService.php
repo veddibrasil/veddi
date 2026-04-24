@@ -28,7 +28,7 @@ class ReleaseService
 
         Log::channel('payments')->info('Transações liberadas para saque', [
             'count' => $count,
-            'date'  => $today,
+            'date' => $today,
         ]);
 
         return $count;
@@ -52,8 +52,8 @@ class ReleaseService
 
         Log::channel('payments')->info('Transações liberadas para empresa', [
             'company_id' => $company->id,
-            'count'      => $count,
-            'date'       => $today,
+            'count' => $count,
+            'date' => $today,
         ]);
 
         return $count;

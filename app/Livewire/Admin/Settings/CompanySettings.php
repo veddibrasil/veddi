@@ -2,7 +2,6 @@
 
 namespace App\Livewire\Admin\Settings;
 
-use App\Models\PaymentSettings;
 use App\Rules\ReservedSlug;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Component;
@@ -12,22 +11,33 @@ class CompanySettings extends Component
 {
     use WithFileUploads;
 
-    public string $name                  = '';
-    public string $slug                  = '';
-    public ?string $tagline               = '';
-    public ?string $footer_text          = '';
-    public string $primary_color         = '#5c347f';
-    public string $primary_color_dark    = '#19273c';
-    public string $primary_color_light   = '#5c347f';
-    public string $secondary_color       = '#e36831';
+    public string $name = '';
+
+    public string $slug = '';
+
+    public ?string $tagline = '';
+
+    public ?string $footer_text = '';
+
+    public string $primary_color = '#5c347f';
+
+    public string $primary_color_dark = '#19273c';
+
+    public string $primary_color_light = '#5c347f';
+
+    public string $secondary_color = '#e36831';
+
     public string $secondary_color_light = '#D97706';
-    public string $accent_color          = '#cad1d8';
-    public string $order_prefix          = 'ORD';
+
+    public string $accent_color = '#cad1d8';
+
+    public string $order_prefix = 'ORD';
 
     public bool $isFree = false;
-    public bool $pixFeeAbsorbedByCompany  = false;
-    public bool $cardFeeAbsorbedByCompany = false;
 
+    public bool $pixFeeAbsorbedByCompany = true;
+
+    public bool $cardFeeAbsorbedByCompany = true;
 
     public array $chat_highlights = [];
 
@@ -48,41 +58,42 @@ class CompanySettings extends Component
             'secondary_color', 'secondary_color_light', 'accent_color',
             'order_prefix'
         ));
-        $this->chat_highlights           = $company->chat_highlights ?? self::DEFAULT_HIGHLIGHTS;
-        $this->isFree                    = $company->isFree();
-        $this->pixFeeAbsorbedByCompany  = (bool) $company->pix_fee_absorbed_by_company;
+        $this->chat_highlights = $company->chat_highlights ?? self::DEFAULT_HIGHLIGHTS;
+        $this->isFree = $company->isFree();
+        $this->pixFeeAbsorbedByCompany = (bool) $company->pix_fee_absorbed_by_company;
         $this->cardFeeAbsorbedByCompany = (bool) $company->card_fee_absorbed_by_company;
     }
 
     protected function rules(): array
     {
         $company = app('current.company');
+
         return [
-            'name'                  => ['required', 'string', 'max:100'],
-            'slug'                  => ['required', 'string', 'max:100', 'regex:/^[a-z0-9\-]+$/', new ReservedSlug, "unique:companies,slug,{$company->id}"],
-            'tagline'               => ['nullable', 'string', 'max:255'],
-            'footer_text'           => ['nullable', 'string', 'max:255'],
-            'primary_color'         => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
-            'primary_color_dark'    => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
-            'primary_color_light'   => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
-            'secondary_color'       => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'name' => ['required', 'string', 'max:100'],
+            'slug' => ['required', 'string', 'max:100', 'regex:/^[a-z0-9\-]+$/', new ReservedSlug, "unique:companies,slug,{$company->id}"],
+            'tagline' => ['nullable', 'string', 'max:255'],
+            'footer_text' => ['nullable', 'string', 'max:255'],
+            'primary_color' => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'primary_color_dark' => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'primary_color_light' => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'secondary_color' => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'secondary_color_light' => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
-            'accent_color'          => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
-            'order_prefix'          => ['required', 'string', 'max:10', 'regex:/^[A-Z0-9]+$/'],
-            'pixFeeAbsorbedByCompany'      => ['boolean'],
-            'cardFeeAbsorbedByCompany'     => ['boolean'],
-            'logo'                         => ['nullable', 'image', 'max:2048'],
-            'chat_highlights'              => ['array', 'max:6'],
-            'chat_highlights.*.icon'       => ['required', 'string', 'max:10'],
-            'chat_highlights.*.title'      => ['required', 'string', 'max:60'],
-            'chat_highlights.*.description'=> ['required', 'string', 'max:120'],
+            'accent_color' => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'order_prefix' => ['required', 'string', 'max:10', 'regex:/^[A-Z0-9]+$/'],
+            'pixFeeAbsorbedByCompany' => ['boolean'],
+            'cardFeeAbsorbedByCompany' => ['boolean'],
+            'logo' => ['nullable', 'image', 'max:2048'],
+            'chat_highlights' => ['array', 'max:6'],
+            'chat_highlights.*.icon' => ['required', 'string', 'max:10'],
+            'chat_highlights.*.title' => ['required', 'string', 'max:60'],
+            'chat_highlights.*.description' => ['required', 'string', 'max:120'],
         ];
     }
 
     public function save(): void
     {
         $validated = $this->validate($this->rules());
-        $company   = app('current.company');
+        $company = app('current.company');
 
         if ($company->isFree()) {
             $data = collect($validated)->only(['name', 'slug', 'tagline', 'footer_text', 'order_prefix'])->toArray();
@@ -91,14 +102,14 @@ class CompanySettings extends Component
             $data['chat_highlights'] = $this->chat_highlights ?: null;
         }
 
-        $data['pix_fee_absorbed_by_company']  = $this->pixFeeAbsorbedByCompany;
+        $data['pix_fee_absorbed_by_company'] = $this->pixFeeAbsorbedByCompany;
         $data['card_fee_absorbed_by_company'] = $this->cardFeeAbsorbedByCompany;
 
         if ($this->logo) {
             if ($company->logo_path) {
                 Storage::disk('s3')->delete($company->logo_path);
             }
-            $data['logo_path'] = $this->logo->storeAs('logos', "company_{$company->id}." . $this->logo->getClientOriginalExtension(), 's3');
+            $data['logo_path'] = $this->logo->storeAs('logos', "company_{$company->id}.".$this->logo->getClientOriginalExtension(), 's3');
         }
 
         $company->update($data);
@@ -106,7 +117,6 @@ class CompanySettings extends Component
         session()->flash('status', 'Configurações salvas com sucesso.');
         $this->redirect(route('admin.settings'));
     }
-
 
     public function addHighlight(): void
     {

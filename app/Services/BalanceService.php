@@ -6,7 +6,6 @@ use App\Events\WalletBalanceUpdated;
 use App\Models\Company;
 use App\Models\CompanyBalance;
 use App\Models\CompanyTransaction;
-use Illuminate\Support\Facades\Log;
 
 class BalanceService
 {
@@ -41,6 +40,7 @@ class BalanceService
             ->where('company_id', $companyId)
             ->where('status', 'released')
             ->where('withdrawn', false)
+            ->whereNull('withdrawal_id')
             ->sum('net_value');
 
         $withdrawnBalance = (float) CompanyTransaction::withoutGlobalScopes()
@@ -48,15 +48,15 @@ class BalanceService
             ->where('withdrawn', true)
             ->sum('net_value');
 
-        $reserveBalance   = round(max(0, $totalBalance * 0.10), 2);
+        $reserveBalance = round(max(0, $totalBalance * 0.10), 2);
         $availableBalance = round(max(0, $releasedBalance - $reserveBalance), 2);
 
         return [
-            'total_balance'     => round($totalBalance, 2),
-            'blocked_balance'   => round($blockedBalance, 2),
+            'total_balance' => round($totalBalance, 2),
+            'blocked_balance' => round($blockedBalance, 2),
             'available_balance' => $availableBalance,
             'withdrawn_balance' => round($withdrawnBalance, 2),
-            'reserve_balance'   => $reserveBalance,
+            'reserve_balance' => $reserveBalance,
         ];
     }
 
@@ -110,6 +110,7 @@ class BalanceService
             ->where('company_id', $company->id)
             ->where('status', 'released')
             ->where('withdrawn', false)
+            ->whereNull('withdrawal_id')
             ->sum('net_value');
 
         // Transações confirmadas agrupadas por release_date (futuras)
@@ -124,17 +125,17 @@ class BalanceService
             ->get()
             ->keyBy('release_date');
 
-        $forecast   = [];
+        $forecast = [];
         $cumulative = $currentAvailable;
 
         for ($i = 0; $i <= $days; $i++) {
-            $date    = now()->addDays($i)->toDateString();
-            $daily   = (float) ($releasing->get($date)?->daily_amount ?? 0.0);
+            $date = now()->addDays($i)->toDateString();
+            $daily = (float) ($releasing->get($date)?->daily_amount ?? 0.0);
             $cumulative += $daily;
 
             $forecast[] = [
-                'date'                 => $date,
-                'releasing'            => round($daily, 2),
+                'date' => $date,
+                'releasing' => round($daily, 2),
                 'cumulative_available' => round(max(0, $cumulative * 0.90), 2),
             ];
         }

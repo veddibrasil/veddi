@@ -2,24 +2,23 @@
 
 namespace App\Services;
 
-use App\Exceptions\InsufficientStockException;
+use App\Contracts\OrderServiceInterface;
 use App\Models\CompanyNotification;
 use App\Models\Coupon;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
-use App\Services\CouponService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
-class OrderService
+class OrderService implements OrderServiceInterface
 {
     /**
      * Cria um pedido com validação de preços no servidor.
      * Os preços são buscados do banco de dados, ignorando os valores do client-side.
      *
-     * @param  array<int, array{qty: int, name: string, price: float}> $cart
+     * @param  array<int, array{qty: int, name: string, price: float}>  $cart
      */
     public function createOrder(
         int $customerId,
@@ -34,7 +33,12 @@ class OrderService
     ): Order {
         $currentCompany = app()->bound('current.company') ? app('current.company') : null;
 
-        $productIds = array_keys($cart);
+        // Extrai product_ids únicos do carrinho (suporta chaves simples "42" e compostas "42_1")
+        $productIds = array_unique(array_values(array_map(
+            fn ($item, $key) => (int) ($item['product_id'] ?? explode('_', (string) $key)[0]),
+            array_values($cart),
+            array_keys($cart)
+        )));
 
         $products = Product::withoutGlobalScopes()
             ->whereIn('id', $productIds)
@@ -54,8 +58,15 @@ class OrderService
 
         $order = DB::transaction(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany) {
             $subtotal = 0.0;
-            foreach ($cart as $productId => $item) {
-                $subtotal += (float) $products[$productId]->price * $item['qty'];
+            foreach ($cart as $cartKey => $item) {
+                $pid = (int) ($item['product_id'] ?? explode('_', (string) $cartKey)[0]);
+                $optionsExtra = 0.0;
+                foreach ($item['options'] ?? [] as $group) {
+                    foreach ($group['selections'] ?? [] as $sel) {
+                        $optionsExtra += ($sel['qty'] ?? 0) * ($sel['additional_price'] ?? 0);
+                    }
+                }
+                $subtotal += ((float) $products[$pid]->price + $optionsExtra) * $item['qty'];
             }
 
             $discount = 0.0;
@@ -71,42 +82,50 @@ class OrderService
             $total = max(0, $subtotal + $deliveryFee - $discount);
 
             // Calculate platform fee based on company plan (fee applies only to products, not shipping)
-            $fee      = 0.0;
+            $fee = 0.0;
             $netValue = $total;
             if ($currentCompany) {
-                $feeBase  = max(0.0, $subtotal - $discount);
-                $fees     = app(FeeCalculator::class)->calculate($currentCompany, $feeBase, $total);
-                $fee      = $fees['fee'];
+                $feeBase = max(0.0, $subtotal - $discount);
+                $fees = app(FeeCalculator::class)->calculate($currentCompany, $feeBase, $total);
+                $fee = $fees['fee'];
                 $netValue = $fees['net_value'];
             }
 
             $order = Order::create([
-                'customer_id'    => $customerId,
-                'branch_id'      => $branchId,
-                'subtotal'       => $subtotal,
-                'delivery_fee'   => $deliveryFee,
-                'discount'       => $discount,
-                'total'          => $total,
-                'fee'            => $fee,
-                'net_value'      => $netValue,
-                'status'         => $status,
-                'notes'          => $notes,
+                'customer_id' => $customerId,
+                'branch_id' => $branchId,
+                'subtotal' => $subtotal,
+                'delivery_fee' => $deliveryFee,
+                'discount' => $discount,
+                'total' => $total,
+                'fee' => $fee,
+                'net_value' => $netValue,
+                'status' => $status,
+                'notes' => $notes,
                 'payment_method' => strtolower($paymentMethod),
-                'order_type'     => $orderType,
-                'coupon_id'      => $coupon?->id,
+                'order_type' => $orderType,
+                'coupon_id' => $coupon?->id,
             ]);
 
-            foreach ($cart as $productId => $item) {
-                $product = $products[$productId];
-                $unitPrice = (float) $product->price;
+            foreach ($cart as $cartKey => $item) {
+                $pid = (int) ($item['product_id'] ?? explode('_', (string) $cartKey)[0]);
+                $product = $products[$pid];
+                $optionsExtra = 0.0;
+                foreach ($item['options'] ?? [] as $group) {
+                    foreach ($group['selections'] ?? [] as $sel) {
+                        $optionsExtra += ($sel['qty'] ?? 0) * ($sel['additional_price'] ?? 0);
+                    }
+                }
+                $unitPrice = (float) $product->price + $optionsExtra;
 
                 OrderItem::create([
-                    'order_id'     => $order->id,
-                    'product_id'   => $productId,
+                    'order_id' => $order->id,
+                    'product_id' => $pid,
                     'product_name' => $product->name,
-                    'unit_price'   => $unitPrice,
-                    'quantity'     => $item['qty'],
-                    'subtotal'     => $unitPrice * $item['qty'],
+                    'unit_price' => $unitPrice,
+                    'quantity' => $item['qty'],
+                    'subtotal' => $unitPrice * $item['qty'],
+                    'options' => $item['options'] ?? null,
                 ]);
             }
 
@@ -114,12 +133,12 @@ class OrderService
             if ($coupon && $coupon->type === 'free_product' && $coupon->freeProduct) {
                 $freeProduct = $coupon->freeProduct;
                 OrderItem::create([
-                    'order_id'     => $order->id,
-                    'product_id'   => $freeProduct->id,
-                    'product_name' => $freeProduct->name . ' (Brinde)',
-                    'unit_price'   => 0.0,
-                    'quantity'     => 1,
-                    'subtotal'     => 0.0,
+                    'order_id' => $order->id,
+                    'product_id' => $freeProduct->id,
+                    'product_name' => $freeProduct->name.' (Brinde)',
+                    'unit_price' => 0.0,
+                    'quantity' => 1,
+                    'subtotal' => 0.0,
                 ]);
             }
 
@@ -130,19 +149,19 @@ class OrderService
             }
 
             Log::channel('orders')->info('Pedido criado', [
-                'order_id'       => $order->id,
-                'order_number'   => $order->order_number,
-                'customer_id'    => $customerId,
-                'branch_id'      => $branchId,
-                'subtotal'       => $order->subtotal,
-                'delivery_fee'   => $order->delivery_fee,
-                'discount'       => $order->discount,
-                'total'          => $order->total,
-                'fee'            => $order->fee,
-                'net_value'      => $order->net_value,
+                'order_id' => $order->id,
+                'order_number' => $order->order_number,
+                'customer_id' => $customerId,
+                'branch_id' => $branchId,
+                'subtotal' => $order->subtotal,
+                'delivery_fee' => $order->delivery_fee,
+                'discount' => $order->discount,
+                'total' => $order->total,
+                'fee' => $order->fee,
+                'net_value' => $order->net_value,
                 'payment_method' => $paymentMethod,
-                'order_type'     => $orderType,
-                'coupon_code'    => $coupon?->code,
+                'order_type' => $orderType,
+                'coupon_code' => $coupon?->code,
             ]);
 
             return $order;
@@ -151,9 +170,9 @@ class OrderService
         if ($currentCompany && $currentCompany->isFree() && ! $currentCompany->isWithinOrderLimit()) {
             CompanyNotification::create([
                 'company_id' => $currentCompany->id,
-                'type'       => 'plan_limit',
-                'title'      => 'Limite de pedidos do plano gratuito ultrapassado',
-                'subtitle'   => 'Você ultrapassou 50 pedidos este mês. A taxa da plataforma foi ajustada de 1% para 3%. Considere fazer upgrade para o plano Essencial ou PRO.',
+                'type' => 'plan_limit',
+                'title' => 'Limite de pedidos do plano gratuito ultrapassado',
+                'subtitle' => 'Você ultrapassou 50 pedidos este mês. A taxa da plataforma foi ajustada de 1% para 3%. Considere fazer upgrade para o plano Essencial ou PRO.',
             ]);
         }
 
@@ -174,7 +193,7 @@ class OrderService
         app(StockService::class)->restoreForOrder($order);
 
         Log::channel('orders')->info('Pedido cancelado pelo cliente', [
-            'order_id'    => $order->id,
+            'order_id' => $order->id,
             'customer_id' => $customerId,
         ]);
 
@@ -195,23 +214,23 @@ class OrderService
         $lines = ["Pedido {$order->order_number} recebido! Aqui está o resumo:"];
 
         foreach ($order->items as $item) {
-            $lines[] = "• {$item->quantity}x {$item->product_name} — R$ " . number_format($item->subtotal, 2, ',', '.');
+            $lines[] = "• {$item->quantity}x {$item->product_name} — R$ ".number_format($item->subtotal, 2, ',', '.');
         }
 
         if ($order->order_type === 'delivery') {
-            $lines[] = "\nSubtotal: R$ " . number_format($order->subtotal, 2, ',', '.');
+            $lines[] = "\nSubtotal: R$ ".number_format($order->subtotal, 2, ',', '.');
             if ($order->delivery_fee > 0) {
-                $lines[] = "Frete: R$ " . number_format($order->delivery_fee, 2, ',', '.');
+                $lines[] = 'Frete: R$ '.number_format($order->delivery_fee, 2, ',', '.');
             } else {
-                $lines[] = "Frete: Grátis";
+                $lines[] = 'Frete: Grátis';
             }
         }
 
         if ($order->discount > 0) {
-            $lines[] = "Desconto: -R$ " . number_format($order->discount, 2, ',', '.');
+            $lines[] = 'Desconto: -R$ '.number_format($order->discount, 2, ',', '.');
         }
 
-        $lines[] = "Total: R$ " . number_format($order->total, 2, ',', '.');
+        $lines[] = 'Total: R$ '.number_format($order->total, 2, ',', '.');
 
         return implode("\n", $lines);
     }

@@ -11,16 +11,23 @@ use Livewire\WithPagination;
 class Index extends Component
 {
     use WithPagination;
-    public string $name       = '';
-    public int $sort_order    = 0;
-    public ?int $editingId    = null;
-    public ?int $deletingId   = null;
+
+    public string $name = '';
+
+    public int $sort_order = 0;
+
+    public ?int $editingId = null;
+
+    public ?int $deletingId = null;
 
     public bool $isSuperAdmin = false;
-    public ?int $company_id   = null;
+
+    public ?int $company_id = null;
 
     public bool $canCreate = false;
+
     public bool $canUpdate = false;
+
     public bool $canDelete = false;
 
     protected function rules(): array
@@ -31,7 +38,7 @@ class Index extends Component
 
         return [
             'company_id' => $companyRule,
-            'name'       => ['required', 'string', 'max:100'],
+            'name' => ['required', 'string', 'max:100'],
             'sort_order' => ['integer', 'min:0'],
         ];
     }
@@ -40,7 +47,7 @@ class Index extends Component
     {
         return [
             'company_id.required' => 'Selecione uma empresa.',
-            'name.required'       => 'Informe o nome da categoria.',
+            'name.required' => 'Informe o nome da categoria.',
         ];
     }
 
@@ -95,9 +102,9 @@ class Index extends Component
 
     public function edit(int $id): void
     {
-        $category         = ProductCategory::withoutGlobalScope(CompanyScope::class)->findOrFail($id);
-        $this->editingId  = $id;
-        $this->name       = $category->name;
+        $category = ProductCategory::withoutGlobalScope(CompanyScope::class)->findOrFail($id);
+        $this->editingId = $id;
+        $this->name = $category->name;
         $this->sort_order = $category->sort_order;
         $this->company_id = $category->company_id;
     }

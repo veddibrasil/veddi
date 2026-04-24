@@ -10,10 +10,12 @@ class DiscordWebhookHandler extends AbstractProcessingHandler
 {
     /** Maximum messages per minute per unique message signature */
     private const RATE_LIMIT = 5;
+
     private const RATE_WINDOW = 60; // seconds
 
     /** In-memory counter keyed by message signature (resets each process/request) */
     private static array $counts = [];
+
     private static array $windows = [];
 
     public function __construct(
@@ -48,22 +50,22 @@ class DiscordWebhookHandler extends AbstractProcessingHandler
             ['name' => 'Environment', 'value' => app()->environment(), 'inline' => true],
         ];
 
-        if (!empty($record->context)) {
+        if (! empty($record->context)) {
             $exception = $record->context['exception'] ?? null;
             $ctx = array_filter($record->context, fn ($k) => $k !== 'exception', ARRAY_FILTER_USE_KEY);
 
-            if (!empty($ctx)) {
+            if (! empty($ctx)) {
                 $fields[] = [
-                    'name'  => 'Context',
-                    'value' => substr('```json' . "\n" . json_encode($ctx, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . "\n```", 0, 1024),
+                    'name' => 'Context',
+                    'value' => substr('```json'."\n".json_encode($ctx, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)."\n```", 0, 1024),
                 ];
             }
 
             if ($exception instanceof \Throwable) {
                 $fields[] = [
-                    'name'  => 'Exception',
+                    'name' => 'Exception',
                     'value' => substr(
-                        get_class($exception) . ': ' . $exception->getMessage() . "\n" . $exception->getFile() . ':' . $exception->getLine(),
+                        get_class($exception).': '.$exception->getMessage()."\n".$exception->getFile().':'.$exception->getLine(),
                         0,
                         1024
                     ),
@@ -72,12 +74,12 @@ class DiscordWebhookHandler extends AbstractProcessingHandler
         }
 
         return [
-            'title'       => '[' . $record->level->getName() . '] ' . substr($record->message, 0, 256),
+            'title' => '['.$record->level->getName().'] '.substr($record->message, 0, 256),
             'description' => substr($record->message, 0, 4096),
-            'color'       => $this->colorForLevel($record->level),
-            'fields'      => $fields,
-            'footer'      => ['text' => config('app.name', 'Laravel')],
-            'timestamp'   => $record->datetime->format(\DateTimeInterface::ATOM),
+            'color' => $this->colorForLevel($record->level),
+            'fields' => $fields,
+            'footer' => ['text' => config('app.name', 'Laravel')],
+            'timestamp' => $record->datetime->format(\DateTimeInterface::ATOM),
         ];
     }
 
@@ -85,22 +87,22 @@ class DiscordWebhookHandler extends AbstractProcessingHandler
     {
         return match ($level) {
             Level::Emergency, Level::Alert, Level::Critical => 0xCC0000,
-            Level::Error    => 0xFF4500,
-            Level::Warning  => 0xFF8C00,
-            Level::Notice   => 0x1E90FF,
-            Level::Info     => 0x2ECC71,
-            default         => 0x95A5A6,
+            Level::Error => 0xFF4500,
+            Level::Warning => 0xFF8C00,
+            Level::Notice => 0x1E90FF,
+            Level::Info => 0x2ECC71,
+            default => 0x95A5A6,
         };
     }
 
     private function isRateLimited(LogRecord $record): bool
     {
-        $key = md5($record->channel . ':' . substr($record->message, 0, 100));
+        $key = md5($record->channel.':'.substr($record->message, 0, 100));
         $now = time();
 
         if (! isset(self::$windows[$key]) || ($now - self::$windows[$key]) >= self::RATE_WINDOW) {
             self::$windows[$key] = $now;
-            self::$counts[$key]  = 0;
+            self::$counts[$key] = 0;
         }
 
         self::$counts[$key]++;
@@ -113,11 +115,11 @@ class DiscordWebhookHandler extends AbstractProcessingHandler
         try {
             $ch = curl_init($this->webhookUrl);
             curl_setopt_array($ch, [
-                CURLOPT_POST           => true,
-                CURLOPT_POSTFIELDS     => $payload,
-                CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => $payload,
+                CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
                 CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT        => 5,
+                CURLOPT_TIMEOUT => 5,
                 CURLOPT_CONNECTTIMEOUT => 3,
             ]);
             curl_exec($ch);

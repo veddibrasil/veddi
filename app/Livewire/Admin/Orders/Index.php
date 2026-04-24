@@ -13,13 +13,17 @@ class Index extends Component
 {
     use WithPagination;
 
-    public string $statusFilter  = '';
-    public string $search        = '';
+    public string $statusFilter = '';
+
+    public string $search = '';
+
     public string $companyFilter = '';
 
     public bool $isSuperAdmin = false;
-    public bool $canView      = false;
-    public bool $canUpdate    = false;
+
+    public bool $canView = false;
+
+    public bool $canUpdate = false;
 
     public function mount(): void
     {
@@ -30,14 +34,25 @@ class Index extends Component
             $this->canView = $this->canUpdate = true;
         } elseif (app()->bound('current.company')) {
             $company = app('current.company');
-            $this->canView   = $user->hasPermission('orders.view', $company);
+            $this->canView = $user->hasPermission('orders.view', $company);
             $this->canUpdate = $user->hasPermission('orders.update', $company);
         }
     }
 
-    public function updatingSearch(): void { $this->resetPage(); }
-    public function updatingStatusFilter(): void { $this->resetPage(); }
-    public function updatingCompanyFilter(): void { $this->resetPage(); }
+    public function updatingSearch(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatingStatusFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatingCompanyFilter(): void
+    {
+        $this->resetPage();
+    }
 
     public function render()
     {
@@ -56,12 +71,11 @@ class Index extends Component
             ->paginate(20);
 
         $companies = $this->isSuperAdmin
-            ? Cache::remember('companies:active', now()->addHours(24), fn () =>
-                Company::withoutGlobalScope(CompanyScope::class)
-                    ->where('active', true)
-                    ->orderBy('name')
-                    ->get()
-              )
+            ? Cache::remember('companies:active', now()->addHours(24), fn () => Company::withoutGlobalScope(CompanyScope::class)
+                ->where('active', true)
+                ->orderBy('name')
+                ->get()
+            )
             : collect();
 
         return view('livewire.admin.orders.index', compact('orders', 'companies'))

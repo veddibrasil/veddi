@@ -28,8 +28,8 @@ class UserPermissionService
         $role->permissions->each(function ($permission) use ($user, $company) {
             UserPermission::updateOrCreate(
                 [
-                    'user_id'       => $user->id,
-                    'company_id'    => $company->id,
+                    'user_id' => $user->id,
+                    'company_id' => $company->id,
                     'permission_id' => $permission->id,
                 ],
                 ['granted' => true]

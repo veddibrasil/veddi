@@ -2,24 +2,30 @@
 
 namespace App\Services;
 
-use App\Exceptions\AsaasCircuitOpenException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class AsaasCircuitBreaker
 {
-    private const STATE_CLOSED    = 'closed';
-    private const STATE_OPEN      = 'open';
+    private const STATE_CLOSED = 'closed';
+
+    private const STATE_OPEN = 'open';
+
     private const STATE_HALF_OPEN = 'half-open';
 
-    private const FAILURE_THRESHOLD    = 5;
-    private const HALF_OPEN_AFTER_SEC  = 600;  // 10 min
-    private const FAILURE_TTL_SEC      = 3600; // 1 hora
+    private const FAILURE_THRESHOLD = 5;
 
-    private const KEY_STATE      = 'asaas:circuit:state';
-    private const KEY_FAILURES   = 'asaas:circuit:failures';
-    private const KEY_OPENED_AT  = 'asaas:circuit:opened_at';
+    private const HALF_OPEN_AFTER_SEC = 600;  // 10 min
+
+    private const FAILURE_TTL_SEC = 3600; // 1 hora
+
+    private const KEY_STATE = 'asaas:circuit:state';
+
+    private const KEY_FAILURES = 'asaas:circuit:failures';
+
+    private const KEY_OPENED_AT = 'asaas:circuit:opened_at';
+
     private const KEY_LAST_ALERT = 'asaas:circuit:last_alert';
 
     private const ASAAS_JOB_CLASSES = [
@@ -46,8 +52,10 @@ class AsaasCircuitBreaker
         if ($state === self::STATE_OPEN) {
             if ($this->shouldTransitionToHalfOpen()) {
                 Cache::put(self::KEY_STATE, self::STATE_HALF_OPEN, self::FAILURE_TTL_SEC);
+
                 return false; // permite uma requisição de probe passar
             }
+
             return true;
         }
 
@@ -94,6 +102,7 @@ class AsaasCircuitBreaker
         // Se já está aberto, reseta o timer para evitar transição prematura para half-open
         if ($state === self::STATE_OPEN) {
             Cache::put(self::KEY_OPENED_AT, time(), 86400);
+
             return;
         }
 
@@ -153,6 +162,7 @@ class AsaasCircuitBreaker
     private function shouldTransitionToHalfOpen(): bool
     {
         $openedAt = $this->getOpenedAt();
+
         return $openedAt !== null && (time() - $openedAt) >= self::HALF_OPEN_AFTER_SEC;
     }
 
@@ -165,12 +175,12 @@ class AsaasCircuitBreaker
         Cache::put(self::KEY_LAST_ALERT, time(), 600);
 
         Log::channel('discord')->critical('🔴 Asaas OFFLINE detectado — circuit aberto', [
-            'type'          => 'payments',
-            'failures'      => $this->getFailureCount(),
-            'threshold'     => self::FAILURE_THRESHOLD,
-            'pending_jobs'  => $failedJobCount,
-            'recovery_in'   => self::HALF_OPEN_AFTER_SEC . 's (automático)',
-            'manual_close'  => 'php artisan asaas:close',
+            'type' => 'payments',
+            'failures' => $this->getFailureCount(),
+            'threshold' => self::FAILURE_THRESHOLD,
+            'pending_jobs' => $failedJobCount,
+            'recovery_in' => self::HALF_OPEN_AFTER_SEC.'s (automático)',
+            'manual_close' => 'php artisan asaas:close',
         ]);
     }
 

@@ -28,8 +28,8 @@ class CompanyWithdrawal extends Model
     ];
 
     protected $casts = [
-        'amount'       => 'decimal:2',
-        'pix_fee'      => 'decimal:2',
+        'amount' => 'decimal:2',
+        'pix_fee' => 'decimal:2',
         'asaas_response' => 'array',
         'processed_at' => 'datetime',
     ];

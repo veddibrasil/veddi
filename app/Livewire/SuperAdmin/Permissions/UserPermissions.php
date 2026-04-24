@@ -14,7 +14,9 @@ use Livewire\Component;
 class UserPermissions extends Component
 {
     public User $user;
+
     public int $companyId = 0;
+
     public array $overrides = [];
 
     public function mount(User $user): void
@@ -35,7 +37,9 @@ class UserPermissions extends Component
     private function loadOverrides(): void
     {
         $this->overrides = [];
-        if (! $this->companyId) return;
+        if (! $this->companyId) {
+            return;
+        }
 
         $userPerms = UserPermission::where('user_id', $this->user->id)
             ->where('company_id', $this->companyId)
@@ -50,11 +54,15 @@ class UserPermissions extends Component
 
     public function save(): void
     {
-        if (! $this->companyId) return;
+        if (! $this->companyId) {
+            return;
+        }
 
         foreach ($this->overrides as $permName => $value) {
             $permission = Permission::where('name', $permName)->first();
-            if (! $permission) continue;
+            if (! $permission) {
+                continue;
+            }
 
             if ($value === 'default') {
                 UserPermission::where('user_id', $this->user->id)
@@ -64,8 +72,8 @@ class UserPermissions extends Component
             } else {
                 UserPermission::updateOrCreate(
                     [
-                        'user_id'       => $this->user->id,
-                        'company_id'    => $this->companyId,
+                        'user_id' => $this->user->id,
+                        'company_id' => $this->companyId,
                         'permission_id' => $permission->id,
                     ],
                     ['granted' => $value === 'grant']
@@ -96,7 +104,7 @@ class UserPermissions extends Component
         }
 
         return view('livewire.super-admin.permissions.user-permissions', [
-            'companies'   => $companies,
+            'companies' => $companies,
             'permissions' => $permissions,
             'roleDefaults' => $roleDefaults,
         ]);

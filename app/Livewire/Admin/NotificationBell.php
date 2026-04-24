@@ -8,6 +8,7 @@ use Livewire\Component;
 class NotificationBell extends Component
 {
     public int $companyId = 0;
+
     public bool $confirmingClearAll = false;
 
     public function mount(): void
@@ -24,7 +25,7 @@ class NotificationBell extends Component
         }
 
         return [
-            "echo:orders.{$this->companyId},NewOrderPlaced"           => 'onNewOrder',
+            "echo:orders.{$this->companyId},NewOrderPlaced" => 'onNewOrder',
             "echo:admin-support.{$this->companyId},NewSupportMessage" => 'onNewSupportMessage',
         ];
     }
@@ -90,8 +91,8 @@ class NotificationBell extends Component
 
         return view('livewire.admin.notification-bell', [
             'notifications' => $notifications,
-            'unreadCount'   => $unreadCount,
-            'modalName'     => 'confirm-clear-notifications-' . $this->getId(),
+            'unreadCount' => $unreadCount,
+            'modalName' => 'confirm-clear-notifications-'.$this->getId(),
         ]);
     }
 }

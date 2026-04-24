@@ -13,9 +13,12 @@ use Livewire\Component;
 class Show extends Component
 {
     public Order $order;
+
     public string $adminMessage = '';
-    public array $chatMessages  = [];
-    public bool $canUpdate      = false;
+
+    public array $chatMessages = [];
+
+    public bool $canUpdate = false;
 
     public function mount(): void
     {
@@ -40,8 +43,8 @@ class Show extends Component
     public function onCustomerMessage(array $data): void
     {
         $this->chatMessages[] = [
-            'sender'     => 'customer',
-            'message'    => $data['message'],
+            'sender' => 'customer',
+            'message' => $data['message'],
             'created_at' => $data['created_at'],
         ];
     }
@@ -55,15 +58,15 @@ class Show extends Component
 
         ChatMessage::create([
             'order_id' => $this->order->id,
-            'sender'   => 'admin',
-            'message'  => $text,
+            'sender' => 'admin',
+            'message' => $text,
         ]);
 
         AdminMessageSent::dispatch($this->order, $text);
 
         $this->chatMessages[] = [
-            'sender'     => 'admin',
-            'message'    => $text,
+            'sender' => 'admin',
+            'message' => $text,
             'created_at' => now()->format('H:i'),
         ];
     }
@@ -92,10 +95,10 @@ class Show extends Component
         OrderStatusUpdated::dispatch($this->order);
 
         Log::channel('orders')->info('Status do pedido alterado pelo admin', [
-            'order_id'       => $this->order->id,
-            'admin_id'       => auth()->id(),
+            'order_id' => $this->order->id,
+            'admin_id' => auth()->id(),
             'status_anterior' => $previousStatus,
-            'status_novo'    => $status,
+            'status_novo' => $status,
         ]);
 
         session()->flash('status', 'Status atualizado.');
@@ -107,8 +110,8 @@ class Show extends Component
             ->orderBy('created_at')
             ->get()
             ->map(fn ($m) => [
-                'sender'     => $m->sender,
-                'message'    => $m->message,
+                'sender' => $m->sender,
+                'message' => $m->message,
                 'created_at' => $m->created_at->format('H:i'),
             ])
             ->toArray();
@@ -138,10 +141,10 @@ class Show extends Component
         }
 
         Log::channel('payments')->info('Reembolso manual marcado pelo admin', [
-            'order_id'         => $this->order->id,
-            'admin_id'         => auth()->id(),
+            'order_id' => $this->order->id,
+            'admin_id' => auth()->id(),
             'asaas_payment_id' => $payment->asaas_payment_id,
-            'amount'           => $payment->amount,
+            'amount' => $payment->amount,
         ]);
 
         session()->flash('status', 'Pagamento marcado como reembolsado.');

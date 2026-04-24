@@ -49,21 +49,21 @@ class StockService
                 ->where('branch_id', $order->branch_id)
                 ->where('product_id', $item->product_id)
                 ->update([
-                    'quantity'  => $newQty,
+                    'quantity' => $newQty,
                     'available' => $newQty > 0,
                 ]);
 
             StockMovement::withoutGlobalScopes()->create([
-                'company_id'      => $order->company_id,
-                'branch_id'       => $order->branch_id,
-                'product_id'      => $item->product_id,
-                'order_id'        => $order->id,
-                'user_id'         => null,
-                'quantity'        => -$item->quantity,
+                'company_id' => $order->company_id,
+                'branch_id' => $order->branch_id,
+                'product_id' => $item->product_id,
+                'order_id' => $order->id,
+                'user_id' => null,
+                'quantity' => -$item->quantity,
                 'quantity_before' => $pivot->quantity,
-                'quantity_after'  => $newQty,
-                'type'            => StockMovement::TYPE_ORDER_DEDUCTION,
-                'notes'           => "Pedido {$order->order_number}",
+                'quantity_after' => $newQty,
+                'type' => StockMovement::TYPE_ORDER_DEDUCTION,
+                'notes' => "Pedido {$order->order_number}",
             ]);
         }
     }
@@ -95,27 +95,27 @@ class StockService
                 }
 
                 $deducted = abs($movement->quantity);
-                $newQty   = $pivot->quantity + $deducted;
+                $newQty = $pivot->quantity + $deducted;
 
                 DB::table('branch_product')
                     ->where('branch_id', $movement->branch_id)
                     ->where('product_id', $movement->product_id)
                     ->update([
-                        'quantity'  => $newQty,
+                        'quantity' => $newQty,
                         'available' => true,
                     ]);
 
                 StockMovement::withoutGlobalScopes()->create([
-                    'company_id'      => $order->company_id,
-                    'branch_id'       => $movement->branch_id,
-                    'product_id'      => $movement->product_id,
-                    'order_id'        => $order->id,
-                    'user_id'         => null,
-                    'quantity'        => $deducted,
+                    'company_id' => $order->company_id,
+                    'branch_id' => $movement->branch_id,
+                    'product_id' => $movement->product_id,
+                    'order_id' => $order->id,
+                    'user_id' => null,
+                    'quantity' => $deducted,
                     'quantity_before' => $pivot->quantity,
-                    'quantity_after'  => $newQty,
-                    'type'            => StockMovement::TYPE_ORDER_RESTORE,
-                    'notes'           => "Cancelamento do pedido {$order->order_number}",
+                    'quantity_after' => $newQty,
+                    'type' => StockMovement::TYPE_ORDER_RESTORE,
+                    'notes' => "Cancelamento do pedido {$order->order_number}",
                 ]);
             }
         });
@@ -139,41 +139,41 @@ class StockService
                 ->first();
 
             $currentQty = $pivot ? $pivot->quantity : 0;
-            $newQty     = max(0, $currentQty + $quantity);
+            $newQty = max(0, $currentQty + $quantity);
 
             DB::table('branch_product')
                 ->where('branch_id', $branch->id)
                 ->where('product_id', $product->id)
                 ->update([
-                    'quantity'  => $newQty,
+                    'quantity' => $newQty,
                     'available' => $newQty > 0,
                 ]);
 
             $type = $quantity >= 0 ? StockMovement::TYPE_MANUAL_ADD : StockMovement::TYPE_MANUAL_REMOVE;
 
             $movement = StockMovement::withoutGlobalScopes()->create([
-                'company_id'      => $branch->company_id,
-                'branch_id'       => $branch->id,
-                'product_id'      => $product->id,
-                'order_id'        => null,
-                'user_id'         => $user?->id,
-                'quantity'        => $quantity,
+                'company_id' => $branch->company_id,
+                'branch_id' => $branch->id,
+                'product_id' => $product->id,
+                'order_id' => null,
+                'user_id' => $user?->id,
+                'quantity' => $quantity,
                 'quantity_before' => $currentQty,
-                'quantity_after'  => $newQty,
-                'type'            => $type,
-                'notes'           => $notes,
+                'quantity_after' => $newQty,
+                'type' => $type,
+                'notes' => $notes,
             ]);
 
             Cache::forget("stock:low:branch:{$branch->id}");
 
             Log::channel('audit')->info('Ajuste manual de estoque', [
-                'user_id'    => $user?->id,
-                'branch_id'  => $branch->id,
+                'user_id' => $user?->id,
+                'branch_id' => $branch->id,
                 'product_id' => $product->id,
-                'delta'      => $quantity,
-                'before'     => $currentQty,
-                'after'      => $newQty,
-                'notes'      => $notes,
+                'delta' => $quantity,
+                'before' => $currentQty,
+                'after' => $newQty,
+                'notes' => $notes,
             ]);
 
             return $movement;
@@ -198,38 +198,38 @@ class StockService
                 ->first();
 
             $currentQty = $pivot ? $pivot->quantity : 0;
-            $safeQty    = max(0, $newQuantity);
+            $safeQty = max(0, $newQuantity);
 
             DB::table('branch_product')
                 ->where('branch_id', $branch->id)
                 ->where('product_id', $product->id)
                 ->update([
-                    'quantity'  => $safeQty,
+                    'quantity' => $safeQty,
                     'available' => $safeQty > 0,
                 ]);
 
             $movement = StockMovement::withoutGlobalScopes()->create([
-                'company_id'      => $branch->company_id,
-                'branch_id'       => $branch->id,
-                'product_id'      => $product->id,
-                'order_id'        => null,
-                'user_id'         => $user?->id,
-                'quantity'        => $safeQty - $currentQty,
+                'company_id' => $branch->company_id,
+                'branch_id' => $branch->id,
+                'product_id' => $product->id,
+                'order_id' => null,
+                'user_id' => $user?->id,
+                'quantity' => $safeQty - $currentQty,
                 'quantity_before' => $currentQty,
-                'quantity_after'  => $safeQty,
-                'type'            => StockMovement::TYPE_MANUAL_SET,
-                'notes'           => $notes,
+                'quantity_after' => $safeQty,
+                'type' => StockMovement::TYPE_MANUAL_SET,
+                'notes' => $notes,
             ]);
 
             Cache::forget("stock:low:branch:{$branch->id}");
 
             Log::channel('audit')->info('Quantidade de estoque definida manualmente', [
-                'user_id'    => $user?->id,
-                'branch_id'  => $branch->id,
+                'user_id' => $user?->id,
+                'branch_id' => $branch->id,
                 'product_id' => $product->id,
-                'before'     => $currentQty,
-                'after'      => $safeQty,
-                'notes'      => $notes,
+                'before' => $currentQty,
+                'after' => $safeQty,
+                'notes' => $notes,
             ]);
 
             return $movement;

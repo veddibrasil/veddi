@@ -7,7 +7,8 @@ use Illuminate\Console\Command;
 
 class AsaasOpen extends Command
 {
-    protected $signature   = 'asaas:open';
+    protected $signature = 'asaas:open';
+
     protected $description = 'Força a abertura do circuit breaker do Asaas (bloqueia todas as chamadas)';
 
     public function handle(AsaasCircuitBreaker $cb): int

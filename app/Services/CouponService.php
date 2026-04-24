@@ -15,7 +15,8 @@ class CouponService
     /**
      * Valida um código de cupom e retorna o model Coupon.
      *
-     * @param  array<int, array{qty: int, name: string, price: float}> $cart
+     * @param  array<int, array{qty: int, name: string, price: float}>  $cart
+     *
      * @throws CouponException
      */
     public function validate(string $code, int $customerId, array $cart, float $subtotal): Coupon
@@ -59,16 +60,16 @@ class CouponService
     /**
      * Calcula o valor de desconto a ser aplicado.
      *
-     * @param  array<int, array{qty: int, name: string, price: float}> $cart
+     * @param  array<int, array{qty: int, name: string, price: float}>  $cart
      */
     public function calculateDiscount(Coupon $coupon, array $cart, float $subtotal, float $deliveryFee): float
     {
         return match ($coupon->type) {
-            'percentage'    => $this->calculatePercentageDiscount($coupon, $cart, $subtotal),
-            'fixed'         => $this->calculateFixedDiscount($coupon, $cart, $subtotal),
+            'percentage' => $this->calculatePercentageDiscount($coupon, $cart, $subtotal),
+            'fixed' => $this->calculateFixedDiscount($coupon, $cart, $subtotal),
             'free_delivery' => $deliveryFee,
-            'free_product'  => $this->getFreeProductPrice($coupon),
-            default         => 0.0,
+            'free_product' => $this->getFreeProductPrice($coupon),
+            default => 0.0,
         };
     }
 
@@ -78,10 +79,10 @@ class CouponService
     public function recordUsage(Coupon $coupon, Order $order, int $customerId, float $discountApplied): CouponUsage
     {
         return CouponUsage::create([
-            'coupon_id'        => $coupon->id,
-            'order_id'         => $order->id,
-            'customer_id'      => $customerId,
-            'company_id'       => $order->company_id,
+            'coupon_id' => $coupon->id,
+            'order_id' => $order->id,
+            'customer_id' => $customerId,
+            'company_id' => $order->company_id,
             'discount_applied' => $discountApplied,
         ]);
     }
@@ -89,12 +90,14 @@ class CouponService
     private function calculatePercentageDiscount(Coupon $coupon, array $cart, float $subtotal): float
     {
         $base = $this->getScopeBase($coupon, $cart, $subtotal);
+
         return round($base * ($coupon->discount_value / 100), 2);
     }
 
     private function calculateFixedDiscount(Coupon $coupon, array $cart, float $subtotal): float
     {
         $base = $this->getScopeBase($coupon, $cart, $subtotal);
+
         return min($coupon->discount_value, $base);
     }
 
@@ -110,7 +113,11 @@ class CouponService
         $scopeIds = $coupon->scope_ids;
 
         // Para escopos por produto ou categoria, busca os produtos do carrinho com dados do DB
-        $productIds = array_keys($cart);
+        $productIds = array_unique(array_values(array_map(
+            fn ($item, $key) => (int) ($item['product_id'] ?? explode('_', (string) $key)[0]),
+            array_values($cart),
+            array_keys($cart)
+        )));
         $products = Product::withoutGlobalScope(CompanyScope::class)
             ->whereIn('id', $productIds)
             ->get()
@@ -118,16 +125,17 @@ class CouponService
 
         $base = 0.0;
 
-        foreach ($cart as $productId => $item) {
-            $product = $products->get($productId);
+        foreach ($cart as $cartKey => $item) {
+            $pid = (int) ($item['product_id'] ?? explode('_', (string) $cartKey)[0]);
+            $product = $products->get($pid);
             if (! $product) {
                 continue;
             }
 
             $match = match ($coupon->scope) {
-                'product'  => in_array($productId, $scopeIds),
+                'product' => in_array($pid, $scopeIds),
                 'category' => in_array($product->product_category_id, $scopeIds),
-                default    => false,
+                default => false,
             };
 
             if ($match) {

@@ -10,6 +10,7 @@ class Payment extends Model
     protected $fillable = [
         'order_id',
         'asaas_payment_id',
+        'stark_payment_id',
         'payment_gateway',
         'pix_qr_code',
         'pix_copy_paste',
@@ -28,17 +29,26 @@ class Payment extends Model
     ];
 
     protected $casts = [
-        'paid_at'           => 'datetime',
-        'expires_at'        => 'datetime',
-        'webhook_payload'   => 'array',
-        'amount'            => 'decimal:2',
-        'pix_fee'           => 'decimal:2',
-        'original_amount'   => 'decimal:2',
-        'card_fee'          => 'decimal:2',
-        'card_fee_rate'     => 'float',
-        'installments'      => 'integer',
+        'paid_at' => 'datetime',
+        'expires_at' => 'datetime',
+        'webhook_payload' => 'array',
+        'amount' => 'decimal:2',
+        'pix_fee' => 'decimal:2',
+        'original_amount' => 'decimal:2',
+        'card_fee' => 'decimal:2',
+        'card_fee_rate' => 'float',
+        'installments' => 'integer',
         'anticipation_days' => 'integer',
     ];
+
+    /**
+     * Retorna o ID externo do gateway, independente de qual gateway processou.
+     * Stark → stark_payment_id; Asaas → asaas_payment_id.
+     */
+    public function getExternalIdAttribute(): ?string
+    {
+        return $this->stark_payment_id ?? $this->asaas_payment_id;
+    }
 
     public function order(): BelongsTo
     {

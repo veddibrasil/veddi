@@ -18,7 +18,7 @@ class SupportTicketClosed implements ShouldBroadcastNow
     public function broadcastOn(): array
     {
         return [
-            new Channel('support.' . $this->ticket->id),
+            new Channel('support.'.$this->ticket->id),
         ];
     }
 

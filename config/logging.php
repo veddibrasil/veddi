@@ -74,13 +74,13 @@ return [
         ],
 
         'discord' => [
-            'driver'       => 'monolog',
-            'handler'      => \App\Logging\DiscordWebhookHandler::class,
+            'driver' => 'monolog',
+            'handler' => \App\Logging\DiscordWebhookHandler::class,
             'handler_with' => [
                 'webhookUrl' => env('DISCORD_LOG_WEBHOOK_URL', ''),
-                'level'      => env('DISCORD_LOG_LEVEL', 'critical'),
+                'level' => env('DISCORD_LOG_LEVEL', 'critical'),
             ],
-            'url'   => env('DISCORD_LOG_WEBHOOK_URL', ''),
+            'url' => env('DISCORD_LOG_WEBHOOK_URL', ''),
             'level' => env('DISCORD_LOG_LEVEL', 'critical'),
         ],
 
@@ -170,6 +170,14 @@ return [
             'path' => storage_path('logs/audit.log'),
             'level' => 'info',
             'days' => 90,
+            'replace_placeholders' => true,
+        ],
+
+        'whatsapp' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/whatsapp.log'),
+            'level' => 'debug',
+            'days' => 14,
             'replace_placeholders' => true,
         ],
 

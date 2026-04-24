@@ -190,10 +190,10 @@
 
         <div class="flex items-start justify-between gap-4">
             <div>
-                <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">Absorver a taxa PIX de R$ 1,99</p>
+                <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">Absorver a taxa PIX de R$ 0,50</p>
                 <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
-                    Se ativado, os R$ 1,99 serão descontados do seu repasse e o cliente pagará apenas o valor do pedido.<br>
-                    Se desativado, o cliente pagará R$ 1,99 a mais no momento do pagamento.
+                    Se ativado, os R$ 0,50 serão descontados do seu repasse e o cliente pagará apenas o valor do pedido.<br>
+                    Se desativado, o cliente pagará R$ 0,50 a mais no momento do pagamento.
                 </p>
             </div>
             <label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
@@ -211,7 +211,7 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
             </svg>
             <span>
-                Pagamentos PIX ficam disponíveis para saque <strong>1 dia</strong> após a confirmação. Saques via PIX também possuem uma taxa de <strong>R$ 1,99</strong>.
+                Pagamentos PIX ficam disponíveis para saque <strong>1 dia</strong> após a confirmação. Saques via PIX também possuem uma taxa de <strong>R$ 0,50</strong>.
             </span>
         </div>
     </div>

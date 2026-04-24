@@ -25,9 +25,9 @@ class Subscription extends Model
     ];
 
     protected $casts = [
-        'next_due_date'   => 'date',
+        'next_due_date' => 'date',
         'last_payment_at' => 'datetime',
-        'amount'          => 'decimal:2',
+        'amount' => 'decimal:2',
     ];
 
     public function company(): BelongsTo

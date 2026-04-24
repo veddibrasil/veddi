@@ -18,7 +18,7 @@ class AdminSupportMessageSent implements ShouldBroadcastNow
     public function broadcastOn(): array
     {
         return [
-            new Channel('support.' . $this->supportMessage->ticket_id),
+            new Channel('support.'.$this->supportMessage->ticket_id),
         ];
     }
 
@@ -26,7 +26,7 @@ class AdminSupportMessageSent implements ShouldBroadcastNow
     {
         return [
             'message_id' => $this->supportMessage->id,
-            'message'    => $this->supportMessage->message,
+            'message' => $this->supportMessage->message,
             'created_at' => $this->supportMessage->created_at->format('H:i'),
         ];
     }

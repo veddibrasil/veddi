@@ -13,15 +13,23 @@ use Livewire\WithPagination;
 class Index extends Component
 {
     use WithPagination;
-    public string $search         = '';
+
+    public string $search = '';
+
     public string $categoryFilter = '';
-    public string $companyFilter  = '';
-    public ?int $deletingId       = null;
+
+    public string $companyFilter = '';
+
+    public ?int $deletingId = null;
 
     public bool $isSuperAdmin = false;
-    public bool $canCreate    = false;
-    public bool $canUpdate    = false;
-    public bool $canDelete    = false;
+
+    public bool $canCreate = false;
+
+    public bool $canUpdate = false;
+
+    public bool $canDelete = false;
+
     public ?int $lockedBranchId = null; // branch_manager: escopo fixo de filial
 
     public function mount(): void
@@ -43,9 +51,20 @@ class Index extends Component
         }
     }
 
-    public function updatingSearch(): void { $this->resetPage(); }
-    public function updatingCategoryFilter(): void { $this->resetPage(); }
-    public function updatingCompanyFilter(): void { $this->resetPage(); }
+    public function updatingSearch(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatingCategoryFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatingCompanyFilter(): void
+    {
+        $this->resetPage();
+    }
 
     public function confirmDelete(int $id): void
     {
@@ -88,18 +107,17 @@ class Index extends Component
             : ProductCategory::orderBy('name');
 
         $companies = $this->isSuperAdmin
-            ? Cache::remember('companies:active', now()->addHours(24), fn () =>
-                Company::withoutGlobalScope(CompanyScope::class)
-                    ->where('active', true)
-                    ->orderBy('name')
-                    ->get()
-              )
+            ? Cache::remember('companies:active', now()->addHours(24), fn () => Company::withoutGlobalScope(CompanyScope::class)
+                ->where('active', true)
+                ->orderBy('name')
+                ->get()
+            )
             : collect();
 
         return view('livewire.admin.products.index', [
-            'products'     => $products,
-            'categories'   => $categoryQuery->get(),
-            'companies'    => $companies,
+            'products' => $products,
+            'categories' => $categoryQuery->get(),
+            'companies' => $companies,
             'isSuperAdmin' => $this->isSuperAdmin,
         ])->layout('layouts.app', ['title' => 'Produtos']);
     }

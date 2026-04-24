@@ -30,7 +30,7 @@ class UpdateCompanyBalancesJob implements ShouldQueue
     public function failed(\Throwable $exception): void
     {
         Log::channel('discord')->error('Job de snapshots de saldo falhou', [
-            'type'       => 'payments',
+            'type' => 'payments',
             'error' => $exception->getMessage(),
             'trace' => $exception->getTraceAsString(),
         ]);

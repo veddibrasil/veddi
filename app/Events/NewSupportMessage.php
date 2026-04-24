@@ -24,17 +24,17 @@ class NewSupportMessage implements ShouldBroadcastNow
     public function broadcastOn(): array
     {
         return [
-            new Channel('admin-support.' . $this->companyId),
+            new Channel('admin-support.'.$this->companyId),
         ];
     }
 
     public function broadcastWith(): array
     {
         return [
-            'ticket_id'     => $this->ticket->id,
-            'message'       => $this->message->message,
+            'ticket_id' => $this->ticket->id,
+            'message' => $this->message->message,
             'customer_name' => $this->ticket->customer?->name ?? 'Cliente',
-            'created_at'    => $this->message->created_at->format('H:i'),
+            'created_at' => $this->message->created_at->format('H:i'),
         ];
     }
 }

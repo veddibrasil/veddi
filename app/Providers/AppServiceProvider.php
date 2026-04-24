@@ -2,8 +2,18 @@
 
 namespace App\Providers;
 
+use App\Contracts\AsaasServiceInterface;
+use App\Contracts\OrderServiceInterface;
+use App\Contracts\TransactionServiceInterface;
+use App\Contracts\WalletServiceInterface;
+use App\Events\AdminMessageSent;
 use App\Events\CompanyActivated;
+use App\Events\NewOrderPlaced;
+use App\Events\OrderStatusUpdated;
 use App\Listeners\SendWelcomeSubscriptionEmail;
+use App\Listeners\SendWhatsAppAdminMessageNotification;
+use App\Listeners\SendWhatsAppOrderNotification;
+use App\Listeners\SendWhatsAppStatusNotification;
 use App\Models\Branch;
 use App\Models\Company;
 use App\Models\Coupon;
@@ -17,7 +27,11 @@ use App\Policies\CouponPolicy;
 use App\Policies\OrderPolicy;
 use App\Policies\ProductCategoryPolicy;
 use App\Policies\ProductPolicy;
-use App\Policies\SuportTicketPolice;
+use App\Policies\SupportTicketPolicy;
+use App\Services\AsaasService;
+use App\Services\OrderService;
+use App\Services\TransactionService;
+use App\Services\WalletService;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Auth\Notifications\VerifyEmail;
@@ -42,6 +56,11 @@ class AppServiceProvider extends ServiceProvider
         );
 
         $this->app->singleton(\App\Services\AsaasCircuitBreaker::class);
+
+        $this->app->bind(AsaasServiceInterface::class, AsaasService::class);
+        $this->app->bind(OrderServiceInterface::class, OrderService::class);
+        $this->app->bind(WalletServiceInterface::class, WalletService::class);
+        $this->app->bind(TransactionServiceInterface::class, TransactionService::class);
     }
 
     /**
@@ -58,6 +77,9 @@ class AppServiceProvider extends ServiceProvider
     protected function configureEvents(): void
     {
         Event::listen(CompanyActivated::class, SendWelcomeSubscriptionEmail::class);
+        Event::listen(NewOrderPlaced::class, SendWhatsAppOrderNotification::class);
+        Event::listen(OrderStatusUpdated::class, SendWhatsAppStatusNotification::class);
+        Event::listen(AdminMessageSent::class, SendWhatsAppAdminMessageNotification::class);
     }
 
     protected function registerPolicies(): void
@@ -67,7 +89,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(ProductCategory::class, ProductCategoryPolicy::class);
         Gate::policy(Branch::class, BranchPolicy::class);
         Gate::policy(Coupon::class, CouponPolicy::class);
-        Gate::policy(SupportTicket::class, SuportTicketPolice::class);
+        Gate::policy(SupportTicket::class, SupportTicketPolicy::class);
         Gate::policy(Company::class, CompanyPolicy::class);
     }
 
@@ -79,7 +101,7 @@ class AppServiceProvider extends ServiceProvider
                 'email' => $notifiable->getEmailForPasswordReset(),
             ], false));
 
-            $expire = config('auth.passwords.' . config('auth.defaults.passwords') . '.expire');
+            $expire = config('auth.passwords.'.config('auth.defaults.passwords').'.expire');
 
             return (new MailMessage)
                 ->subject('Redefinição de Senha')

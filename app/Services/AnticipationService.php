@@ -41,8 +41,8 @@ class AnticipationService
         $settings = $company->loadMissing('paymentSettings')->paymentSettings ?? null;
 
         return [
-            'd2'  => round($this->anticipationRate(2,  $settings) * 100, 2),
-            'd7'  => round($this->anticipationRate(7,  $settings) * 100, 2),
+            'd2' => round($this->anticipationRate(2, $settings) * 100, 2),
+            'd7' => round($this->anticipationRate(7, $settings) * 100, 2),
             'd15' => round($this->anticipationRate(15, $settings) * 100, 2),
             'd30' => round($this->anticipationRate(30, $settings) * 100, 2),
         ];
@@ -50,7 +50,7 @@ class AnticipationService
 
     public function getEligibleTransactions(Company $company): Collection
     {
-        $today    = now()->toDateString();
+        $today = now()->toDateString();
         $settings = $company->loadMissing('paymentSettings')->paymentSettings ?? null;
 
         return CompanyTransaction::withoutGlobalScopes()
@@ -61,21 +61,21 @@ class AnticipationService
             ->orderBy('release_date')
             ->get()
             ->map(function ($tx) use ($settings) {
-                $netValue      = (float) $tx->net_value;
+                $netValue = (float) $tx->net_value;
                 $daysRemaining = (int) Carbon::today()->diffInDays(Carbon::parse($tx->release_date), false);
-                $rate          = $this->anticipationRate($daysRemaining, $settings);
-                $fee           = round($netValue * $rate, 2);
+                $rate = $this->anticipationRate($daysRemaining, $settings);
+                $fee = round($netValue * $rate, 2);
 
                 return [
-                    'id'            => $tx->id,
-                    'type'          => $tx->type,
-                    'description'   => $tx->description ?? '',
-                    'net_value'     => $netValue,
-                    'release_date'  => Carbon::parse($tx->release_date)->toDateString(),
-                    'days_remaining'=> $daysRemaining,
-                    'rate'          => $rate,
-                    'rate_pct'      => round($rate * 100, 2),
-                    'fee'           => $fee,
+                    'id' => $tx->id,
+                    'type' => $tx->type,
+                    'description' => $tx->description ?? '',
+                    'net_value' => $netValue,
+                    'release_date' => Carbon::parse($tx->release_date)->toDateString(),
+                    'days_remaining' => $daysRemaining,
+                    'rate' => $rate,
+                    'rate_pct' => round($rate * 100, 2),
+                    'fee' => $fee,
                     'net_after_fee' => round($netValue - $fee, 2),
                 ];
             });
@@ -94,15 +94,15 @@ class AnticipationService
         $selected = $eligibleTransactions->whereIn('id', $selectedIds)->values();
 
         $grossAmount = round($selected->sum('net_value'), 2);
-        $feeAmount   = round($selected->sum('fee'), 2);
-        $netAmount   = round($grossAmount - $feeAmount, 2);
+        $feeAmount = round($selected->sum('fee'), 2);
+        $netAmount = round($grossAmount - $feeAmount, 2);
 
         return [
             'transactions_count' => $selected->count(),
-            'gross_amount'       => $grossAmount,
-            'fee_amount'         => $feeAmount,
-            'net_amount'         => $netAmount,
-            'has_eligible'       => $selected->isNotEmpty(),
+            'gross_amount' => $grossAmount,
+            'fee_amount' => $feeAmount,
+            'net_amount' => $netAmount,
+            'has_eligible' => $selected->isNotEmpty(),
         ];
     }
 
@@ -120,7 +120,7 @@ class AnticipationService
             return 0;
         }
 
-        $today    = now()->toDateString();
+        $today = now()->toDateString();
         $settings = $company->loadMissing('paymentSettings')->paymentSettings ?? null;
 
         return DB::transaction(function () use ($company, $transactionIds, $today, $settings) {
@@ -139,17 +139,17 @@ class AnticipationService
             $totalFee = 0.0;
 
             foreach ($transactions as $tx) {
-                $netValue      = (float) $tx->net_value;
+                $netValue = (float) $tx->net_value;
                 $daysRemaining = (int) Carbon::today()->diffInDays(Carbon::parse($tx->release_date), false);
-                $rate          = $this->anticipationRate($daysRemaining, $settings);
-                $fee           = round($netValue * $rate, 2);
+                $rate = $this->anticipationRate($daysRemaining, $settings);
+                $fee = round($netValue * $rate, 2);
 
                 $tx->update([
-                    'release_date'     => $today,
-                    'is_anticipated'   => true,
+                    'release_date' => $today,
+                    'is_anticipated' => true,
                     'anticipation_fee' => $fee,
-                    'net_value'        => round($netValue - $fee, 2),
-                    'status'           => 'released',
+                    'net_value' => round($netValue - $fee, 2),
+                    'status' => 'released',
                 ]);
 
                 $totalFee += $fee;
@@ -159,17 +159,17 @@ class AnticipationService
 
             if ($totalFee > 0) {
                 CompanyWalletEntry::create([
-                    'company_id'  => $company->id,
-                    'type'        => 'anticipation_fee',
-                    'amount'      => -$totalFee,
+                    'company_id' => $company->id,
+                    'type' => 'anticipation_fee',
+                    'amount' => -$totalFee,
                     'description' => 'Taxa de antecipação de recebíveis',
                 ]);
             }
 
             Log::channel('payments')->info('Antecipação de recebíveis executada', [
                 'company_id' => $company->id,
-                'count'      => $transactions->count(),
-                'total_fee'  => $totalFee,
+                'count' => $transactions->count(),
+                'total_fee' => $totalFee,
             ]);
 
             return $transactions->count();
@@ -183,10 +183,10 @@ class AnticipationService
     private function anticipationRate(int $days, ?PaymentSettings $settings): float
     {
         return match (true) {
-            $days <= 2  => (float) ($settings?->anticipation_rate_d2  ?? config('payments.credit_card.anticipation_d2')),
-            $days <= 7  => (float) ($settings?->anticipation_rate_d7  ?? config('payments.credit_card.anticipation_d7')),
+            $days <= 2 => (float) ($settings?->anticipation_rate_d2 ?? config('payments.credit_card.anticipation_d2')),
+            $days <= 7 => (float) ($settings?->anticipation_rate_d7 ?? config('payments.credit_card.anticipation_d7')),
             $days <= 15 => (float) ($settings?->anticipation_rate_d15 ?? config('payments.credit_card.anticipation_d15')),
-            default     => (float) ($settings?->anticipation_rate_d30 ?? config('payments.credit_card.anticipation_d30')),
+            default => (float) ($settings?->anticipation_rate_d30 ?? config('payments.credit_card.anticipation_d30')),
         };
     }
 }

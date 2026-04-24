@@ -2,9 +2,9 @@
 
 namespace App\Jobs;
 
+use App\Contracts\AsaasServiceInterface;
 use App\Exceptions\AsaasCircuitOpenException;
 use App\Models\Company;
-use App\Services\AsaasService;
 use App\Services\CompanyService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -24,16 +24,16 @@ class CreateAsaasSetupFee implements ShouldQueue
         $this->onQueue('default');
     }
 
-    public function handle(AsaasService $asaasService): void
+    public function handle(AsaasServiceInterface $asaasService): void
     {
-        $plan         = $this->company->plan;
-        $setupFee     = $plan?->setupFee() ?? 99.00;
+        $plan = $this->company->plan;
+        $setupFee = $plan?->setupFee() ?? 99.00;
         $monthlyPrice = ($plan?->hasMonthlySubscription()) ? ($plan?->monthlyPrice() ?? 0.0) : 0.0;
-        $firstAmount  = $setupFee + $monthlyPrice;
-        $description  = $monthlyPrice > 0
+        $firstAmount = $setupFee + $monthlyPrice;
+        $description = $monthlyPrice > 0
             ? "Ativação + 1º mês ({$plan?->label()}) — {$this->company->name}"
             : "Taxa de ativação — {$plan?->label()} — {$this->company->name}";
-        $billingType  = $this->company->subscription_payment_method ?? 'PIX';
+        $billingType = $this->company->subscription_payment_method ?? 'PIX';
 
         // Safety net: plano sem taxa de ativação (ex: free) — ativar imediatamente
         if ($firstAmount <= 0) {
@@ -42,6 +42,7 @@ class CreateAsaasSetupFee implements ShouldQueue
             Log::channel('payments')->info('Taxa de ativação zero — empresa ativada imediatamente', [
                 'company_id' => $this->company->id,
             ]);
+
             return;
         }
 
@@ -50,6 +51,7 @@ class CreateAsaasSetupFee implements ShouldQueue
             Log::channel('payments')->info('Taxa de ativação via cartão — aguardando processamento na página pendente', [
                 'company_id' => $this->company->id,
             ]);
+
             return;
         }
 
@@ -65,17 +67,18 @@ class CreateAsaasSetupFee implements ShouldQueue
                 'company_id' => $this->company->id,
             ]);
             $this->release(900);
+
             return;
         }
 
         $updates = [
-            'asaas_setup_charge_id'   => $charge['id'],
+            'asaas_setup_charge_id' => $charge['id'],
             'asaas_setup_invoice_url' => $charge['invoiceUrl'] ?? null,
         ];
 
         if ($billingType === 'PIX') {
             $qr = $asaasService->getPaymentPixQrCode($charge['id']);
-            $updates['asaas_setup_pix_qr_code']    = $qr['encodedImage'];
+            $updates['asaas_setup_pix_qr_code'] = $qr['encodedImage'];
             $updates['asaas_setup_pix_copy_paste'] = $qr['payload'];
         } elseif ($billingType === 'BOLETO') {
             $updates['asaas_setup_bank_slip_url'] = $charge['bankSlipUrl'] ?? $charge['invoiceUrl'] ?? null;
@@ -84,9 +87,9 @@ class CreateAsaasSetupFee implements ShouldQueue
         $this->company->update($updates);
 
         Log::channel('payments')->info('Taxa de ativação criada no Asaas', [
-            'company_id'   => $this->company->id,
-            'charge_id'    => $charge['id'],
-            'amount'       => $firstAmount,
+            'company_id' => $this->company->id,
+            'charge_id' => $charge['id'],
+            'amount' => $firstAmount,
             'billing_type' => $billingType,
         ]);
     }
@@ -95,7 +98,7 @@ class CreateAsaasSetupFee implements ShouldQueue
     {
         Log::channel('payments')->error('Falha ao criar taxa de ativação no Asaas', [
             'company_id' => $this->company->id,
-            'error'      => $exception->getMessage(),
+            'error' => $exception->getMessage(),
         ]);
     }
 }

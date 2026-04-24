@@ -18,15 +18,15 @@ class CustomerMessageSent implements ShouldBroadcastNow
     public function broadcastOn(): array
     {
         return [
-            new Channel('order.' . $this->chatMessage->order_id),
+            new Channel('order.'.$this->chatMessage->order_id),
         ];
     }
 
     public function broadcastWith(): array
     {
         return [
-            'id'         => $this->chatMessage->id,
-            'message'    => $this->chatMessage->message,
+            'id' => $this->chatMessage->id,
+            'message' => $this->chatMessage->message,
             'created_at' => $this->chatMessage->created_at->format('H:i'),
         ];
     }

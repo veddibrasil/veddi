@@ -11,14 +11,22 @@ use Livewire\Component;
 class Index extends Component
 {
     public ?int $deletingId = null;
-    public bool $canCreate            = false;
-    public bool $canUpdate            = false;
-    public bool $canDelete            = false;
-    public bool $canView              = false;
+
+    public bool $canCreate = false;
+
+    public bool $canUpdate = false;
+
+    public bool $canDelete = false;
+
+    public bool $canView = false;
+
     public bool $canCreateMoreBranches = false;
-    public bool $deliveryEnabled      = false;
-    public int  $branchCount          = 0;
-    public int  $branchLimit          = 1;
+
+    public bool $deliveryEnabled = false;
+
+    public int $branchCount = 0;
+
+    public int $branchLimit = 1;
 
     public function mount(): void
     {
@@ -26,7 +34,7 @@ class Index extends Component
         if ($user->isSuperAdmin()) {
             $this->canCreate = $this->canUpdate = $this->canDelete = true;
             $this->canCreateMoreBranches = true;
-            $this->deliveryEnabled       = true;
+            $this->deliveryEnabled = true;
         } elseif (app()->bound('current.company')) {
             $company = app('current.company');
             $this->authorize('viewAny', Coupon::class);
@@ -34,10 +42,10 @@ class Index extends Component
             $this->canUpdate = $user->hasPermission('branches.update', $company);
             $this->canDelete = $user->hasPermission('branches.delete', $company);
 
-            $this->branchLimit          = $company->maxBranches();
-            $this->branchCount          = $company->branches()->count();
+            $this->branchLimit = $company->maxBranches();
+            $this->branchCount = $company->branches()->count();
             $this->canCreateMoreBranches = $this->canCreate && ($this->branchCount < $this->branchLimit);
-            $this->deliveryEnabled      = $company->plan === Plan::Pro;
+            $this->deliveryEnabled = $company->plan === Plan::Pro;
         }
     }
 
@@ -86,8 +94,8 @@ class Index extends Component
             : collect([$this->branchCount]);
 
         return view('livewire.admin.branches.index', [
-            'branches'             => $branches,
-            'isSuperAdmin'         => $isSuperAdmin,
+            'branches' => $branches,
+            'isSuperAdmin' => $isSuperAdmin,
             'branchCountPerCompany' => $branchCountPerCompany,
         ])->layout('layouts.app', ['title' => 'Filiais']);
     }

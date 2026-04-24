@@ -25,11 +25,11 @@ class CompanyBalance extends Model
     ];
 
     protected $casts = [
-        'total_balance'      => 'decimal:2',
-        'blocked_balance'    => 'decimal:2',
-        'available_balance'  => 'decimal:2',
-        'withdrawn_balance'  => 'decimal:2',
-        'reserve_balance'    => 'decimal:2',
+        'total_balance' => 'decimal:2',
+        'blocked_balance' => 'decimal:2',
+        'available_balance' => 'decimal:2',
+        'withdrawn_balance' => 'decimal:2',
+        'reserve_balance' => 'decimal:2',
         'last_calculated_at' => 'datetime',
     ];
 

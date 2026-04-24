@@ -131,6 +131,9 @@
                             <flux:sidebar.item icon="banknotes" :href="route('admin.wallet')" :current="request()->routeIs('admin.wallet')" wire:navigate>
                                 Carteira
                             </flux:sidebar.item>
+                            {{-- <flux:sidebar.item icon="chat-bubble-left-ellipsis" :href="route('admin.settings.whatsapp')" :current="request()->routeIs('admin.settings.whatsapp')" wire:navigate>
+                                WhatsApp
+                            </flux:sidebar.item> --}}
                         </flux:sidebar.group>
                     @endif
                 @endif

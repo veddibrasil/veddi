@@ -32,22 +32,22 @@ class CustomerService
     public function createFromGlobal(string $phone, Customer $source): Customer
     {
         $customer = Customer::create([
-            'phone'        => preg_replace('/\D/', '', $phone),
-            'name'         => $source->name,
-            'email'        => $source->email,
-            'address'      => $source->address,
-            'complement'   => $source->complement,
+            'phone' => preg_replace('/\D/', '', $phone),
+            'name' => $source->name,
+            'email' => $source->email,
+            'address' => $source->address,
+            'complement' => $source->complement,
             'neighborhood' => $source->neighborhood,
-            'number'       => $source->number,
-            'city'         => $source->city,
-            'cep'          => $source->cep,
-            'tax_id'       => $source->tax_id,
+            'number' => $source->number,
+            'city' => $source->city,
+            'cep' => $source->cep,
+            'tax_id' => $source->tax_id,
         ]);
 
         Log::channel('chat')->info('Cliente importado de outra empresa', [
-            'customer_id'       => $customer->id,
+            'customer_id' => $customer->id,
             'source_company_id' => $source->company_id,
-            'phone'             => $phone,
+            'phone' => $phone,
         ]);
 
         return $customer;

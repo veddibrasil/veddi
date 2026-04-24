@@ -17,7 +17,7 @@ class WithdrawalService
 
     private function pixWithdrawalFee(): float
     {
-        return (float) config('payments.pix_withdrawal_fee', 1.99);
+        return (float) config('payments.pix_withdrawal_fee', 0.50);
     }
 
     /**
@@ -70,49 +70,61 @@ class WithdrawalService
             $withdrawal = CompanyWithdrawal::create(array_merge(
                 [
                     'company_id' => $company->id,
-                    'amount'     => $amount,
-                    'pix_fee'    => $pixFee,
-                    'status'     => 'pending',
+                    'amount' => $amount,
+                    'pix_fee' => $pixFee,
+                    'status' => 'pending',
                 ],
                 $payoutData
             ));
 
-            // Vincula transações liberadas em ordem FIFO (release_date ASC, id ASC)
-            $remaining = $amount;
-
-            CompanyTransaction::withoutGlobalScopes()
+            // Reserva transações elegíveis com lock pessimista para impedir
+            // que dois saques concorrentes consumam o mesmo saldo.
+            $transactions = CompanyTransaction::withoutGlobalScopes()
                 ->where('company_id', $company->id)
                 ->where('status', 'released')
                 ->where('withdrawn', false)
+                ->whereNull('withdrawal_id')
                 ->orderBy('release_date')
                 ->orderBy('id')
-                ->each(function (CompanyTransaction $tx) use ($withdrawal, &$remaining) {
-                    if ($remaining <= 0) {
-                        return false; // interrompe iteração
-                    }
+                ->lockForUpdate()
+                ->get();
 
-                    $tx->update([
-                        'withdrawn'     => true,
-                        'withdrawn_at'  => now(),
-                        'withdrawal_id' => $withdrawal->id,
-                        'status'        => 'withdrawn',
-                    ]);
+            $remaining = $amount;
+            $reservedIds = [];
 
-                    $remaining -= (float) $tx->net_value;
-                });
+            foreach ($transactions as $tx) {
+                if ($remaining <= 0) {
+                    break;
+                }
+
+                $reservedIds[] = $tx->id;
+                $remaining -= (float) $tx->net_value;
+            }
+
+            if ($remaining > 0) {
+                throw new RuntimeException('Saldo disponível insuficiente no momento. Tente novamente.');
+            }
+
+            CompanyTransaction::withoutGlobalScopes()
+                ->whereIn('id', $reservedIds)
+                ->update([
+                    'withdrawal_id' => $withdrawal->id,
+                    'updated_at' => now(),
+                ]);
 
             Log::channel('payments')->info('Saque solicitado e transações vinculadas', [
-                'company_id'    => $company->id,
+                'company_id' => $company->id,
                 'withdrawal_id' => $withdrawal->id,
-                'amount'        => $amount,
+                'amount' => $amount,
+                'reserved_transactions' => count($reservedIds),
             ]);
 
             Log::channel('audit')->info('withdrawal.requested', [
-                'company_id'    => $company->id,
+                'company_id' => $company->id,
                 'withdrawal_id' => $withdrawal->id,
-                'amount'        => $amount,
-                'payout_type'   => $payoutType,
-                'pix_fee'       => $pixFee,
+                'amount' => $amount,
+                'payout_type' => $payoutType,
+                'pix_fee' => $pixFee,
             ]);
 
             ProcessWithdrawal::dispatch($withdrawal->id);
@@ -128,8 +140,9 @@ class WithdrawalService
      * A taxa é descontada automaticamente do net_value.
      * A transação é liberada imediatamente (release_date = hoje, status = released).
      *
-     * @param  int[] $transactionIds
+     * @param  int[]  $transactionIds
      * @return CompanyTransaction[]
+     *
      * @throws RuntimeException
      */
     public function requestAnticipation(Company $company, array $transactionIds): array
@@ -153,30 +166,30 @@ class WithdrawalService
             $today = now()->startOfDay();
 
             foreach ($transactions as $tx) {
-                $releaseDate   = Carbon::parse($tx->release_date)->startOfDay();
+                $releaseDate = Carbon::parse($tx->release_date)->startOfDay();
                 $daysRemaining = (int) max(0, $today->diffInDays($releaseDate, false));
-                $fee           = round((float) $tx->value * 0.02 * ($daysRemaining / 30), 2);
-                $newNetValue   = max(0, round((float) $tx->net_value - $fee, 2));
+                $fee = round((float) $tx->value * 0.02 * ($daysRemaining / 30), 2);
+                $newNetValue = max(0, round((float) $tx->net_value - $fee, 2));
 
                 $tx->update([
-                    'is_anticipated'   => true,
+                    'is_anticipated' => true,
                     'anticipation_fee' => $fee,
-                    'net_value'        => $newNetValue,
-                    'release_date'     => now()->toDateString(),
-                    'status'           => 'released',
+                    'net_value' => $newNetValue,
+                    'release_date' => now()->toDateString(),
+                    'status' => 'released',
                 ]);
             }
 
             Log::channel('payments')->info('Antecipação realizada', [
-                'company_id'      => $company->id,
+                'company_id' => $company->id,
                 'transaction_ids' => $transactionIds,
-                'count'           => $transactions->count(),
+                'count' => $transactions->count(),
             ]);
 
             Log::channel('audit')->info('anticipation.requested', [
-                'company_id'      => $company->id,
+                'company_id' => $company->id,
                 'transaction_ids' => $transactionIds,
-                'count'           => $transactions->count(),
+                'count' => $transactions->count(),
             ]);
 
             return $transactions->fresh()->all();

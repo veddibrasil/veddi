@@ -7,7 +7,8 @@ use Illuminate\Support\Facades\DB;
 
 class AsaasRetryFailed extends Command
 {
-    protected $signature   = 'asaas:retry-failed';
+    protected $signature = 'asaas:retry-failed';
+
     protected $description = 'Reprocessa todos os failed jobs relacionados ao Asaas';
 
     private const ASAAS_JOB_CLASSES = [
@@ -31,6 +32,7 @@ class AsaasRetryFailed extends Command
 
         if ($jobs->isEmpty()) {
             $this->info('Nenhum failed job relacionado ao Asaas encontrado.');
+
             return self::SUCCESS;
         }
 

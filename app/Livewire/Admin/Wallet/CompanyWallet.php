@@ -11,32 +11,51 @@ use Livewire\Component;
 
 class CompanyWallet extends Component
 {
-    public int    $companyId        = 0;
-    public float  $availableBalance = 0.0;
-    public float  $pendingBalance   = 0.0;
-    public float  $pixWithdrawalFee = 0.0;
-    public array  $entries          = [];
-    public array  $withdrawals      = [];
+    public int $companyId = 0;
+
+    public float $availableBalance = 0.0;
+
+    public float $pendingBalance = 0.0;
+
+    public float $pixWithdrawalFee = 0.0;
+
+    public array $entries = [];
+
+    public array $withdrawals = [];
 
     // Anticipation modal
-    public bool  $showAnticipationModal  = false;
-    public array $eligibleTransactions   = [];   // lista completa calculada
+    public bool $showAnticipationModal = false;
+
+    public array $eligibleTransactions = [];   // lista completa calculada
+
     public array $selectedTransactionIds = [];   // IDs marcados pelo lojista
-    public array $anticipationRates      = [];   // faixas de taxa da empresa
+
+    public array $anticipationRates = [];   // faixas de taxa da empresa
 
     // Withdrawal modal
-    public bool   $showWithdrawalModal = false;
-    public float  $withdrawalAmount    = 0.0;
-    public string $payoutType          = 'PIX';
-    public string $pixKey              = '';
-    public string $pixKeyType          = 'EVP';
-    public string $bankCode            = '';
-    public string $bankAgency          = '';
-    public string $bankAccount         = '';
-    public string $bankAccountDigit    = '';
-    public string $bankAccountType     = 'CONTA_CORRENTE';
-    public string $bankOwnerCpfCnpj    = '';
-    public string $bankOwnerName       = '';
+    public bool $showWithdrawalModal = false;
+
+    public float $withdrawalAmount = 0.0;
+
+    public string $payoutType = 'PIX';
+
+    public string $pixKey = '';
+
+    public string $pixKeyType = 'EVP';
+
+    public string $bankCode = '';
+
+    public string $bankAgency = '';
+
+    public string $bankAccount = '';
+
+    public string $bankAccountDigit = '';
+
+    public string $bankAccountType = 'CONTA_CORRENTE';
+
+    public string $bankOwnerCpfCnpj = '';
+
+    public string $bankOwnerName = '';
 
     public function mount(BalanceService $balanceService): void
     {
@@ -45,21 +64,21 @@ class CompanyWallet extends Component
         $this->companyId = $company->id;
         $this->refreshBalances($balanceService, $company);
 
-        $this->pixWithdrawalFee = (float) config('payments.pix_withdrawal_fee', 1.99);
+        $this->pixWithdrawalFee = (float) config('payments.pix_withdrawal_fee', 0.50);
 
         $this->loadHistory($company);
 
         if ($company->default_payout_type) {
-            $this->payoutType       = $company->default_payout_type;
-            $this->pixKey           = $company->default_pix_key ?? '';
-            $this->pixKeyType       = $company->default_pix_key_type ?? 'EVP';
-            $this->bankCode         = $company->default_bank_code ?? '';
-            $this->bankAgency       = $company->default_bank_agency ?? '';
-            $this->bankAccount      = $company->default_bank_account ?? '';
+            $this->payoutType = $company->default_payout_type;
+            $this->pixKey = $company->default_pix_key ?? '';
+            $this->pixKeyType = $company->default_pix_key_type ?? 'EVP';
+            $this->bankCode = $company->default_bank_code ?? '';
+            $this->bankAgency = $company->default_bank_agency ?? '';
+            $this->bankAccount = $company->default_bank_account ?? '';
             $this->bankAccountDigit = $company->default_bank_account_digit ?? '';
-            $this->bankAccountType  = $company->default_bank_account_type ?? 'CONTA_CORRENTE';
+            $this->bankAccountType = $company->default_bank_account_type ?? 'CONTA_CORRENTE';
             $this->bankOwnerCpfCnpj = $company->default_bank_owner_cpf_cnpj ?? '';
-            $this->bankOwnerName    = $company->default_bank_owner_name ?? '';
+            $this->bankOwnerName = $company->default_bank_owner_name ?? '';
         }
     }
 
@@ -69,18 +88,18 @@ class CompanyWallet extends Component
     {
         $company = app('current.company');
 
-        $this->eligibleTransactions   = $anticipationService->getEligibleTransactions($company)->all();
-        $this->anticipationRates      = $anticipationService->getRates($company);
+        $this->eligibleTransactions = $anticipationService->getEligibleTransactions($company)->all();
+        $this->anticipationRates = $anticipationService->getRates($company);
         $this->selectedTransactionIds = collect($this->eligibleTransactions)->pluck('id')->map(fn ($id) => (string) $id)->all();
-        $this->showAnticipationModal  = true;
+        $this->showAnticipationModal = true;
     }
 
     public function closeAnticipationModal(): void
     {
-        $this->showAnticipationModal  = false;
-        $this->eligibleTransactions   = [];
+        $this->showAnticipationModal = false;
+        $this->eligibleTransactions = [];
         $this->selectedTransactionIds = [];
-        $this->anticipationRates      = [];
+        $this->anticipationRates = [];
     }
 
     public function toggleAll(): void
@@ -100,31 +119,31 @@ class CompanyWallet extends Component
         if (empty($this->eligibleTransactions) || empty($this->selectedTransactionIds)) {
             return [
                 'transactions_count' => 0,
-                'gross_amount'       => 0.0,
-                'fee_amount'         => 0.0,
-                'net_amount'         => 0.0,
-                'has_eligible'       => false,
+                'gross_amount' => 0.0,
+                'fee_amount' => 0.0,
+                'net_amount' => 0.0,
+                'has_eligible' => false,
             ];
         }
 
         $selectedIds = array_map('intval', $this->selectedTransactionIds);
-        $selected    = collect($this->eligibleTransactions)->whereIn('id', $selectedIds);
+        $selected = collect($this->eligibleTransactions)->whereIn('id', $selectedIds);
 
         $grossAmount = round((float) $selected->sum('net_value'), 2);
-        $feeAmount   = round((float) $selected->sum('fee'), 2);
+        $feeAmount = round((float) $selected->sum('fee'), 2);
 
         return [
             'transactions_count' => $selected->count(),
-            'gross_amount'       => $grossAmount,
-            'fee_amount'         => $feeAmount,
-            'net_amount'         => round($grossAmount - $feeAmount, 2),
-            'has_eligible'       => $selected->isNotEmpty(),
+            'gross_amount' => $grossAmount,
+            'fee_amount' => $feeAmount,
+            'net_amount' => round($grossAmount - $feeAmount, 2),
+            'has_eligible' => $selected->isNotEmpty(),
         ];
     }
 
     public function confirmAnticipation(AnticipationService $anticipationService, BalanceService $balanceService): void
     {
-        $company    = app('current.company');
+        $company = app('current.company');
         $selectedIds = array_map('intval', $this->selectedTransactionIds);
 
         $count = $anticipationService->anticipateSelected($company, $selectedIds);
@@ -132,10 +151,10 @@ class CompanyWallet extends Component
         $this->refreshBalances($balanceService, $company);
         $this->loadHistory($company);
 
-        $this->showAnticipationModal  = false;
-        $this->eligibleTransactions   = [];
+        $this->showAnticipationModal = false;
+        $this->eligibleTransactions = [];
         $this->selectedTransactionIds = [];
-        $this->anticipationRates      = [];
+        $this->anticipationRates = [];
 
         // Atualiza o saldo no dashboard (mesmo componente de roteamento)
         $this->dispatch('balance-updated');
@@ -163,55 +182,56 @@ class CompanyWallet extends Component
 
         $this->validate([
             'withdrawalAmount' => ['required', 'numeric', 'min:10'],
-            'payoutType'       => ['required', 'in:PIX,TED'],
-            'pixKey'           => ['required_if:payoutType,PIX'],
-            'pixKeyType'       => ['required_if:payoutType,PIX'],
-            'bankCode'         => ['required_if:payoutType,TED'],
-            'bankAgency'       => ['required_if:payoutType,TED'],
-            'bankAccount'      => ['required_if:payoutType,TED'],
+            'payoutType' => ['required', 'in:PIX,TED'],
+            'pixKey' => ['required_if:payoutType,PIX'],
+            'pixKeyType' => ['required_if:payoutType,PIX'],
+            'bankCode' => ['required_if:payoutType,TED'],
+            'bankAgency' => ['required_if:payoutType,TED'],
+            'bankAccount' => ['required_if:payoutType,TED'],
             'bankOwnerCpfCnpj' => ['required_if:payoutType,TED'],
-            'bankOwnerName'    => ['required_if:payoutType,TED'],
+            'bankOwnerName' => ['required_if:payoutType,TED'],
         ], [
             'withdrawalAmount.min' => 'O valor mínimo para saque é R$ 10,00.',
-            'pixKey.required_if'   => 'Informe a chave PIX.',
+            'pixKey.required_if' => 'Informe a chave PIX.',
             'bankCode.required_if' => 'Informe o banco.',
         ]);
 
         try {
             $payoutData = [
-                'payout_type'          => $this->payoutType,
-                'pix_key'              => $this->payoutType === 'PIX' ? $this->pixKey : null,
-                'pix_key_type'         => $this->payoutType === 'PIX' ? $this->pixKeyType : null,
-                'bank_code'            => $this->payoutType === 'TED' ? $this->bankCode : null,
-                'bank_agency'          => $this->payoutType === 'TED' ? $this->bankAgency : null,
-                'bank_account'         => $this->payoutType === 'TED' ? $this->bankAccount : null,
-                'bank_account_digit'   => $this->payoutType === 'TED' ? $this->bankAccountDigit : null,
-                'bank_account_type'    => $this->payoutType === 'TED' ? $this->bankAccountType : null,
-                'bank_owner_cpf_cnpj'  => $this->payoutType === 'TED' ? $this->bankOwnerCpfCnpj : null,
-                'bank_owner_name'      => $this->payoutType === 'TED' ? $this->bankOwnerName : null,
+                'payout_type' => $this->payoutType,
+                'pix_key' => $this->payoutType === 'PIX' ? $this->pixKey : null,
+                'pix_key_type' => $this->payoutType === 'PIX' ? $this->pixKeyType : null,
+                'bank_code' => $this->payoutType === 'TED' ? $this->bankCode : null,
+                'bank_agency' => $this->payoutType === 'TED' ? $this->bankAgency : null,
+                'bank_account' => $this->payoutType === 'TED' ? $this->bankAccount : null,
+                'bank_account_digit' => $this->payoutType === 'TED' ? $this->bankAccountDigit : null,
+                'bank_account_type' => $this->payoutType === 'TED' ? $this->bankAccountType : null,
+                'bank_owner_cpf_cnpj' => $this->payoutType === 'TED' ? $this->bankOwnerCpfCnpj : null,
+                'bank_owner_name' => $this->payoutType === 'TED' ? $this->bankOwnerName : null,
             ];
 
             $withdrawalService->requestWithdrawal($company, $this->withdrawalAmount, $payoutData);
         } catch (\RuntimeException $e) {
             $this->addError('withdrawalAmount', $e->getMessage());
+
             return;
         }
 
         $company->update([
-            'default_payout_type'          => $this->payoutType,
-            'default_pix_key'              => $this->pixKey ?: null,
-            'default_pix_key_type'         => $this->pixKeyType ?: null,
-            'default_bank_code'            => $this->bankCode ?: null,
-            'default_bank_agency'          => $this->bankAgency ?: null,
-            'default_bank_account'         => $this->bankAccount ?: null,
-            'default_bank_account_digit'   => $this->bankAccountDigit ?: null,
-            'default_bank_account_type'    => $this->bankAccountType ?: null,
-            'default_bank_owner_cpf_cnpj'  => $this->bankOwnerCpfCnpj ?: null,
-            'default_bank_owner_name'      => $this->bankOwnerName ?: null,
+            'default_payout_type' => $this->payoutType,
+            'default_pix_key' => $this->pixKey ?: null,
+            'default_pix_key_type' => $this->pixKeyType ?: null,
+            'default_bank_code' => $this->bankCode ?: null,
+            'default_bank_agency' => $this->bankAgency ?: null,
+            'default_bank_account' => $this->bankAccount ?: null,
+            'default_bank_account_digit' => $this->bankAccountDigit ?: null,
+            'default_bank_account_type' => $this->bankAccountType ?: null,
+            'default_bank_owner_cpf_cnpj' => $this->bankOwnerCpfCnpj ?: null,
+            'default_bank_owner_name' => $this->bankOwnerName ?: null,
         ]);
 
         $this->showWithdrawalModal = false;
-        $this->withdrawals         = $company->withdrawals()->latest()->limit(20)->get()->toArray();
+        $this->withdrawals = $company->withdrawals()->latest()->limit(20)->get()->toArray();
 
         session()->flash('success', 'Saque solicitado com sucesso. Será processado em instantes.');
     }
@@ -229,9 +249,9 @@ class CompanyWallet extends Component
 
     private function refreshBalances(BalanceService $balanceService, $company): void
     {
-        $calculated             = $balanceService->calculateBalance($company);
+        $calculated = $balanceService->calculateBalance($company);
         $this->availableBalance = $calculated['available_balance'];
-        $this->pendingBalance   = $calculated['blocked_balance'];
+        $this->pendingBalance = $calculated['blocked_balance'];
     }
 
     private function loadHistory($company): void

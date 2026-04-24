@@ -30,9 +30,9 @@ class SupportService
         }
 
         return SupportTicket::withoutGlobalScopes()->create([
-            'company_id'  => $companyId,
+            'company_id' => $companyId,
             'customer_id' => $customerId,
-            'status'      => 'open',
+            'status' => 'open',
         ]);
     }
 
@@ -43,8 +43,8 @@ class SupportService
     {
         $msg = SupportMessage::create([
             'ticket_id' => $ticketId,
-            'sender'    => 'customer',
-            'message'   => $message,
+            'sender' => 'customer',
+            'message' => $message,
         ]);
 
         $ticket = SupportTicket::withoutGlobalScopes()->find($ticketId);
@@ -66,9 +66,9 @@ class SupportService
     {
         $msg = SupportMessage::create([
             'ticket_id' => $ticketId,
-            'sender'    => 'admin',
-            'message'   => $message,
-            'read_at'   => now(),
+            'sender' => 'admin',
+            'message' => $message,
+            'read_at' => now(),
         ]);
 
         AdminSupportMessageSent::dispatch($msg);

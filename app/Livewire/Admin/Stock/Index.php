@@ -19,26 +19,35 @@ class Index extends Component
     public string $search = '';
 
     public ?int $branchFilter = null;
+
     public bool $showLowStockOnly = false;
 
     // Modal de ajuste
     public ?int $adjustingProductId = null;
-    public ?int $adjustingBranchId  = null;
+
+    public ?int $adjustingBranchId = null;
+
     public string $adjustProductName = '';
-    public string $adjustMode        = 'add';
-    public string $adjustQuantity    = '';
-    public string $adjustNotes       = '';
-    public int $currentQuantity      = 0;
+
+    public string $adjustMode = 'add';
+
+    public string $adjustQuantity = '';
+
+    public string $adjustNotes = '';
+
+    public int $currentQuantity = 0;
 
     public bool $isSuperAdmin = false;
-    public bool $canAdjust    = false;
-    public bool $canToggle    = false;
+
+    public bool $canAdjust = false;
+
+    public bool $canToggle = false;
 
     protected function rules(): array
     {
         return [
             'adjustQuantity' => ['required', 'integer', 'min:0'],
-            'adjustNotes'    => ['required', 'string', 'max:500'],
+            'adjustNotes' => ['required', 'string', 'max:500'],
         ];
     }
 
@@ -46,9 +55,9 @@ class Index extends Component
     {
         return [
             'adjustQuantity.required' => 'Informe a quantidade.',
-            'adjustQuantity.integer'  => 'Informe um número inteiro.',
-            'adjustQuantity.min'      => 'A quantidade deve ser zero ou maior.',
-            'adjustNotes.required'    => 'Informe a observação para auditoria.',
+            'adjustQuantity.integer' => 'Informe um número inteiro.',
+            'adjustQuantity.min' => 'A quantidade deve ser zero ou maior.',
+            'adjustNotes.required' => 'Informe a observação para auditoria.',
         ];
     }
 
@@ -87,9 +96,20 @@ class Index extends Component
             : auth()->user()->companies()->first()?->id;
     }
 
-    public function updatingSearch(): void { $this->resetPage(); }
-    public function updatingBranchFilter(): void { $this->resetPage(); }
-    public function updatingShowLowStockOnly(): void { $this->resetPage(); }
+    public function updatingSearch(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatingBranchFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatingShowLowStockOnly(): void
+    {
+        $this->resetPage();
+    }
 
     private function checkPermission(string $permission): void
     {
@@ -103,7 +123,7 @@ class Index extends Component
 
         if (! $company || ! auth()->user()->hasPermission($permission, $company)) {
             $this->dispatch('notify', type: 'error', message: 'Sem permissão para esta ação.');
-            throw new \Illuminate\Auth\Access\AuthorizationException();
+            throw new \Illuminate\Auth\Access\AuthorizationException;
         }
     }
 
@@ -119,12 +139,12 @@ class Index extends Component
         $product = Product::withoutGlobalScope(CompanyScope::class)->find($productId);
 
         $this->adjustingProductId = $productId;
-        $this->adjustingBranchId  = $branchId;
-        $this->adjustProductName  = $product?->name ?? '';
-        $this->currentQuantity    = $pivot?->quantity ?? 0;
-        $this->adjustMode         = 'add';
-        $this->adjustQuantity     = '';
-        $this->adjustNotes        = '';
+        $this->adjustingBranchId = $branchId;
+        $this->adjustProductName = $product?->name ?? '';
+        $this->currentQuantity = $pivot?->quantity ?? 0;
+        $this->adjustMode = 'add';
+        $this->adjustQuantity = '';
+        $this->adjustNotes = '';
     }
 
     public function applyAdjustment(): void
@@ -132,16 +152,16 @@ class Index extends Component
         $this->checkPermission('stock.adjust');
         $this->validate($this->rules(), $this->messages());
 
-        $branch  = Branch::withoutGlobalScope(CompanyScope::class)->findOrFail($this->adjustingBranchId);
+        $branch = Branch::withoutGlobalScope(CompanyScope::class)->findOrFail($this->adjustingBranchId);
         $product = Product::withoutGlobalScope(CompanyScope::class)->findOrFail($this->adjustingProductId);
-        $qty     = (int) $this->adjustQuantity;
+        $qty = (int) $this->adjustQuantity;
 
         $service = app(StockService::class);
 
         match ($this->adjustMode) {
-            'add'      => $service->adjust($branch, $product, $qty, $this->adjustNotes, auth()->user()),
+            'add' => $service->adjust($branch, $product, $qty, $this->adjustNotes, auth()->user()),
             'subtract' => $service->adjust($branch, $product, -$qty, $this->adjustNotes, auth()->user()),
-            'set'      => $service->setQuantity($branch, $product, $qty, $this->adjustNotes, auth()->user()),
+            'set' => $service->setQuantity($branch, $product, $qty, $this->adjustNotes, auth()->user()),
         };
 
         $this->reset(['adjustingProductId', 'adjustingBranchId', 'adjustProductName', 'adjustQuantity', 'adjustNotes', 'currentQuantity']);
@@ -157,7 +177,7 @@ class Index extends Component
             ->where('product_id', $productId)
             ->first();
 
-        $branch  = Branch::withoutGlobalScope(CompanyScope::class)->findOrFail($branchId);
+        $branch = Branch::withoutGlobalScope(CompanyScope::class)->findOrFail($branchId);
         $product = Product::withoutGlobalScope(CompanyScope::class)->findOrFail($productId);
 
         app(StockService::class)->toggleTracking($branch, $product, ! ($pivot?->track_stock ?? false));
@@ -198,12 +218,12 @@ class Index extends Component
         }
 
         if ($this->search) {
-            $query->where('products.name', 'like', '%' . $this->search . '%');
+            $query->where('products.name', 'like', '%'.$this->search.'%');
         }
 
         if ($this->showLowStockOnly) {
             $query->where('branch_product.track_stock', true)
-                  ->whereColumn('branch_product.quantity', '<=', 'branch_product.min_quantity');
+                ->whereColumn('branch_product.quantity', '<=', 'branch_product.min_quantity');
         }
 
         $items = $query

@@ -4,10 +4,13 @@ use App\Helpers\Validation;
 use App\Http\Controllers\AsaasSimulatePaymentController;
 use App\Http\Controllers\AsaasWebhookController;
 use App\Http\Controllers\RegisterCompanyController;
+use App\Http\Controllers\StarkWebhookController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', function(){ return redirect('https://veddi.com.br');});
+Route::get('/', function () {
+    return redirect('https://veddi.com.br');
+});
 
 Route::get('/health', \App\Http\Controllers\HealthController::class)->name('health');
 
@@ -23,6 +26,11 @@ Route::post('/dev/simulate/asaas-payment', AsaasSimulatePaymentController::class
 Route::post('/webhooks/asaas', AsaasWebhookController::class)
     ->middleware('throttle:60,1')
     ->name('webhook.asaas');
+
+// --- Webhook Stark Bank (sem auth, sem CSRF — coberto por webhooks/* em bootstrap/app.php) ---
+Route::post('/webhooks/stark', StarkWebhookController::class)
+    ->middleware('throttle:60,1')
+    ->name('webhook.stark');
 
 // --- API pública ---
 Route::post('/api/validate-cpf', function (Request $request) {
@@ -77,7 +85,7 @@ Route::middleware(['auth', 'verified', 'company.active'])
         // Gestão completa: só company_admin
         Route::middleware('company.role:company_admin')->group(function () {
             Route::get('/settings', \App\Livewire\Admin\Settings\CompanySettings::class)->name('settings');
-
+            // Route::get('/settings/whatsapp', \App\Livewire\Admin\Settings\WhatsAppSettings::class)->name('settings.whatsapp');
 
             Route::get('/roles', \App\Livewire\Admin\Roles\Index::class)->name('roles.index');
 
@@ -90,7 +98,6 @@ Route::middleware(['auth', 'verified', 'company.active'])
         Route::get('/branches/create', \App\Livewire\Admin\Branches\Form::class)->name('branches.create');
         Route::get('/branches/{branch}/edit', \App\Livewire\Admin\Branches\Form::class)->name('branches.edit');
         Route::get('/branches/{branch}/delivery', \App\Livewire\Admin\Branches\DeliverySettings::class)->name('branches.delivery');
-
 
         Route::get('/coupons', \App\Livewire\Admin\Coupons\Index::class)->name('coupons.index');
 
@@ -110,7 +117,6 @@ Route::middleware(['auth', 'verified', 'super.admin'])
 
         Route::get('/card-taxas', \App\Livewire\SuperAdmin\Card\index::class)->name('card.index');
 
-
         Route::post('/simulate/asaas-payment', AsaasSimulatePaymentController::class)->name('simulate.asaas-payment');
     });
 
@@ -120,15 +126,15 @@ Route::middleware(['auth', 'verified', 'company.role:company_admin', 'throttle:6
     ->name('api.company.')
     ->group(function () {
         Route::get('/balance', [\App\Http\Controllers\Api\CompanyBalanceController::class, 'balance'])
-             ->name('balance');
+            ->name('balance');
         Route::get('/balance/forecast', [\App\Http\Controllers\Api\CompanyBalanceController::class, 'forecast'])
-             ->name('balance.forecast');
+            ->name('balance.forecast');
         Route::post('/withdraw', [\App\Http\Controllers\Api\CompanyBalanceController::class, 'withdraw'])
-             ->middleware('throttle:10,1')
-             ->name('withdraw');
+            ->middleware('throttle:10,1')
+            ->name('withdraw');
         Route::post('/anticipate', [\App\Http\Controllers\Api\CompanyBalanceController::class, 'anticipate'])
-             ->middleware('throttle:10,1')
-             ->name('anticipate');
+            ->middleware('throttle:10,1')
+            ->name('anticipate');
     });
 
 require __DIR__.'/settings.php';

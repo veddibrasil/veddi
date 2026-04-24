@@ -2,14 +2,14 @@
 
 namespace App\Services;
 
+use App\Contracts\AsaasServiceInterface;
+use App\DTOs\AsaasCustomerDTO;
 use App\DTOs\OnboardingDTO;
 use App\Enums\Plan;
 use App\Jobs\CreateAsaasSetupFee;
 use App\Models\Branch;
 use App\Models\Company;
 use App\Models\User;
-use App\Services\CompanyService;
-use App\Services\UserPermissionService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Log;
 class OnboardingService
 {
     public function __construct(
-        private AsaasService $asaasService,
+        private AsaasServiceInterface $asaasService,
         private CompanyService $companyService,
     ) {}
 
@@ -37,45 +37,45 @@ class OnboardingService
     public function handle(OnboardingDTO $dto): Company
     {
         // 1. Create Asaas customer (outside transaction — fail fast)
-        $asaasCustomerId = $this->asaasService->createCustomer([
-            'name'    => $dto->companyName,
-            'email'   => $dto->userEmail,
-            'cpfCnpj' => $dto->asaasCpfCnpj,
-        ]);
+        $asaasCustomerId = $this->asaasService->createCustomer(new AsaasCustomerDTO(
+            name: $dto->companyName,
+            email: $dto->userEmail,
+            cpfCnpj: $dto->asaasCpfCnpj,
+        ));
 
         // 2. Create all DB records atomically — all plans start as PENDING_PAYMENT
         $company = DB::transaction(function () use ($dto, $asaasCustomerId) {
             $company = Company::create([
-                'name'                        => $dto->companyName,
-                'slug'                        => $dto->slug,
-                'plan'                        => $dto->plan,
-                'status'                      => 'PENDING_PAYMENT',
-                'active'                      => false,
-                'asaas_customer_id'           => $asaasCustomerId,
-                'order_prefix'                => strtoupper(substr(preg_replace('/[^a-z0-9]/i', '', $dto->slug), 0, 3)) ?: 'ORD',
+                'name' => $dto->companyName,
+                'slug' => $dto->slug,
+                'plan' => $dto->plan,
+                'status' => 'PENDING_PAYMENT',
+                'active' => false,
+                'asaas_customer_id' => $asaasCustomerId,
+                'order_prefix' => strtoupper(substr(preg_replace('/[^a-z0-9]/i', '', $dto->slug), 0, 3)) ?: 'ORD',
                 'subscription_payment_method' => $dto->paymentMethod,
-                'owner_cpf_cnpj'              => preg_replace('/\D/', '', $dto->asaasCpfCnpj),
+                'owner_cpf_cnpj' => preg_replace('/\D/', '', $dto->asaasCpfCnpj),
             ]);
 
             // withoutGlobalScopes() prevents CompanyScope from filtering the create call,
             // since app('current.company') is null during onboarding.
             Branch::withoutGlobalScopes()->create([
                 'company_id' => $company->id,
-                'name'       => $dto->branchName,
-                'phone'      => $dto->branchPhone,
-                'address'    => '',
-                'city'       => '',
-                'active'     => true,
+                'name' => $dto->branchName,
+                'phone' => $dto->branchPhone,
+                'address' => '',
+                'city' => '',
+                'active' => true,
             ]);
 
             $user = User::create([
-                'name'     => $dto->userName,
-                'email'    => $dto->userEmail,
+                'name' => $dto->userName,
+                'email' => $dto->userEmail,
                 'password' => Hash::make($dto->userPassword),
             ]);
 
             $company->users()->attach($user->id, [
-                'role'      => 'company_admin',
+                'role' => 'company_admin',
                 'branch_id' => null,
             ]);
 
@@ -91,15 +91,15 @@ class OnboardingService
 
             Log::channel('payments')->info('Onboarding concluído — plano free ativado imediatamente', [
                 'company_id' => $company->id,
-                'plan'       => $dto->plan,
+                'plan' => $dto->plan,
             ]);
         } else {
             CreateAsaasSetupFee::dispatch($company);
 
             Log::channel('payments')->info('Onboarding concluído — aguardando taxa de ativação', [
                 'company_id' => $company->id,
-                'plan'       => $dto->plan,
-                'status'     => $company->status,
+                'plan' => $dto->plan,
+                'status' => $company->status,
             ]);
         }
 

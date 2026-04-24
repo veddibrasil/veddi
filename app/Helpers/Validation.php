@@ -5,21 +5,33 @@ namespace App\Helpers;
 class Validation
 {
     // Regex patterns
-    const PHONE_REGEX        = '/^\(?\d{2}\)?[\s\-]?\d{4,5}[\-]?\d{4}$/';
-    const CEP_REGEX          = '/^\d{5}-?\d{3}$/';
-    const HEX_COLOR_REGEX    = '/^#[0-9A-Fa-f]{6}$/';
-    const SLUG_REGEX         = '/^[a-z0-9\-]+$/';
-    const SUBDOMAIN_REGEX    = '/^[a-z0-9\-]*$/';
+    const PHONE_REGEX = '/^\(?\d{2}\)?[\s\-]?\d{4,5}[\-]?\d{4}$/';
+
+    const CEP_REGEX = '/^\d{5}-?\d{3}$/';
+
+    const HEX_COLOR_REGEX = '/^#[0-9A-Fa-f]{6}$/';
+
+    const SLUG_REGEX = '/^[a-z0-9\-]+$/';
+
+    const SUBDOMAIN_REGEX = '/^[a-z0-9\-]*$/';
+
     const ORDER_PREFIX_REGEX = '/^[A-Z0-9]+$/';
-    const CPF_REGEX          = '/^\d{3}\.?\d{3}\.?\d{3}-?\d{2}$/';
-    const CNPJ_REGEX         = '/^\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}$/';
+
+    const CPF_REGEX = '/^\d{3}\.?\d{3}\.?\d{3}-?\d{2}$/';
+
+    const CNPJ_REGEX = '/^\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}$/';
 
     // Laravel validation rule strings
-    const PHONE_RULE        = 'regex:/^\(?\d{2}\)?[\s\-]?\d{4,5}[\-]?\d{4}$/';
-    const CEP_RULE          = 'regex:/^\d{5}-?\d{3}$/';
-    const HEX_COLOR_RULE    = 'regex:/^#[0-9A-Fa-f]{6}$/';
-    const SLUG_RULE         = 'regex:/^[a-z0-9\-]+$/';
-    const SUBDOMAIN_RULE    = 'regex:/^[a-z0-9\-]*$/';
+    const PHONE_RULE = 'regex:/^\(?\d{2}\)?[\s\-]?\d{4,5}[\-]?\d{4}$/';
+
+    const CEP_RULE = 'regex:/^\d{5}-?\d{3}$/';
+
+    const HEX_COLOR_RULE = 'regex:/^#[0-9A-Fa-f]{6}$/';
+
+    const SLUG_RULE = 'regex:/^[a-z0-9\-]+$/';
+
+    const SUBDOMAIN_RULE = 'regex:/^[a-z0-9\-]*$/';
+
     const ORDER_PREFIX_RULE = 'regex:/^[A-Z0-9]+$/';
 
     public static function normalizePhone(string $phone): string
@@ -101,7 +113,7 @@ class Validation
                 $sum += $cnpj[$j] * $weight;
             }
             $remainder = $sum % 11;
-            $digit     = $remainder < 2 ? 0 : 11 - $remainder;
+            $digit = $remainder < 2 ? 0 : 11 - $remainder;
             if ($cnpj[12 + $i] != $digit) {
                 return false;
             }

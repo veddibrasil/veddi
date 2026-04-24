@@ -11,22 +11,22 @@ class BranchSeeder extends Seeder
     {
         $branches = [
             [
-                'name'       => 'Mister Coxinha — Centro',
-                'address'    => 'Av. Brasil, 100',
-                'city'       => 'Maringá',
-                'phone'      => '(44) 99999-0001',
-                'active'     => true,
-                'opens_at'   => '10:00',
-                'closes_at'  => '20:00',
+                'name' => 'Mister Coxinha — Centro',
+                'address' => 'Av. Brasil, 100',
+                'city' => 'Maringá',
+                'phone' => '(44) 99999-0001',
+                'active' => true,
+                'opens_at' => '10:00',
+                'closes_at' => '20:00',
             ],
             [
-                'name'       => 'Mister Coxinha — Zona Sul',
-                'address'    => 'Rua das Flores, 250',
-                'city'       => 'Maringá',
-                'phone'      => '(44) 99999-0002',
-                'active'     => true,
-                'opens_at'   => '10:00',
-                'closes_at'  => '20:00',
+                'name' => 'Mister Coxinha — Zona Sul',
+                'address' => 'Rua das Flores, 250',
+                'city' => 'Maringá',
+                'phone' => '(44) 99999-0002',
+                'active' => true,
+                'opens_at' => '10:00',
+                'closes_at' => '20:00',
             ],
         ];
 

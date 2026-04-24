@@ -11,7 +11,7 @@ class CheckCompanyRole
 {
     public function handle(Request $request, Closure $next, string ...$roles): Response
     {
-        $user    = $request->user();
+        $user = $request->user();
         $company = app('current.company');
 
         if (! $user) {

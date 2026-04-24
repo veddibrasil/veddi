@@ -12,16 +12,16 @@ class Handler extends ExceptionHandler
 
         if (app()->bound('request')) {
             $request = request();
-            $context['url']    = $request->fullUrl();
+            $context['url'] = $request->fullUrl();
             $context['method'] = $request->method();
-            $context['ip']     = $request->ip();
-            $context['input']  = $request->except(['password', 'password_confirmation', 'token']);
+            $context['ip'] = $request->ip();
+            $context['input'] = $request->except(['password', 'password_confirmation', 'token']);
         }
 
         try {
             if (auth()->check()) {
                 $user = auth()->user();
-                $context['user_id']    = $user->id;
+                $context['user_id'] = $user->id;
                 $context['user_email'] = $user->email ?? null;
             }
         } catch (\Throwable) {

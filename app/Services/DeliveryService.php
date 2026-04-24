@@ -11,6 +11,7 @@ class DeliveryService
      * Valida a área de cobertura e calcula a taxa de entrega.
      *
      * @return array{fee: float, free: bool}
+     *
      * @throws DeliveryException
      */
     public function validate(
@@ -29,7 +30,7 @@ class DeliveryService
 
         $free = false;
         if ($settings->free_delivery_above !== null && $subtotal >= $settings->free_delivery_above) {
-            $fee  = 0.0;
+            $fee = 0.0;
             $free = true;
         }
 
@@ -43,10 +44,10 @@ class DeliveryService
         ?float $customerLng
     ): float {
         return match ($settings->fee_type) {
-            'flat'         => (float) $settings->flat_fee,
+            'flat' => (float) $settings->flat_fee,
             'neighborhood' => $this->feeByNeighborhood($settings, $neighborhood),
-            'distance'     => $this->feeByDistance($settings, $customerLat, $customerLng),
-            default        => 0.0,
+            'distance' => $this->feeByDistance($settings, $customerLat, $customerLng),
+            default => 0.0,
         };
     }
 
@@ -58,7 +59,7 @@ class DeliveryService
             ->first(fn ($n) => mb_strtolower(trim($n->neighborhood)) === mb_strtolower(trim($neighborhood)));
 
         if (! $match) {
-            throw new DeliveryException("Seu bairro não está na área de cobertura desta filial.");
+            throw new DeliveryException('Seu bairro não está na área de cobertura desta filial.');
         }
 
         return (float) $match->fee;
@@ -67,11 +68,11 @@ class DeliveryService
     private function feeByDistance(DeliverySetting $settings, ?float $customerLat, ?float $customerLng): float
     {
         if (! $settings->branch_latitude || ! $settings->branch_longitude) {
-            throw new DeliveryException("Entrega por distância não configurada para esta filial. Entre em contato com a loja.");
+            throw new DeliveryException('Entrega por distância não configurada para esta filial. Entre em contato com a loja.');
         }
 
         if ($customerLat === null || $customerLng === null) {
-            throw new DeliveryException("Não foi possível calcular a distância de entrega. Entre em contato com a loja.");
+            throw new DeliveryException('Não foi possível calcular a distância de entrega. Entre em contato com a loja.');
         }
 
         $distanceKm = $this->haversineDistance(
@@ -86,6 +87,7 @@ class DeliveryService
             ->first(function ($t) use ($distanceKm) {
                 $aboveMin = $distanceKm >= $t->min_km;
                 $belowMax = $t->max_km === null || $distanceKm < $t->max_km;
+
                 return $aboveMin && $belowMax;
             });
 

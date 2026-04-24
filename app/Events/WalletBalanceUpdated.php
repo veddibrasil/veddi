@@ -2,7 +2,6 @@
 
 namespace App\Events;
 
-use App\Models\Company;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
@@ -14,7 +13,7 @@ class WalletBalanceUpdated implements ShouldBroadcastNow
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     public function __construct(
-        public readonly int   $companyId,
+        public readonly int $companyId,
         public readonly float $availableBalance,
         public readonly float $pendingBalance,
     ) {}
@@ -22,7 +21,7 @@ class WalletBalanceUpdated implements ShouldBroadcastNow
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel('wallet.' . $this->companyId),
+            new PrivateChannel('wallet.'.$this->companyId),
         ];
     }
 
@@ -30,7 +29,7 @@ class WalletBalanceUpdated implements ShouldBroadcastNow
     {
         return [
             'available_balance' => $this->availableBalance,
-            'pending_balance'   => $this->pendingBalance,
+            'pending_balance' => $this->pendingBalance,
         ];
     }
 }

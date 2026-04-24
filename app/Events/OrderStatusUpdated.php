@@ -20,14 +20,14 @@ class OrderStatusUpdated implements ShouldBroadcast
     public function broadcastOn(): array
     {
         return [
-            new Channel('order.' . $this->order->id),
+            new Channel('order.'.$this->order->id),
         ];
     }
 
     public function broadcastWith(): array
     {
         return [
-            'status'       => $this->order->status,
+            'status' => $this->order->status,
             'order_number' => $this->order->order_number,
         ];
     }

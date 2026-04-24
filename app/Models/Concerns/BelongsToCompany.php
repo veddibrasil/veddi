@@ -10,7 +10,7 @@ trait BelongsToCompany
 {
     public static function bootBelongsToCompany(): void
     {
-        static::addGlobalScope(new CompanyScope());
+        static::addGlobalScope(new CompanyScope);
 
         static::creating(function ($model) {
             if (empty($model->company_id) && app()->bound('current.company')) {

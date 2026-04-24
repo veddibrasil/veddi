@@ -15,7 +15,7 @@ class DeliveryNeighborhood extends Model
     ];
 
     protected $casts = [
-        'fee'    => 'float',
+        'fee' => 'float',
         'active' => 'boolean',
     ];
 

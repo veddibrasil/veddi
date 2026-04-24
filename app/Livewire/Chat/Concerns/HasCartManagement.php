@@ -10,40 +10,88 @@ trait HasCartManagement
         $product = \App\Models\Product::findOrFail($productId);
 
         $cart = $this->cart;
-        if (isset($cart[$productId])) {
-            $cart[$productId]['qty'] += $quantity;
+        $key = (string) $productId;
+        if (isset($cart[$key])) {
+            $cart[$key]['qty'] += $quantity;
         } else {
-            $cart[$productId] = [
-                'qty'   => $quantity,
-                'name'  => $product->name,
+            $cart[$key] = [
+                'product_id' => $productId,
+                'qty' => $quantity,
+                'name' => $product->name,
                 'price' => (float) $product->price,
             ];
         }
         $this->cart = $cart;
     }
 
-    public function removeFromCart(int $productId): void
+    /**
+     * Adiciona ao carrinho um produto com opções.
+     * Produtos com todos os grupos fixos (ex.: centos) são agrupados em uma única entrada;
+     * produtos com grupos variáveis criam entradas separadas por composição.
+     */
+    public function addToCartWithOptions(int $productId, array $optionSelections): void
     {
+        $this->cartError = null;
+        $product = \App\Models\Product::with('optionGroups')->findOrFail($productId);
+        $allFixed = $product->optionGroups->isNotEmpty()
+            && $product->optionGroups->every(fn ($g) => $g->fixed);
+
         $cart = $this->cart;
-        unset($cart[$productId]);
+
+        if ($allFixed) {
+            $key = (string) $productId;
+            if (isset($cart[$key])) {
+                $cart[$key]['qty'] += 1;
+            } else {
+                $cart[$key] = [
+                    'product_id' => $productId,
+                    'qty' => 1,
+                    'name' => $product->name,
+                    'price' => (float) $product->price,
+                    'options' => $optionSelections,
+                ];
+            }
+        } else {
+            $index = 1;
+            while (isset($cart["{$productId}_{$index}"])) {
+                $index++;
+            }
+            $cart["{$productId}_{$index}"] = [
+                'product_id' => $productId,
+                'qty' => 1,
+                'name' => $product->name,
+                'price' => (float) $product->price,
+                'options' => $optionSelections,
+            ];
+        }
+
         $this->cart = $cart;
     }
 
-    public function updateCartQty(int $productId, int $qty): void
+    public function removeFromCart(string $cartKey): void
+    {
+        $cart = $this->cart;
+        unset($cart[$cartKey]);
+        $this->cart = $cart;
+    }
+
+    public function updateCartQty(string $cartKey, int $qty): void
     {
         if ($qty <= 0) {
-            $this->removeFromCart($productId);
+            $this->removeFromCart($cartKey);
+
             return;
         }
-        $cart                    = $this->cart;
-        $cart[$productId]['qty'] = $qty;
-        $this->cart              = $cart;
+        $cart = $this->cart;
+        $cart[$cartKey]['qty'] = $qty;
+        $this->cart = $cart;
     }
 
     public function proceedToCheckout(): void
     {
         if (empty($this->cart)) {
             $this->cartError = 'Adicione pelo menos um produto ao carrinho.';
+
             return;
         }
         $this->cartError = null;

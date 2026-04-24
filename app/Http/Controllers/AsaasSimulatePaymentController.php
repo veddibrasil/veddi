@@ -16,8 +16,8 @@ class AsaasSimulatePaymentController extends Controller
 
         $request->validate([
             'company_id' => ['sometimes', 'integer', 'exists:companies,id'],
-            'type'       => ['sometimes', 'in:setup_fee,subscription'],
-            'event'      => ['sometimes', 'in:PAYMENT_CONFIRMED,PAYMENT_RECEIVED,PAYMENT_OVERDUE'],
+            'type' => ['sometimes', 'in:setup_fee,subscription'],
+            'event' => ['sometimes', 'in:PAYMENT_CONFIRMED,PAYMENT_RECEIVED,PAYMENT_OVERDUE'],
         ]);
 
         $companyId = $request->integer('company_id') ?: session('pending_company_id');
@@ -28,23 +28,23 @@ class AsaasSimulatePaymentController extends Controller
 
         abort_unless($company->asaas_customer_id, 422, 'Empresa sem asaas_customer_id cadastrado.');
 
-        $type  = $request->input('type', 'setup_fee');
+        $type = $request->input('type', 'setup_fee');
         $event = $request->input('event', 'PAYMENT_CONFIRMED');
 
         $payload = match ($type) {
             'subscription' => $this->subscriptionPayload($company, $event),
-            default        => $this->setupFeePayload($company, $event),
+            default => $this->setupFeePayload($company, $event),
         };
 
         ProcessAsaasWebhook::dispatch($event, $payload);
 
         if ($request->wantsJson()) {
             return response()->json([
-                'status'     => 'queued',
+                'status' => 'queued',
                 'company_id' => $company->id,
-                'type'       => $type,
-                'event'      => $event,
-                'payload'    => $payload,
+                'type' => $type,
+                'event' => $event,
+                'payload' => $payload,
             ]);
         }
 
@@ -55,14 +55,14 @@ class AsaasSimulatePaymentController extends Controller
     private function setupFeePayload(Company $company, string $event): array
     {
         return [
-            'event'   => $event,
+            'event' => $event,
             'payment' => [
-                'id'           => $company->asaas_setup_charge_id ?? 'sim_setup_' . $company->id,
-                'customer'     => $company->asaas_customer_id,
+                'id' => $company->asaas_setup_charge_id ?? 'sim_setup_'.$company->id,
+                'customer' => $company->asaas_customer_id,
                 'subscription' => null,
-                'value'        => 99.00,
-                'status'       => $event === 'PAYMENT_OVERDUE' ? 'OVERDUE' : 'CONFIRMED',
-                'description'  => '[simulação] Taxa de ativação',
+                'value' => 99.00,
+                'status' => $event === 'PAYMENT_OVERDUE' ? 'OVERDUE' : 'CONFIRMED',
+                'description' => '[simulação] Taxa de ativação',
             ],
         ];
     }
@@ -70,14 +70,14 @@ class AsaasSimulatePaymentController extends Controller
     private function subscriptionPayload(Company $company, string $event): array
     {
         return [
-            'event'   => $event,
+            'event' => $event,
             'payment' => [
-                'id'           => 'sim_sub_' . now()->timestamp . '_' . $company->id,
-                'customer'     => $company->asaas_customer_id,
-                'subscription' => $company->asaas_subscription_id ?? 'sim_subscription_' . $company->id,
-                'value'        => $company->plan?->monthlyPrice() ?? 0,
-                'status'       => $event === 'PAYMENT_OVERDUE' ? 'OVERDUE' : 'CONFIRMED',
-                'description'  => '[simulação] Assinatura mensal',
+                'id' => 'sim_sub_'.now()->timestamp.'_'.$company->id,
+                'customer' => $company->asaas_customer_id,
+                'subscription' => $company->asaas_subscription_id ?? 'sim_subscription_'.$company->id,
+                'value' => $company->plan?->monthlyPrice() ?? 0,
+                'status' => $event === 'PAYMENT_OVERDUE' ? 'OVERDUE' : 'CONFIRMED',
+                'description' => '[simulação] Assinatura mensal',
             ],
         ];
     }

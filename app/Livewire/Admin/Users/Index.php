@@ -4,12 +4,10 @@ namespace App\Livewire\Admin\Users;
 
 use App\Mail\WelcomeUser;
 use App\Models\Branch;
-use App\Models\Company;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\UserPermission;
 use App\Services\UserPermissionService;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
@@ -25,27 +23,37 @@ class Index extends Component
     public string $search = '';
 
     // Formulário de criação de usuário
-    public string $newName     = '';
-    public string $newEmail    = '';
-    public string $newRole     = '';
-    public int    $newBranchId = 0;
-    public bool   $showCreateForm = false;
+    public string $newName = '';
+
+    public string $newEmail = '';
+
+    public string $newRole = '';
+
+    public int $newBranchId = 0;
+
+    public bool $showCreateForm = false;
 
     // Edição de role de um usuário existente
-    public ?int   $editUserId   = null;
-    public string $editRole     = '';
-    public int    $editBranchId = 0;
+    public ?int $editUserId = null;
+
+    public string $editRole = '';
+
+    public int $editBranchId = 0;
 
     // Vincular usuário existente por e-mail
-    public string $linkEmail    = '';
-    public string $linkRole     = '';
-    public int    $linkBranchId = 0;
-    public bool   $showLinkForm = false;
+    public string $linkEmail = '';
+
+    public string $linkRole = '';
+
+    public int $linkBranchId = 0;
+
+    public bool $showLinkForm = false;
 
     // Exclusão (desvincular)
     public ?int $removingUserId = null;
 
-    public bool $canView   = false;
+    public bool $canView = false;
+
     public bool $canManage = false;
 
     public function mount(): void
@@ -56,7 +64,7 @@ class Index extends Component
             $this->canView = $this->canManage = true;
         } elseif (app()->bound('current.company')) {
             $company = app('current.company');
-            $this->canView   = $user->hasPermission('users.view', $company);
+            $this->canView = $user->hasPermission('users.view', $company);
             $this->canManage = $user->hasPermission('users.manage', $company);
         }
     }
@@ -71,27 +79,27 @@ class Index extends Component
         abort_unless($this->canManage, 403);
 
         $this->validate([
-            'newName'  => 'required|string|max:255',
+            'newName' => 'required|string|max:255',
             'newEmail' => 'required|email|unique:users,email',
-            'newRole'  => 'required|string',
+            'newRole' => 'required|string',
         ], [
-            'newName.required'  => 'Informe o nome.',
+            'newName.required' => 'Informe o nome.',
             'newEmail.required' => 'Informe o e-mail.',
-            'newEmail.unique'   => 'Este e-mail já está em uso.',
-            'newRole.required'  => 'Selecione o tipo de usuário.',
+            'newEmail.unique' => 'Este e-mail já está em uso.',
+            'newRole.required' => 'Selecione o tipo de usuário.',
         ]);
 
-        $company           = app('current.company');
+        $company = app('current.company');
         $temporaryPassword = Str::password(12);
 
         $user = User::create([
-            'name'     => $this->newName,
-            'email'    => $this->newEmail,
+            'name' => $this->newName,
+            'email' => $this->newEmail,
             'password' => Hash::make($temporaryPassword),
         ]);
 
         $user->companies()->attach($company->id, [
-            'role'      => $this->newRole,
+            'role' => $this->newRole,
             'branch_id' => $this->newRole === 'branch_manager' && $this->newBranchId
                 ? $this->newBranchId
                 : null,
@@ -111,19 +119,19 @@ class Index extends Component
 
         $this->validate([
             'linkEmail' => 'required|email|exists:users,email',
-            'linkRole'  => 'required|string',
+            'linkRole' => 'required|string',
         ], [
             'linkEmail.required' => 'Informe o e-mail.',
-            'linkEmail.exists'   => 'Usuário não encontrado.',
-            'linkRole.required'  => 'Selecione o tipo de usuário.',
+            'linkEmail.exists' => 'Usuário não encontrado.',
+            'linkRole.required' => 'Selecione o tipo de usuário.',
         ]);
 
         $company = app('current.company');
-        $user    = User::where('email', $this->linkEmail)->firstOrFail();
+        $user = User::where('email', $this->linkEmail)->firstOrFail();
 
         $user->companies()->syncWithoutDetaching([
             $company->id => [
-                'role'      => $this->linkRole,
+                'role' => $this->linkRole,
                 'branch_id' => $this->linkRole === 'branch_manager' && $this->linkBranchId
                     ? $this->linkBranchId
                     : null,
@@ -139,11 +147,11 @@ class Index extends Component
     public function openEditRole(int $userId): void
     {
         $company = app('current.company');
-        $user    = User::findOrFail($userId);
-        $pivot   = $user->companies()->where('companies.id', $company->id)->first()?->pivot;
+        $user = User::findOrFail($userId);
+        $pivot = $user->companies()->where('companies.id', $company->id)->first()?->pivot;
 
-        $this->editUserId   = $userId;
-        $this->editRole     = $pivot?->role ?? '';
+        $this->editUserId = $userId;
+        $this->editRole = $pivot?->role ?? '';
         $this->editBranchId = $pivot?->branch_id ?? 0;
     }
 
@@ -158,10 +166,10 @@ class Index extends Component
         ]);
 
         $company = app('current.company');
-        $user    = User::findOrFail($this->editUserId);
+        $user = User::findOrFail($this->editUserId);
 
         $user->companies()->updateExistingPivot($company->id, [
-            'role'      => $this->editRole,
+            'role' => $this->editRole,
             'branch_id' => $this->editRole === 'branch_manager' && $this->editBranchId
                 ? $this->editBranchId
                 : null,
@@ -199,7 +207,7 @@ class Index extends Component
         abort_unless($this->canManage, 403);
 
         $company = app('current.company');
-        $user    = User::findOrFail($this->removingUserId);
+        $user = User::findOrFail($this->removingUserId);
         User::clearPermissionCache($this->removingUserId, $company->id);
 
         $user->companies()->detach($company->id);
@@ -213,20 +221,19 @@ class Index extends Component
         $company = app('current.company');
 
         $users = User::whereHas('companies', fn ($q) => $q->where('companies.id', $company->id))
-            ->when($this->search, fn ($q) =>
-                $q->where('name', 'like', "%{$this->search}%")
-                  ->orWhere('email', 'like', "%{$this->search}%")
+            ->when($this->search, fn ($q) => $q->where('name', 'like', "%{$this->search}%")
+                ->orWhere('email', 'like', "%{$this->search}%")
             )
             ->with(['companies' => fn ($q) => $q->where('companies.id', $company->id)])
             ->orderBy('name')
             ->paginate(20);
 
-        $roles    = Role::forCompany($company)->orderBy('is_system', 'desc')->orderBy('name')->get();
+        $roles = Role::forCompany($company)->orderBy('is_system', 'desc')->orderBy('name')->get();
         $branches = Branch::orderBy('name')->get();
 
         return view('livewire.admin.users.index', [
-            'users'    => $users,
-            'roles'    => $roles,
+            'users' => $users,
+            'roles' => $roles,
             'branches' => $branches,
         ]);
     }

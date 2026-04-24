@@ -24,8 +24,7 @@ class Role extends Model
 
     public function scopeForCompany($query, Company $company)
     {
-        return $query->where(fn ($q) =>
-            $q->whereNull('company_id')->orWhere('company_id', $company->id)
+        return $query->where(fn ($q) => $q->whereNull('company_id')->orWhere('company_id', $company->id)
         );
     }
 }

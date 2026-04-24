@@ -22,6 +22,7 @@ class PendingPayment extends Component
 
         if (! $companyId) {
             $this->redirectRoute('register.create');
+
             return;
         }
 
@@ -29,12 +30,14 @@ class PendingPayment extends Component
 
         if (! $this->company) {
             $this->redirectRoute('register.create');
+
             return;
         }
 
         if ($this->company->status === 'ACTIVE') {
             session()->forget('pending_company_id');
             $this->redirectRoute('login');
+
             return;
         }
 
@@ -44,9 +47,10 @@ class PendingPayment extends Component
     #[Computed]
     public function firstPaymentTotal(): float
     {
-        $plan    = $this->company?->plan;
-        $setup   = $plan?->setupFee() ?? 99.00;
+        $plan = $this->company?->plan;
+        $setup = $plan?->setupFee() ?? 99.00;
         $monthly = $plan?->hasMonthlySubscription() ? ($plan?->monthlyPrice() ?? 0.0) : 0.0;
+
         return $setup + $monthly;
     }
 

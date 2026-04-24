@@ -12,6 +12,7 @@ class Index extends Component
     use WithPagination;
 
     public string $search = '';
+
     public ?int $deletingId = null;
 
     public function confirmDelete(int $id): void

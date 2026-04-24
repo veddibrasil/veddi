@@ -12,15 +12,21 @@ class Report extends Component
 {
     use WithPagination;
 
-    public string $dateStart     = '';
-    public string $dateEnd       = '';
-    public string $statusFilter  = '';
-    public string $branchFilter  = '';
+    public string $dateStart = '';
+
+    public string $dateEnd = '';
+
+    public string $statusFilter = '';
+
+    public string $branchFilter = '';
+
     public string $paymentMethod = '';
-    public string $orderType     = '';
+
+    public string $orderType = '';
 
     public bool $isSuperAdmin = false;
-    public bool $canView      = false;
+
+    public bool $canView = false;
 
     public function mount(): void
     {
@@ -37,15 +43,38 @@ class Report extends Component
         abort_unless($this->canView, 403);
 
         $this->dateStart = now()->startOfMonth()->format('Y-m-d');
-        $this->dateEnd   = now()->endOfMonth()->format('Y-m-d');
+        $this->dateEnd = now()->endOfMonth()->format('Y-m-d');
     }
 
-    public function updatingDateStart(): void    { $this->resetPage(); }
-    public function updatingDateEnd(): void      { $this->resetPage(); }
-    public function updatingStatusFilter(): void { $this->resetPage(); }
-    public function updatingBranchFilter(): void { $this->resetPage(); }
-    public function updatingPaymentMethod(): void { $this->resetPage(); }
-    public function updatingOrderType(): void    { $this->resetPage(); }
+    public function updatingDateStart(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatingDateEnd(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatingStatusFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatingBranchFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatingPaymentMethod(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatingOrderType(): void
+    {
+        $this->resetPage();
+    }
 
     private function buildQuery()
     {
@@ -55,11 +84,11 @@ class Report extends Component
 
         return $query
             ->when($this->dateStart, fn ($q) => $q->whereDate('created_at', '>=', $this->dateStart))
-            ->when($this->dateEnd,   fn ($q) => $q->whereDate('created_at', '<=', $this->dateEnd))
-            ->when($this->statusFilter,  fn ($q) => $q->where('status', $this->statusFilter))
-            ->when($this->branchFilter,  fn ($q) => $q->where('branch_id', $this->branchFilter))
+            ->when($this->dateEnd, fn ($q) => $q->whereDate('created_at', '<=', $this->dateEnd))
+            ->when($this->statusFilter, fn ($q) => $q->where('status', $this->statusFilter))
+            ->when($this->branchFilter, fn ($q) => $q->where('branch_id', $this->branchFilter))
             ->when($this->paymentMethod, fn ($q) => $q->where('payment_method', $this->paymentMethod))
-            ->when($this->orderType,     fn ($q) => $q->where('order_type', $this->orderType));
+            ->when($this->orderType, fn ($q) => $q->where('order_type', $this->orderType));
     }
 
     public function exportCsv()
@@ -67,7 +96,7 @@ class Report extends Component
         abort_unless($this->canView, 403);
 
         $orders = $this->buildQuery()->latest()->get();
-        $filename = 'relatorio-pedidos-' . now()->format('Y-m-d') . '.csv';
+        $filename = 'relatorio-pedidos-'.now()->format('Y-m-d').'.csv';
 
         return response()->streamDownload(function () use ($orders) {
             $handle = fopen('php://output', 'w');
@@ -100,7 +129,7 @@ class Report extends Component
     private function paymentMethodLabel(string $method): string
     {
         return match (strtolower($method)) {
-            'pix'  => 'PIX',
+            'pix' => 'PIX',
             'card' => 'Cartão',
             'cash' => 'Dinheiro',
             default => $method,
@@ -113,10 +142,10 @@ class Report extends Component
 
         $allOrders = (clone $baseQuery)->get(['total', 'payment_method']);
 
-        $totalCount    = $allOrders->count();
-        $totalRevenue  = $allOrders->sum('total');
+        $totalCount = $allOrders->count();
+        $totalRevenue = $allOrders->sum('total');
         $averageTicket = $totalCount > 0 ? $totalRevenue / $totalCount : 0;
-        $topPayment    = $allOrders->isNotEmpty()
+        $topPayment = $allOrders->isNotEmpty()
             ? $allOrders->groupBy('payment_method')->map->count()->sortDesc()->keys()->first()
             : null;
         $topPaymentLabel = $topPayment ? $this->paymentMethodLabel($topPayment) : '—';

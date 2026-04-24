@@ -97,8 +97,8 @@ trait HasChatSupport
         app(SupportService::class)->sendCustomerMessage($this->supportTicketId, $text);
 
         $this->supportConversation[] = [
-            'sender'     => 'customer',
-            'message'    => $text,
+            'sender' => 'customer',
+            'message' => $text,
             'created_at' => now()->format('H:i'),
         ];
     }
@@ -119,8 +119,8 @@ trait HasChatSupport
         }
 
         $this->supportConversation[] = [
-            'sender'     => 'admin',
-            'message'    => $message,
+            'sender' => 'admin',
+            'message' => $message,
             'created_at' => now()->format('H:i'),
         ];
     }
@@ -134,6 +134,7 @@ trait HasChatSupport
         $ticket = SupportTicket::withoutGlobalScopes()->find($this->supportTicketId);
         if (! $ticket || $ticket->status === 'closed') {
             $this->onSupportTicketClosed([]);
+
             return;
         }
 
@@ -142,6 +143,7 @@ trait HasChatSupport
                 ->where('sender', 'admin')
                 ->max('id') ?? 0;
             $this->saveToSession();
+
             return;
         }
 
@@ -152,8 +154,8 @@ trait HasChatSupport
 
         foreach ($newMessages as $msg) {
             $this->supportConversation[] = [
-                'sender'     => 'admin',
-                'message'    => $msg->message,
+                'sender' => 'admin',
+                'message' => $msg->message,
                 'created_at' => $msg->created_at->format('H:i'),
             ];
             $this->lastAdminSupportMessageId = $msg->id;
@@ -167,8 +169,8 @@ trait HasChatSupport
         }
 
         $this->supportConversation[] = [
-            'sender'     => 'system',
-            'message'    => '✅ Ticket encerrado. Obrigado pelo contato!',
+            'sender' => 'system',
+            'message' => '✅ Ticket encerrado. Obrigado pelo contato!',
             'created_at' => now()->format('H:i'),
         ];
 
@@ -192,8 +194,8 @@ trait HasChatSupport
         $this->supportConversation = app(SupportService::class)
             ->getConversation($this->supportTicketId)
             ->map(fn ($m) => [
-                'sender'     => $m->sender,
-                'message'    => $m->message,
+                'sender' => $m->sender,
+                'message' => $m->message,
                 'created_at' => $m->created_at->format('H:i'),
             ])
             ->toArray();

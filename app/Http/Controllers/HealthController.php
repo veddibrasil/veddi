@@ -12,7 +12,7 @@ class HealthController extends Controller
 {
     public function __invoke(AsaasCircuitBreaker $circuitBreaker): JsonResponse
     {
-        $checks  = [];
+        $checks = [];
         $healthy = true;
 
         // Database
@@ -44,9 +44,9 @@ class HealthController extends Controller
         }
 
         // Asaas circuit breaker state — não fatal (app continua operando sem Asaas)
-        $circuitState              = $circuitBreaker->getState();
-        $checks['asaas_circuit']   = $circuitState;
-        $checks['asaas_failures']  = $circuitBreaker->getFailureCount();
+        $circuitState = $circuitBreaker->getState();
+        $checks['asaas_circuit'] = $circuitState;
+        $checks['asaas_failures'] = $circuitBreaker->getFailureCount();
 
         $status = $healthy ? 200 : 503;
 

@@ -2,18 +2,21 @@
 
 namespace App\Livewire\Chat\Concerns;
 
+use App\Contracts\AsaasServiceInterface;
+use App\Contracts\OrderServiceInterface;
+use App\Contracts\TransactionServiceInterface;
+use App\Contracts\WalletServiceInterface;
+use App\DTOs\AsaasCustomerDTO;
+use App\DTOs\CreditCardDTO;
+use App\DTOs\CreditCardHolderDTO;
 use App\Events\OrderStatusUpdated;
 use App\Models\Coupon;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Payment;
-use App\Services\AsaasService;
-use App\Services\OrderService;
 use App\Services\PaymentCalculatorService;
 use App\Services\PaymentService;
 use App\Services\StockService;
-use App\Services\TransactionService;
-use App\Services\WalletService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use RuntimeException;
@@ -24,29 +27,41 @@ trait HasPaymentFlow
     {
         $this->paymentMethod = $method;
 
-        if ($method === 'CASH') {
-            $this->addMessage('user', 'Dinheiro');
-            $this->placeOrder('paid');
-            return;
-        }
-
         if ($method === 'CARD') {
             $this->recalculateCardFee();
         }
 
-        $label = $method === 'CARD' ? 'Cartão de Crédito' : 'PIX';
+        $label = match ($method) {
+            'CASH' => 'Dinheiro',
+            'CARD' => 'Cartão de Crédito',
+            default => 'PIX',
+        };
         $this->addMessage('user', $label);
-        $this->placeOrder('pending');
+        $this->transitionTo('CHECKOUT_CONFIRM');
+    }
+
+    public function confirmOrder(): void
+    {
+        $status = $this->paymentMethod === 'CASH' ? 'paid' : 'pending';
+        $this->placeOrder($status);
+    }
+
+    public function backToPaymentMethod(): void
+    {
+        $this->paymentMethod = '';
+        $this->cardFeeBreakdown = [];
+        $this->transitionTo('CHECKOUT_PAYMENT_METHOD');
     }
 
     private function recalculateCardFee(): void
     {
-        $company  = app()->bound('current.company') ? app('current.company') : null;
+        $company = app()->bound('current.company') ? app('current.company') : null;
         $settings = $company?->paymentSettings;
-        $total    = (float) $this->getOrderTotalProperty();
+        $total = (float) $this->getOrderTotalProperty();
 
         if ($total <= 0) {
             $this->cardFeeBreakdown = [];
+
             return;
         }
 
@@ -65,9 +80,9 @@ trait HasPaymentFlow
             return;
         }
         $this->submitting = true;
-        $this->isLoading  = true;
+        $this->isLoading = true;
 
-        $orderService = app(OrderService::class);
+        $orderService = app(OrderServiceInterface::class);
 
         $coupon = null;
         if ($this->appliedCoupon) {
@@ -88,23 +103,24 @@ trait HasPaymentFlow
             );
         } catch (RuntimeException $e) {
             Log::channel('discord')->error('Falha ao criar pedido no chat', [
-                'type'           => 'orders',
-                'customer_id'    => $this->customerId,
-                'branch_id'      => $this->selectedBranchId,
+                'type' => 'orders',
+                'customer_id' => $this->customerId,
+                'branch_id' => $this->selectedBranchId,
                 'payment_method' => $this->paymentMethod,
-                'order_type'     => $this->orderType,
-                'error'          => $e->getMessage(),
+                'order_type' => $this->orderType,
+                'error' => $e->getMessage(),
             ]);
-            $this->addMessage('bot', 'Não foi possível criar o pedido: ' . $e->getMessage());
+            $this->addMessage('bot', 'Não foi possível criar o pedido: '.$e->getMessage());
             $this->submitting = false;
-            $this->isLoading  = false;
+            $this->isLoading = false;
+
             return;
         }
 
         $this->orderId = $order->id;
 
         $customer = Customer::findOrFail($this->customerId);
-        $company  = app()->bound('current.company') ? app('current.company') : null;
+        $company = app()->bound('current.company') ? app('current.company') : null;
 
         if ($this->taxId && ! $customer->tax_id) {
             $customer->update(['tax_id' => preg_replace('/\D/', '', $this->taxId)]);
@@ -116,14 +132,14 @@ trait HasPaymentFlow
         $summary = $orderService->buildOrderSummaryFromOrder($order);
 
         if ($initialStatus === 'paid') {
-            $this->addMessage('bot', $summary . "\n\nPagamento em dinheiro na entrega. Obrigado!");
+            $this->addMessage('bot', $summary."\n\nPagamento em dinheiro na entrega. Obrigado!");
             $this->transitionTo('ORDER_CONFIRMED');
         } elseif ($this->paymentMethod === 'CARD') {
-            $this->addMessage('bot', $summary . "\n\nPreencha os dados do cartão para finalizar.");
+            $this->addMessage('bot', $summary."\n\nPreencha os dados do cartão para finalizar.");
             $this->transitionTo('PAYMENT_CARD_FORM');
         } else {
             app(PaymentService::class)->dispatchPayment($order, $customer, $company, $this->paymentMethod);
-            $this->addMessage('bot', $summary . "\n\nGerando PIX...");
+            $this->addMessage('bot', $summary."\n\nGerando PIX...");
             $this->transitionTo('PAYMENT_PIX');
         }
 
@@ -140,9 +156,9 @@ trait HasPaymentFlow
             return;
         }
 
-        $phase        = $this->step === 'PAYMENT_PIX' ? 'pay' : 'delivery';
+        $phase = $this->step === 'PAYMENT_PIX' ? 'pay' : 'delivery';
         $rateLimitKey = "status-check:{$phase}:{$this->orderId}";
-        $maxAttempts  = $phase === 'pay' ? 30 : 10;
+        $maxAttempts = $phase === 'pay' ? 30 : 10;
 
         if (RateLimiter::tooManyAttempts($rateLimitKey, $maxAttempts)) {
             return;
@@ -159,17 +175,17 @@ trait HasPaymentFlow
         if ($status === 'awaiting_payment' && ! $this->pixCopyPaste) {
             $payment = $order->payment;
             if ($payment) {
-                $sessionKey  = 'payment_token_' . $this->orderId;
+                $sessionKey = 'payment_token_'.$this->orderId;
                 $storedToken = session($sessionKey);
 
                 if ($storedToken === null || ! hash_equals((string) $storedToken, (string) $payment->payment_token)) {
                     session([$sessionKey => $payment->payment_token]);
                 }
 
-                $this->pixQrCode    = $payment->pix_qr_code;
+                $this->pixQrCode = $payment->pix_qr_code;
                 $this->pixCopyPaste = $payment->pix_copy_paste;
-                $this->paymentId    = $payment->asaas_payment_id;
-                $this->expiresAt    = $payment->expires_at?->toIso8601String();
+                $this->paymentId = $payment->asaas_payment_id;
+                $this->expiresAt = $payment->expires_at?->toIso8601String();
             }
         }
 
@@ -178,16 +194,16 @@ trait HasPaymentFlow
         }
 
         Log::channel('chat')->info('Status do pedido atualizado', [
-            'order_id'    => $this->orderId,
+            'order_id' => $this->orderId,
             'customer_id' => $this->customerId,
-            'status'      => $status,
+            'status' => $status,
         ]);
 
         $messages = [
             'awaiting_payment' => "⏳ Pedido {$order->order_number} recebido! Aguardando confirmação do pagamento.",
-            'paid'      => "✅ Pagamento confirmado! Seu pedido {$order->order_number} já será preparado. Obrigado!",
+            'paid' => "✅ Pagamento confirmado! Seu pedido {$order->order_number} já será preparado. Obrigado!",
             'preparing' => "👨‍🍳 Seu pedido {$order->order_number} está sendo preparado! Em breve ficará pronto.",
-            'ready'     => "🛵 Pedido {$order->order_number} pronto e saiu para entrega! Aguarde em breve.",
+            'ready' => "🛵 Pedido {$order->order_number} pronto e saiu para entrega! Aguarde em breve.",
             'delivered' => "🎉 Pedido {$order->order_number} entregue! Bom apetite e obrigado pela preferência!",
             'cancelled' => "❌ Seu pedido {$order->order_number} foi cancelado. Entre em contato se precisar de ajuda.",
         ];
@@ -217,13 +233,13 @@ trait HasPaymentFlow
             return;
         }
 
-        $this->pixQrCode    = null;
+        $this->pixQrCode = null;
         $this->pixCopyPaste = null;
-        $this->expiresAt    = null;
-        $this->paymentId    = null;
+        $this->expiresAt = null;
+        $this->paymentId = null;
 
         $customer = Customer::findOrFail($this->customerId);
-        $company  = app()->bound('current.company') ? app('current.company') : null;
+        $company = app()->bound('current.company') ? app('current.company') : null;
 
         app(PaymentService::class)->expireAndRenew($order, $customer, $company, $this->paymentMethod);
         $this->addMessage('bot', 'O tempo para pagamento expirou. Gerando nova cobrança...');
@@ -234,71 +250,72 @@ trait HasPaymentFlow
         $this->cardError = null;
 
         $this->validate([
-            'cardNumber'     => ['required', 'min:14'],
-            'cardExpiry'     => ['required', 'regex:/^\d{2}\/\d{2}$/'],
-            'cardCvv'        => ['required', 'min:3', 'max:4'],
+            'cardNumber' => ['required', 'min:14'],
+            'cardExpiry' => ['required', 'regex:/^\d{2}\/\d{2}$/'],
+            'cardCvv' => ['required', 'min:3', 'max:4'],
             'cardHolderName' => ['required', 'min:3'],
         ], [
-            'cardNumber.required'     => 'Informe o número do cartão.',
-            'cardNumber.min'          => 'Número do cartão inválido.',
-            'cardExpiry.required'     => 'Informe a validade.',
-            'cardExpiry.regex'        => 'Validade inválida. Use MM/AA.',
-            'cardCvv.required'        => 'Informe o CVV.',
-            'cardCvv.min'             => 'CVV inválido.',
+            'cardNumber.required' => 'Informe o número do cartão.',
+            'cardNumber.min' => 'Número do cartão inválido.',
+            'cardExpiry.required' => 'Informe a validade.',
+            'cardExpiry.regex' => 'Validade inválida. Use MM/AA.',
+            'cardCvv.required' => 'Informe o CVV.',
+            'cardCvv.min' => 'CVV inválido.',
             'cardHolderName.required' => 'Informe o nome impresso no cartão.',
-            'cardHolderName.min'      => 'Nome inválido.',
+            'cardHolderName.min' => 'Nome inválido.',
         ]);
 
-        $order    = Order::find($this->orderId);
+        $order = Order::find($this->orderId);
         $customer = Customer::findOrFail($this->customerId);
-        $company  = app()->bound('current.company') ? app('current.company') : null;
+        $company = app()->bound('current.company') ? app('current.company') : null;
 
         if (! $order) {
             $this->cardError = 'Pedido não encontrado. Tente novamente.';
+
             return;
         }
 
-        $settings         = $company?->paymentSettings;
+        $settings = $company?->paymentSettings;
         $anticipationDays = $settings?->default_anticipation_days ?? 15;
-        $breakdown        = app(PaymentCalculatorService::class)->calculate(
+        $breakdown = app(PaymentCalculatorService::class)->calculate(
             (float) $order->total,
             $anticipationDays,
             $settings
         );
 
         [$expMonth, $expYear] = explode('/', $this->cardExpiry);
-        $expiryYear = strlen($expYear) === 2 ? '20' . $expYear : $expYear;
+        $expiryYear = strlen($expYear) === 2 ? '20'.$expYear : $expYear;
 
         try {
-            $asaas = app(AsaasService::class);
+            $asaas = app(AsaasServiceInterface::class);
 
-            $asaasCustomerId = $asaas->findOrCreateCustomer([
-                'name'    => $customer->name,
-                'email'   => $customer->email,
-                'cpfCnpj' => $customer->tax_id ?? '',
-                'phone'   => $customer->phone ?? null,
-            ]);
+            $asaasCustomerId = $asaas->findOrCreateCustomer(new AsaasCustomerDTO(
+                name: $customer->name,
+                email: $customer->email,
+                cpfCnpj: $customer->tax_id ?? '',
+                phone: $customer->phone ?? null,
+            ));
 
             $charge = $asaas->createCreditCardCharge(
-                customerId:        $asaasCustomerId,
-                amount:            $breakdown['final_amount'],
-                description:       "Pedido #{$order->order_number}" . ($company ? " - {$company->name}" : ''),
+                customerId: $asaasCustomerId,
+                amount: $breakdown['final_amount'],
+                description: "Pedido #{$order->order_number}".($company ? " - {$company->name}" : ''),
                 externalReference: (string) $order->id,
-                creditCard: [
-                    'holderName'  => $this->cardHolderName,
-                    'number'      => $this->cardNumber,
-                    'expiryMonth' => $expMonth,
-                    'expiryYear'  => $expiryYear,
-                    'ccv'         => $this->cardCvv,
-                ],
-                holderInfo: [
-                    'name'          => $customer->name,
-                    'email'         => $customer->email ?? '',
-                    'cpfCnpj'       => $customer->tax_id ?? '',
-                    'postalCode'    => $this->cardPostalCode ?: ($customer->cep ?? ''),
-                    'addressNumber' => $this->cardAddressNumber ?: 'S/N',
-                    'phone'         => $customer->phone ?? null,
-                ],
+                creditCard: new CreditCardDTO(
+                    holderName: $this->cardHolderName,
+                    number: $this->cardNumber,
+                    expiryMonth: $expMonth,
+                    expiryYear: $expiryYear,
+                    ccv: $this->cardCvv,
+                ),
+                holderInfo: new CreditCardHolderDTO(
+                    name: $customer->name,
+                    email: $customer->email ?? '',
+                    cpfCnpj: $customer->tax_id ?? '',
+                    postalCode: $this->cardPostalCode ?: ($customer->cep ?? ''),
+                    addressNumber: $this->cardAddressNumber ?: 'S/N',
+                    phone: $customer->phone ?? null,
+                ),
                 installments: 1,
             );
 
@@ -306,60 +323,60 @@ trait HasPaymentFlow
 
             if ($status === 'CONFIRMED' || $status === 'RECEIVED') {
                 $newPayment = Payment::create([
-                    'order_id'          => $order->id,
-                    'asaas_payment_id'  => $charge['id'],
-                    'payment_gateway'   => 'asaas',
-                    'amount'            => $breakdown['final_amount'],
-                    'original_amount'   => $breakdown['original_amount'],
-                    'card_fee'          => $breakdown['fee_amount'],
-                    'card_fee_rate'     => $breakdown['total_rate'],
-                    'installments'      => 1,
+                    'order_id' => $order->id,
+                    'asaas_payment_id' => $charge['id'],
+                    'payment_gateway' => 'asaas',
+                    'amount' => $breakdown['final_amount'],
+                    'original_amount' => $breakdown['original_amount'],
+                    'card_fee' => $breakdown['fee_amount'],
+                    'card_fee_rate' => $breakdown['total_rate'],
+                    'installments' => 1,
                     'anticipation_days' => $anticipationDays,
-                    'status'            => 'paid',
-                    'paid_at'           => now(),
-                    'payment_token'     => hash('sha256', $order->id . $customer->id . uniqid()),
+                    'status' => 'paid',
+                    'paid_at' => now(),
+                    'payment_token' => hash('sha256', $order->id.$customer->id.uniqid()),
                 ]);
 
                 $order->update(['status' => 'paid']);
 
-                app(WalletService::class)->creditForOrder($order->fresh(), $newPayment);
-                app(TransactionService::class)->createForPayment($order->fresh(), $newPayment);
+                app(WalletServiceInterface::class)->creditForOrder($order->fresh(), $newPayment);
+                app(TransactionServiceInterface::class)->createForPayment($order->fresh(), $newPayment);
 
                 OrderStatusUpdated::dispatch($order->fresh());
 
                 Log::channel('payments')->info('Cartão aprovado no chat', [
-                    'order_id'         => $order->id,
-                    'customer_id'      => $customer->id,
+                    'order_id' => $order->id,
+                    'customer_id' => $customer->id,
                     'asaas_payment_id' => $charge['id'],
-                    'original_amount'  => $breakdown['original_amount'],
-                    'final_amount'     => $breakdown['final_amount'],
-                    'card_fee'         => $breakdown['fee_amount'],
+                    'original_amount' => $breakdown['original_amount'],
+                    'final_amount' => $breakdown['final_amount'],
+                    'card_fee' => $breakdown['fee_amount'],
                 ]);
 
-                $this->cardNumber        = '';
-                $this->cardExpiry        = '';
-                $this->cardCvv           = '';
-                $this->cardHolderName    = '';
-                $this->cardPostalCode    = '';
+                $this->cardNumber = '';
+                $this->cardExpiry = '';
+                $this->cardCvv = '';
+                $this->cardHolderName = '';
+                $this->cardPostalCode = '';
                 $this->cardAddressNumber = '';
-                $this->cardFeeBreakdown  = [];
+                $this->cardFeeBreakdown = [];
 
                 $this->addMessage('bot', 'Pagamento aprovado! Seu pedido está confirmado.');
                 $this->transitionTo('ORDER_CONFIRMED');
             } else {
                 $declineReason = $charge['creditCard']['declineReason'] ?? $charge['declineReason'] ?? null;
                 Log::channel('payments')->warning('Cartão recusado no chat', [
-                    'order_id'       => $this->orderId,
-                    'customer_id'    => $this->customerId,
+                    'order_id' => $this->orderId,
+                    'customer_id' => $this->customerId,
                     'decline_reason' => $declineReason,
                 ]);
                 $this->cardError = $this->friendlyDeclineMessage($declineReason);
             }
         } catch (\Throwable $e) {
             Log::channel('discord')->error('Erro ao processar cartão no chat', [
-                'type'     => 'payments',
+                'type' => 'payments',
                 'order_id' => $this->orderId,
-                'error'    => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
             $this->cardError = 'Não foi possível processar o pagamento. Tente novamente.';
         }
@@ -368,7 +385,7 @@ trait HasPaymentFlow
     public function simulatePayment(): void
     {
         app(PaymentService::class)->simulatePayment($this->orderId);
-        $this->addMessage('bot', "Pagamento simulado! Pedido confirmado.");
+        $this->addMessage('bot', 'Pagamento simulado! Pedido confirmado.');
         $this->transitionTo('ORDER_CONFIRMED');
     }
 
@@ -377,6 +394,7 @@ trait HasPaymentFlow
         $order = Order::find($this->orderId);
         if (! $order || ! in_array($order->status, ['awaiting_payment', 'paid', 'preparing'])) {
             $this->addMessage('bot', 'Não é possível cancelar o pedido no momento. Entre em contato com a loja.');
+
             return;
         }
         $this->showCancelConfirm = true;
@@ -388,18 +406,20 @@ trait HasPaymentFlow
         if (! $order) {
             $this->showCancelConfirm = false;
             $this->addMessage('bot', 'Não foi possível cancelar o pedido. Entre em contato com a loja.');
+
             return;
         }
 
         try {
-            app(OrderService::class)->cancelOrder($order, $this->customerId);
+            app(OrderServiceInterface::class)->cancelOrder($order, $this->customerId);
         } catch (RuntimeException $e) {
             $this->showCancelConfirm = false;
             $this->addMessage('bot', 'Não foi possível cancelar o pedido. Entre em contato com a loja.');
+
             return;
         }
 
-        $this->showCancelConfirm  = false;
+        $this->showCancelConfirm = false;
         $this->lastNotifiedStatus = 'cancelled';
         $this->addMessage('bot', "❌ Pedido {$order->order_number} cancelado. Se precisar de ajuda, entre em contato com a loja.");
         $this->transitionTo('ORDER_FAILED');
@@ -418,26 +438,26 @@ trait HasPaymentFlow
                 $order->update(['status' => 'cancelled']);
                 app(StockService::class)->restoreForOrder($order);
                 Log::channel('orders')->info('Pedido cancelado para trocar forma de pagamento', [
-                    'order_id'    => $order->id,
+                    'order_id' => $order->id,
                     'customer_id' => $this->customerId,
                 ]);
             }
         }
 
-        $this->orderId        = null;
-        $this->paymentId      = null;
-        $this->pixQrCode      = null;
-        $this->pixCopyPaste   = null;
-        $this->expiresAt      = null;
-        $this->submitting     = false;
-        $this->cardError         = null;
-        $this->cardNumber        = '';
-        $this->cardExpiry        = '';
-        $this->cardCvv           = '';
-        $this->cardHolderName    = '';
-        $this->cardPostalCode    = '';
+        $this->orderId = null;
+        $this->paymentId = null;
+        $this->pixQrCode = null;
+        $this->pixCopyPaste = null;
+        $this->expiresAt = null;
+        $this->submitting = false;
+        $this->cardError = null;
+        $this->cardNumber = '';
+        $this->cardExpiry = '';
+        $this->cardCvv = '';
+        $this->cardHolderName = '';
+        $this->cardPostalCode = '';
         $this->cardAddressNumber = '';
-        $this->cardFeeBreakdown  = [];
+        $this->cardFeeBreakdown = [];
 
         $this->addMessage('bot', 'Escolha uma nova forma de pagamento:');
         $this->transitionTo('CHECKOUT_PAYMENT_METHOD');
@@ -445,34 +465,34 @@ trait HasPaymentFlow
 
     public function retryOrder(): void
     {
-        $this->cart           = [];
-        $this->orderId        = null;
-        $this->pixQrCode      = null;
-        $this->pixCopyPaste   = null;
-        $this->paymentId      = null;
-        $this->expiresAt      = null;
-        $this->submitting     = false;
-        $this->notes          = '';
-        $this->paymentMethod  = 'PIX';
-        $this->orderType      = 'delivery';
-        $this->deliveryFee    = 0.0;
-        $this->freeDelivery   = false;
-        $this->couponInput    = '';
-        $this->appliedCoupon  = null;
+        $this->cart = [];
+        $this->orderId = null;
+        $this->pixQrCode = null;
+        $this->pixCopyPaste = null;
+        $this->paymentId = null;
+        $this->expiresAt = null;
+        $this->submitting = false;
+        $this->notes = '';
+        $this->paymentMethod = 'PIX';
+        $this->orderType = 'delivery';
+        $this->deliveryFee = 0.0;
+        $this->freeDelivery = false;
+        $this->couponInput = '';
+        $this->appliedCoupon = null;
         $this->couponDiscount = 0.0;
-        $this->couponError    = null;
+        $this->couponError = null;
         $this->transitionTo('MENU_BROWSE');
     }
 
     private function friendlyDeclineMessage(?string $reason): string
     {
         return match ($reason) {
-            'INSUFFICIENT_FUNDS'         => 'Saldo insuficiente no cartão.',
-            'EXPIRED_CARD'               => 'Cartão expirado. Verifique a validade.',
+            'INSUFFICIENT_FUNDS' => 'Saldo insuficiente no cartão.',
+            'EXPIRED_CARD' => 'Cartão expirado. Verifique a validade.',
             'INVALID_CARD', 'INVALID_NUMBER' => 'Dados do cartão inválidos.',
             'SECURITY_VIOLATION', 'INVALID_CVV' => 'CVV inválido.',
-            'BLOCKED_CARD'               => 'Cartão bloqueado. Contate seu banco.',
-            default                      => 'Pagamento recusado. Verifique os dados ou tente outro cartão.',
+            'BLOCKED_CARD' => 'Cartão bloqueado. Contate seu banco.',
+            default => 'Pagamento recusado. Verifique os dados ou tente outro cartão.',
         };
     }
 }

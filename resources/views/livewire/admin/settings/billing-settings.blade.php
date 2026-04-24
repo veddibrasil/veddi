@@ -426,8 +426,8 @@
         {{-- x-data aqui: estado do método de pagamento gerenciado pelo Alpine,
              sem round-trips ao Livewire quando o usuário troca de opção. --}}
         <div class="space-y-5"
-             x-data="{ method: 'pix', termsAccepted: false, syncToWire() { $wire.paymentMethod = this.method; $wire.acceptedTerms = this.termsAccepted; } }"
-             x-init="$watch(() => $wire.confirmingPlanChange, val => { if (val) { method = 'pix'; termsAccepted = false; } })">
+             x-data="{ method: 'credit_card', termsAccepted: false, syncToWire() { $wire.paymentMethod = this.method; $wire.acceptedTerms = this.termsAccepted; } }"
+             x-init="$watch(() => $wire.confirmingPlanChange, val => { if (val) { method = 'credit_card'; termsAccepted = false; } })">
             @if($targetPlan === 'free')
                 <div class="flex items-start gap-4">
                     <div class="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
@@ -457,25 +457,9 @@
                         <flux:heading size="lg">Mudar para o plano Essencial?</flux:heading>
                         <flux:subheading class="mt-1">
                             @if($plan === 'free')
-                                <span x-show="method === 'credit_card'" style="display:none">
-                                    Cobrança única de <strong>R$ {{ number_format(config('plans.essencial.setup_fee', 99.00) + config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}</strong> no cartão (taxa de ativação R$ {{ number_format(config('plans.essencial.setup_fee', 99.00), 2, ',', '.') }} + 1º mês R$ {{ number_format(config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}). A partir do 2º mês: R$ {{ number_format(config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}/mês.
-                                </span>
-                                <span x-show="method === 'boleto'" style="display:none">
-                                    Você receberá um boleto de <strong>R$ {{ number_format(config('plans.essencial.setup_fee', 99.00) + config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}</strong> (taxa de ativação + 1º mês). A partir do 2º mês: R$ {{ number_format(config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}/mês.
-                                </span>
-                                <span x-show="method === 'pix'">
-                                    Você receberá um PIX de <strong>R$ {{ number_format(config('plans.essencial.setup_fee', 99.00) + config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}</strong> (taxa de ativação + 1º mês). A partir do 2º mês: R$ {{ number_format(config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}/mês.
-                                </span>
+                                Cobrança única de <strong>R$ {{ number_format(config('plans.essencial.setup_fee', 99.00) + config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}</strong> no cartão (taxa de ativação R$ {{ number_format(config('plans.essencial.setup_fee', 99.00), 2, ',', '.') }} + 1º mês R$ {{ number_format(config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}). A partir do 2º mês: R$ {{ number_format(config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}/mês.
                             @else
-                                <span x-show="method === 'credit_card'" style="display:none">
-                                    Você será cobrado <strong>R$ {{ number_format(config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}/mês</strong> no cartão de crédito. O primeiro mês é cobrado imediatamente.
-                                </span>
-                                <span x-show="method === 'boleto'" style="display:none">
-                                    Você será cobrado <strong>R$ {{ number_format(config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}/mês</strong> via boleto. O link será enviado por e-mail.
-                                </span>
-                                <span x-show="method === 'pix'">
-                                    Você será cobrado <strong>R$ {{ number_format(config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}/mês</strong> via PIX. O link de pagamento será enviado por e-mail.
-                                </span>
+                                Você será cobrado <strong>R$ {{ number_format(config('plans.essencial.monthly_price', 59.00), 2, ',', '.') }}/mês</strong> no cartão de crédito. O primeiro mês é cobrado imediatamente.
                             @endif
                         </flux:subheading>
                     </div>
@@ -502,7 +486,7 @@
                             x-on:click="syncToWire()"
                             wire:click="changePlan"
                             variant="primary">
-                            <span x-text="method === 'credit_card' ? 'Continuar para pagamento' : 'Confirmar'"></span>
+                            Continuar para pagamento
                         </flux:button>
                     </span>
                 </div>
@@ -517,25 +501,9 @@
                         <flux:heading size="lg">Fazer upgrade para PRO?</flux:heading>
                         <flux:subheading class="mt-1">
                             @if($plan === 'free')
-                                <span x-show="method === 'credit_card'" style="display:none">
-                                    Cobrança única de <strong>R$ {{ number_format(config('plans.pro.setup_fee', 99.00) + config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}</strong> no cartão (taxa de ativação R$ {{ number_format(config('plans.pro.setup_fee', 99.00), 2, ',', '.') }} + 1º mês R$ {{ number_format(config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}). A partir do 2º mês: R$ {{ number_format(config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}/mês.
-                                </span>
-                                <span x-show="method === 'boleto'" style="display:none">
-                                    Você receberá um boleto de <strong>R$ {{ number_format(config('plans.pro.setup_fee', 99.00) + config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}</strong> (taxa de ativação + 1º mês). A partir do 2º mês: R$ {{ number_format(config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}/mês.
-                                </span>
-                                <span x-show="method === 'pix'">
-                                    Você receberá um PIX de <strong>R$ {{ number_format(config('plans.pro.setup_fee', 99.00) + config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}</strong> (taxa de ativação + 1º mês). A partir do 2º mês: R$ {{ number_format(config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}/mês.
-                                </span>
+                                Cobrança única de <strong>R$ {{ number_format(config('plans.pro.setup_fee', 99.00) + config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}</strong> no cartão (taxa de ativação R$ {{ number_format(config('plans.pro.setup_fee', 99.00), 2, ',', '.') }} + 1º mês R$ {{ number_format(config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}). A partir do 2º mês: R$ {{ number_format(config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}/mês.
                             @else
-                                <span x-show="method === 'credit_card'" style="display:none">
-                                    Você será cobrado <strong>R$ {{ number_format(config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}/mês</strong> no cartão de crédito. O primeiro mês é cobrado imediatamente.
-                                </span>
-                                <span x-show="method === 'boleto'" style="display:none">
-                                    Você será cobrado <strong>R$ {{ number_format(config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}/mês</strong> via boleto. O link será enviado por e-mail.
-                                </span>
-                                <span x-show="method === 'pix'">
-                                    Você será cobrado <strong>R$ {{ number_format(config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}/mês</strong> via PIX. O link de pagamento será enviado por e-mail.
-                                </span>
+                                Você será cobrado <strong>R$ {{ number_format(config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}/mês</strong> no cartão de crédito. O primeiro mês é cobrado imediatamente.
                             @endif
                         </flux:subheading>
                     </div>
@@ -562,7 +530,7 @@
                             x-on:click="syncToWire()"
                             wire:click="changePlan"
                             variant="primary">
-                            <span x-text="method === 'credit_card' ? 'Continuar para pagamento' : 'Confirmar upgrade'"></span>
+                            Continuar para pagamento
                         </flux:button>
                     </span>
                 </div>

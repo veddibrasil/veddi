@@ -28,10 +28,25 @@ environments:
 
     queues:
       - connection: redis
+        queue: critical
+        processes: 4
+        tries: 3
+        timeout: 3600
+      - connection: redis
         queue: default
         processes: 3
         tries: 3
         timeout: 3600
+      - connection: redis
+        queue: low
+        processes: 1
+        tries: 1
+        timeout: 3600
+      - connection: redis
+        queue: whatsapp
+        processes: 2
+        tries: 3
+        timeout: 120
 
     reverb:
       enabled: true
@@ -45,6 +60,8 @@ environments:
     variables:
       APP_ENV: production
       APP_DEBUG: "false"
+      APP_MAINTENANCE_DRIVER: cache
+      APP_MAINTENANCE_STORE: redis
       APP_LOCALE: pt_BR
       APP_FALLBACK_LOCALE: pt_BR
       BCRYPT_ROUNDS: "12"
@@ -55,13 +72,17 @@ environments:
       SESSION_DRIVER: redis
       SESSION_LIFETIME: "120"
       SESSION_ENCRYPT: "true"
+      SESSION_SECURE_COOKIE: "true"
+      SESSION_SAME_SITE: lax
       BROADCAST_CONNECTION: reverb
       FILESYSTEM_DISK: s3
+      LIVEWIRE_TEMPORARY_FILE_UPLOAD_DISK: s3
       AWS_DEFAULT_REGION: sa-east-1
       AWS_BUCKET: mistercoxinha
       AWS_USE_PATH_STYLE_ENDPOINT: "false"
       REVERB_PORT: "443"
       REVERB_SCHEME: https
+      REVERB_SCALING_ENABLED: "true"
       REDIS_CLIENT: predis
       MAIL_MAILER: smtp
       MAIL_HOST: smtp.titan.email

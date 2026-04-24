@@ -7,7 +7,8 @@ use Illuminate\Console\Command;
 
 class AsaasClose extends Command
 {
-    protected $signature   = 'asaas:close';
+    protected $signature = 'asaas:close';
+
     protected $description = 'Fecha o circuit breaker do Asaas e opcionalmente reprocessa failed jobs';
 
     public function handle(AsaasCircuitBreaker $cb): int

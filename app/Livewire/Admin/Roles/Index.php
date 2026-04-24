@@ -2,7 +2,6 @@
 
 namespace App\Livewire\Admin\Roles;
 
-use App\Models\Company;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
@@ -15,13 +14,17 @@ use Livewire\Component;
 class Index extends Component
 {
     public string $name = '';
+
     public array $selectedPermissions = [];
 
     public ?int $editingId = null;
+
     public ?int $deletingId = null;
 
     public ?int $assignRoleId = null;
+
     public string $assignUserEmail = '';
+
     public string $assignUserRole = '';
 
     public bool $canManage = false;
@@ -48,7 +51,7 @@ class Index extends Component
         ]);
 
         $company = app('current.company');
-        $slug    = \Illuminate\Support\Str::slug($this->name, '_');
+        $slug = \Illuminate\Support\Str::slug($this->name, '_');
 
         if ($this->editingId) {
             $role = Role::where('id', $this->editingId)
@@ -62,14 +65,15 @@ class Index extends Component
 
             if ($exists) {
                 $this->addError('name', 'Já existe um tipo de usuário com este nome.');
+
                 return;
             }
 
             $role = Role::create([
-                'name'       => $this->name,
-                'slug'       => $slug,
+                'name' => $this->name,
+                'slug' => $slug,
                 'company_id' => $company->id,
-                'is_system'  => false,
+                'is_system' => false,
             ]);
         }
 
@@ -85,10 +89,10 @@ class Index extends Component
         abort_unless($this->canManage, 403);
 
         $company = app('current.company');
-        $role    = Role::where('id', $id)->where('company_id', $company->id)->firstOrFail();
+        $role = Role::where('id', $id)->where('company_id', $company->id)->firstOrFail();
 
-        $this->editingId           = $role->id;
-        $this->name                = $role->name;
+        $this->editingId = $role->id;
+        $this->name = $role->name;
         $this->selectedPermissions = $role->permissions()->pluck('name')->toArray();
     }
 
@@ -111,10 +115,12 @@ class Index extends Component
     {
         abort_unless($this->canManage, 403);
 
-        if (! $this->deletingId) return;
+        if (! $this->deletingId) {
+            return;
+        }
 
         $company = app('current.company');
-        $role    = Role::where('id', $this->deletingId)->where('company_id', $company->id)->firstOrFail();
+        $role = Role::where('id', $this->deletingId)->where('company_id', $company->id)->firstOrFail();
         $role->delete();
 
         $this->deletingId = null;
@@ -123,7 +129,7 @@ class Index extends Component
 
     public function openAssign(int $roleId): void
     {
-        $this->assignRoleId    = $roleId;
+        $this->assignRoleId = $roleId;
         $this->assignUserEmail = '';
     }
 
@@ -135,12 +141,12 @@ class Index extends Component
             'assignUserEmail' => 'required|email|exists:users,email',
         ], [
             'assignUserEmail.required' => 'Informe o e-mail do usuário.',
-            'assignUserEmail.exists'   => 'Usuário não encontrado.',
+            'assignUserEmail.exists' => 'Usuário não encontrado.',
         ]);
 
         $company = app('current.company');
-        $role    = Role::findOrFail($this->assignRoleId);
-        $user    = User::where('email', $this->assignUserEmail)->firstOrFail();
+        $role = Role::findOrFail($this->assignRoleId);
+        $user = User::where('email', $this->assignUserEmail)->firstOrFail();
 
         $pivot = $user->companies()->where('companies.id', $company->id)->first();
 
@@ -167,7 +173,7 @@ class Index extends Component
 
     public function render()
     {
-        $company     = app('current.company');
+        $company = app('current.company');
         $systemRoles = Role::whereNull('company_id')->orderBy('name')->get();
         $customRoles = Role::where('company_id', $company->id)->orderBy('name')->with('permissions')->get();
         $permissions = Permission::orderBy('group')->orderBy('label')->get()->groupBy('group');

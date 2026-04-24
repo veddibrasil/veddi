@@ -21,12 +21,12 @@ class DeliverySetting extends Model
     ];
 
     protected $casts = [
-        'flat_fee'             => 'float',
-        'minimum_order_value'  => 'float',
-        'free_delivery_above'  => 'float',
-        'branch_latitude'      => 'float',
-        'branch_longitude'     => 'float',
-        'active'               => 'boolean',
+        'flat_fee' => 'float',
+        'minimum_order_value' => 'float',
+        'free_delivery_above' => 'float',
+        'branch_latitude' => 'float',
+        'branch_longitude' => 'float',
+        'active' => 'boolean',
     ];
 
     public function branch(): BelongsTo

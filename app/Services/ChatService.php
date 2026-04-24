@@ -18,8 +18,8 @@ class ChatService
     {
         $chatMessage = ChatMessage::create([
             'order_id' => $orderId,
-            'sender'   => 'customer',
-            'message'  => $message,
+            'sender' => 'customer',
+            'message' => $message,
         ]);
 
         CustomerMessageSent::dispatch($chatMessage);
@@ -37,8 +37,8 @@ class ChatService
 
         $chatMessage = ChatMessage::create([
             'order_id' => $orderId,
-            'sender'   => 'admin',
-            'message'  => $message,
+            'sender' => 'admin',
+            'message' => $message,
         ]);
 
         AdminMessageSent::dispatch($order, $message);

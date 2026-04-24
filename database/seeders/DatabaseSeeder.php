@@ -15,19 +15,19 @@ class DatabaseSeeder extends Seeder
         $company = Company::firstOrCreate(
             ['slug' => 'mister-coxinha'],
             [
-                'name'                    => 'Mister Coxinha',
-                'slug'                    => 'mister-coxinha',
-                'subdomain'               => null,
-                'primary_color'           => '#B91C1C',
-                'primary_color_dark'      => '#7F1D1D',
-                'primary_color_light'     => '#DC2626',
-                'secondary_color'         => '#B45309',
-                'secondary_color_light'   => '#D97706',
-                'accent_color'            => '#FEF3C7',
-                'tagline'                 => 'O melhor salgado da cidade!',
-                'footer_text'             => '© ' . date('Y') . ' Mister Coxinha. Todos os direitos reservados.',
-                'order_prefix'            => 'MXC',
-                'active'                  => true,
+                'name' => 'Mister Coxinha',
+                'slug' => 'mister-coxinha',
+                'subdomain' => null,
+                'primary_color' => '#B91C1C',
+                'primary_color_dark' => '#7F1D1D',
+                'primary_color_light' => '#DC2626',
+                'secondary_color' => '#B45309',
+                'secondary_color_light' => '#D97706',
+                'accent_color' => '#FEF3C7',
+                'tagline' => 'O melhor salgado da cidade!',
+                'footer_text' => '© '.date('Y').' Mister Coxinha. Todos os direitos reservados.',
+                'order_prefix' => 'MXC',
+                'active' => true,
             ]
         );
 
@@ -35,9 +35,9 @@ class DatabaseSeeder extends Seeder
         $superAdmin = User::firstOrCreate(
             ['email' => 'admin@mistercoxinha.com.br'],
             [
-                'name'           => 'Admin',
-                'email'          => 'admin@mistercoxinha.com.br',
-                'password'       => Hash::make('password'),
+                'name' => 'Admin',
+                'email' => 'admin@mistercoxinha.com.br',
+                'password' => Hash::make('password'),
                 'is_super_admin' => true,
             ]
         );
@@ -46,8 +46,8 @@ class DatabaseSeeder extends Seeder
         $companyAdmin = User::firstOrCreate(
             ['email' => 'gerente@mistercoxinha.com.br'],
             [
-                'name'     => 'Gerente',
-                'email'    => 'gerente@mistercoxinha.com.br',
+                'name' => 'Gerente',
+                'email' => 'gerente@mistercoxinha.com.br',
                 'password' => Hash::make('password'),
             ]
         );
