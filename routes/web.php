@@ -68,6 +68,7 @@ Route::middleware(['auth', 'verified', 'company.active'])
             Route::get('/orders', \App\Livewire\Admin\Orders\Index::class)->name('orders.index');
             Route::get('/orders/report', \App\Livewire\Admin\Orders\Report::class)->name('orders.report');
             Route::get('/orders/report/pdf', \App\Http\Controllers\Admin\Orders\ReportPdfController::class)->name('orders.report.pdf');
+            Route::get('/orders/{order}/receipt', \App\Http\Controllers\Admin\Orders\ReceiptPdfController::class)->name('orders.receipt');
             Route::get('/orders/{order}', \App\Livewire\Admin\Orders\Show::class)->name('orders.show');
             Route::get('/stock', \App\Livewire\Admin\Stock\Index::class)->name('stock.index');
             Route::get('/support', \App\Livewire\Admin\Support\Index::class)->name('support.index');
