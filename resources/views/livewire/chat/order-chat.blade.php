@@ -362,12 +362,18 @@
 
         {{-- ── BRANCH_SELECT ── --}}
         @elseif ($step === 'BRANCH_SELECT')
-            <div class="space-y-2">
+            <div class="space-y-2" x-init="$nextTick(() => branchLocate())">
                 <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Escolha a filial</p>
+                <p id="branch-locate-error" class="text-red-500 text-xs hidden"></p>
+                <div id="branch-list" class="space-y-2">
                 @foreach ($this->branches as $branch)
                     @php $branchOpen = $branch->isOpen(); @endphp
                     <button
                         wire:click="selectBranch({{ $branch->id }})"
+                        data-branch-id="{{ $branch->id }}"
+                        data-branch-open="{{ $branchOpen ? '1' : '0' }}"
+                        data-branch-lat="{{ $branch->deliverySetting?->branch_latitude ?? '' }}"
+                        data-branch-lng="{{ $branch->deliverySetting?->branch_longitude ?? '' }}"
                         class="w-full text-left border-2 rounded-xl p-3 transition-all active:scale-[0.98] {{ $branchOpen ? 'border-gray-100 hover:border-red-200 hover:bg-red-50' : 'border-gray-100 bg-gray-50 opacity-70' }}"
                     >
                         <div class="flex items-start gap-3">
@@ -375,19 +381,21 @@
                                 <span class="text-lg">🏪</span>
                             </div>
                             <div class="flex-1 min-w-0">
-                                <div class="flex items-center gap-2">
+                                <div class="flex items-center gap-2 flex-wrap">
                                     <p class="font-bold text-sm {{ $branchOpen ? 'text-gray-800' : 'text-gray-400' }}">{{ $branch->name }}</p>
                                     @if ($branchOpen)
                                         <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">Aberto</span>
                                     @else
                                         <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">Fechado</span>
                                     @endif
+                                    <span class="branch-nearest-badge hidden text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">📍 Mais próxima</span>
                                 </div>
                                 <p class="text-xs text-gray-500 truncate">{{ $branch->address }}, {{ $branch->city }}</p>
                                 @if ($branch->phone)
                                     <p class="text-xs text-gray-400 mt-0.5">📞 {{ $branch->phone }}</p>
                                 @endif
                                 <p class="text-xs mt-0.5 font-medium {{ $branchOpen ? 'text-green-600' : 'text-gray-400' }}">🕐 {{ $branch->opens_at }} – {{ $branch->closes_at }}</p>
+                                <p class="branch-distance text-xs text-blue-500 font-medium mt-0.5 hidden"></p>
                             </div>
                             <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-gray-300 shrink-0 mt-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -395,6 +403,7 @@
                         </div>
                     </button>
                 @endforeach
+                </div>
             </div>
 
         {{-- ── MENU_BROWSE ── --}}
@@ -2299,6 +2308,86 @@
         }
         _mapSetGeocoding(prefix, false);
         window.mapPickerCloseMap(prefix);
+    };
+
+    // ── Branch Nearest Locator ────────────────────────────────────────────────
+    function _haversineKm(lat1, lng1, lat2, lng2) {
+        var R = 6371;
+        var dLat = (lat2 - lat1) * Math.PI / 180;
+        var dLng = (lng2 - lng1) * Math.PI / 180;
+        var a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+              + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180)
+              * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    window.branchLocate = function () {
+        var errEl = document.getElementById('branch-locate-error');
+
+        if (!navigator.geolocation) {
+            if (errEl) { errEl.textContent = '⚠ Geolocalização não suportada pelo navegador.'; errEl.classList.remove('hidden'); }
+            return;
+        }
+
+        if (errEl) errEl.classList.add('hidden');
+
+        navigator.geolocation.getCurrentPosition(
+            function (pos) {
+                var userLat = pos.coords.latitude;
+                var userLng = pos.coords.longitude;
+
+                var list = document.getElementById('branch-list');
+                if (!list) return;
+
+                var buttons = Array.from(list.querySelectorAll('button[data-branch-id]'));
+                var withCoords = [];
+                var withoutCoords = [];
+
+                buttons.forEach(function (b) {
+                    var lat = parseFloat(b.dataset.branchLat);
+                    var lng = parseFloat(b.dataset.branchLng);
+                    if (lat && lng) {
+                        var km = _haversineKm(userLat, userLng, lat, lng);
+                        b._distKm = km;
+                        withCoords.push(b);
+                    } else {
+                        withoutCoords.push(b);
+                    }
+                });
+
+                // Sort: open first by distance, then closed by distance
+                withCoords.sort(function (a, b) {
+                    var aOpen = a.dataset.branchOpen === '1';
+                    var bOpen = b.dataset.branchOpen === '1';
+                    if (aOpen !== bOpen) return aOpen ? -1 : 1;
+                    return a._distKm - b._distKm;
+                });
+
+                var sorted = withCoords.concat(withoutCoords);
+                sorted.forEach(function (b) { list.appendChild(b); });
+
+                // Show distances and nearest badge
+                var nearestSet = false;
+                withCoords.forEach(function (b) {
+                    var distEl = b.querySelector('.branch-distance');
+                    if (distEl) {
+                        var km = b._distKm;
+                        distEl.textContent = '📍 ' + (km < 1 ? Math.round(km * 1000) + ' m de distância' : km.toFixed(1) + ' km de distância');
+                        distEl.classList.remove('hidden');
+                    }
+                    if (!nearestSet && b.dataset.branchOpen === '1') {
+                        var badge = b.querySelector('.branch-nearest-badge');
+                        if (badge) badge.classList.remove('hidden');
+                        nearestSet = true;
+                    }
+                });
+
+            },
+            function () {
+                if (errEl) { errEl.textContent = '⚠ Não foi possível obter sua localização. Verifique as permissões.'; errEl.classList.remove('hidden'); }
+            },
+            { enableHighAccuracy: true, timeout: 12000 }
+        );
     };
 </script>
 @endscript

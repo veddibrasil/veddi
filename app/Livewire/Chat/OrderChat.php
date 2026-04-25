@@ -383,6 +383,7 @@ class OrderChat extends Component
         return Cache::remember("branches:company:{$companyId}", now()->addMinutes(10), fn () => Branch::withoutGlobalScopes()
             ->where('active', true)
             ->where('company_id', $companyId)
+            ->with('deliverySetting')
             ->orderBy('name')
             ->get()
         );

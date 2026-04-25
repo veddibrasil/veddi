@@ -140,10 +140,10 @@ class Report extends Component
     {
         $baseQuery = $this->buildQuery();
 
-        $allOrders = (clone $baseQuery)->get(['total', 'payment_method']);
+        $allOrders = (clone $baseQuery)->get(['total', 'payment_method', 'status']);
 
         $totalCount = $allOrders->count();
-        $totalRevenue = $allOrders->sum('total');
+        $totalRevenue = $allOrders->whereNotIn('status', ['cancelled', 'refunded'])->sum('total');
         $averageTicket = $totalCount > 0 ? $totalRevenue / $totalCount : 0;
         $topPayment = $allOrders->isNotEmpty()
             ? $allOrders->groupBy('payment_method')->map->count()->sortDesc()->keys()->first()
