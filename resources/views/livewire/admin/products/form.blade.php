@@ -99,7 +99,26 @@
 
             {{-- Filiais --}}
             <div class="bg-white border rounded-xl shadow-sm p-6 space-y-3 dark:bg-zinc-800 dark:border-zinc-700">
-                <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Disponível nas filiais</h2>
+                <div class="flex items-start justify-between gap-4">
+                    <div>
+                        <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Disponível nas filiais</h2>
+                        <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                            Define em quais filiais este produto aparece no cardápio.
+                            A disponibilidade individual pode ser ajustada depois em <strong>Estoque</strong>.
+                        </p>
+                    </div>
+                    <div class="flex gap-2 shrink-0 pt-0.5">
+                        <button type="button" wire:click="selectAllBranches"
+                            class="text-xs text-amber-600 hover:underline dark:text-amber-400">
+                            Selecionar todas
+                        </button>
+                        <span class="text-neutral-300 dark:text-neutral-600">|</span>
+                        <button type="button" wire:click="deselectAllBranches"
+                            class="text-xs text-neutral-500 hover:underline dark:text-neutral-400">
+                            Remover todas
+                        </button>
+                    </div>
+                </div>
                 <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     @foreach ($branches as $branch)
                         <label class="flex items-center gap-2 text-sm cursor-pointer dark:text-neutral-200 p-2 rounded-lg hover:bg-neutral-50 dark:hover:bg-zinc-700">

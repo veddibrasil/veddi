@@ -40,6 +40,9 @@ Route::post('/api/validate-cpf', function (Request $request) {
     return response()->json(['valid' => $valid]);
 })->middleware('throttle:30,1')->name('api.validate-cpf');
 
+// --- Documentação pública ---
+Route::view('/docs', 'docs')->name('docs');
+
 // --- Chat Público ---
 Route::get('/{company}', \App\Livewire\Chat\OrderChat::class)->name('chat.company');
 

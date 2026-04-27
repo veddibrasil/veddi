@@ -154,8 +154,16 @@ class Form extends Component
                 ];
             })->toArray();
         } elseif ($this->branchManagerBranchId) {
-            // Pré-seleciona a filial do gerente em novos produtos
+            // Branch manager só enxerga e opera sua própria filial
             $this->selectedBranches = [(string) $this->branchManagerBranchId];
+        } else {
+            // Company admin: pré-seleciona todas as filiais ativas.
+            // CompanyScope global já filtra pelo tenant correto.
+            $this->selectedBranches = Branch::where('active', true)
+                ->orderBy('name')
+                ->pluck('id')
+                ->map(fn ($id) => (string) $id)
+                ->toArray();
         }
     }
 
@@ -224,6 +232,22 @@ class Form extends Component
         foreach ($this->optionGroups[$groupIndex]['options'] as $i => &$opt) {
             $opt['sort_order'] = $i;
         }
+    }
+
+    public function selectAllBranches(): void
+    {
+        $query = $this->branchManagerBranchId
+            ? Branch::where('id', $this->branchManagerBranchId)->where('active', true)
+            : Branch::where('active', true)->orderBy('name');
+
+        $this->selectedBranches = $query->pluck('id')
+            ->map(fn ($id) => (string) $id)
+            ->toArray();
+    }
+
+    public function deselectAllBranches(): void
+    {
+        $this->selectedBranches = [];
     }
 
     public function save(): void

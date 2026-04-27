@@ -22,6 +22,9 @@
             <flux:menu.item :href="route('profile.edit')" icon="cog" wire:navigate>
                 {{ __('Configurações') }}
             </flux:menu.item>
+            <flux:menu.item :href="route('docs')" icon="book-open-text" wire:navigate>
+                {{ __('Documentação') }}
+            </flux:menu.item>
             <form method="POST" action="{{ route('logout') }}" class="w-full">
                 @csrf
                 <flux:menu.item

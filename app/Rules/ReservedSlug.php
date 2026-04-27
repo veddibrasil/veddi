@@ -42,6 +42,7 @@ class ReservedSlug implements ValidationRule
         'status',
         'cdn',
         'static',
+        'docs',
     ];
 
     public function validate(string $attribute, mixed $value, Closure $fail): void

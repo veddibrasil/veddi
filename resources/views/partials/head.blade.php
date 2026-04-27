@@ -22,4 +22,6 @@
 @if(isset($currentCompany))
     <x-company-theme :company="$currentCompany" />
 @endif
-@fluxAppearance
+@if(!($disableAppearance ?? false))
+    @fluxAppearance
+@endif
