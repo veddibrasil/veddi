@@ -1,8 +1,9 @@
 <?php
 
-namespace App\Services;
+namespace App\Services\Order;
 
 use App\Contracts\OrderServiceInterface;
+use App\Contracts\RefundServiceInterface;
 use App\Models\CompanyNotification;
 use App\Models\Coupon;
 use App\Models\Order;
@@ -184,9 +185,8 @@ class OrderService implements OrderServiceInterface
      */
     public function cancelOrder(Order $order, int $customerId): void
     {
-        if (! in_array($order->status, ['paid', 'preparing'])) {
-            throw new RuntimeException('Pedido não pode ser cancelado no momento.');
-        }
+        $policy = app(OrderCancellationPolicy::class);
+        $policy->authorizeCustomerCancel($order);
 
         $order->update(['status' => 'cancelled']);
 
@@ -197,10 +197,16 @@ class OrderService implements OrderServiceInterface
             'customer_id' => $customerId,
         ]);
 
-        $payment = $order->payment;
-
-        if ($payment && $payment->status === 'paid' && $order->payment_method !== 'CASH') {
-            \App\Jobs\RefundPayment::dispatch($order);
+        if ($policy->requiresRefund($order)) {
+            $payment = $order->payment;
+            app(RefundServiceInterface::class)->initiateRefund(
+                $order,
+                $payment,
+                (float) $payment->amount,
+                'customer',
+                $customerId,
+                'customer_request',
+            );
         }
     }
 

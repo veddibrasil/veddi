@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Services\AsaasCircuitBreaker;
+use App\Services\Payment\AsaasCircuitBreaker;
 use Illuminate\Console\Command;
 
 class AsaasStatus extends Command

@@ -9,7 +9,7 @@ use App\Models\ProductCategory;
 use App\Models\ProductOption;
 use App\Models\ProductOptionGroup;
 use App\Models\Scopes\CompanyScope;
-use App\Services\StockService;
+use App\Services\Order\StockService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;

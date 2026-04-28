@@ -4,8 +4,8 @@ namespace App\Livewire\Chat\Concerns;
 
 use App\Models\SupportMessage;
 use App\Models\SupportTicket;
-use App\Services\ChatService;
-use App\Services\SupportService;
+use App\Services\Support\ChatService;
+use App\Services\Support\SupportService;
 
 trait HasChatSupport
 {

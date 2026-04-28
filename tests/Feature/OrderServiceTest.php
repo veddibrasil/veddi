@@ -6,7 +6,7 @@ use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductCategory;
-use App\Services\OrderService;
+use App\Services\Order\OrderService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 

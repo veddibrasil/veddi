@@ -3,7 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Company;
-use App\Services\CompanyService;
+use App\Services\Company\CompanyService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 

@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services;
+namespace App\Services\Finance;
 
 use App\Events\WalletBalanceUpdated;
 use App\Models\Company;

@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services;
+namespace App\Services\Finance;
 
 use App\Contracts\TransactionServiceInterface;
 use App\Models\Company;

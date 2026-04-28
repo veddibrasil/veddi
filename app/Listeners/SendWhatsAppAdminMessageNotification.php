@@ -4,7 +4,7 @@ namespace App\Listeners;
 
 use App\Events\AdminMessageSent;
 use App\Jobs\SendWhatsAppMessage;
-use App\Services\WhatsAppService;
+use App\Services\Messaging\WhatsAppService;
 
 class SendWhatsAppAdminMessageNotification
 {

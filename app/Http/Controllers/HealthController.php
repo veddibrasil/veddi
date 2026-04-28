@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\AsaasCircuitBreaker;
+use App\Services\Payment\AsaasCircuitBreaker;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;

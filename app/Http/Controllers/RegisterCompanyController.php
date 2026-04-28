@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\DTOs\OnboardingDTO;
 use App\Http\Requests\RegisterCompanyRequest;
-use App\Services\OnboardingService;
+use App\Services\Company\OnboardingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\View\View;
 

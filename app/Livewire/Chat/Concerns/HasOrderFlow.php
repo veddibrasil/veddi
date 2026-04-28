@@ -7,8 +7,8 @@ use App\Exceptions\DeliveryException;
 use App\Models\Branch;
 use App\Models\Coupon;
 use App\Models\Customer;
-use App\Services\CouponService;
-use App\Services\DeliveryService;
+use App\Services\Order\CouponService;
+use App\Services\Order\DeliveryService;
 
 trait HasOrderFlow
 {

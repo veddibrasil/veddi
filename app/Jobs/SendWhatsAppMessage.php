@@ -3,7 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\WhatsAppSetting;
-use App\Services\WhatsAppService;
+use App\Services\Messaging\WhatsAppService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;

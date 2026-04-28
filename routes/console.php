@@ -29,14 +29,14 @@ Schedule::job(new \App\Jobs\UpdateCompanyBalancesJob)
 
 // Probe de recovery automático do Asaas — executa apenas se o circuit não estiver fechado
 Schedule::call(function () {
-    $cb = app(\App\Services\AsaasCircuitBreaker::class);
+    $cb = app(\App\Services\Payment\AsaasCircuitBreaker::class);
 
     if ($cb->getState() === 'closed') {
         return;
     }
 
     try {
-        app(\App\Services\AsaasService::class)->probeHealth();
+        app(\App\Services\Payment\AsaasService::class)->probeHealth();
     } catch (\Throwable) {
         // recordFailure() já foi chamado dentro de AsaasService::request()
     }

@@ -161,7 +161,7 @@ class Company extends Model
 
     public function walletBalance(): float
     {
-        return app(\App\Services\BalanceService::class)->calculateBalance($this)['total_balance'];
+        return app(\App\Services\Finance\BalanceService::class)->calculateBalance($this)['total_balance'];
     }
 
     public function isPro(): bool

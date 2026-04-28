@@ -3,7 +3,7 @@
 namespace App\Livewire\Admin\Support;
 
 use App\Models\SupportTicket;
-use App\Services\SupportService;
+use App\Services\Support\SupportService;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;

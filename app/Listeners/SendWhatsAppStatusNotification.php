@@ -4,7 +4,7 @@ namespace App\Listeners;
 
 use App\Events\OrderStatusUpdated;
 use App\Jobs\SendWhatsAppMessage;
-use App\Services\WhatsAppService;
+use App\Services\Messaging\WhatsAppService;
 
 class SendWhatsAppStatusNotification
 {

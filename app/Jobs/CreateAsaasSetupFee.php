@@ -5,7 +5,7 @@ namespace App\Jobs;
 use App\Contracts\AsaasServiceInterface;
 use App\Exceptions\AsaasCircuitOpenException;
 use App\Models\Company;
-use App\Services\CompanyService;
+use App\Services\Company\CompanyService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;

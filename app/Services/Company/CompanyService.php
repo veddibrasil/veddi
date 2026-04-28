@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services;
+namespace App\Services\Company;
 
 use App\Events\CompanyActivated;
 use App\Events\CompanyBlocked;

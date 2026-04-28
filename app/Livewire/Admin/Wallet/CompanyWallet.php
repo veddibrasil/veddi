@@ -2,9 +2,9 @@
 
 namespace App\Livewire\Admin\Wallet;
 
-use App\Services\AnticipationService;
-use App\Services\BalanceService;
-use App\Services\WithdrawalService;
+use App\Services\Finance\AnticipationService;
+use App\Services\Finance\BalanceService;
+use App\Services\Finance\WithdrawalService;
 use Illuminate\View\View;
 use Livewire\Attributes\Computed;
 use Livewire\Component;

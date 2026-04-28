@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services;
+namespace App\Services\Order;
 
 use App\Exceptions\DeliveryException;
 use App\Models\DeliverySetting;

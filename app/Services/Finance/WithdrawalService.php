@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services;
+namespace App\Services\Finance;
 
 use App\Jobs\ProcessWithdrawal;
 use App\Models\Company;

@@ -9,7 +9,7 @@ use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\StockMovement;
-use App\Services\StockService;
+use App\Services\Order\StockService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 

@@ -9,7 +9,7 @@ use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductCategory;
-use App\Services\CouponService;
+use App\Services\Order\CouponService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 

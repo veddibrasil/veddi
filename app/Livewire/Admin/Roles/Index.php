@@ -6,7 +6,7 @@ use App\Models\Permission;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\UserPermission;
-use App\Services\UserPermissionService;
+use App\Services\Company\UserPermissionService;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 

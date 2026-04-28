@@ -5,7 +5,7 @@ namespace App\Livewire\SuperAdmin\Users;
 use App\Models\Company;
 use App\Models\Scopes\CompanyScope;
 use App\Models\User;
-use App\Services\UserPermissionService;
+use App\Services\Company\UserPermissionService;
 use Livewire\Component;
 use Livewire\WithPagination;
 

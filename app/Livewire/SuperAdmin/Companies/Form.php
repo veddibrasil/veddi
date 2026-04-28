@@ -10,7 +10,7 @@ use App\Models\Company;
 use App\Models\Subscription;
 use App\Models\User;
 use App\Rules\ReservedSlug;
-use App\Services\UserPermissionService;
+use App\Services\Company\UserPermissionService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;

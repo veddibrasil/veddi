@@ -2,7 +2,7 @@
 
 use App\Models\Company;
 use App\Models\User;
-use App\Services\BalanceService;
+use App\Services\Finance\BalanceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);

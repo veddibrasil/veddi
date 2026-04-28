@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services;
+namespace App\Services\Finance;
 
 use App\Contracts\WalletServiceInterface;
 use App\Models\Company;
@@ -111,7 +111,7 @@ class WalletService implements WalletServiceInterface
 
     /**
      * Debit the company wallet to reverse a refunded order payment.
-     * Creates a negative entry that offsets the original credit.
+     * Mirrors exactly the entries created in creditForOrder to avoid phantom balances.
      */
     public function debitForRefund(Order $order, Payment $payment): void
     {
@@ -125,31 +125,89 @@ class WalletService implements WalletServiceInterface
             return;
         }
 
-        $orderAmount = (float) $payment->amount;
+        // Reproduce the same amounts used in creditForOrder
+        $baseAmount = (float) ($payment->original_amount ?? $payment->amount);
         $feeRate = $company->plan?->feePercentage() ?? 0.0;
-        $feeAmount = round($orderAmount * $feeRate, 2);
-        $creditAmount = round($orderAmount - $feeAmount, 2);
+        $isCardPayment = $payment->original_amount !== null;
+        $pixFeeAbsorbed = $company->pix_fee_absorbed_by_company ?? false;
+        $cardFeeAbsorbed = $company->card_fee_absorbed_by_company ?? false;
 
+        $pixFee = (! $isCardPayment && $pixFeeAbsorbed)
+            ? (float) config('payments.pix_payment_fee', 0.50)
+            : 0.0;
+        $cardFee = ($isCardPayment && $cardFeeAbsorbed && $payment->card_fee)
+            ? (float) $payment->card_fee
+            : 0.0;
+
+        $feeAmount = round(($baseAmount - $pixFee - $cardFee) * $feeRate, 2);
+
+        // Reverse the credit entry
         CompanyWalletEntry::create([
             'company_id' => $company->id,
             'order_id' => $order->id,
             'type' => 'refund',
-            'amount' => -$creditAmount,
-            'description' => "Reembolso - Pedido #{$order->order_number}",
+            'amount' => -$baseAmount,
+            'description' => "Estorno crédito - Pedido #{$order->order_number}",
             'reference' => $payment->external_id,
         ]);
+
+        // Reverse the pix_fee entry (restore the deducted fee)
+        if ($pixFee > 0) {
+            CompanyWalletEntry::create([
+                'company_id' => $company->id,
+                'order_id' => $order->id,
+                'type' => 'refund',
+                'amount' => $pixFee,
+                'description' => "Estorno taxa PIX - Pedido #{$order->order_number}",
+                'reference' => $payment->external_id,
+            ]);
+        }
+
+        // Reverse the card_fee entry (restore the deducted fee)
+        if ($cardFee > 0) {
+            CompanyWalletEntry::create([
+                'company_id' => $company->id,
+                'order_id' => $order->id,
+                'type' => 'refund',
+                'amount' => $cardFee,
+                'description' => "Estorno taxa cartão - Pedido #{$order->order_number}",
+                'reference' => $payment->external_id,
+            ]);
+        }
+
+        // Reverse the platform fee entry (restore the fee charged)
+        if ($feeAmount > 0) {
+            CompanyWalletEntry::create([
+                'company_id' => $company->id,
+                'order_id' => $order->id,
+                'type' => 'refund',
+                'amount' => $feeAmount,
+                'description' => "Estorno taxa plataforma - Pedido #{$order->order_number}",
+                'reference' => $payment->external_id,
+            ]);
+        }
+
+        $netDebit = $baseAmount - $pixFee - $cardFee - $feeAmount;
 
         Log::channel('payments')->info('Carteira da empresa debitada por reembolso', [
             'company_id' => $company->id,
             'order_id' => $order->id,
-            'debit_amount' => $creditAmount,
+            'base_amount' => $baseAmount,
+            'pix_fee_reversed' => $pixFee,
+            'card_fee_reversed' => $cardFee,
+            'platform_fee_reversed' => $feeAmount,
+            'net_debit' => $netDebit,
         ]);
 
         Log::channel('audit')->info('wallet.refund', [
             'company_id' => $company->id,
             'order_id' => $order->id,
-            'asaas_payment_id' => $payment->external_id,
-            'debit_amount' => $creditAmount,
+            'payment_external_id' => $payment->external_id,
+            'base_amount' => $baseAmount,
+            'pix_fee_reversed' => $pixFee,
+            'card_fee_reversed' => $cardFee,
+            'platform_fee_reversed' => $feeAmount,
+            'net_debit' => $netDebit,
         ]);
     }
 }

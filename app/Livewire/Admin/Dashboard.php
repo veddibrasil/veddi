@@ -3,7 +3,7 @@
 namespace App\Livewire\Admin;
 
 use App\Models\Order;
-use App\Services\BalanceService;
+use App\Services\Finance\BalanceService;
 use Illuminate\Support\Facades\Cache;
 use Livewire\Component;
 

@@ -4,7 +4,7 @@ namespace App\Livewire\Chat\Concerns;
 
 use App\Models\Branch;
 use App\Models\Customer;
-use App\Services\CustomerService;
+use App\Services\Customer\CustomerService;
 use Illuminate\Support\Facades\Log;
 
 trait HasCustomerProfile

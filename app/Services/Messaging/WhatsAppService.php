@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services;
+namespace App\Services\Messaging;
 
 use App\Models\Order;
 use App\Models\WhatsAppSetting;

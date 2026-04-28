@@ -7,7 +7,7 @@ use App\Models\Branch;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\UserPermission;
-use App\Services\UserPermissionService;
+use App\Services\Company\UserPermissionService;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;

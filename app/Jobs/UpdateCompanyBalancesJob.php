@@ -2,7 +2,7 @@
 
 namespace App\Jobs;
 
-use App\Services\BalanceService;
+use App\Services\Finance\BalanceService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;

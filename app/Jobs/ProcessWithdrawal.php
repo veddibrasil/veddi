@@ -5,7 +5,7 @@ namespace App\Jobs;
 use App\Models\CompanyTransaction;
 use App\Models\CompanyWalletEntry;
 use App\Models\CompanyWithdrawal;
-use App\Services\StarkService;
+use App\Services\Payment\StarkService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;

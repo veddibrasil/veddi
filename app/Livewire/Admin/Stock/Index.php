@@ -5,7 +5,7 @@ namespace App\Livewire\Admin\Stock;
 use App\Models\Branch;
 use App\Models\Product;
 use App\Models\Scopes\CompanyScope;
-use App\Services\StockService;
+use App\Services\Order\StockService;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Url;
 use Livewire\Component;
