@@ -2,13 +2,15 @@
 
 namespace App\Jobs;
 
+use App\Contracts\RefundServiceInterface;
 use App\Contracts\TransactionServiceInterface;
 use App\Contracts\WalletServiceInterface;
 use App\Events\OrderStatusUpdated;
 use App\Models\Company;
 use App\Models\Order;
 use App\Models\Payment;
-use App\Services\CompanyService;
+use App\Models\PaymentRefund;
+use App\Services\Company\CompanyService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
@@ -37,6 +39,8 @@ class ProcessAsaasWebhook implements ShouldQueue
         if ($externalRef && is_numeric($externalRef)) {
             if (in_array($this->event, ['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED'])) {
                 $this->handleOrderPayment((int) $externalRef);
+            } elseif (in_array($this->event, ['PAYMENT_REFUNDED', 'PAYMENT_PARTIALLY_REFUNDED'])) {
+                $this->handleRefundConfirmed();
             }
 
             return;
@@ -145,6 +149,46 @@ class ProcessAsaasWebhook implements ShouldQueue
         }
 
         OrderStatusUpdated::dispatch($order->fresh());
+    }
+
+    private function handleRefundConfirmed(): void
+    {
+        $asaasPaymentId = $this->payload['payment']['id'] ?? null;
+
+        if (! $asaasPaymentId) {
+            return;
+        }
+
+        $payment = Payment::where('asaas_payment_id', $asaasPaymentId)->first();
+
+        if (! $payment) {
+            Log::channel('webhook')->warning('Asaas webhook REFUND: payment não encontrado', [
+                'event' => $this->event,
+                'asaas_payment_id' => $asaasPaymentId,
+            ]);
+
+            return;
+        }
+
+        $refund = PaymentRefund::where('payment_id', $payment->id)
+            ->where('status', 'in_progress')
+            ->first();
+
+        if (! $refund) {
+            Log::channel('webhook')->warning('Asaas webhook REFUND: nenhum estorno in_progress encontrado', [
+                'event' => $this->event,
+                'payment_id' => $payment->id,
+                'asaas_payment_id' => $asaasPaymentId,
+            ]);
+
+            return;
+        }
+
+        app(RefundServiceInterface::class)->markSucceeded($refund, [
+            'external_refund_id' => $asaasPaymentId,
+            'external_status' => $this->payload['payment']['status'] ?? 'REFUNDED',
+            'raw' => $this->payload['payment'] ?? [],
+        ]);
     }
 
     private function handlePaymentConfirmed(Company $company, CompanyService $companyService): void

@@ -64,6 +64,11 @@ class Order extends Model
         return $this->belongsTo(Coupon::class);
     }
 
+    public function refunds(): HasMany
+    {
+        return $this->hasMany(PaymentRefund::class);
+    }
+
     public function getStatusLabelAttribute(): string
     {
         return match ($this->status) {

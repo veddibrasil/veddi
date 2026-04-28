@@ -2,11 +2,13 @@
 
 namespace App\Livewire\Admin\Orders;
 
+use App\Contracts\RefundServiceInterface;
 use App\Events\AdminMessageSent;
 use App\Events\OrderStatusUpdated;
 use App\Models\ChatMessage;
 use App\Models\Order;
-use App\Services\StockService;
+use App\Services\Order\OrderCancellationPolicy;
+use App\Services\Order\StockService;
 use Illuminate\Support\Facades\Log;
 use Livewire\Component;
 
@@ -19,6 +21,12 @@ class Show extends Component
     public array $chatMessages = [];
 
     public bool $canUpdate = false;
+
+    public bool $showManualRefundModal = false;
+
+    public string $manualRefundType = 'gateway'; // 'gateway' | 'offline'
+
+    public string $manualRefundJustification = '';
 
     public function mount(): void
     {
@@ -83,6 +91,16 @@ class Show extends Component
             return;
         }
 
+        try {
+            if ($status === 'cancelled') {
+                app(OrderCancellationPolicy::class)->authorizeAdminCancel($this->order);
+            }
+        } catch (\RuntimeException $e) {
+            session()->flash('error', $e->getMessage());
+
+            return;
+        }
+
         $previousStatus = $this->order->status;
 
         $this->order->update(['status' => $status]);
@@ -104,6 +122,28 @@ class Show extends Component
         session()->flash('status', 'Status atualizado.');
     }
 
+    public function openManualRefundModal(): void
+    {
+        abort_unless($this->canUpdate, 403);
+
+        $this->order->loadMissing('payment');
+
+        if (! $this->order->payment || $this->order->payment->status !== 'paid') {
+            session()->flash('error', 'Pagamento não elegível para reembolso.');
+
+            return;
+        }
+
+        $this->manualRefundType = 'gateway';
+        $this->manualRefundJustification = '';
+        $this->showManualRefundModal = true;
+    }
+
+    public function closeManualRefundModal(): void
+    {
+        $this->showManualRefundModal = false;
+    }
+
     public function loadMessages(): void
     {
         $this->chatMessages = ChatMessage::where('order_id', $this->order->id)
@@ -121,17 +161,23 @@ class Show extends Component
     {
         abort_unless($this->canUpdate, 403);
 
+        $this->validate([
+            'manualRefundType' => ['required', 'in:gateway,offline'],
+            'manualRefundJustification' => $this->manualRefundType === 'offline'
+                ? ['required', 'string', 'min:10']
+                : ['nullable'],
+        ]);
+
         $this->order->loadMissing('payment');
 
         $payment = $this->order->payment;
 
         if (! $payment || $payment->status !== 'paid') {
-            session()->flash('status', 'Pagamento não elegível para reembolso.');
+            session()->flash('error', 'Pagamento não elegível para reembolso.');
+            $this->showManualRefundModal = false;
 
             return;
         }
-
-        $payment->update(['status' => 'refunded']);
 
         if ($this->order->status !== 'cancelled') {
             $this->order->update(['status' => 'cancelled']);
@@ -140,14 +186,41 @@ class Show extends Component
             OrderStatusUpdated::dispatch($this->order);
         }
 
-        Log::channel('payments')->info('Reembolso manual marcado pelo admin', [
+        $reason = $this->manualRefundType === 'offline'
+            ? 'store_issue'
+            : 'customer_request';
+
+        $refund = app(RefundServiceInterface::class)->initiateRefund(
+            $this->order,
+            $payment,
+            (float) $payment->amount,
+            'admin',
+            auth()->id(),
+            $reason,
+        );
+
+        if ($this->manualRefundType === 'offline') {
+            // Mark immediately as succeeded — no gateway call needed
+            app(RefundServiceInterface::class)->markSucceeded($refund, [
+                'external_refund_id' => null,
+                'external_status' => 'OFFLINE',
+                'raw' => ['justification' => $this->manualRefundJustification],
+            ]);
+        }
+
+        Log::channel('payments')->info('Reembolso manual iniciado pelo admin', [
             'order_id' => $this->order->id,
             'admin_id' => auth()->id(),
-            'asaas_payment_id' => $payment->asaas_payment_id,
+            'refund_id' => $refund->id,
+            'type' => $this->manualRefundType,
             'amount' => $payment->amount,
         ]);
 
-        session()->flash('status', 'Pagamento marcado como reembolsado.');
+        $this->showManualRefundModal = false;
+        session()->flash('status', $this->manualRefundType === 'offline'
+            ? 'Reembolso offline registrado com sucesso.'
+            : 'Reembolso via gateway iniciado. Acompanhe o status abaixo.'
+        );
     }
 
     public function render()

@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Contracts\AsaasServiceInterface;
 use App\Contracts\OrderServiceInterface;
+use App\Contracts\RefundServiceInterface;
 use App\Contracts\TransactionServiceInterface;
 use App\Contracts\WalletServiceInterface;
 use App\Events\AdminMessageSent;
@@ -28,10 +29,11 @@ use App\Policies\OrderPolicy;
 use App\Policies\ProductCategoryPolicy;
 use App\Policies\ProductPolicy;
 use App\Policies\SupportTicketPolicy;
-use App\Services\AsaasService;
-use App\Services\OrderService;
-use App\Services\TransactionService;
-use App\Services\WalletService;
+use App\Services\Finance\TransactionService;
+use App\Services\Finance\WalletService;
+use App\Services\Order\OrderService;
+use App\Services\Payment\AsaasService;
+use App\Services\Refund\RefundService;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Auth\Notifications\VerifyEmail;
@@ -55,12 +57,13 @@ class AppServiceProvider extends ServiceProvider
             \App\Exceptions\Handler::class,
         );
 
-        $this->app->singleton(\App\Services\AsaasCircuitBreaker::class);
+        $this->app->singleton(\App\Services\Payment\AsaasCircuitBreaker::class);
 
         $this->app->bind(AsaasServiceInterface::class, AsaasService::class);
         $this->app->bind(OrderServiceInterface::class, OrderService::class);
         $this->app->bind(WalletServiceInterface::class, WalletService::class);
         $this->app->bind(TransactionServiceInterface::class, TransactionService::class);
+        $this->app->bind(RefundServiceInterface::class, RefundService::class);
     }
 
     /**

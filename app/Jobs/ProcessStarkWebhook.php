@@ -2,11 +2,13 @@
 
 namespace App\Jobs;
 
+use App\Contracts\RefundServiceInterface;
 use App\Contracts\TransactionServiceInterface;
 use App\Contracts\WalletServiceInterface;
 use App\Events\OrderStatusUpdated;
 use App\Models\Order;
 use App\Models\Payment;
+use App\Models\PaymentRefund;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
@@ -29,8 +31,16 @@ class ProcessStarkWebhook implements ShouldQueue
 
     public function handle(): void
     {
-        // Stark Bank Invoice eventos: "created" | "credited" | "overdue" | "expired" | "canceled"
-        // Somente "credited" indica pagamento confirmado
+        $log = $this->payload['event']['log'] ?? $this->payload['log'] ?? [];
+
+        // Pix reversal: log contém chave "pixReversal"
+        if (isset($log['pixReversal'])) {
+            $this->handlePixReversal($log['pixReversal']);
+
+            return;
+        }
+
+        // Invoice eventos: "created" | "credited" | "overdue" | "expired" | "canceled"
         if ($this->event !== 'credited') {
             Log::channel('webhook')->debug('Stark webhook: evento ignorado', [
                 'event' => $this->event,
@@ -39,9 +49,7 @@ class ProcessStarkWebhook implements ShouldQueue
             return;
         }
 
-        $invoiceId = $this->payload['event']['log']['invoice']['id']
-            ?? $this->payload['log']['invoice']['id']
-            ?? null;
+        $invoiceId = $log['invoice']['id'] ?? null;
 
         if (! $invoiceId) {
             Log::channel('webhook')->warning('Stark webhook: invoice ID ausente no payload', [
@@ -116,6 +124,73 @@ class ProcessStarkWebhook implements ShouldQueue
         }
 
         OrderStatusUpdated::dispatch($order->fresh());
+    }
+
+    private function handlePixReversal(array $reversal): void
+    {
+        $externalId = $reversal['externalId'] ?? null;
+        $reversalId = $reversal['id'] ?? null;
+        $status = $reversal['status'] ?? null;
+
+        // externalId formato: "refund-{paymentRefund_id}"
+        $refundId = $externalId && str_starts_with($externalId, 'refund-')
+            ? (int) substr($externalId, 7)
+            : null;
+
+        if (! $refundId) {
+            Log::channel('payments')->warning('Stark pix-reversal: externalId não reconhecido', [
+                'external_id' => $externalId,
+                'reversal_id' => $reversalId,
+            ]);
+
+            return;
+        }
+
+        $refund = PaymentRefund::find($refundId);
+
+        if (! $refund) {
+            Log::channel('payments')->warning('Stark pix-reversal: PaymentRefund não encontrado', [
+                'refund_id' => $refundId,
+                'reversal_id' => $reversalId,
+            ]);
+
+            return;
+        }
+
+        // Idempotência
+        if ($refund->status === 'succeeded') {
+            Log::channel('payments')->info('Stark pix-reversal: já processado (duplicado ignorado)', [
+                'refund_id' => $refundId,
+            ]);
+
+            return;
+        }
+
+        $refundService = app(RefundServiceInterface::class);
+
+        if ($status === 'success') {
+            $refundService->markSucceeded($refund, [
+                'external_refund_id' => $reversalId,
+                'external_status' => 'success',
+                'raw' => $reversal,
+            ]);
+
+            return;
+        }
+
+        $refundService->markFailed(
+            $refund,
+            'STARK_REVERSAL_'.(strtoupper($status ?? 'FAILED')),
+            $reversal['description'] ?? 'PIX reversal falhou no Stark Bank',
+        );
+
+        Log::channel('discord')->error('Stark pix-reversal falhou', [
+            'type' => 'payments',
+            'refund_id' => $refundId,
+            'reversal_id' => $reversalId,
+            'status' => $status,
+            'raw' => $reversal,
+        ]);
     }
 
     public function failed(\Throwable $exception): void

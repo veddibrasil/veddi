@@ -250,6 +250,12 @@ Definidos em `config/plans.php` e `app/Enums/Plan.php`.
 
 ---
 
+## Cancelamento e Estorno (Refund)
+
+Backlog técnico e desenho sugerido: `docs/cancelamento-estorno.md`.
+
+---
+
 ## Fluxo de Onboarding
 
 ```

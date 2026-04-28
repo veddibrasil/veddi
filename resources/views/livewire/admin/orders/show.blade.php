@@ -22,6 +22,12 @@
         </div>
     @endif
 
+    @if (session('error'))
+        <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm dark:bg-red-900/30 dark:border-red-700 dark:text-red-400">
+            {{ session('error') }}
+        </div>
+    @endif
+
     @error('status')
         <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm dark:bg-red-900/30 dark:border-red-700 dark:text-red-400">
             {{ $message }}
@@ -340,37 +346,125 @@
                     @endif
                 </div>
                 @if ($order->payment && $order->payment->status === 'paid')
-                    <flux:modal.trigger name="confirm-manual-refund">
-                        <button class="mt-3 w-full text-sm bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 px-4 py-2 rounded-lg transition-colors">
-                            Marcar como Reembolsado (Manual)
-                        </button>
-                    </flux:modal.trigger>
+                    <button wire:click="openManualRefundModal"
+                            class="mt-3 w-full text-sm bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 px-4 py-2 rounded-lg transition-colors">
+                        Iniciar Reembolso
+                    </button>
                 @endif
             </div>
+
+            {{-- Refund Timeline --}}
+            @php $refunds = $order->refunds()->latest()->get(); @endphp
+            @if ($refunds->isNotEmpty())
+                <div class="bg-white border rounded-xl shadow-sm p-4 dark:bg-zinc-800 dark:border-zinc-700">
+                    <p class="font-semibold text-neutral-700 mb-3 dark:text-neutral-200">Histórico de Estornos</p>
+                    <div class="space-y-3">
+                        @foreach ($refunds as $refund)
+                            @php
+                                $statusColor = match($refund->status) {
+                                    'succeeded' => 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400',
+                                    'failed' => 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400',
+                                    'in_progress' => 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-400',
+                                    default => 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-400',
+                                };
+                            @endphp
+                            <div class="border rounded-lg p-3 dark:border-zinc-700">
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                                        #{{ $refund->id }} · {{ ucfirst($refund->gateway) }}
+                                    </span>
+                                    <span class="px-2 py-0.5 rounded-full text-xs {{ $statusColor }}">
+                                        {{ $refund->status_label }}
+                                    </span>
+                                </div>
+                                <div class="grid grid-cols-2 gap-1 text-xs text-neutral-600 dark:text-neutral-400">
+                                    <span>Valor</span>
+                                    <span class="font-semibold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($refund->amount, 2, ',', '.') }}</span>
+                                    <span>Solicitado por</span>
+                                    <span>{{ ucfirst($refund->requested_by_type ?? '—') }}</span>
+                                    @if ($refund->requested_at)
+                                        <span>Solicitado em</span>
+                                        <span>{{ $refund->requested_at->format('d/m/Y H:i') }}</span>
+                                    @endif
+                                    @if ($refund->processed_at)
+                                        <span>Processado em</span>
+                                        <span>{{ $refund->processed_at->format('d/m/Y H:i') }}</span>
+                                    @endif
+                                    @if ($refund->external_refund_id)
+                                        <span>ID externo</span>
+                                        <span class="font-mono truncate">{{ $refund->external_refund_id }}</span>
+                                    @endif
+                                    @if ($refund->failure_message)
+                                        <span class="text-red-600 dark:text-red-400 col-span-2">{{ $refund->failure_message }}</span>
+                                    @endif
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
         </div>
     </div>
 
-    <flux:modal name="confirm-manual-refund" class="max-w-sm">
-        <div class="space-y-5">
-            <div class="flex items-start gap-4">
-                <div class="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
-                    <svg class="w-5 h-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-                    </svg>
+    {{-- Manual Refund Modal --}}
+    @if ($showManualRefundModal)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-xl p-6 w-full max-w-md mx-4 space-y-5">
+                <div class="flex items-start gap-4">
+                    <div class="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-neutral-800 dark:text-neutral-100">Iniciar Reembolso</h3>
+                        <p class="text-sm text-neutral-500 dark:text-neutral-400 mt-1">Escolha como o reembolso será processado.</p>
+                    </div>
                 </div>
-                <div>
-                    <flux:heading size="lg">Confirmar reembolso?</flux:heading>
-                    <flux:subheading class="mt-1">O pedido será cancelado e o pagamento marcado como reembolsado. Esta ação não pode ser desfeita.</flux:subheading>
+
+                <div class="space-y-3">
+                    <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer {{ $manualRefundType === 'gateway' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'dark:border-zinc-600' }}">
+                        <input type="radio" wire:model.live="manualRefundType" value="gateway" class="mt-0.5">
+                        <div>
+                            <p class="font-medium text-sm text-neutral-800 dark:text-neutral-100">Via gateway</p>
+                            <p class="text-xs text-neutral-500 dark:text-neutral-400">Solicita o estorno diretamente ao gateway de pagamento (Asaas/Stark).</p>
+                        </div>
+                    </label>
+                    <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer {{ $manualRefundType === 'offline' ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20' : 'dark:border-zinc-600' }}">
+                        <input type="radio" wire:model.live="manualRefundType" value="offline" class="mt-0.5">
+                        <div>
+                            <p class="font-medium text-sm text-neutral-800 dark:text-neutral-100">Reembolso offline</p>
+                            <p class="text-xs text-neutral-500 dark:text-neutral-400">Registra como reembolsado sem acionar o gateway (devolução manual, espécie, etc.).</p>
+                        </div>
+                    </label>
                 </div>
-            </div>
-            <div class="flex justify-end gap-3 pt-1">
-                <flux:modal.close>
-                    <flux:button variant="ghost">Cancelar</flux:button>
-                </flux:modal.close>
-                <flux:modal.close>
-                    <flux:button wire:click="manualRefund" variant="danger">Confirmar reembolso</flux:button>
-                </flux:modal.close>
+
+                @if ($manualRefundType === 'offline')
+                    <div>
+                        <label class="text-sm font-medium text-neutral-700 dark:text-neutral-300">Justificativa <span class="text-red-500">*</span></label>
+                        <textarea wire:model="manualRefundJustification"
+                                  rows="3"
+                                  placeholder="Descreva como o reembolso foi realizado offline..."
+                                  class="mt-1 w-full text-sm border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400 dark:bg-zinc-700 dark:border-zinc-600 dark:text-neutral-100 dark:placeholder-neutral-400"></textarea>
+                        @error('manualRefundJustification')
+                            <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+                        @enderror
+                    </div>
+                @endif
+
+                <div class="flex justify-end gap-3 pt-1">
+                    <button wire:click="closeManualRefundModal"
+                            class="px-4 py-2 text-sm text-neutral-600 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200">
+                        Cancelar
+                    </button>
+                    <button wire:click="manualRefund"
+                            wire:loading.attr="disabled"
+                            class="px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg transition-colors">
+                        <span wire:loading.remove wire:target="manualRefund">Confirmar reembolso</span>
+                        <span wire:loading wire:target="manualRefund">Processando...</span>
+                    </button>
+                </div>
             </div>
         </div>
-    </flux:modal>
+    @endif
 </div>

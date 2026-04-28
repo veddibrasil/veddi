@@ -14,9 +14,10 @@ use App\Models\Coupon;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Payment;
-use App\Services\PaymentCalculatorService;
-use App\Services\PaymentService;
-use App\Services\StockService;
+use App\Services\Order\OrderCancellationPolicy;
+use App\Services\Order\StockService;
+use App\Services\Payment\PaymentCalculatorService;
+use App\Services\Payment\PaymentService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use RuntimeException;
@@ -392,11 +393,20 @@ trait HasPaymentFlow
     public function requestCancelOrder(): void
     {
         $order = Order::find($this->orderId);
-        if (! $order || ! in_array($order->status, ['awaiting_payment', 'paid', 'preparing'])) {
+        if (! $order) {
             $this->addMessage('bot', 'Não é possível cancelar o pedido no momento. Entre em contato com a loja.');
 
             return;
         }
+
+        try {
+            app(OrderCancellationPolicy::class)->authorizeCustomerCancel($order);
+        } catch (\RuntimeException) {
+            $this->addMessage('bot', 'Não é possível cancelar o pedido no momento. Entre em contato com a loja.');
+
+            return;
+        }
+
         $this->showCancelConfirm = true;
     }
 
