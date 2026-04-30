@@ -96,6 +96,10 @@ select:focus[data-flux-control] {
 
 /* ─── Veddi — Brand Variables ─────────────────────────────────────────────── */
 :root {
+    /* Fix: Tailwind base layer usa var(--color-gray-200, currentColor);
+       sem esta definição o fallback é currentColor = preto em light mode */
+    --color-gray-200: #e8e4f0;
+
     --veddi-purple:        #7A00A3;
     --veddi-purple-dark:   #5c0079;
     --veddi-purple-light:  #9B10C8;
@@ -313,9 +317,27 @@ flux-header, [data-flux-header] {
     background-color: #162035 !important;
 }
 
+/* Light: divisores de linha (> * cobre todos incluindo o primeiro) */
+.divide-y > * {
+    border-color: #ede8f5 !important;
+}
+
 /* Dark: divisores de linha */
-.dark .divide-y > * + * {
+.dark .divide-y > * {
     border-color: #1e2f4f !important;
+}
+
+/* Light: select borders */
+select.border,
+select[data-flux-select-native] {
+    border-color: #ede8f5 !important;
+    border-bottom-color: #d8cfe8 !important;
+}
+
+/* Dark: select borders reset (uses flux defaults via dark:border-white/10) */
+.dark select.border,
+.dark select[data-flux-select-native] {
+    border-color: rgba(255, 255, 255, 0.1) !important;
 }
 
 /* Dark: Preços */

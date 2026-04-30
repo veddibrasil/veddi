@@ -27,7 +27,7 @@
                 @error('name') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
             <div>
-                <flux:input wire:model="phone" label="Telefone (opcional)" placeholder="(44) 99999-9999" />
+                <flux:input wire:model="phone" mask-dynamic="$input.replace(/\D/g,'').length <= 10 ? '(99) 9999-9999' : '(99) 99999-9999'" label="Telefone (opcional)" placeholder="(44) 99999-9999" />
                 @error('phone') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
         </div>
