@@ -6,47 +6,61 @@ use App\Contracts\PaymentRefundGatewayInterface;
 use App\Models\Payment;
 use Illuminate\Support\Facades\Log;
 use StarkBank\Invoice;
-use StarkBank\Request;
+use StarkBank\Project;
+use StarkBank\Settings;
 
 class StarkRefundGateway implements PaymentRefundGatewayInterface
 {
+    public function __construct()
+    {
+        $projectId = config('services.stark.project_id');
+        $privateKey = config('services.stark.private_key');
+        $environment = config('services.stark.environment', 'sandbox');
+
+        if (! empty($projectId) && ! empty($privateKey)) {
+            Settings::setUser(new Project([
+                'environment' => $environment,
+                'id' => $projectId,
+                'privateKey' => $privateKey,
+            ]));
+        }
+    }
+
     public function requestRefund(Payment $payment, float $amount, ?string $reason = null): array
     {
-        $invoicePayment = Invoice::payment($payment->stark_payment_id);
+        $invoiceId = $payment->stark_payment_id;
+        $refundCents = (int) round($amount * 100);
 
-        $result = Request::post('/pix-reversal/', [
-            'reversals' => [[
-                'amount' => (int) round($amount * 100),
-                'endToEndId' => $invoicePayment->endToEndId,
-                'externalId' => 'refund-'.$payment->id,
-                'reason' => 'operationalFlaw',
-            ]],
-        ]);
+        $invoice = Invoice::get($invoiceId);
+        $newAmount = max(0, $invoice->amount - $refundCents);
 
-        $reversal = $result['reversals'][0] ?? null;
-        $reversalId = $reversal['id'] ?? null;
+        $updated = Invoice::update($invoiceId, ['amount' => $newAmount]);
 
-        if (! $reversalId) {
-            Log::channel('payments')->error('Stark PIX reversal rejeitado', [
-                'stark_payment_id' => $payment->stark_payment_id,
+        if ($updated->amount !== $newAmount) {
+            Log::channel('payments')->error('Stark Invoice update falhou', [
+                'stark_payment_id' => $invoiceId,
                 'amount' => $amount,
-                'raw' => $result,
+                'expected_amount' => $newAmount,
+                'returned_amount' => $updated->amount,
             ]);
 
-            return ['external_refund_id' => null, 'status' => 'failed', 'raw' => $result];
+            return ['external_refund_id' => null, 'status' => 'failed', 'raw' => []];
         }
 
-        Log::channel('payments')->info('Stark PIX reversal criado, aguardando confirmação', [
-            'reversal_id' => $reversalId,
-            'stark_payment_id' => $payment->stark_payment_id,
-            'end_to_end_id' => $invoicePayment->endToEndId,
-            'amount' => $amount,
+        Log::channel('payments')->info('Stark Invoice atualizado para estorno', [
+            'stark_payment_id' => $invoiceId,
+            'refund_amount' => $amount,
+            'new_invoice_amount' => $newAmount,
         ]);
 
         return [
-            'external_refund_id' => $reversalId,
+            'external_refund_id' => $invoiceId,
             'status' => 'in_progress',
-            'raw' => $reversal,
+            'raw' => [
+                'invoice_id' => $updated->id,
+                'new_amount' => $updated->amount,
+                'transaction_ids' => $updated->transactionIds,
+            ],
         ];
     }
 }
