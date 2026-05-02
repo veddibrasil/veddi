@@ -4,6 +4,7 @@ use App\Helpers\Validation;
 use App\Http\Controllers\AsaasSimulatePaymentController;
 use App\Http\Controllers\AsaasWebhookController;
 use App\Http\Controllers\RegisterCompanyController;
+use App\Http\Controllers\StarkSimulatePaymentController;
 use App\Http\Controllers\StarkWebhookController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -21,6 +22,16 @@ Route::get('/cadastro/pendente', \App\Livewire\Onboarding\PendingPayment::class)
 
 // --- Simulação de pagamento Asaas (somente APP_DEBUG=true) ---
 Route::post('/dev/simulate/asaas-payment', AsaasSimulatePaymentController::class)->name('dev.simulate.asaas-payment');
+
+// --- Simulação de pagamento Stark Bank PIX (somente APP_DEBUG=true) ---
+Route::post('/dev/simulate/stark-payment', StarkSimulatePaymentController::class)->name('dev.simulate.stark-payment');
+Route::get('/dev/simulate/stark-status/{paymentId}', function (string $paymentId) {
+    abort_unless(config('app.debug'), 403);
+    $stark = app(\App\Services\Payment\StarkService::class);
+    $status = $stark->getBrcodePaymentStatus($paymentId);
+
+    return response()->json(['payment_id' => $paymentId, 'status' => $status]);
+})->name('dev.simulate.stark-status');
 
 // --- Webhook Asaas (sem auth, sem CSRF — coberto por webhooks/* em bootstrap/app.php) ---
 Route::post('/webhooks/asaas', AsaasWebhookController::class)
@@ -122,6 +133,7 @@ Route::middleware(['auth', 'verified', 'super.admin'])
         Route::get('/card-taxas', \App\Livewire\SuperAdmin\Card\index::class)->name('card.index');
 
         Route::post('/simulate/asaas-payment', AsaasSimulatePaymentController::class)->name('simulate.asaas-payment');
+        Route::post('/simulate/stark-payment', StarkSimulatePaymentController::class)->name('simulate.stark-payment');
     });
 
 // --- API Financeira (escrow/marketplace) ---

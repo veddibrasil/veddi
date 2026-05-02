@@ -6,6 +6,7 @@ use App\Contracts\PaymentGatewayInterface;
 use App\Models\Customer;
 use Illuminate\Support\Facades\Log;
 use StarkBank\Balance;
+use StarkBank\BrcodePayment;
 use StarkBank\Invoice;
 use StarkBank\Project;
 use StarkBank\Settings;
@@ -43,13 +44,23 @@ class StarkService implements PaymentGatewayInterface
             'due' => $due,
             'expiration' => 1800, // 30 minutos em segundos
             'descriptions' => [
-                ['key' => 'Pedido', 'value' => $description],
+                ['key' => 'Pedido', 'value' => mb_substr($description, 0, 20)],
             ],
             'tags' => ['order:'.$externalRef],
         ]);
 
         $created = Invoice::create([$invoice]);
         $result = $created[0];
+
+        $qrCodeBase64 = null;
+        try {
+            $qrCodeBase64 = base64_encode(Invoice::qrcode($result->id));
+        } catch (\Throwable $e) {
+            Log::channel('payments')->warning('Stark Bank: falha ao buscar QR code', [
+                'invoice_id' => $result->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         Log::channel('payments')->info('Stark Bank Invoice criado', [
             'invoice_id' => $result->id,
@@ -60,7 +71,7 @@ class StarkService implements PaymentGatewayInterface
         return [
             'id' => $result->id,
             'brcode' => $result->brcode,
-            'qr_code_url' => $result->qrcode ?? null,
+            'qr_code_url' => $qrCodeBase64,
             'amount' => $amount,
         ];
     }
@@ -74,6 +85,56 @@ class StarkService implements PaymentGatewayInterface
         $invoice = Invoice::get($invoiceId);
 
         return $invoice->status ?? 'unknown';
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // PIX — Pagamento de Brcode (sandbox/teste)
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Paga um brcode PIX (Invoice ou DynamicBrcode).
+     * Útil para simular pagamento no ambiente sandbox.
+     *
+     * @return array{id: string, status: string}
+     */
+    public function payBrcode(
+        string $brcode,
+        string $taxId,
+        string $description,
+        int $amountInCents
+    ): array {
+        $payment = BrcodePayment::create([
+            new BrcodePayment([
+                'brcode' => $brcode,
+                'taxId' => preg_replace('/\D/', '', $taxId),
+                'description' => mb_substr($description, 0, 100),
+                'amount' => $amountInCents,
+                'scheduled' => new \DateTime('now'),
+                'tags' => ['sandbox-test'],
+            ]),
+        ])[0];
+
+        Log::channel('payments')->info('Stark Bank BrcodePayment criado', [
+            'payment_id' => $payment->id,
+            'status' => $payment->status,
+            'amount' => $amountInCents,
+        ]);
+
+        return [
+            'id' => $payment->id,
+            'status' => $payment->status,
+        ];
+    }
+
+    /**
+     * Consulta o status de um BrcodePayment pelo ID.
+     * Retorna: created | processing | success | failed
+     */
+    public function getBrcodePaymentStatus(string $paymentId): string
+    {
+        $payment = BrcodePayment::get($paymentId);
+
+        return $payment->status ?? 'unknown';
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -154,24 +215,6 @@ class StarkService implements PaymentGatewayInterface
         $balance = Balance::current();
 
         return $balance->amount / 100;
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Webhook
-    // ─────────────────────────────────────────────────────────────
-
-    /**
-     * Valida o token de autenticação do webhook Stark.
-     */
-    public function validateWebhookToken(string $token): bool
-    {
-        $expected = config('services.stark.webhook_token');
-
-        if (empty($expected)) {
-            return false;
-        }
-
-        return hash_equals((string) $expected, (string) $token);
     }
 
     // ─────────────────────────────────────────────────────────────

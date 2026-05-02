@@ -54,6 +54,9 @@ Todos os planos pagos têm taxa de ativação de R$99.
 
 ## Instalação
 
+> Requisito: extensão PHP `gmp` (usada pela integração com Stark Bank/assinaturas ECDSA).  
+> Se estiver usando Sail: `./vendor/bin/sail build --no-cache`
+
 ```bash
 # Clone e instale dependências
 composer setup

@@ -3,47 +3,58 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\ProcessStarkWebhook;
+use App\Services\Payment\StarkService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use StarkBank\Event;
+use StarkCore\Error\InvalidSignatureError;
 
 class StarkWebhookController extends Controller
 {
+    public function __construct(private readonly StarkService $stark) {}
+
     public function __invoke(Request $request): JsonResponse
     {
-        $token = $request->header('Authorization', '');
-        $expected = config('services.stark.webhook_token');
+        $content = $request->getContent();
+        $signature = $request->header('Digital-Signature', '');
 
-        // Remove prefixo "Bearer " se presente
-        $token = str_starts_with($token, 'Bearer ') ? substr($token, 7) : $token;
-
-        if (empty($expected) || ! hash_equals((string) $expected, (string) $token)) {
-            Log::channel('webhook')->warning('Stark webhook: token inválido ou não configurado', [
+        if (empty($signature)) {
+            Log::channel('webhook')->warning('Stark webhook: Digital-Signature header ausente', [
                 'ip' => $request->ip(),
-                'token_missing' => empty($expected),
             ]);
 
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
-        $data = $request->json()->all();
+        try {
+            $event = Event::parse($content, $signature);
+        } catch (InvalidSignatureError $e) {
+            Log::channel('webhook')->warning('Stark webhook: assinatura ECDSA inválida', [
+                'ip' => $request->ip(),
+                'error' => $e->getMessage(),
+            ]);
 
-        // O Stark Bank envia eventos como: {"event": {"log": {"type": "credited", "invoice": {...}}}}
-        $event = $data['event']['log']['type'] ?? ($data['event']['type'] ?? null);
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        $data = json_decode($content, true);
+        $eventType = $data['event']['log']['type'] ?? ($data['event']['type'] ?? null);
 
         Log::channel('webhook')->info('Stark webhook recebido', [
-            'event' => $event,
+            'event' => $eventType,
+            'stark_event_id' => $event->id ?? null,
             'payload' => $data,
         ]);
 
-        if (! $event) {
+        if (! $eventType) {
             return response()->json(['error' => 'Missing event'], 422);
         }
 
-        ProcessStarkWebhook::dispatch($event, $data);
+        ProcessStarkWebhook::dispatch($eventType, $data);
 
         Log::channel('webhook')->info('Stark webhook enfileirado', [
-            'event' => $event,
+            'event' => $eventType,
             'invoice_id' => $data['event']['log']['invoice']['id'] ?? null,
         ]);
 

@@ -12,9 +12,12 @@ class Branch extends Model
 {
     use BelongsToCompany;
 
-    protected $fillable = ['company_id', 'name', 'address', 'city', 'phone', 'active', 'opens_at', 'closes_at'];
+    protected $fillable = ['company_id', 'name', 'address', 'city', 'phone', 'active', 'opens_at', 'closes_at', 'available_days'];
 
-    protected $casts = ['active' => 'boolean'];
+    protected $casts = [
+        'active' => 'boolean',
+        'available_days' => 'array',
+    ];
 
     public function getOpensAtAttribute($value): ?string
     {
@@ -45,8 +48,15 @@ class Branch extends Model
 
     public function isOpen(): bool
     {
-        $now = now(config('app.timezone'))->format('H:i');
+        $now = now(config('app.timezone'));
+        $currentDay = (int) $now->format('w');
+        $currentTime = $now->format('H:i');
 
-        return $now >= $this->opens_at && $now <= $this->closes_at;
+        $days = $this->available_days;
+        if ($days !== null && ! in_array($currentDay, $days)) {
+            return false;
+        }
+
+        return $currentTime >= $this->opens_at && $currentTime <= $this->closes_at;
     }
 }

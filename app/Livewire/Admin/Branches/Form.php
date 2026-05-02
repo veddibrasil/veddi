@@ -28,6 +28,8 @@ class Form extends Component
 
     public string $closes_at = '20:00';
 
+    public array $available_days = [0, 1, 2, 3, 4, 5, 6];
+
     public bool $needsCompanySelect = false;
 
     public bool $canSave = false;
@@ -49,6 +51,8 @@ class Form extends Component
             'active' => ['boolean'],
             'opens_at' => ['required', 'date_format:H:i'],
             'closes_at' => ['required', 'date_format:H:i'],
+            'available_days' => ['required', 'array', 'min:1'],
+            'available_days.*' => ['integer', 'between:0,6'],
         ];
     }
 
@@ -63,6 +67,8 @@ class Form extends Component
             'phone.regex' => 'Telefone inválido.',
             'opens_at.required' => 'Informe o horário de abertura.',
             'closes_at.required' => 'Informe o horário de fechamento.',
+            'available_days.required' => 'Selecione ao menos um dia de funcionamento.',
+            'available_days.min' => 'Selecione ao menos um dia de funcionamento.',
         ];
     }
 
@@ -95,6 +101,7 @@ class Form extends Component
             $this->isEditing = true;
             $this->company_id = $branch->company_id;
             $this->fill($branch->only('name', 'address', 'city', 'phone', 'active', 'opens_at', 'closes_at'));
+            $this->available_days = $branch->available_days ?? [0, 1, 2, 3, 4, 5, 6];
         }
     }
 
@@ -103,6 +110,7 @@ class Form extends Component
         abort_unless($this->canSave, 403);
 
         $validated = $this->validate($this->rules(), $this->messages());
+        $validated['available_days'] = array_map('intval', $validated['available_days']);
 
         if ($this->isEditing) {
             $data = collect($validated)->except('company_id')->toArray();

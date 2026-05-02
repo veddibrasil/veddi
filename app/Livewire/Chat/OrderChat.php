@@ -203,11 +203,17 @@ class OrderChat extends Component
             "open_branches:company:{$companyId}",
             now()->addMinutes(1),
             function () use ($companyId) {
-                $nowTime = now(config('app.timezone'))->format('H:i:s');
+                $now = now(config('app.timezone'));
+                $nowTime = $now->format('H:i:s');
+                $currentDay = (int) $now->format('w');
 
                 return Branch::withoutGlobalScopes()
                     ->where('active', true)
                     ->where('company_id', $companyId)
+                    ->where(function ($query) use ($currentDay) {
+                        $query->whereNull('available_days')
+                            ->orWhereJsonContains('available_days', $currentDay);
+                    })
                     ->where(function ($query) use ($nowTime) {
                         $query->where(function ($q) use ($nowTime) {
                             $q->whereColumn('opens_at', '<=', 'closes_at')

@@ -118,10 +118,12 @@ class ProcessWithdrawal implements ShouldQueue
 
     private function buildStarkTransferData(CompanyWithdrawal $withdrawal): array
     {
+        $company = $withdrawal->company;
+
         $base = [
             'amount' => (float) $withdrawal->amount,
-            'owner_name' => $withdrawal->bank_owner_name ?? '',
-            'owner_cpf_cnpj' => $withdrawal->bank_owner_cpf_cnpj ?? '',
+            'owner_name' => $withdrawal->bank_owner_name ?? $company->default_bank_owner_name ?? $company->name,
+            'owner_cpf_cnpj' => $withdrawal->bank_owner_cpf_cnpj ?? $company->default_bank_owner_cpf_cnpj ?? $company->owner_cpf_cnpj ?? '',
             'external_id' => 'withdrawal-'.$withdrawal->id,
         ];
 

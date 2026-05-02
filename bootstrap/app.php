@@ -15,6 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->trustProxies(at: '*');
         $middleware->validateCsrfTokens(except: [
             'webhooks/*',
+            'dev/simulate/*',
         ]);
         // Resolve tenant on every web request (including Livewire AJAX calls)
         $middleware->web(append: [

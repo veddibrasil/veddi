@@ -43,6 +43,16 @@
             </div>
         </div>
 
+        <div class="space-y-2">
+            <p class="block text-sm font-medium text-neutral-700 dark:text-neutral-300">Dias de funcionamento</p>
+            <div class="flex flex-wrap gap-x-4 gap-y-2">
+                @foreach([0 => 'Dom', 1 => 'Seg', 2 => 'Ter', 3 => 'Qua', 4 => 'Qui', 5 => 'Sex', 6 => 'Sáb'] as $dayIndex => $dayLabel)
+                    <flux:checkbox wire:model="available_days" value="{{ $dayIndex }}" label="{{ $dayLabel }}" />
+                @endforeach
+            </div>
+            @error('available_days') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+        </div>
+
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 items-end">
             <div>
                 <flux:input wire:model="opens_at" type="time" label="Abre às" />

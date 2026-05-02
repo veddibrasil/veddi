@@ -24,6 +24,8 @@ class CompanyWithdrawal extends Model
         'bank_owner_name',
         'asaas_transfer_id',
         'asaas_response',
+        'stark_transfer_id',
+        'stark_response',
         'processed_at',
     ];
 
@@ -31,6 +33,7 @@ class CompanyWithdrawal extends Model
         'amount' => 'decimal:2',
         'pix_fee' => 'decimal:2',
         'asaas_response' => 'array',
+        'stark_response' => 'array',
         'processed_at' => 'datetime',
     ];
 

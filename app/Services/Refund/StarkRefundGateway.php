@@ -16,10 +16,10 @@ class StarkRefundGateway implements PaymentRefundGatewayInterface
 
         $result = Request::post('/pix-reversal/', [
             'reversals' => [[
-                'amount'     => (int) round($amount * 100),
+                'amount' => (int) round($amount * 100),
                 'endToEndId' => $invoicePayment->endToEndId,
                 'externalId' => 'refund-'.$payment->id,
-                'reason'     => 'operationalFlaw',
+                'reason' => 'operationalFlaw',
             ]],
         ]);
 
