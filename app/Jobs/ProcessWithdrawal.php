@@ -15,6 +15,8 @@ class ProcessWithdrawal implements ShouldQueue
 {
     use Queueable;
 
+    public array $backoff = [60, 300, 900];
+
     public function retryUntil(): \DateTimeInterface
     {
         return now()->addHours(24);

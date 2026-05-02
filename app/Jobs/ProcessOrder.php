@@ -25,6 +25,8 @@ class ProcessOrder implements ShouldQueue
 {
     use Queueable;
 
+    public array $backoff = [30, 120, 600];
+
     public function retryUntil(): \DateTimeInterface
     {
         return now()->addHours(24);
