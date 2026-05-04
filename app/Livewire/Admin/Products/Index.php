@@ -80,9 +80,16 @@ class Index extends Component
     {
         $product = Product::withoutGlobalScope(CompanyScope::class)->findOrFail($this->deletingId);
         $this->authorize('delete', $product);
-        $product->delete();
+
+        if ($product->orderItems()->exists()) {
+            $product->delete();
+            session()->flash('status', 'Produto desativado pois possui pedidos vinculados.');
+        } else {
+            $product->forceDelete();
+            session()->flash('status', 'Produto removido.');
+        }
+
         $this->deletingId = null;
-        session()->flash('status', 'Produto removido.');
     }
 
     public function render()

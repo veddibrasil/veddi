@@ -7,10 +7,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Product extends Model
 {
-    use BelongsToCompany;
+    use BelongsToCompany, SoftDeletes;
 
     protected $fillable = [
         'company_id', 'product_category_id', 'name', 'description', 'price', 'image_path', 'active', 'sort_order',
@@ -39,6 +40,11 @@ class Product extends Model
     public function branches(): BelongsToMany
     {
         return $this->belongsToMany(Branch::class)->withPivot(['available', 'quantity', 'min_quantity', 'track_stock']);
+    }
+
+    public function orderItems(): HasMany
+    {
+        return $this->hasMany(OrderItem::class);
     }
 
     public function optionGroups(): HasMany
