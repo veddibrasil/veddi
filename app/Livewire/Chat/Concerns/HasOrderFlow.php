@@ -7,6 +7,7 @@ use App\Exceptions\DeliveryException;
 use App\Models\Branch;
 use App\Models\Coupon;
 use App\Models\Customer;
+use App\Models\Order;
 use App\Services\Order\CouponService;
 use App\Services\Order\DeliveryService;
 
@@ -225,6 +226,45 @@ trait HasOrderFlow
         $this->addMessage('user', $this->taxId);
         $this->addMessage('bot', 'Escolha a forma de pagamento:');
         $this->transitionTo('CHECKOUT_PAYMENT_METHOD');
+    }
+
+    // --- Order history ---
+
+    public function goToOrderHistory(): void
+    {
+        if (! $this->customerId) {
+            return;
+        }
+
+        $this->orderHistoryPreviousStep = $this->step;
+
+        $this->orderHistory = Order::withoutGlobalScopes()
+            ->where('customer_id', $this->customerId)
+            ->where('company_id', $this->companyId)
+            ->with('items')
+            ->latest()
+            ->take(15)
+            ->get()
+            ->map(fn (Order $order) => [
+                'order_number' => $order->order_number,
+                'total' => (float) $order->total,
+                'status' => $order->status,
+                'status_label' => $order->status_label,
+                'payment_method' => strtoupper($order->payment_method),
+                'order_type' => $order->order_type,
+                'items_count' => $order->items->count(),
+                'created_at' => $order->created_at->format('d/m/Y H:i'),
+            ])
+            ->toArray();
+
+        $this->transitionTo('ORDER_HISTORY');
+    }
+
+    public function backFromOrderHistory(): void
+    {
+        $this->orderHistory = [];
+        $this->transitionTo($this->orderHistoryPreviousStep ?? 'MENU_BROWSE');
+        $this->orderHistoryPreviousStep = null;
     }
 
     // --- New order / retry ---

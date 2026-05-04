@@ -6,6 +6,7 @@ use App\Livewire\Chat\Concerns\HasCartManagement;
 use App\Livewire\Chat\Concerns\HasChatSupport;
 use App\Livewire\Chat\Concerns\HasCustomerProfile;
 use App\Livewire\Chat\Concerns\HasOrderFlow;
+use App\Livewire\Chat\Concerns\HasOrderRecovery;
 use App\Livewire\Chat\Concerns\HasPaymentFlow;
 use App\Models\Branch;
 use App\Models\ProductCategory;
@@ -19,6 +20,7 @@ class OrderChat extends Component
     use HasChatSupport;
     use HasCustomerProfile;
     use HasOrderFlow;
+    use HasOrderRecovery;
     use HasPaymentFlow;
 
     // --- State machine ---
@@ -68,6 +70,14 @@ class OrderChat extends Component
 
     // --- Company ---
     public ?int $companyId = null;
+
+    // --- Session recovery ---
+    public ?array $pendingOrderSummary = null;
+
+    // --- Order history ---
+    public array $orderHistory = [];
+
+    public ?string $orderHistoryPreviousStep = null;
 
     // --- Edit profile ---
     public ?string $previousStep = null;
@@ -486,6 +496,8 @@ class OrderChat extends Component
             'lastAdminSupportMessageId' => $this->lastAdminSupportMessageId,
             'showSupportModal' => $this->showSupportModal,
             'supportConversation' => $this->supportConversation,
+            'pendingOrderSummary' => $this->pendingOrderSummary,
+            'orderHistoryPreviousStep' => $this->orderHistoryPreviousStep,
         ]]);
     }
 
@@ -535,6 +547,9 @@ class OrderChat extends Component
         $this->lastAdminSupportMessageId = null;
         $this->showSupportModal = false;
         $this->supportConversation = [];
+        $this->pendingOrderSummary = null;
+        $this->orderHistory = [];
+        $this->orderHistoryPreviousStep = null;
         $this->cardNumber = '';
         $this->cardExpiry = '';
         $this->cardCvv = '';

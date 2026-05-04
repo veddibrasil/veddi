@@ -21,6 +21,27 @@ trait HasCustomerProfile
             $this->fillCustomerData($customer);
             Log::channel('chat')->info('Cliente identificado pelo telefone', ['customer_id' => $customer->id, 'phone' => $this->phone]);
             $this->addMessage('user', $this->phone);
+
+            if (empty($this->cart)) {
+                $recoverableOrder = $this->findRecoverableOrder($customer->id, $this->companyId);
+                if ($recoverableOrder) {
+                    $this->pendingOrderSummary = [
+                        'id' => $recoverableOrder->id,
+                        'order_number' => $recoverableOrder->order_number,
+                        'total' => (float) $recoverableOrder->total,
+                        'status' => $recoverableOrder->status,
+                        'payment_method' => strtoupper($recoverableOrder->payment_method),
+                        'items_count' => $recoverableOrder->items()->count(),
+                    ];
+                    $statusLabel = $recoverableOrder->status === 'awaiting_payment' ? 'aguardando pagamento' : 'pendente';
+                    $total = 'R$ '.number_format($recoverableOrder->total, 2, ',', '.');
+                    $this->addMessage('bot', "Olá, {$customer->name}! Encontrei um pedido em aberto #{$recoverableOrder->order_number} ({$statusLabel}) — {$total}. Deseja continuar?");
+                    $this->transitionTo('RECOVER_ORDER');
+
+                    return;
+                }
+            }
+
             $nextStep = ! empty($this->cart) ? 'CHECKOUT_COUPON' : 'MENU_BROWSE';
             $this->addMessage('bot', "Que bom te ver de volta, {$customer->name}! Continuando com seu pedido...");
             $this->transitionTo($nextStep);
@@ -34,6 +55,27 @@ trait HasCustomerProfile
             $customer = $service->createFromGlobal($this->phone, $existing);
             $this->fillCustomerData($customer);
             $this->addMessage('user', $this->phone);
+
+            if (empty($this->cart)) {
+                $recoverableOrder = $this->findRecoverableOrder($customer->id, $this->companyId);
+                if ($recoverableOrder) {
+                    $this->pendingOrderSummary = [
+                        'id' => $recoverableOrder->id,
+                        'order_number' => $recoverableOrder->order_number,
+                        'total' => (float) $recoverableOrder->total,
+                        'status' => $recoverableOrder->status,
+                        'payment_method' => strtoupper($recoverableOrder->payment_method),
+                        'items_count' => $recoverableOrder->items()->count(),
+                    ];
+                    $statusLabel = $recoverableOrder->status === 'awaiting_payment' ? 'aguardando pagamento' : 'pendente';
+                    $total = 'R$ '.number_format($recoverableOrder->total, 2, ',', '.');
+                    $this->addMessage('bot', "Olá, {$customer->name}! Encontrei um pedido em aberto #{$recoverableOrder->order_number} ({$statusLabel}) — {$total}. Deseja continuar?");
+                    $this->transitionTo('RECOVER_ORDER');
+
+                    return;
+                }
+            }
+
             $nextStep = ! empty($this->cart) ? 'CHECKOUT_COUPON' : 'MENU_BROWSE';
             $this->addMessage('bot', "Que bom te ver de novo, {$customer->name}! Continuando com seu pedido...");
             $this->transitionTo($nextStep);

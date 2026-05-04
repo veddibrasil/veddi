@@ -63,6 +63,19 @@
                         </button>
                     @endif
 
+                    {{-- Order history --}}
+                    @if ($customerId && !in_array($step, ['IDENTIFY_PHONE', 'CLOSED', 'EDIT_PROFILE', 'ORDER_HISTORY']))
+                        <button
+                            wire:click="goToOrderHistory"
+                            class="text-white/70 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
+                            title="Meus pedidos"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                            </svg>
+                        </button>
+                    @endif
+
                     {{-- Edit profile --}}
                     @if ($customerId && !in_array($step, ['ORDER_CONFIRMED', 'EDIT_PROFILE']))
                         <button
@@ -88,17 +101,6 @@
                             </svg>
                         </button>
                     @endif
-
-                    {{-- End chat --}}
-                    <button
-                        x-on:click="confirmEnd = true"
-                        class="text-white/70 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
-                        title="Encerrar conversa"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
 
                     {{-- Confirmation dialog --}}
                     <div
@@ -217,6 +219,88 @@
                 <button wire:click="submitPhone" class="mc-btn-primary" wire:loading.attr="disabled" wire:target="submitPhone">
                     <span wire:loading.remove wire:target="submitPhone">Continuar →</span>
                     <span wire:loading wire:target="submitPhone">Verificando...</span>
+                </button>
+            </div>
+
+        {{-- ── RECOVER_ORDER ── --}}
+        @elseif ($step === 'RECOVER_ORDER')
+            <div wire:key="step-recover-order" class="space-y-3">
+                @if ($pendingOrderSummary)
+                    <div class="bg-orange-50 border border-orange-200 rounded-xl p-3 space-y-1.5">
+                        <p class="text-xs font-bold text-orange-700 uppercase tracking-wide">Pedido em aberto</p>
+                        <p class="text-sm font-semibold text-gray-800">#{{ $pendingOrderSummary['order_number'] }}</p>
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs text-gray-500">
+                                {{ $pendingOrderSummary['items_count'] }} {{ $pendingOrderSummary['items_count'] === 1 ? 'item' : 'itens' }}
+                                · {{ $pendingOrderSummary['payment_method'] }}
+                            </span>
+                            <span class="text-sm font-bold mc-text-primary">
+                                R$ {{ number_format($pendingOrderSummary['total'], 2, ',', '.') }}
+                            </span>
+                        </div>
+                    </div>
+                @endif
+                <div class="flex gap-2">
+                    <button
+                        wire:click="discardPendingOrder"
+                        class="mc-btn-secondary flex-1"
+                        wire:loading.attr="disabled"
+                        wire:target="discardPendingOrder,resumePendingOrder"
+                    >
+                        Novo pedido
+                    </button>
+                    <button
+                        wire:click="resumePendingOrder"
+                        class="mc-btn-primary flex-1"
+                        wire:loading.attr="disabled"
+                        wire:target="resumePendingOrder,discardPendingOrder"
+                    >
+                        <span wire:loading.remove wire:target="resumePendingOrder">Continuar →</span>
+                        <span wire:loading wire:target="resumePendingOrder">Recuperando...</span>
+                    </button>
+                </div>
+            </div>
+
+        {{-- ── ORDER_HISTORY ── --}}
+        @elseif ($step === 'ORDER_HISTORY')
+            <div wire:key="step-order-history">
+                @if (empty($orderHistory))
+                    <p class="text-sm text-center text-gray-500 py-2">Nenhum pedido encontrado.</p>
+                @else
+                    <div class="max-h-64 overflow-y-auto mc-scrollbar space-y-2 pr-0.5 mb-2">
+                        @foreach ($orderHistory as $order)
+                            @php
+                                $statusColor = match($order['status']) {
+                                    'delivered' => ['bg' => 'bg-green-100', 'text' => 'text-green-700'],
+                                    'paid', 'preparing', 'ready' => ['bg' => 'bg-blue-100', 'text' => 'text-blue-700'],
+                                    'cancelled', 'refunded' => ['bg' => 'bg-red-100', 'text' => 'text-red-600'],
+                                    default => ['bg' => 'bg-amber-100', 'text' => 'text-amber-700'],
+                                };
+                            @endphp
+                            <div class="bg-gray-50 border border-gray-100 rounded-xl p-3 space-y-1.5">
+                                <div class="flex items-center justify-between gap-2">
+                                    <p class="text-xs font-bold text-gray-700 truncate">#{{ $order['order_number'] }}</p>
+                                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 {{ $statusColor['bg'] }} {{ $statusColor['text'] }}">
+                                        {{ $order['status_label'] }}
+                                    </span>
+                                </div>
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs text-gray-400">
+                                        {{ $order['items_count'] }} {{ $order['items_count'] === 1 ? 'item' : 'itens' }}
+                                        · {{ $order['payment_method'] }}
+                                        · {{ $order['order_type'] === 'pickup' ? 'Retirada' : 'Entrega' }}
+                                    </span>
+                                    <span class="text-sm font-bold mc-text-primary">
+                                        R$ {{ number_format($order['total'], 2, ',', '.') }}
+                                    </span>
+                                </div>
+                                <p class="text-[10px] text-gray-400">{{ $order['created_at'] }}</p>
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
+                <button wire:click="backFromOrderHistory" class="mc-btn-secondary w-full">
+                    ← Voltar
                 </button>
             </div>
 
