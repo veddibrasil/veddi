@@ -57,6 +57,13 @@ trait HasPaymentFlow
     private function recalculateCardFee(): void
     {
         $company = app()->bound('current.company') ? app('current.company') : null;
+
+        if ($company?->card_fee_absorbed_by_company) {
+            $this->cardFeeBreakdown = [];
+
+            return;
+        }
+
         $settings = $company?->paymentSettings;
         $total = (float) $this->getOrderTotalProperty();
 
@@ -284,6 +291,12 @@ trait HasPaymentFlow
             $settings
         );
 
+        $cardFeeAbsorbed = $company?->card_fee_absorbed_by_company ?? false;
+        $chargeAmount = $cardFeeAbsorbed ? (float) $order->total : $breakdown['final_amount'];
+        $cardFee = $cardFeeAbsorbed
+            ? round((float) $order->total * $breakdown['total_rate'], 2)
+            : $breakdown['fee_amount'];
+
         [$expMonth, $expYear] = explode('/', $this->cardExpiry);
         $expiryYear = strlen($expYear) === 2 ? '20'.$expYear : $expYear;
 
@@ -299,7 +312,7 @@ trait HasPaymentFlow
 
             $charge = $asaas->createCreditCardCharge(
                 customerId: $asaasCustomerId,
-                amount: $breakdown['final_amount'],
+                amount: $chargeAmount,
                 description: "Pedido #{$order->order_number}".($company ? " - {$company->name}" : ''),
                 externalReference: (string) $order->id,
                 creditCard: new CreditCardDTO(
@@ -327,9 +340,9 @@ trait HasPaymentFlow
                     'order_id' => $order->id,
                     'asaas_payment_id' => $charge['id'],
                     'payment_gateway' => 'asaas',
-                    'amount' => $breakdown['final_amount'],
+                    'amount' => $chargeAmount,
                     'original_amount' => $breakdown['original_amount'],
-                    'card_fee' => $breakdown['fee_amount'],
+                    'card_fee' => $cardFee,
                     'card_fee_rate' => $breakdown['total_rate'],
                     'installments' => 1,
                     'anticipation_days' => $anticipationDays,
@@ -350,8 +363,9 @@ trait HasPaymentFlow
                     'customer_id' => $customer->id,
                     'asaas_payment_id' => $charge['id'],
                     'original_amount' => $breakdown['original_amount'],
-                    'final_amount' => $breakdown['final_amount'],
-                    'card_fee' => $breakdown['fee_amount'],
+                    'final_amount' => $chargeAmount,
+                    'card_fee' => $cardFee,
+                    'card_fee_absorbed' => $cardFeeAbsorbed,
                 ]);
 
                 $this->cardNumber = '';
