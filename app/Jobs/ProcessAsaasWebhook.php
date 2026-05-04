@@ -87,68 +87,71 @@ class ProcessAsaasWebhook implements ShouldQueue
 
         $order = Order::find($orderId);
 
-        if (! $order) {
-            Log::channel('webhook')->warning('Asaas webhook: pedido não encontrado', [
+        if (! $order || ! $asaasPaymentId) {
+            Log::channel('webhook')->warning('Asaas webhook: pedido ou payment ID ausente', [
                 'event' => $this->event,
                 'order_id' => $orderId,
-            ]);
-
-            return;
-        }
-
-        $payment = Payment::where('asaas_payment_id', $asaasPaymentId)->first();
-
-        if (! $payment) {
-            Log::channel('webhook')->warning('Asaas webhook: payment não encontrado para pedido', [
-                'event' => $this->event,
-                'asaas_payment_id' => $asaasPaymentId,
-                'order_id' => $orderId,
-            ]);
-
-            return;
-        }
-
-        if ($payment->status === 'paid') {
-            Log::channel('webhook')->info('Asaas webhook: pagamento de pedido já confirmado (duplicado ignorado)', [
-                'order_id' => $orderId,
                 'asaas_payment_id' => $asaasPaymentId,
             ]);
 
             return;
         }
 
-        DB::transaction(function () use ($order, $payment, $orderId, $asaasPaymentId) {
-            $payment->update([
-                'status' => 'paid',
-                'paid_at' => now(),
-                'webhook_payload' => $this->payload,
-            ]);
+        $idempotencyKey = hash('sha256', 'asaas:'.$asaasPaymentId.':paid');
 
-            $order->update(['status' => 'paid']);
-
-            Log::channel('payments')->info('Pagamento de pedido confirmado via Asaas', [
-                'order_id' => $orderId,
-                'asaas_payment_id' => $asaasPaymentId,
-                'amount' => $payment->amount,
-            ]);
-
-            app(WalletServiceInterface::class)->creditForOrder($order, $payment);
-        });
-
-        // Cria transação de escrow para controle de liberação (D+2 Pix / D+15 Cartão)
         try {
-            app(TransactionServiceInterface::class)->createForPayment($order, $payment);
-        } catch (\Throwable $e) {
-            Log::channel('discord')->error('Falha ao criar CompanyTransaction (não-fatal)', [
-                'type' => 'payments',
-                'order_id' => $order->id,
-                'payment_id' => $payment->id,
-                'error' => $e->getMessage(),
+            DB::transaction(function () use ($order, $orderId, $asaasPaymentId, $idempotencyKey) {
+                // lockForUpdate serializes concurrent jobs on the same payment row
+                $payment = Payment::where('asaas_payment_id', $asaasPaymentId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $payment) {
+                    Log::channel('webhook')->warning('Asaas webhook: payment não encontrado para pedido', [
+                        'event' => $this->event,
+                        'asaas_payment_id' => $asaasPaymentId,
+                        'order_id' => $orderId,
+                    ]);
+
+                    return;
+                }
+
+                if ($payment->status === 'paid') {
+                    Log::channel('webhook')->info('Asaas webhook: pagamento de pedido já confirmado (duplicado ignorado)', [
+                        'order_id' => $orderId,
+                        'asaas_payment_id' => $asaasPaymentId,
+                    ]);
+
+                    return;
+                }
+
+                $payment->update([
+                    'status' => 'paid',
+                    'paid_at' => now(),
+                    'webhook_payload' => $this->payload,
+                    'idempotency_key' => $idempotencyKey,
+                ]);
+
+                $order->update(['status' => 'paid']);
+
+                Log::channel('payments')->info('Pagamento de pedido confirmado via Asaas', [
+                    'order_id' => $orderId,
+                    'asaas_payment_id' => $asaasPaymentId,
+                    'amount' => $payment->amount,
+                ]);
+
+                app(WalletServiceInterface::class)->creditForOrder($order, $payment);
+                app(TransactionServiceInterface::class)->createForPayment($order, $payment);
+            });
+        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+            Log::channel('webhook')->info('Asaas webhook: duplicado ignorado via idempotency_key', [
+                'asaas_payment_id' => $asaasPaymentId,
             ]);
-            // Não propaga: WalletEntry já criada com sucesso
+
+            return;
         }
 
-        OrderStatusUpdated::dispatch($order->fresh());
+        OrderStatusUpdated::dispatch(Order::find($orderId));
     }
 
     private function handleRefundConfirmed(): void

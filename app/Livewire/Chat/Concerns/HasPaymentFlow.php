@@ -18,6 +18,7 @@ use App\Services\Order\OrderCancellationPolicy;
 use App\Services\Order\StockService;
 use App\Services\Payment\PaymentCalculatorService;
 use App\Services\Payment\PaymentService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use RuntimeException;
@@ -336,25 +337,27 @@ trait HasPaymentFlow
             $status = $charge['status'] ?? null;
 
             if ($status === 'CONFIRMED' || $status === 'RECEIVED') {
-                $newPayment = Payment::create([
-                    'order_id' => $order->id,
-                    'asaas_payment_id' => $charge['id'],
-                    'payment_gateway' => 'asaas',
-                    'amount' => $chargeAmount,
-                    'original_amount' => $breakdown['original_amount'],
-                    'card_fee' => $cardFee,
-                    'card_fee_rate' => $breakdown['total_rate'],
-                    'installments' => 1,
-                    'anticipation_days' => $anticipationDays,
-                    'status' => 'paid',
-                    'paid_at' => now(),
-                    'payment_token' => hash('sha256', $order->id.$customer->id.uniqid()),
-                ]);
+                DB::transaction(function () use ($order, $customer, $charge, $chargeAmount, $cardFee, $breakdown, $anticipationDays) {
+                    $newPayment = Payment::create([
+                        'order_id' => $order->id,
+                        'asaas_payment_id' => $charge['id'],
+                        'payment_gateway' => 'asaas',
+                        'amount' => $chargeAmount,
+                        'original_amount' => $breakdown['original_amount'],
+                        'card_fee' => $cardFee,
+                        'card_fee_rate' => $breakdown['total_rate'],
+                        'installments' => 1,
+                        'anticipation_days' => $anticipationDays,
+                        'status' => 'paid',
+                        'paid_at' => now(),
+                        'payment_token' => hash('sha256', $order->id.$customer->id.uniqid()),
+                    ]);
 
-                $order->update(['status' => 'paid']);
+                    $order->update(['status' => 'paid']);
 
-                app(WalletServiceInterface::class)->creditForOrder($order->fresh(), $newPayment);
-                app(TransactionServiceInterface::class)->createForPayment($order->fresh(), $newPayment);
+                    app(WalletServiceInterface::class)->creditForOrder($order->fresh(), $newPayment);
+                    app(TransactionServiceInterface::class)->createForPayment($order->fresh(), $newPayment);
+                });
 
                 OrderStatusUpdated::dispatch($order->fresh());
 

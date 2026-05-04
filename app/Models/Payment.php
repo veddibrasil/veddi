@@ -27,6 +27,7 @@ class Payment extends Model
         'webhook_payload',
         'expires_at',
         'payment_token',
+        'idempotency_key',
     ];
 
     protected $casts = [

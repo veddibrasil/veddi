@@ -29,10 +29,20 @@ class ProcessRefund implements ShouldQueue
     {
         $this->refund->refresh();
 
-        if (in_array($this->refund->status, ['in_progress', 'succeeded', 'canceled'])) {
+        if (in_array($this->refund->status, ['succeeded', 'canceled'])) {
             Log::channel('payments')->info('ProcessRefund ignorado: status já avançou', [
                 'refund_id' => $this->refund->id,
                 'status' => $this->refund->status,
+            ]);
+
+            return;
+        }
+
+        // Gateway already accepted this refund but webhook hasn't confirmed yet — don't re-submit
+        if ($this->refund->status === 'in_progress' && $this->refund->external_refund_id !== null) {
+            Log::channel('payments')->info('ProcessRefund: em progresso com ID externo — aguardando webhook', [
+                'refund_id' => $this->refund->id,
+                'external_refund_id' => $this->refund->external_refund_id,
             ]);
 
             return;

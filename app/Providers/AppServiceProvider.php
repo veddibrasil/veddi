@@ -134,6 +134,10 @@ class AppServiceProvider extends ServiceProvider
             app()->isProduction(),
         );
 
+        if (app()->isProduction()) {
+            \Illuminate\Support\Facades\URL::forceScheme('https');
+        }
+
         Password::defaults(fn (): ?Password => app()->isProduction()
             ? Password::min(12)
                 ->mixedCase()

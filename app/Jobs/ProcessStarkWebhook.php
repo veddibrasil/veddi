@@ -60,70 +60,71 @@ class ProcessStarkWebhook implements ShouldQueue
             return;
         }
 
-        $payment = Payment::where('stark_payment_id', $invoiceId)->first();
+        $idempotencyKey = hash('sha256', 'stark:'.$invoiceId.':paid');
 
-        if (! $payment) {
-            Log::channel('webhook')->warning('Stark webhook: Payment não encontrado', [
-                'event' => $this->event,
-                'invoice_id' => $invoiceId,
-            ]);
-
-            return;
-        }
-
-        // Idempotência: ignora duplicatas
-        if ($payment->status === 'paid') {
-            Log::channel('webhook')->info('Stark webhook: pagamento já confirmado (duplicado ignorado)', [
-                'invoice_id' => $invoiceId,
-                'order_id' => $payment->order_id,
-            ]);
-
-            return;
-        }
-
-        $order = Order::find($payment->order_id);
-
-        if (! $order) {
-            Log::channel('webhook')->warning('Stark webhook: pedido não encontrado', [
-                'event' => $this->event,
-                'order_id' => $payment->order_id,
-            ]);
-
-            return;
-        }
-
-        DB::transaction(function () use ($order, $payment, $invoiceId) {
-            $payment->update([
-                'status' => 'paid',
-                'paid_at' => now(),
-                'webhook_payload' => $this->payload,
-            ]);
-
-            $order->update(['status' => 'paid']);
-
-            Log::channel('payments')->info('Pagamento PIX Stark confirmado', [
-                'order_id' => $order->id,
-                'invoice_id' => $invoiceId,
-                'amount' => $payment->amount,
-            ]);
-
-            app(WalletServiceInterface::class)->creditForOrder($order, $payment);
-        });
-
-        // Cria transação de escrow para controle de liberação (D+2 para PIX)
         try {
-            app(TransactionServiceInterface::class)->createForPayment($order, $payment);
-        } catch (\Throwable $e) {
-            Log::channel('discord')->error('Stark: Falha ao criar CompanyTransaction (não-fatal)', [
-                'type' => 'payments',
-                'order_id' => $order->id,
-                'payment_id' => $payment->id,
-                'error' => $e->getMessage(),
-            ]);
-            // Não propaga: WalletEntry já criada com sucesso
-        }
+            DB::transaction(function () use ($invoiceId, $idempotencyKey) {
+                // lockForUpdate serializes concurrent jobs on the same payment row
+                $payment = Payment::where('stark_payment_id', $invoiceId)
+                    ->lockForUpdate()
+                    ->first();
 
-        OrderStatusUpdated::dispatch($order->fresh());
+                if (! $payment) {
+                    Log::channel('webhook')->warning('Stark webhook: Payment não encontrado', [
+                        'event' => $this->event,
+                        'invoice_id' => $invoiceId,
+                    ]);
+
+                    return;
+                }
+
+                if ($payment->status === 'paid') {
+                    Log::channel('webhook')->info('Stark webhook: pagamento já confirmado (duplicado ignorado)', [
+                        'invoice_id' => $invoiceId,
+                        'order_id' => $payment->order_id,
+                    ]);
+
+                    return;
+                }
+
+                $order = Order::find($payment->order_id);
+
+                if (! $order) {
+                    Log::channel('webhook')->warning('Stark webhook: pedido não encontrado', [
+                        'event' => $this->event,
+                        'order_id' => $payment->order_id,
+                    ]);
+
+                    return;
+                }
+
+                $payment->update([
+                    'status' => 'paid',
+                    'paid_at' => now(),
+                    'webhook_payload' => $this->payload,
+                    'idempotency_key' => $idempotencyKey,
+                ]);
+
+                $order->update(['status' => 'paid']);
+
+                Log::channel('payments')->info('Pagamento PIX Stark confirmado', [
+                    'order_id' => $order->id,
+                    'invoice_id' => $invoiceId,
+                    'amount' => $payment->amount,
+                ]);
+
+                app(WalletServiceInterface::class)->creditForOrder($order, $payment);
+                app(TransactionServiceInterface::class)->createForPayment($order, $payment);
+
+                OrderStatusUpdated::dispatch($order->fresh());
+            });
+        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+            Log::channel('webhook')->info('Stark webhook: duplicado ignorado via idempotency_key', [
+                'invoice_id' => $invoiceId,
+            ]);
+
+            return;
+        }
     }
 
     private function handlePixReversal(array $reversal): void
