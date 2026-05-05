@@ -139,7 +139,7 @@ class CouponService
             };
 
             if ($match) {
-                $base += (float) $product->price * $item['qty'];
+                $base += (float) $product->effective_price * $item['qty'];
             }
         }
 
@@ -154,6 +154,6 @@ class CouponService
 
         $product = Product::withoutGlobalScope(CompanyScope::class)->find($coupon->free_product_id);
 
-        return $product ? (float) $product->price : 0.0;
+        return $product ? (float) $product->effective_price : 0.0;
     }
 }

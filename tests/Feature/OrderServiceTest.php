@@ -2,6 +2,7 @@
 
 use App\Models\Branch;
 use App\Models\Company;
+use App\Models\Coupon;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Product;
@@ -202,4 +203,50 @@ test('buildOrderSummaryFromOrder usa preços reais dos order_items', function ()
     expect($summary)->toContain('R$ 50,00');
     expect($summary)->toContain('2x X-Burguer');
     expect($summary)->toContain($order->order_number);
+});
+
+test('createOrder fecha a conta com promoção e cupom', function () {
+    ['customer' => $customer, 'branch' => $branch, 'product' => $product] = setupOrderContext();
+
+    // Promoção: 20% OFF (25.00 -> 20.00)
+    $product->update([
+        'promo_price_enabled' => true,
+        'promo_price_type' => 'percentage',
+        'promo_price_value' => 20.0,
+    ]);
+
+    $coupon = Coupon::withoutGlobalScopes()->create([
+        'company_id' => app('current.company')->id,
+        'code' => 'OFF10',
+        'name' => '10% off',
+        'type' => 'percentage',
+        'discount_value' => 10.0,
+        'scope' => 'order',
+        'active' => true,
+    ]);
+
+    $cart = [
+        $product->id => ['qty' => 2, 'name' => $product->name, 'price' => 0.01],
+    ];
+
+    $order = app(OrderService::class)->createOrder(
+        customerId: $customer->id,
+        branchId: $branch->id,
+        cart: $cart,
+        notes: '',
+        paymentMethod: 'PIX',
+        orderType: 'delivery',
+        coupon: $coupon,
+    );
+
+    // Subtotal = 2 * 20.00 = 40.00
+    // Desconto cupom = 10% de 40.00 = 4.00
+    // Total = 36.00
+    expect((float) $order->subtotal)->toBe(40.00);
+    expect((float) $order->discount)->toBe(4.00);
+    expect((float) $order->total)->toBe(36.00);
+
+    $item = $order->items->first();
+    expect((float) $item->unit_price)->toBe(20.00);
+    expect((float) $item->subtotal)->toBe(40.00);
 });

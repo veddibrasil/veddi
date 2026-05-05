@@ -33,6 +33,8 @@ class CompanySettings extends Component
 
     public string $order_prefix = 'ORD';
 
+    public ?int $scheduleMinAdvanceMinutes = null;
+
     public bool $isFree = false;
 
     public bool $pixFeeAbsorbedByCompany = true;
@@ -59,6 +61,7 @@ class CompanySettings extends Component
             'order_prefix'
         ));
         $this->chat_highlights = $company->chat_highlights ?? self::DEFAULT_HIGHLIGHTS;
+        $this->scheduleMinAdvanceMinutes = $company->schedule_min_advance_minutes;
         $this->isFree = $company->isFree();
         $this->pixFeeAbsorbedByCompany = (bool) $company->pix_fee_absorbed_by_company;
         $this->cardFeeAbsorbedByCompany = (bool) $company->card_fee_absorbed_by_company;
@@ -82,6 +85,7 @@ class CompanySettings extends Component
             'order_prefix' => ['required', 'string', 'max:10', 'regex:/^[A-Z0-9]+$/'],
             'pixFeeAbsorbedByCompany' => ['boolean'],
             'cardFeeAbsorbedByCompany' => ['boolean'],
+            'scheduleMinAdvanceMinutes' => ['nullable', 'integer', 'min:0', 'max:10080'],
             'logo' => ['nullable', 'image', 'max:2048'],
             'chat_highlights' => ['array', 'max:6'],
             'chat_highlights.*.icon' => ['required', 'string', 'max:10'],
@@ -104,6 +108,7 @@ class CompanySettings extends Component
 
         $data['pix_fee_absorbed_by_company'] = $this->pixFeeAbsorbedByCompany;
         $data['card_fee_absorbed_by_company'] = $this->cardFeeAbsorbedByCompany;
+        $data['schedule_min_advance_minutes'] = $this->scheduleMinAdvanceMinutes;
 
         if ($this->logo) {
             if ($company->logo_path) {

@@ -13,6 +13,8 @@ use App\Services\Order\StockService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -40,6 +42,12 @@ class Form extends Component
 
     public string $price = '';
 
+    public bool $promo_price_enabled = false;
+
+    public string $promo_price_type = 'fixed';
+
+    public string $promo_price_value = '';
+
     public bool $active = true;
 
     public int $sort_order = 0;
@@ -54,6 +62,10 @@ class Form extends Component
 
     public array $optionGroups = [];
 
+    public bool $showGroupPicker = false;
+
+    public bool $isVariant = false;
+
     public bool $trackStock = false;
 
     public string $initialQuantity = '0';
@@ -67,7 +79,10 @@ class Form extends Component
             'product_category_id' => ['required', 'integer', 'exists:product_categories,id'],
             'name' => ['required', 'string', 'max:150'],
             'description' => ['nullable', 'string', 'max:500'],
-            'price' => ['required', 'numeric', 'min:0.01'],
+            'price' => $this->isVariant ? ['nullable', 'numeric', 'min:0'] : ['required', 'numeric', 'min:0.01'],
+            'promo_price_enabled' => $this->isVariant ? ['boolean'] : ['boolean'],
+            'promo_price_type' => $this->isVariant ? ['nullable'] : ['exclude_unless:promo_price_enabled,true', 'required', Rule::in(['fixed', 'percentage'])],
+            'promo_price_value' => $this->isVariant ? ['nullable'] : ['exclude_unless:promo_price_enabled,true', 'required', 'numeric', 'min:0.01'],
             'active' => ['boolean'],
             'sort_order' => ['integer', 'min:0'],
             'image' => ['nullable', 'image', 'max:2048'],
@@ -79,6 +94,8 @@ class Form extends Component
             'optionGroups.*.fixed' => ['boolean'],
             'optionGroups.*.options' => ['array'],
             'optionGroups.*.options.*.name' => ['required_with:optionGroups.*.options.*', 'string', 'max:150'],
+            'optionGroups.*.options.*.active' => ['boolean'],
+            'optionGroups.*.options.*.description' => ['nullable', 'string', 'max:255'],
             'optionGroups.*.options.*.additional_price' => ['required_with:optionGroups.*.options.*', 'numeric', 'min:0'],
             'optionGroups.*.options.*.default_qty' => ['required_with:optionGroups.*.options.*', 'integer', 'min:0'],
         ];
@@ -91,9 +108,11 @@ class Form extends Component
             'product_category_id.required' => 'Selecione uma categoria.',
             'product_category_id.exists' => 'Categoria inválida.',
             'name.required' => 'Informe o nome do produto.',
-            'price.required' => 'Informe o preço.',
+            'price.required' => 'Informe o preço base do produto.',
             'price.numeric' => 'Preço inválido.',
             'price.min' => 'O preço deve ser maior que zero.',
+            'promo_price_type.required' => 'Selecione o tipo de promoção.',
+            'promo_price_value.required' => 'Informe o valor da promoção.',
             'image.image' => 'O arquivo deve ser uma imagem.',
             'image.max' => 'A imagem deve ter no máximo 2MB.',
             'optionGroups.*.name.required_with' => 'O nome do grupo é obrigatório.',
@@ -135,18 +154,26 @@ class Form extends Component
             $this->fill($product->only('product_category_id', 'name', 'active', 'sort_order'));
             $this->description = $product->description ?? '';
             $this->price = (string) $product->price;
+            $this->isVariant = (bool) $product->is_variant;
+            $this->promo_price_enabled = (bool) $product->promo_price_enabled;
+            $this->promo_price_type = (string) ($product->promo_price_type ?: 'fixed');
+            $this->promo_price_value = $product->promo_price_value !== null ? (string) $product->promo_price_value : '';
             $this->selectedBranches = $product->branches->pluck('id')->map(fn ($id) => (string) $id)->toArray();
 
             $this->optionGroups = $product->optionGroups->map(function ($group) {
                 return [
-                    'id' => $group->id,
+                    'key' => 'gid-'.$group->id,
+                    'group_id' => $group->id,
                     'name' => $group->name,
                     'total_qty' => (string) $group->total_qty,
                     'fixed' => (bool) $group->fixed,
-                    'sort_order' => $group->sort_order,
+                    'sort_order' => $group->pivot->sort_order,
                     'options' => $group->options->map(fn ($opt) => [
+                        'key' => 'oid-'.$opt->id,
                         'id' => $opt->id,
                         'name' => $opt->name,
+                        'active' => (bool) $opt->active,
+                        'description' => $opt->description ?? '',
                         'additional_price' => number_format((float) $opt->additional_price, 2, '.', ''),
                         'default_qty' => (string) $opt->default_qty,
                         'sort_order' => $opt->sort_order,
@@ -171,6 +198,37 @@ class Form extends Component
     {
         $this->newCategoryName = '';
         $this->showCategoryModal = true;
+    }
+
+    public function updatedIsVariant(bool $value): void
+    {
+        if ($value) {
+            $this->price = '0';
+            $this->promo_price_enabled = false;
+            $this->promo_price_type = 'fixed';
+            $this->promo_price_value = '';
+            $this->resetValidation(['price', 'promo_price_type', 'promo_price_value']);
+        }
+    }
+
+    public function updatedPromoPriceEnabled(bool $enabled): void
+    {
+        if ($enabled) {
+            return;
+        }
+
+        $this->promo_price_type = 'fixed';
+        $this->promo_price_value = '';
+        $this->resetValidation(['promo_price_type', 'promo_price_value']);
+    }
+
+    public function updatedPromoPriceType(string $type): void
+    {
+        if (! $this->promo_price_enabled) {
+            return;
+        }
+
+        $this->resetValidation(['promo_price_value']);
     }
 
     public function saveCategory(): void
@@ -198,7 +256,8 @@ class Form extends Component
     public function addOptionGroup(): void
     {
         $this->optionGroups[] = [
-            'id' => null,
+            'key' => (string) Str::uuid(),
+            'group_id' => null,
             'name' => '',
             'total_qty' => '100',
             'fixed' => false,
@@ -207,19 +266,57 @@ class Form extends Component
         ];
     }
 
+    public function attachExistingGroup(int $groupId): void
+    {
+        $alreadyAttached = collect($this->optionGroups)
+            ->pluck('group_id')
+            ->contains($groupId);
+
+        if ($alreadyAttached) {
+            return;
+        }
+
+        $group = ProductOptionGroup::with('options')->find($groupId);
+        if (! $group) {
+            return;
+        }
+
+        $this->optionGroups[] = [
+            'key' => 'gid-'.$group->id,
+            'group_id' => $group->id,
+            'name' => $group->name,
+            'total_qty' => (string) $group->total_qty,
+            'fixed' => (bool) $group->fixed,
+            'sort_order' => count($this->optionGroups),
+            'options' => $group->options->map(fn ($opt) => [
+                'key' => 'oid-'.$opt->id,
+                'id' => $opt->id,
+                'name' => $opt->name,
+                'active' => (bool) $opt->active,
+                'description' => $opt->description ?? '',
+                'additional_price' => number_format((float) $opt->additional_price, 2, '.', ''),
+                'default_qty' => (string) $opt->default_qty,
+                'sort_order' => $opt->sort_order,
+            ])->toArray(),
+        ];
+
+        $this->showGroupPicker = false;
+    }
+
     public function removeOptionGroup(int $index): void
     {
         array_splice($this->optionGroups, $index, 1);
-        foreach ($this->optionGroups as $i => &$group) {
-            $group['sort_order'] = $i;
-        }
+        $this->reindexOptionGroups();
     }
 
     public function addOption(int $groupIndex): void
     {
         $this->optionGroups[$groupIndex]['options'][] = [
+            'key' => (string) Str::uuid(),
             'id' => null,
             'name' => '',
+            'active' => true,
+            'description' => '',
             'additional_price' => '0.00',
             'default_qty' => '0',
             'sort_order' => count($this->optionGroups[$groupIndex]['options']),
@@ -229,6 +326,72 @@ class Form extends Component
     public function removeOption(int $groupIndex, int $optionIndex): void
     {
         array_splice($this->optionGroups[$groupIndex]['options'], $optionIndex, 1);
+        $this->reindexOptions($groupIndex);
+    }
+
+    public function moveOptionUp(int $groupIndex, int $optionIndex): void
+    {
+        if ($groupIndex < 0 || $groupIndex >= count($this->optionGroups)) {
+            return;
+        }
+
+        $optionsCount = count($this->optionGroups[$groupIndex]['options'] ?? []);
+        if ($optionIndex <= 0 || $optionIndex >= $optionsCount) {
+            return;
+        }
+
+        [$this->optionGroups[$groupIndex]['options'][$optionIndex - 1], $this->optionGroups[$groupIndex]['options'][$optionIndex]]
+            = [$this->optionGroups[$groupIndex]['options'][$optionIndex], $this->optionGroups[$groupIndex]['options'][$optionIndex - 1]];
+
+        $this->reindexOptions($groupIndex);
+    }
+
+    public function moveOptionDown(int $groupIndex, int $optionIndex): void
+    {
+        if ($groupIndex < 0 || $groupIndex >= count($this->optionGroups)) {
+            return;
+        }
+
+        $optionsCount = count($this->optionGroups[$groupIndex]['options'] ?? []);
+        if ($optionIndex < 0 || $optionIndex >= $optionsCount - 1) {
+            return;
+        }
+
+        [$this->optionGroups[$groupIndex]['options'][$optionIndex + 1], $this->optionGroups[$groupIndex]['options'][$optionIndex]]
+            = [$this->optionGroups[$groupIndex]['options'][$optionIndex], $this->optionGroups[$groupIndex]['options'][$optionIndex + 1]];
+
+        $this->reindexOptions($groupIndex);
+    }
+
+    public function moveOptionGroupUp(int $index): void
+    {
+        if ($index <= 0 || $index >= count($this->optionGroups)) {
+            return;
+        }
+
+        [$this->optionGroups[$index - 1], $this->optionGroups[$index]] = [$this->optionGroups[$index], $this->optionGroups[$index - 1]];
+        $this->reindexOptionGroups();
+    }
+
+    public function moveOptionGroupDown(int $index): void
+    {
+        if ($index < 0 || $index >= count($this->optionGroups) - 1) {
+            return;
+        }
+
+        [$this->optionGroups[$index + 1], $this->optionGroups[$index]] = [$this->optionGroups[$index], $this->optionGroups[$index + 1]];
+        $this->reindexOptionGroups();
+    }
+
+    private function reindexOptionGroups(): void
+    {
+        foreach ($this->optionGroups as $i => &$group) {
+            $group['sort_order'] = $i;
+        }
+    }
+
+    private function reindexOptions(int $groupIndex): void
+    {
         foreach ($this->optionGroups[$groupIndex]['options'] as $i => &$opt) {
             $opt['sort_order'] = $i;
         }
@@ -270,15 +433,35 @@ class Form extends Component
             $imagePath = $stored;
         }
 
+        $isVariantProduct = $this->isVariant;
+
         $data = [
             'product_category_id' => $validated['product_category_id'],
             'name' => $validated['name'],
             'description' => $validated['description'] ?? null,
-            'price' => $validated['price'],
+            'price' => $isVariantProduct ? 0 : $validated['price'],
+            'is_variant' => $isVariantProduct,
+            'promo_price_enabled' => $isVariantProduct ? false : (bool) $validated['promo_price_enabled'],
+            'promo_price_type' => (! $isVariantProduct && $validated['promo_price_enabled']) ? $validated['promo_price_type'] : 'fixed',
+            'promo_price_value' => (! $isVariantProduct && $validated['promo_price_enabled']) ? $validated['promo_price_value'] : null,
             'active' => $validated['active'],
             'sort_order' => $validated['sort_order'],
             'image_path' => $imagePath,
         ];
+
+        if (! $isVariantProduct && ! empty($data['promo_price_enabled'])) {
+            if ($data['promo_price_type'] === 'fixed' && (float) $data['promo_price_value'] >= (float) $data['price']) {
+                $this->addError('promo_price_value', 'O valor promocional deve ser menor que o preço normal.');
+
+                return;
+            }
+
+            if ($data['promo_price_type'] === 'percentage' && (float) $data['promo_price_value'] > 100.0) {
+                $this->addError('promo_price_value', 'A porcentagem não pode ser maior que 100%.');
+
+                return;
+            }
+        }
 
         if ($this->isEditing) {
             if ($this->isSuperAdmin && $this->company_id) {
@@ -318,7 +501,6 @@ class Form extends Component
                 ];
 
                 Cache::forget("menu:branch:{$branchId}:company:{$this->company_id}");
-
             }
         } else {
             foreach ($this->selectedBranches as $branchId) {
@@ -330,28 +512,47 @@ class Form extends Component
                 ];
 
                 Cache::forget("menu:branch:{$branchId}:company:{$this->company_id}");
-
             }
         }
         $product->branches()->sync($branchSync);
 
         // Sync option groups
-        $keptGroupIds = collect($this->optionGroups)->pluck('id')->filter()->values();
-        ProductOptionGroup::where('product_id', $product->id)
-            ->whereNotIn('id', $keptGroupIds)
-            ->delete();
+        $companyId = $product->company_id ?? $this->company_id;
 
-        foreach ($this->optionGroups as $groupData) {
-            $group = $groupData['id']
-                ? (ProductOptionGroup::find($groupData['id']) ?? new ProductOptionGroup(['product_id' => $product->id]))
-                : new ProductOptionGroup(['product_id' => $product->id]);
+        $currentAttachedIds = $product->optionGroups()->pluck('product_option_groups.id')->toArray();
+        $keptGroupIds = collect($this->optionGroups)->pluck('group_id')->filter()->map(fn ($id) => (int) $id)->values()->toArray();
+        $toDetach = array_diff($currentAttachedIds, $keptGroupIds);
+
+        if (! empty($toDetach)) {
+            $product->optionGroups()->detach($toDetach);
+        }
+
+        foreach ($this->optionGroups as $i => $groupData) {
+            if ($groupData['group_id']) {
+                $group = ProductOptionGroup::find($groupData['group_id']);
+                if (! $group) {
+                    continue;
+                }
+            } else {
+                $group = new ProductOptionGroup(['company_id' => $companyId]);
+            }
 
             $group->fill([
                 'name' => $groupData['name'],
                 'total_qty' => (int) $groupData['total_qty'],
                 'fixed' => (bool) ($groupData['fixed'] ?? false),
-                'sort_order' => $groupData['sort_order'],
-            ])->save();
+                'sort_order' => $i,
+            ]);
+
+            if (! $group->company_id) {
+                $group->company_id = $companyId;
+            }
+
+            $group->save();
+
+            $product->optionGroups()->syncWithoutDetaching([
+                $group->id => ['sort_order' => $i],
+            ]);
 
             $keptOptionIds = collect($groupData['options'])->pluck('id')->filter()->values();
             ProductOption::where('product_option_group_id', $group->id)
@@ -363,9 +564,14 @@ class Form extends Component
                     ? (ProductOption::find($optData['id']) ?? new ProductOption(['product_option_group_id' => $group->id]))
                     : new ProductOption(['product_option_group_id' => $group->id]);
 
+                $groupFixed = (bool) ($groupData['fixed'] ?? false);
+                $isVariantPriceGroup = $this->isVariant && $i === 0;
+
                 $option->fill([
                     'name' => $optData['name'],
-                    'additional_price' => (float) $optData['additional_price'],
+                    'active' => (bool) ($optData['active'] ?? true),
+                    'description' => $optData['description'] ?: null,
+                    'additional_price' => ($isVariantPriceGroup || ! $groupFixed) ? (float) $optData['additional_price'] : 0.0,
                     'default_qty' => (int) ($optData['default_qty'] ?? 0),
                     'sort_order' => $optData['sort_order'],
                 ])->save();
@@ -405,15 +611,32 @@ class Form extends Component
                 ->where('active', true)
                 ->orderBy('name')
                 ->get();
+
+            $availableGroups = $this->company_id
+                ? ProductOptionGroup::withoutGlobalScope(CompanyScope::class)
+                    ->where('company_id', $this->company_id)
+                    ->withCount('options')
+                    ->orderBy('name')
+                    ->get()
+                : collect();
         } else {
             $categories = ProductCategory::where('active', true)->orderBy('name')->get();
             $branches = $this->branchManagerBranchId
                 ? Branch::where('id', $this->branchManagerBranchId)->where('active', true)->get()
                 : Branch::where('active', true)->orderBy('name')->get();
             $companies = collect();
+
+            $availableGroups = ProductOptionGroup::withoutGlobalScope(CompanyScope::class)
+                ->where('company_id', $this->company_id)
+                ->withCount('options')
+                ->orderBy('name')
+                ->get();
         }
 
-        return view('livewire.admin.products.form', compact('categories', 'branches', 'companies'))
+        $attachedGroupIds = collect($this->optionGroups)->pluck('group_id')->filter()->values();
+        $availableGroups = $availableGroups->whereNotIn('id', $attachedGroupIds)->values();
+
+        return view('livewire.admin.products.form', compact('categories', 'branches', 'companies', 'availableGroups'))
             ->layout('layouts.app', ['title' => $this->isEditing ? 'Editar Produto' : 'Novo Produto']);
     }
 }

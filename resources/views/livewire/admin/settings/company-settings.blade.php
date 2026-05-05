@@ -246,6 +246,27 @@
         </div>
     </div>
 
+    {{-- Agendamento de Pedidos --}}
+    <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
+        <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Agendamento de Pedidos</h2>
+        <div>
+            <flux:input
+                wire:model="scheduleMinAdvanceMinutes"
+                type="number"
+                label="Antecedência mínima para agendamento (minutos)"
+                placeholder="Ex: 60 (1 hora). Use 0 para desabilitar."
+                min="0"
+                max="10080"
+            />
+            <p class="text-xs text-neutral-400 mt-1 dark:text-neutral-500">
+                Quando preenchido, o cliente poderá agendar o pedido para uma data/hora futura no chat.
+                O horário agendado será validado contra o horário de funcionamento da filial.
+                Mínimo: 0 (desabilita) ou 15+ para habilitar.
+            </p>
+            @error('scheduleMinAdvanceMinutes') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+        </div>
+    </div>
+
     {{-- Nota Fiscal --}}
     <div class="bg-blue-50 border border-blue-200 rounded-xl p-5 dark:bg-blue-900/20 dark:border-blue-800">
         <div class="flex items-start gap-3">

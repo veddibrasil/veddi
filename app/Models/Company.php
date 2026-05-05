@@ -57,6 +57,7 @@ class Company extends Model
         'terms_version',
         'pix_fee_absorbed_by_company',
         'card_fee_absorbed_by_company',
+        'schedule_min_advance_minutes',
     ];
 
     protected $attributes = [
@@ -68,6 +69,7 @@ class Company extends Model
         'active' => 'boolean',
         'pix_fee_absorbed_by_company' => 'boolean',
         'card_fee_absorbed_by_company' => 'boolean',
+        'schedule_min_advance_minutes' => 'integer',
         'chat_highlights' => 'array',
         'plan' => Plan::class,
         'pending_plan' => Plan::class,
@@ -76,6 +78,11 @@ class Company extends Model
         'terms_accepted_at' => 'datetime',
         'overdue_since' => 'date',
     ];
+
+    public function getScheduleMinAdvanceMinutesAttribute($value): int
+    {
+        return (int) ($value ?? 60);
+    }
 
     public function getLogoUrlAttribute(): ?string
     {
@@ -219,6 +226,11 @@ class Company extends Model
     public function maxBranches(): int
     {
         return $this->plan instanceof Plan ? $this->plan->maxBranches() : 1;
+    }
+
+    public function schedulingEnabled(): bool
+    {
+        return $this->schedule_min_advance_minutes > 0;
     }
 
     public function isActive(): bool

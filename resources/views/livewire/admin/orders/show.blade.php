@@ -34,6 +34,19 @@
         </div>
     @enderror
 
+    @if ($order->scheduled_at)
+        <div class="flex items-center gap-3 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 dark:bg-amber-900/20 dark:border-amber-700">
+            <span class="text-2xl shrink-0">🕐</span>
+            <div>
+                <p class="font-bold text-amber-800 dark:text-amber-300">Pedido Agendado</p>
+                <p class="text-sm text-amber-700 dark:text-amber-400">
+                    Entrega/Retirada prevista para
+                    <strong>{{ $order->scheduled_at->setTimezone(config('app.timezone'))->format('d/m/Y \à\s H:i') }}</strong>
+                </p>
+            </div>
+        </div>
+    @endif
+
     {{-- Main Grid: left (items + notes) | right (customer, branch, status, payment) --}}
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
 

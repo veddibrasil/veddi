@@ -132,7 +132,8 @@ class ProcessAsaasWebhook implements ShouldQueue
                     'idempotency_key' => $idempotencyKey,
                 ]);
 
-                $order->update(['status' => 'paid']);
+                $newStatus = ($order->scheduled_at && $order->scheduled_at->isFuture()) ? 'scheduled' : 'paid';
+                $order->update(['status' => $newStatus]);
 
                 Log::channel('payments')->info('Pagamento de pedido confirmado via Asaas', [
                     'order_id' => $orderId,

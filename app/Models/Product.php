@@ -14,13 +14,45 @@ class Product extends Model
     use BelongsToCompany, SoftDeletes;
 
     protected $fillable = [
-        'company_id', 'product_category_id', 'name', 'description', 'price', 'image_path', 'active', 'sort_order',
+        'company_id',
+        'product_category_id',
+        'name',
+        'description',
+        'price',
+        'promo_price_enabled',
+        'promo_price_type',
+        'promo_price_value',
+        'image_path',
+        'active',
+        'is_variant',
+        'sort_order',
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
+        'promo_price_enabled' => 'boolean',
+        'promo_price_value' => 'decimal:2',
         'active' => 'boolean',
+        'is_variant' => 'boolean',
     ];
+
+    public function getEffectivePriceAttribute(): float
+    {
+        if (! $this->promo_price_enabled || $this->promo_price_value === null) {
+            return (float) $this->price;
+        }
+
+        $base = (float) $this->price;
+
+        if ($this->promo_price_type === 'percentage') {
+            $pct = (float) $this->promo_price_value;
+            $pct = max(0.0, min(100.0, $pct));
+
+            return round(max(0.0, $base * (1 - ($pct / 100))), 2);
+        }
+
+        return (float) $this->promo_price_value;
+    }
 
     public function getImageUrlAttribute(): ?string
     {
@@ -47,8 +79,10 @@ class Product extends Model
         return $this->hasMany(OrderItem::class);
     }
 
-    public function optionGroups(): HasMany
+    public function optionGroups(): BelongsToMany
     {
-        return $this->hasMany(ProductOptionGroup::class)->orderBy('sort_order');
+        return $this->belongsToMany(ProductOptionGroup::class, 'option_group_product')
+            ->withPivot('sort_order')
+            ->orderByPivot('sort_order');
     }
 }

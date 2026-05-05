@@ -18,6 +18,7 @@ use App\Services\Order\OrderCancellationPolicy;
 use App\Services\Order\StockService;
 use App\Services\Payment\PaymentCalculatorService;
 use App\Services\Payment\PaymentService;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
@@ -44,7 +45,11 @@ trait HasPaymentFlow
 
     public function confirmOrder(): void
     {
-        $status = $this->paymentMethod === 'CASH' ? 'paid' : 'pending';
+        if ($this->paymentMethod === 'CASH') {
+            $status = $this->scheduledAt ? 'scheduled' : 'paid';
+        } else {
+            $status = 'pending';
+        }
         $this->placeOrder($status);
     }
 
@@ -98,6 +103,8 @@ trait HasPaymentFlow
             $coupon = Coupon::find($this->appliedCoupon['id']);
         }
 
+        $scheduledAt = $this->scheduledAt ? Carbon::parse($this->scheduledAt) : null;
+
         try {
             $order = $orderService->createOrder(
                 $this->customerId,
@@ -109,6 +116,7 @@ trait HasPaymentFlow
                 $initialStatus,
                 $this->deliveryFee,
                 $coupon,
+                $scheduledAt,
             );
         } catch (RuntimeException $e) {
             Log::channel('discord')->error('Falha ao criar pedido no chat', [
@@ -140,7 +148,11 @@ trait HasPaymentFlow
 
         $summary = $orderService->buildOrderSummaryFromOrder($order);
 
-        if ($initialStatus === 'paid') {
+        if ($initialStatus === 'scheduled') {
+            $scheduledLabel = Carbon::parse($this->scheduledAt)->setTimezone(config('app.timezone'))->format('d/m/Y \à\s H:i');
+            $this->addMessage('bot', $summary."\n\n🕐 Pedido agendado para {$scheduledLabel}. Pagamento em dinheiro na entrega. Obrigado!");
+            $this->transitionTo('ORDER_CONFIRMED');
+        } elseif ($initialStatus === 'paid') {
             $this->addMessage('bot', $summary."\n\nPagamento em dinheiro na entrega. Obrigado!");
             $this->transitionTo('ORDER_CONFIRMED');
         } elseif ($this->paymentMethod === 'CARD') {
@@ -208,8 +220,10 @@ trait HasPaymentFlow
             'status' => $status,
         ]);
 
+        $scheduledLabel = $order->scheduled_at?->setTimezone(config('app.timezone'))->format('d/m/Y \à\s H:i');
         $messages = [
             'awaiting_payment' => "⏳ Pedido {$order->order_number} recebido! Aguardando confirmação do pagamento.",
+            'scheduled' => "✅ Pagamento confirmado! Seu pedido {$order->order_number} está agendado para {$scheduledLabel}. Você receberá atualizações quando começarmos a preparar.",
             'paid' => "✅ Pagamento confirmado! Seu pedido {$order->order_number} já será preparado. Obrigado!",
             'preparing' => "👨‍🍳 Seu pedido {$order->order_number} está sendo preparado! Em breve ficará pronto.",
             'ready' => "🛵 Pedido {$order->order_number} pronto e saiu para entrega! Aguarde em breve.",
@@ -222,7 +236,7 @@ trait HasPaymentFlow
             $this->lastNotifiedStatus = $status;
         }
 
-        if ($status === 'paid') {
+        if (in_array($status, ['paid', 'scheduled'])) {
             $this->transitionTo('ORDER_CONFIRMED');
         }
 
@@ -508,6 +522,8 @@ trait HasPaymentFlow
         $this->appliedCoupon = null;
         $this->couponDiscount = 0.0;
         $this->couponError = null;
+        $this->scheduledAt = null;
+        $this->scheduleInput = '';
         $this->transitionTo('MENU_BROWSE');
     }
 

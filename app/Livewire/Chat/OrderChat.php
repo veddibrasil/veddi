@@ -60,6 +60,10 @@ class OrderChat extends Component
 
     public ?int $orderId = null;
 
+    public ?string $scheduledAt = null;
+
+    public string $scheduleInput = '';
+
     public string $paymentMethod = 'PIX';
 
     public string $orderType = 'delivery'; // 'delivery' | 'pickup'
@@ -423,7 +427,10 @@ class OrderChat extends Component
                         ->where('products.active', true)
                         ->select('products.*', 'bp.available', 'bp.track_stock', 'bp.quantity')
                         ->orderBy('products.sort_order')
-                        ->with('optionGroups.options');
+                        ->with([
+                            'optionGroups.options' => fn ($q) => $q->where('active', true),
+                            'optionGroups.inactiveOptions',
+                        ]);
                 }])
                 ->get();
         });
@@ -476,6 +483,8 @@ class OrderChat extends Component
             'notes' => $this->notes,
             'taxId' => $this->taxId,
             'orderId' => $this->orderId,
+            'scheduledAt' => $this->scheduledAt,
+            'scheduleInput' => $this->scheduleInput,
             'paymentMethod' => $this->paymentMethod,
             'orderType' => $this->orderType,
             'deliveryFee' => $this->deliveryFee,
@@ -520,6 +529,8 @@ class OrderChat extends Component
         $this->notes = '';
         $this->taxId = '';
         $this->orderId = null;
+        $this->scheduledAt = null;
+        $this->scheduleInput = '';
         $this->pixQrCode = null;
         $this->pixCopyPaste = null;
         $this->paymentId = null;

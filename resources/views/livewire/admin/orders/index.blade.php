@@ -19,6 +19,7 @@
             <option value="">Todos os status</option>
             <option value="pending">Pendente</option>
             <option value="awaiting_payment">Aguardando Pagamento</option>
+            <option value="scheduled">Agendado</option>
             <option value="paid">Pago</option>
             <option value="preparing">Preparando</option>
             <option value="ready">Pronto</option>
@@ -48,6 +49,9 @@
                             @endif
                             <p class="text-sm text-neutral-600 dark:text-neutral-400">{{ $order->customer->name ?? '—' }}</p>
                             <p class="text-xs text-neutral-400 dark:text-neutral-500">{{ $order->branch->name ?? '—' }} · {{ $order->created_at->format('d/m H:i') }}</p>
+                            @if ($order->scheduled_at)
+                                <p class="text-xs text-amber-600 dark:text-amber-400 font-medium">🕐 Agendado: {{ $order->scheduled_at->setTimezone(config('app.timezone'))->format('d/m H:i') }}</p>
+                            @endif
                         </div>
                         <div class="flex items-center gap-4 shrink-0">
                             <p class="font-bold text-sm text-neutral-800 dark:text-neutral-100">R$ {{ number_format($order->total, 2, ',', '.') }}</p>
@@ -55,6 +59,7 @@
                                 @if($order->status === 'paid' || $order->status === 'delivered') bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400
                                 @elseif($order->status === 'preparing' || $order->status === 'ready') bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-400
                                 @elseif($order->status === 'cancelled') bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400
+                                @elseif($order->status === 'scheduled') bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400
                                 @elseif($order->status === 'awaiting_payment') bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-400
                                 @else bg-neutral-100 text-neutral-600 dark:bg-zinc-700 dark:text-neutral-300 @endif">
                                 {{ $order->status_label }}

@@ -140,7 +140,7 @@
         @php
             $steps = ['BRANCH_SELECT','MENU_BROWSE','CART_REVIEW','IDENTIFY_PHONE','PAYMENT_PIX'];
             $currentIdx = array_search($step, $steps);
-            if ($currentIdx === false) $currentIdx = in_array($step, ['REGISTER_NAME','REGISTER_EMAIL','REGISTER_ADDRESS']) ? 3 : (in_array($step, ['CHECKOUT_COUPON','CHECKOUT_ORDER_TYPE','CHECKOUT_DELIVERY_ADDRESS','CHECKOUT_DELIVERY_FEE','CHECKOUT_NOTES','CHECKOUT_CPF','CHECKOUT_PAYMENT_METHOD','CHECKOUT_CONFIRM']) ? 3 : ($step === 'ORDER_CONFIRMED' ? 5 : $currentIdx));
+            if ($currentIdx === false) $currentIdx = in_array($step, ['REGISTER_NAME','REGISTER_EMAIL','REGISTER_ADDRESS']) ? 3 : (in_array($step, ['CHECKOUT_COUPON','CHECKOUT_ORDER_TYPE','CHECKOUT_DELIVERY_ADDRESS','CHECKOUT_DELIVERY_FEE','CHECKOUT_SCHEDULE','CHECKOUT_NOTES','CHECKOUT_CPF','CHECKOUT_PAYMENT_METHOD','CHECKOUT_CONFIRM']) ? 3 : ($step === 'ORDER_CONFIRMED' ? 5 : $currentIdx));
         @endphp
         <div class="flex items-center justify-center gap-1.5 pb-3 px-4">
             @for ($i = 0; $i < 5; $i++)
@@ -610,10 +610,10 @@
                     @if ($couponError)
                         <p class="text-xs text-red-500 px-1">{{ $couponError }}</p>
                     @endif
-                    <button wire:click="skipCoupon" class="w-full text-xs text-center text-gray-400 hover:text-gray-600 py-1 transition-colors">
+                    <button wire:click="skipCoupon" class="mc-btn-outline">
                         Continuar sem cupom →
                     </button>
-                @endif
+                    @endif
 
                 <button wire:click="backToCartReview" class="w-full text-xs text-center text-gray-400 hover:text-gray-600 py-1">
                     ← Voltar ao carrinho
@@ -822,6 +822,48 @@
                 </button>
             </div>
 
+        {{-- ── CHECKOUT_SCHEDULE ── --}}
+        @elseif ($step === 'CHECKOUT_SCHEDULE')
+            <div class="space-y-3" x-data="{ wantsSchedule: false }">
+                <p class="text-sm font-semibold text-gray-700 text-center">Quando deseja receber seu pedido?</p>
+
+                <div x-show="!wantsSchedule" class="space-y-2">
+                    <div class="flex gap-2">
+                        <button wire:click="selectScheduleOption('now')" class="mc-btn-primary flex-1  !py-2 !px-3 !text-xs">
+                            ⚡ Agora, o mais rápido possível
+                        </button>
+                        <button @click="wantsSchedule = true" class="mc-btn-secondary flex-1  !py-2 !px-3 !text-xs">
+                            🕐 Agendar para outro horário
+                        </button>
+                    </div>
+                    <button wire:click="backFromSchedule" class="mc-btn-outline w-full">← Voltar</button>
+                </div>
+                <div x-show="wantsSchedule" class="space-y-3" x-cloak>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1.5">Data e horário desejados</label>
+                        <input
+                            type="datetime-local"
+                            wire:model="scheduleInput"
+                            min="{{ now(config('app.timezone'))->addMinutes($currentCompany?->schedule_min_advance_minutes ?? 60)->format('Y-m-d\TH:i') }}"
+                            class="mc-input"
+                        />
+                        @error('scheduledAt') <p class="text-red-600 text-xs mt-1 flex items-center gap-1"><span>⚠</span> {{ $message }}</p> @enderror
+                    </div>
+                    <div class="flex gap-2">
+                        <button @click="wantsSchedule = false" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
+                        <button
+                            wire:click="submitScheduleTime"
+                            class="mc-btn-primary flex-1"
+                            wire:loading.attr="disabled"
+                            wire:target="submitScheduleTime"
+                        >
+                            <span wire:loading.remove wire:target="submitScheduleTime">Confirmar agendamento →</span>
+                            <span wire:loading wire:target="submitScheduleTime">Verificando...</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
         {{-- ── CHECKOUT_NOTES ── --}}
         @elseif ($step === 'CHECKOUT_NOTES')
             <div class="space-y-2.5">
@@ -868,7 +910,11 @@
                 </div>
 
                 <div class="flex gap-2">
-                    <button wire:click="backToOrderType" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
+                    @if ($currentCompany?->schedulingEnabled())
+                        <button wire:click="backToSchedule" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
+                    @else
+                        <button wire:click="backToOrderType" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
+                    @endif
                     <button
                         wire:click="proceedFromNotes"
                         class="mc-btn-primary flex-1 flex items-center justify-center gap-2"
@@ -1904,13 +1950,25 @@
                                             <p class="text-[11px] text-gray-400 leading-snug mt-0.5 line-clamp-2">{{ $product->description }}</p>
                                         @endif
                                      
-                                        <p class="text-sm font-black {{ $sbDisabled ? 'text-gray-400' : 'mc-text-primary' }} mt-0.5">
-                                            R$ {{ number_format($product->price, 2, ',', '.') }}
-                                        </p>
+                                        @if ($product->promo_price_enabled && $product->promo_price_value !== null)
+                                            <div class="flex items-center gap-2 mt-0.5">
+                                                <p class="text-[11px] text-gray-400 line-through">
+                                                    R$ {{ number_format($product->price, 2, ',', '.') }}
+                                                </p>
+                                                <p class="text-sm font-black {{ $sbDisabled ? 'text-gray-400' : 'mc-text-primary' }}">
+                                                    R$ {{ number_format($product->effective_price, 2, ',', '.') }}
+                                                </p>
+                                            </div>
+                                        @else
+                                            <p class="text-sm font-black {{ $sbDisabled ? 'text-gray-400' : 'mc-text-primary' }} mt-0.5">
+                                                R$ {{ number_format($product->price, 2, ',', '.') }}
+                                            </p>
+                                        @endif
                                         @if ($sbInsufficientStock)
                                             <p class="text-[10px] text-amber-500 mt-0.5">Máx. disponível: {{ $product->quantity }}</p>
                                         @endif
                                         @if ($product->optionGroups->isNotEmpty())
+                                            @php $hasPausedOptions = $product->optionGroups->some(fn ($g) => $g->inactiveOptions->isNotEmpty()); @endphp
                                             <div class="flex flex-wrap gap-1 mt-1">
                                                 @foreach ($product->optionGroups as $optGroup)
                                                     <span class="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full {{ $sbDisabled ? 'bg-gray-100 text-gray-400' : 'mc-bg-primary-light mc-text-primary' }}">
@@ -1919,6 +1977,12 @@
                                                     </span>
                                                 @endforeach
                                             </div>
+                                            @if ($hasPausedOptions && ! $sbDisabled)
+                                                <p class="text-[10px] text-amber-500 mt-0.5 flex items-center gap-0.5">
+                                                    <svg class="w-3 h-3 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
+                                                    Alguns itens em pausa
+                                                </p>
+                                            @endif
                                         @endif
                                     </div>
                                     {{-- Qty controls --}}
@@ -1936,23 +2000,39 @@
                                             $productData = [
                                                 'id'       => $product->id,
                                                 'name'     => $product->name,
-                                                'price'    => (float) $product->price,
+                                                'price'    => (float) $product->effective_price,
                                                 'allFixed' => $allFixed,
-                                                'groups'   => $product->optionGroups->map(fn ($g) => [
-                                                    'id'        => $g->id,
-                                                    'name'      => $g->name,
-                                                    'total_qty' => $g->total_qty,
-                                                    'fixed'     => (bool) $g->fixed,
-                                                    'options'   => $g->options->map(fn ($o) => [
-                                                        'id'               => $o->id,
-                                                        'name'             => $o->name,
-                                                        'additional_price' => (float) $o->additional_price,
-                                                        // fixo: usa default_qty; variável: usa seleção existente no carrinho
-                                                        'prefilledQty'     => $g->fixed
-                                                            ? (int) $o->default_qty
-                                                            : ($existingSels[$g->id][$o->id] ?? 0),
-                                                    ])->toArray(),
-                                                ])->toArray(),
+                                                'groups'   => $product->optionGroups->values()->map(function ($g, $gi) use ($product, $existingSels) {
+                                                    $isVariantPriceGroup = $product->is_variant && $gi === 0;
+                                                    $resolvePrice = fn ($o) => ($isVariantPriceGroup || ! $g->fixed) ? (float) $o->additional_price : 0.0;
+                                                    return [
+                                                        'id'        => $g->id,
+                                                        'name'      => $g->name,
+                                                        'total_qty' => $g->total_qty,
+                                                        'fixed'     => (bool) $g->fixed,
+                                                        'options'   => [
+                                                            ...$g->options->map(fn ($o) => [
+                                                                'id'               => $o->id,
+                                                                'name'             => $o->name,
+                                                                'description'      => $o->description,
+                                                                'additional_price' => $resolvePrice($o),
+                                                                'paused'           => false,
+                                                                // fixo: usa default_qty; variável: usa seleção existente no carrinho
+                                                                'prefilledQty'     => $g->fixed
+                                                                    ? (int) $o->default_qty
+                                                                    : ($existingSels[$g->id][$o->id] ?? 0),
+                                                            ])->toArray(),
+                                                            ...$g->inactiveOptions->map(fn ($o) => [
+                                                                'id'               => $o->id,
+                                                                'name'             => $o->name,
+                                                                'description'      => $o->description,
+                                                                'additional_price' => $resolvePrice($o),
+                                                                'paused'           => true,
+                                                                'prefilledQty'     => 0,
+                                                            ])->toArray(),
+                                                        ],
+                                                    ];
+                                                })->toArray(),
                                             ];
                                         } else {
                                             $productData = null;
@@ -1961,15 +2041,15 @@
                                     @endphp
                                     <div class="flex items-center gap-0.5 shrink-0">
                                         @if (! $sbOutOfStock)
-                                            @if ($hasOptions)
-                                                {{-- Produtos com opções: mesmos controles visuais dos produtos simples --}}
-                                                @if ($sbCartQty > 0)
-                                                    <button wire:click="updateCartQty('{{ $product->id }}', {{ $sbCartQty - 1 }})"
-                                                        class="w-6 h-6 rounded-full mc-bg-primary-light mc-text-primary font-bold text-sm flex items-center justify-center">−</button>
-                                                    <span class="w-5 text-center text-xs font-bold text-gray-800">{{ $sbCartQty }}</span>
-                                                @endif
-                                                <button
-                                                    @if (! $sbInsufficientStock)
+	                                            @if ($hasOptions)
+	                                                {{-- Produtos com opções: mesmos controles visuais dos produtos simples --}}
+	                                                @if ($sbCartQty > 0)
+	                                                    <button wire:click="decrementProductFromCart({{ $product->id }})"
+	                                                        class="w-6 h-6 rounded-full mc-bg-primary-light mc-text-primary font-bold text-sm flex items-center justify-center">−</button>
+	                                                    <span class="w-5 text-center text-xs font-bold text-gray-800">{{ $sbCartQty }}</span>
+	                                                @endif
+	                                                <button
+	                                                    @if (! $sbInsufficientStock)
                                                         @click="addOrOpenOptionSelector(@js($productData), $wire)"
                                                     @endif
                                                     @disabled($sbInsufficientStock)
@@ -2062,21 +2142,34 @@
                                 {{-- Opções --}}
                                 <div class="space-y-1">
                                     <template x-for="option in group.options" :key="option.id">
-                                        <div class="flex items-center gap-3 p-2.5 rounded-xl border border-gray-100 bg-gray-50">
+                                        <div class="flex items-center gap-3 p-2.5 rounded-xl border transition-colors"
+                                            :class="option.paused ? 'border-amber-100 bg-amber-50' : 'border-gray-100 bg-gray-50'">
                                             <div class="flex-1 min-w-0">
-                                                <p class="text-sm font-medium text-gray-800" x-text="option.name"></p>
+                                                <div class="flex items-center gap-1.5 flex-wrap">
+                                                    <p class="text-sm font-medium"
+                                                        :class="option.paused ? 'text-gray-400' : 'text-gray-800'"
+                                                        x-text="option.name"></p>
+                                                    <span x-show="option.paused"
+                                                        class="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-600">
+                                                        <svg class="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
+                                                        Em pausa
+                                                    </span>
+                                                </div>
+                                                <p class="text-xs text-gray-500 mt-0.5 leading-snug"
+                                                    x-show="option.description && !option.paused"
+                                                    x-text="option.description"></p>
                                                 <p class="text-xs text-gray-400 mt-0.5"
-                                                    x-show="option.additional_price > 0"
+                                                    x-show="option.additional_price > 0 && !option.paused"
                                                     x-text="'+R$ ' + option.additional_price.toFixed(2).replace('.', ',')"></p>
                                             </div>
                                             <div class="flex items-center gap-1.5 shrink-0">
-                                                <template x-if="group.fixed">
+                                                <template x-if="!option.paused && group.fixed">
                                                     {{-- Fixo: apenas exibe a quantidade --}}
                                                     <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 text-xs font-semibold">
                                                         <span x-text="option.prefilledQty"></span> un.
                                                     </span>
                                                 </template>
-                                                <template x-if="!group.fixed">
+                                                <template x-if="!option.paused && !group.fixed">
                                                     {{-- Variável: controles de quantidade --}}
                                                     <div class="flex items-center gap-1.5">
                                                         <button

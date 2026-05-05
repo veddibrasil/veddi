@@ -18,7 +18,7 @@ trait HasCartManagement
                 'product_id' => $productId,
                 'qty' => $quantity,
                 'name' => $product->name,
-                'price' => (float) $product->price,
+                'price' => (float) $product->effective_price,
             ];
         }
         $this->cart = $cart;
@@ -47,7 +47,7 @@ trait HasCartManagement
                     'product_id' => $productId,
                     'qty' => 1,
                     'name' => $product->name,
-                    'price' => (float) $product->price,
+                    'price' => (float) $product->effective_price,
                     'options' => $optionSelections,
                 ];
             }
@@ -60,7 +60,7 @@ trait HasCartManagement
                 'product_id' => $productId,
                 'qty' => 1,
                 'name' => $product->name,
-                'price' => (float) $product->price,
+                'price' => (float) $product->effective_price,
                 'options' => $optionSelections,
             ];
         }
@@ -73,6 +73,40 @@ trait HasCartManagement
         $cart = $this->cart;
         unset($cart[$cartKey]);
         $this->cart = $cart;
+    }
+
+    /**
+     * Decrementa em 1 a quantidade total de um produto no carrinho.
+     *
+     * Para produtos "simples" e para produtos com todos os grupos fixos, o carrinho usa a key do próprio produto.
+     * Para produtos com grupos variáveis, existem múltiplas entradas (ex.: "{productId}_1", "{productId}_2"...),
+     * então removemos/decrementamos a entrada mais recentemente adicionada.
+     */
+    public function decrementProductFromCart(int $productId): void
+    {
+        $cart = $this->cart;
+        $directKey = (string) $productId;
+
+        if (isset($cart[$directKey])) {
+            $this->updateCartQty($directKey, (int) ($cart[$directKey]['qty'] ?? 0) - 1);
+
+            return;
+        }
+
+        $keys = array_keys($cart);
+        for ($i = count($keys) - 1; $i >= 0; $i--) {
+            $key = (string) $keys[$i];
+            $item = $cart[$key] ?? null;
+            $itemProductId = (int) ($item['product_id'] ?? (int) $key);
+
+            if ($itemProductId !== $productId) {
+                continue;
+            }
+
+            $this->updateCartQty($key, (int) ($item['qty'] ?? 0) - 1);
+
+            return;
+        }
     }
 
     public function updateCartQty(string $cartKey, int $qty): void

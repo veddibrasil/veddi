@@ -15,12 +15,13 @@ class Order extends Model
 
     protected $fillable = [
         'company_id', 'order_number', 'customer_id', 'branch_id', 'subtotal', 'delivery_fee', 'total',
-        'status', 'notes', 'payment_method', 'order_type', 'coupon_id', 'discount', 'fee', 'net_value',
+        'status', 'notes', 'scheduled_at', 'payment_method', 'order_type', 'coupon_id', 'discount', 'fee', 'net_value',
         'fee_billed_at',
     ];
 
     protected $casts = [
         'fee_billed_at' => 'datetime',
+        'scheduled_at' => 'datetime',
     ];
 
     protected static function booted(): void
@@ -69,11 +70,17 @@ class Order extends Model
         return $this->hasMany(PaymentRefund::class);
     }
 
+    public function isScheduled(): bool
+    {
+        return $this->scheduled_at !== null;
+    }
+
     public function getStatusLabelAttribute(): string
     {
         return match ($this->status) {
             'pending' => 'Pendente',
             'awaiting_payment' => 'Aguardando Pagamento',
+            'scheduled' => 'Agendado',
             'paid' => 'Pago',
             'preparing' => 'Preparando',
             'ready' => 'Pronto',

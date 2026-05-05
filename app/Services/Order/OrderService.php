@@ -4,11 +4,13 @@ namespace App\Services\Order;
 
 use App\Contracts\OrderServiceInterface;
 use App\Contracts\RefundServiceInterface;
+use App\Jobs\NotifyScheduledOrderJob;
 use App\Models\CompanyNotification;
 use App\Models\Coupon;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -31,6 +33,7 @@ class OrderService implements OrderServiceInterface
         string $status = 'pending',
         float $deliveryFee = 0.0,
         ?Coupon $coupon = null,
+        ?Carbon $scheduledAt = null,
     ): Order {
         $currentCompany = app()->bound('current.company') ? app('current.company') : null;
 
@@ -57,7 +60,7 @@ class OrderService implements OrderServiceInterface
             }
         }
 
-        $order = DB::transaction(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany) {
+        $order = DB::transaction(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt) {
             $subtotal = 0.0;
             foreach ($cart as $cartKey => $item) {
                 $pid = (int) ($item['product_id'] ?? explode('_', (string) $cartKey)[0]);
@@ -67,7 +70,7 @@ class OrderService implements OrderServiceInterface
                         $optionsExtra += ($sel['qty'] ?? 0) * ($sel['additional_price'] ?? 0);
                     }
                 }
-                $subtotal += ((float) $products[$pid]->price + $optionsExtra) * $item['qty'];
+                $subtotal += ((float) $products[$pid]->effective_price + $optionsExtra) * $item['qty'];
             }
 
             $discount = 0.0;
@@ -103,6 +106,7 @@ class OrderService implements OrderServiceInterface
                 'net_value' => $netValue,
                 'status' => $status,
                 'notes' => $notes,
+                'scheduled_at' => $scheduledAt,
                 'payment_method' => strtolower($paymentMethod),
                 'order_type' => $orderType,
                 'coupon_id' => $coupon?->id,
@@ -117,7 +121,7 @@ class OrderService implements OrderServiceInterface
                         $optionsExtra += ($sel['qty'] ?? 0) * ($sel['additional_price'] ?? 0);
                     }
                 }
-                $unitPrice = (float) $product->price + $optionsExtra;
+                $unitPrice = (float) $product->effective_price + $optionsExtra;
 
                 OrderItem::create([
                     'order_id' => $order->id,
@@ -163,10 +167,17 @@ class OrderService implements OrderServiceInterface
                 'payment_method' => $paymentMethod,
                 'order_type' => $orderType,
                 'coupon_code' => $coupon?->code,
+                'scheduled_at' => $scheduledAt?->toIso8601String(),
             ]);
 
             return $order;
         });
+
+        if ($scheduledAt && $scheduledAt->isFuture()) {
+            $notifyAt = $scheduledAt->copy()->subMinutes(15);
+            NotifyScheduledOrderJob::dispatch($order->id)
+                ->delay($notifyAt->isFuture() ? $notifyAt : $scheduledAt);
+        }
 
         if ($currentCompany && $currentCompany->isFree() && ! $currentCompany->isWithinOrderLimit()) {
             CompanyNotification::create([

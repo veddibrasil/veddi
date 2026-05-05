@@ -73,7 +73,16 @@
                         <p class="text-xs text-neutral-400 dark:text-neutral-500">{{ $product->category->name ?? '—' }}</p>
                     </div>
                     <div class="w-24 text-right shrink-0">
-                        <p class="font-bold text-sm text-amber-600 dark:text-amber-400">R$ {{ number_format($product->price, 2, ',', '.') }}</p>
+                        @if ($product->promo_price_enabled && $product->promo_price_value !== null)
+                            <p class="text-[11px] text-neutral-400 dark:text-neutral-500 line-through">
+                                R$ {{ number_format($product->price, 2, ',', '.') }}
+                            </p>
+                            <p class="font-bold text-sm text-amber-600 dark:text-amber-400">
+                                R$ {{ number_format($product->effective_price, 2, ',', '.') }}
+                            </p>
+                        @else
+                            <p class="font-bold text-sm text-amber-600 dark:text-amber-400">R$ {{ number_format($product->price, 2, ',', '.') }}</p>
+                        @endif
                     </div>
                     <div class="w-16 text-center shrink-0">
                         <span class="text-xs px-2 py-0.5 rounded-full

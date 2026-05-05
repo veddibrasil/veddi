@@ -10,6 +10,7 @@ use App\Models\Customer;
 use App\Models\Order;
 use App\Services\Order\CouponService;
 use App\Services\Order\DeliveryService;
+use Carbon\Carbon;
 
 trait HasOrderFlow
 {
@@ -129,6 +130,14 @@ trait HasOrderFlow
         if ($type === 'pickup') {
             $this->deliveryFee = 0.0;
             $this->freeDelivery = false;
+
+            $company = app()->bound('current.company') ? app('current.company') : null;
+            if ($company?->schedulingEnabled()) {
+                $this->transitionTo('CHECKOUT_SCHEDULE');
+
+                return;
+            }
+
             $this->addMessage('bot', 'Alguma observação sobre o pedido?');
             $this->transitionTo('CHECKOUT_NOTES');
 
@@ -174,6 +183,14 @@ trait HasOrderFlow
         if (! $settings || ! $settings->active) {
             $this->deliveryFee = 0.0;
             $this->freeDelivery = false;
+
+            $company = app()->bound('current.company') ? app('current.company') : null;
+            if ($company?->schedulingEnabled()) {
+                $this->transitionTo('CHECKOUT_SCHEDULE');
+
+                return;
+            }
+
             $this->addMessage('bot', 'Alguma observação sobre o pedido?');
             $this->transitionTo('CHECKOUT_NOTES');
 
@@ -198,6 +215,13 @@ trait HasOrderFlow
 
     public function confirmDeliveryFee(): void
     {
+        $company = app()->bound('current.company') ? app('current.company') : null;
+        if ($company?->schedulingEnabled()) {
+            $this->transitionTo('CHECKOUT_SCHEDULE');
+
+            return;
+        }
+
         $this->addMessage('bot', 'Alguma observação sobre o pedido?');
         $this->transitionTo('CHECKOUT_NOTES');
     }
@@ -328,5 +352,103 @@ trait HasOrderFlow
     public function backToCpf(): void
     {
         $this->transitionTo('CHECKOUT_CPF');
+    }
+
+    public function backToSchedule(): void
+    {
+        $this->transitionTo('CHECKOUT_SCHEDULE');
+    }
+
+    public function backFromSchedule(): void
+    {
+        if ($this->orderType === 'pickup') {
+            $this->transitionTo('CHECKOUT_ORDER_TYPE');
+
+            return;
+        }
+
+        if ($this->deliveryFee > 0 || $this->freeDelivery) {
+            $this->transitionTo('CHECKOUT_DELIVERY_FEE');
+
+            return;
+        }
+
+        $this->transitionTo('CHECKOUT_DELIVERY_ADDRESS');
+    }
+
+    // --- Scheduling ---
+
+    public function selectScheduleOption(string $option): void
+    {
+        if ($option === 'now') {
+            $this->scheduledAt = null;
+            $this->scheduleInput = '';
+            $this->addMessage('user', 'Agora, o mais rápido possível');
+            $this->addMessage('bot', 'Alguma observação sobre o pedido?');
+            $this->transitionTo('CHECKOUT_NOTES');
+        }
+        // 'schedule' → blade toggles the datetime input via Alpine
+    }
+
+    public function submitScheduleTime(): void
+    {
+        $this->resetErrorBag('scheduledAt');
+
+        $company = app()->bound('current.company') ? app('current.company') : null;
+        $minMinutes = $company?->schedule_min_advance_minutes ?? 60;
+
+        if (empty($this->scheduleInput)) {
+            $this->addError('scheduledAt', 'Informe a data e horário desejados.');
+
+            return;
+        }
+
+        try {
+            $scheduled = Carbon::createFromFormat('Y-m-d\TH:i', $this->scheduleInput, config('app.timezone'));
+        } catch (\Exception) {
+            $this->addError('scheduledAt', 'Data/hora inválida.');
+
+            return;
+        }
+
+        if ($scheduled->isPast()) {
+            $this->addError('scheduledAt', 'O horário deve ser no futuro.');
+
+            return;
+        }
+
+        $minTime = now(config('app.timezone'))->addMinutes($minMinutes);
+        if ($scheduled->lt($minTime)) {
+            $this->addError('scheduledAt', "Agende com pelo menos {$minMinutes} minutos de antecedência.");
+
+            return;
+        }
+
+        $branch = Branch::find($this->selectedBranchId);
+        if ($branch) {
+            $dayOfWeek = (int) $scheduled->format('w');
+            $timeStr = $scheduled->format('H:i');
+
+            $availableDays = $branch->available_days;
+            if ($availableDays !== null && ! in_array($dayOfWeek, $availableDays)) {
+                $this->addError('scheduledAt', 'A filial não atende no dia selecionado.');
+
+                return;
+            }
+
+            if ($branch->opens_at && $branch->closes_at) {
+                if ($timeStr < $branch->opens_at || $timeStr > $branch->closes_at) {
+                    $this->addError('scheduledAt', "A filial funciona entre {$branch->opens_at} e {$branch->closes_at}.");
+
+                    return;
+                }
+            }
+        }
+
+        $this->scheduledAt = $scheduled->toIso8601String();
+        $scheduledLabel = $scheduled->format('d/m/Y \à\s H:i');
+        $this->addMessage('user', "Agendado para {$scheduledLabel}");
+        $this->addMessage('bot', 'Alguma observação sobre o pedido?');
+        $this->transitionTo('CHECKOUT_NOTES');
     }
 }

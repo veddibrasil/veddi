@@ -4,6 +4,7 @@ namespace App\Contracts;
 
 use App\Models\Coupon;
 use App\Models\Order;
+use Carbon\Carbon;
 
 interface OrderServiceInterface
 {
@@ -17,6 +18,7 @@ interface OrderServiceInterface
         string $status = 'pending',
         float $deliveryFee = 0.0,
         ?Coupon $coupon = null,
+        ?Carbon $scheduledAt = null,
     ): Order;
 
     public function cancelOrder(Order $order, int $customerId): void;
