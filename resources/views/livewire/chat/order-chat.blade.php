@@ -1,8 +1,4 @@
-{{--
-    Mister Coxinha — Chatbot de Pedidos
-    Mobile  : tela cheia (igual WhatsApp mobile)
-    Desktop : card centralizado sobre fundo com identidade da marca
---}}
+
 <div
     class="
         relative flex flex-col bg-white overflow-hidden
@@ -829,10 +825,10 @@
 
                 <div x-show="!wantsSchedule" class="space-y-2">
                     <div class="flex gap-2">
-                        <button wire:click="selectScheduleOption('now')" class="mc-btn-primary flex-1  !py-2 !px-3 !text-xs">
+                        <button wire:click="selectScheduleOption('now')" class="mc-btn-primary flex-1 !py-2 !px-3 !text-xs">
                             ⚡ Agora, o mais rápido possível
                         </button>
-                        <button @click="wantsSchedule = true" class="mc-btn-secondary flex-1  !py-2 !px-3 !text-xs">
+                        <button @click="wantsSchedule = true" class="mc-btn-secondary flex-1 !py-2 !px-3 !text-xs">
                             🕐 Agendar para outro horário
                         </button>
                     </div>
@@ -848,10 +844,10 @@
                             class="mc-input"
                         />
                         @error('scheduledAt') <p class="text-red-600 text-xs mt-1 flex items-center gap-1"><span>⚠</span> {{ $message }}</p> @enderror
-                    </div>
-                    <div class="flex gap-2">
+                        </div>
+                        <div class="flex gap-2">
                         <button @click="wantsSchedule = false" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
-                        <button
+                                <button
                             wire:click="submitScheduleTime"
                             class="mc-btn-primary flex-1"
                             wire:loading.attr="disabled"
@@ -1105,7 +1101,7 @@
                         @php $hasItemOptions = !empty($item['options']); @endphp
                         <div class="flex items-start gap-2.5 bg-gray-50 rounded-xl p-2.5 border border-gray-100">
                             <div class="flex-1 min-w-0">
-                                <p class="font-semibold text-sm text-gray-800 truncate">{{ $item['name'] }}</p>
+                                <p class="font-semibold text-sm text-gray-800 truncate break-words">{{ $item['name'] }}</p>
                                 @if ($hasItemOptions)
                                     @foreach ($item['options'] as $group)
                                         <p class="text-xs font-medium text-gray-500 mt-0.5">{{ $group['group_name'] }}:</p>
@@ -1950,7 +1946,16 @@
                                             <p class="text-[11px] text-gray-400 leading-snug mt-0.5 line-clamp-2">{{ $product->description }}</p>
                                         @endif
                                      
-                                        @if ($product->promo_price_enabled && $product->promo_price_value !== null)
+                                        @if ($product->is_variant && $product->optionGroups->isNotEmpty())
+                                            @php
+                                                $variantFirstGroup = $product->optionGroups->first();
+                                                $variantMinOption  = $variantFirstGroup?->activeOptions->min('additional_price') ?? 0;
+                                                $variantMinPrice   = (float) $product->effective_price + (float) $variantMinOption;
+                                            @endphp
+                                            <p class="text-sm font-black {{ $sbDisabled ? 'text-gray-400' : 'mc-text-primary' }} mt-0.5">
+                                                A partir de R$ {{ number_format($variantMinPrice, 2, ',', '.') }}
+                                            </p>
+                                        @elseif ($product->promo_price_enabled && $product->promo_price_value !== null)
                                             <div class="flex items-center gap-2 mt-0.5">
                                                 <p class="text-[11px] text-gray-400 line-through">
                                                     R$ {{ number_format($product->price, 2, ',', '.') }}
@@ -2113,7 +2118,7 @@
                 </button>
                 <div class="flex-1 min-w-0">
                     <p class="text-white font-bold text-sm truncate" x-text="selectingProduct?.name"></p>
-                    <p class="text-white/70 text-xs" x-text="'R$ ' + (selectingProduct?.price?.toFixed(2) ?? '').replace('.', ',')"></p>
+                    <p class="text-white/70 text-xs" x-text="'R$ ' + getTotalWithOptions().toFixed(2).replace('.', ',')"></p>
                 </div>
             </div>
 
@@ -2128,13 +2133,15 @@
                                     <div>
                                         <p class="font-bold text-sm text-gray-800" x-text="group.name"></p>
                                         <p class="text-xs text-gray-400 mt-0.5">
-                                            Distribua exatamente <span class="font-semibold" x-text="group.total_qty"></span> unidades
+                                            Máximo <span class="font-semibold" x-text="group.total_qty"></span> unidades
                                         </p>
                                     </div>
                                     <span class="text-xs font-bold px-2 py-1 rounded-full"
-                                        :class="getGroupTotal(group.id) === group.total_qty
-                                            ? 'bg-green-100 text-green-700'
-                                            : 'bg-gray-100 text-gray-500'">
+                                        :class="getGroupTotal(group.id) > group.total_qty
+                                            ? 'bg-red-100 text-red-700'
+                                            : getGroupTotal(group.id) === group.total_qty
+                                                ? 'bg-green-100 text-green-700'
+                                                : 'bg-gray-100 text-gray-500'">
                                         <span x-text="getGroupTotal(group.id)"></span>/<span x-text="group.total_qty"></span>
                                     </span>
                                 </div>
@@ -2178,8 +2185,10 @@
                                                         <span class="w-7 text-center text-sm font-bold text-gray-800"
                                                             x-text="pendingSelections[group.id]?.[option.id] || 0"></span>
                                                         <button
-                                                            @click="if (!pendingSelections[group.id]) pendingSelections[group.id] = {}; pendingSelections[group.id][option.id] = (pendingSelections[group.id]?.[option.id] || 0) + 1"
-                                                            class="w-7 h-7 rounded-full mc-bg-primary text-white font-bold text-base flex items-center justify-center">+</button>
+                                                            @click="if (getGroupTotal(group.id) < group.total_qty) { if (!pendingSelections[group.id]) pendingSelections[group.id] = {}; pendingSelections[group.id][option.id] = (pendingSelections[group.id]?.[option.id] || 0) + 1 }"
+                                                            :disabled="getGroupTotal(group.id) >= group.total_qty"
+                                                            :class="getGroupTotal(group.id) >= group.total_qty ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white'"
+                                                            class="w-7 h-7 rounded-full font-bold text-base flex items-center justify-center">+</button>
                                                     </div>
                                                 </template>
                                             </div>
@@ -2291,10 +2300,24 @@
 
         canConfirm() {
             if (!this.selectingProduct) return false;
-            // Grupos fixos já estão preenchidos; apenas grupos variáveis precisam de validação
             return this.selectingProduct.groups.every(
-                group => group.fixed || this.getGroupTotal(group.id) === group.total_qty
+                group => group.fixed || this.getGroupTotal(group.id) <= group.total_qty
             );
+        },
+
+        getTotalWithOptions() {
+            if (!this.selectingProduct) return 0;
+            let base = this.selectingProduct.price || 0;
+            let extra = 0;
+            this.selectingProduct.groups.forEach(group => {
+                group.options.forEach(opt => {
+                    const qty = group.fixed
+                        ? (opt.prefilledQty || 0)
+                        : (parseInt(this.pendingSelections[group.id]?.[opt.id]) || 0);
+                    extra += qty * (opt.additional_price || 0);
+                });
+            });
+            return base + extra;
         },
 
         confirmOptions(wire) {
