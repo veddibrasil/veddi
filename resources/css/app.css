@@ -27,7 +27,7 @@
 
     --color-accent: #7A00A3;
     --color-accent-content: #7A00A3;
-    --color-accent-foreground: var(--color-white);
+    --color-accent-foreground: #ffffff;
 
     /* ─── Remapeia amber → Roxo Veddi (substitui todas as classes amber-* do admin) */
     --color-amber-50:  #f9f0fd;
