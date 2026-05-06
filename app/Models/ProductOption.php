@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ProductOption extends Model
 {
-    protected $fillable = ['product_option_group_id', 'name', 'active', 'description', 'additional_price', 'default_qty', 'sort_order'];
+    protected $fillable = ['product_option_group_id', 'name', 'image_path', 'active', 'description', 'additional_price', 'default_qty', 'sort_order'];
 
     protected $casts = [
         'active' => 'boolean',
@@ -15,6 +15,16 @@ class ProductOption extends Model
         'default_qty' => 'integer',
         'sort_order' => 'integer',
     ];
+
+    public function getImageUrlAttribute(): ?string
+    {
+        if (! $this->image_path) {
+            return null;
+        }
+        $base = rtrim(config('filesystems.disks.s3.url', ''), '/');
+
+        return $base.'/'.ltrim($this->image_path, '/');
+    }
 
     public function group(): BelongsTo
     {

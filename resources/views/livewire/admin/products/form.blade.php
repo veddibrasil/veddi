@@ -254,6 +254,52 @@
 
                         {{-- Cabeçalho do grupo --}}
                         <div class="flex items-start gap-3">
+                            {{-- Imagem do grupo --}}
+                            <div x-data="{
+                                    preview: null,
+                                    existingUrl: '{{ $group['image_url'] ?? '' }}',
+                                    handleChange(e) {
+                                        const f = e.target.files[0];
+                                        if (!f) return;
+                                        const r = new FileReader();
+                                        r.onload = ev => { this.preview = ev.target.result; this.existingUrl = ''; };
+                                        r.readAsDataURL(f);
+                                    },
+                                    clear() {
+                                        this.preview = null;
+                                        this.existingUrl = '';
+                                        this.$refs.ginput.value = '';
+                                        $wire.clearGroupImage('{{ $group['key'] }}');
+                                    }
+                                }" class="shrink-0">
+                                <div class="relative w-14 h-14 rounded-lg border-2 border-dashed border-neutral-300 dark:border-zinc-600 hover:border-amber-400 dark:hover:border-amber-500 cursor-pointer overflow-hidden transition-colors flex items-center justify-center bg-neutral-50 dark:bg-zinc-700/50"
+                                     @click="$refs.ginput.click()">
+                                    <input x-ref="ginput" type="file" accept="image/*"
+                                           wire:model="groupImages.{{ $group['key'] }}"
+                                           @change="handleChange($event)" class="hidden" />
+                                    <template x-if="preview || existingUrl">
+                                        <img :src="preview || existingUrl" class="w-full h-full object-cover" />
+                                    </template>
+                                    <template x-if="!preview && !existingUrl">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-neutral-400 dark:text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                        </svg>
+                                    </template>
+                                    <div wire:loading wire:target="groupImages.{{ $group['key'] }}"
+                                         class="absolute inset-0 flex items-center justify-center bg-white/70 dark:bg-zinc-800/70">
+                                        <svg class="animate-spin h-4 w-4 text-amber-500" fill="none" viewBox="0 0 24 24">
+                                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                                        </svg>
+                                    </div>
+                                </div>
+                                <button type="button" x-show="preview || existingUrl" x-cloak
+                                        @click.stop="clear()"
+                                        class="mt-1 w-full text-center text-[10px] text-red-400 hover:text-red-600 dark:hover:text-red-300">
+                                    remover
+                                </button>
+                            </div>
+
                             <div class="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
                                     <div class="flex items-center gap-2 mb-1">
@@ -277,7 +323,8 @@
                                     <flux:input wire:model="optionGroups.{{ $gi }}.total_qty"
                                         type="number" min="1"
                                         label="Quantidade total"
-                                        placeholder="Ex: 100" />
+                                        placeholder="Ex: 100"
+                                        x-on:input="$dispatch('fixedqtytotal{{ $gi }}', { qty: parseInt($event.target.value) || 0 })" />
                                     @error("optionGroups.{$gi}.total_qty")
                                         <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
                                     @enderror
@@ -335,6 +382,34 @@
                         {{-- Opções do grupo --}}
                         <div class="space-y-2">
                             <p class="text-xs font-medium text-neutral-500 uppercase tracking-wide dark:text-neutral-400">Opções</p>
+                            @if (!empty($group['fixed']))
+                            @php $optsQtyJson = collect($group['options'])->mapWithKeys(fn($o, $oi) => [(string)$oi => (int)($o['default_qty'] ?? 0)])->toJson(); @endphp
+                            <div
+                                x-data="{
+                                    opts: {{ $optsQtyJson }},
+                                    total: {{ (int)($group['total_qty'] ?? 0) }},
+                                    get used() { return Object.values(this.opts).reduce((s, v) => s + (parseInt(v) || 0), 0); },
+                                    get remaining() { return this.total - this.used; }
+                                }"
+                                x-on:fixedqtyopt{{ $gi }}.window="opts[$event.detail.oi] = $event.detail.qty"
+                                x-on:fixedqtytotal{{ $gi }}.window="total = $event.detail.qty"
+                                class="flex items-center gap-3 py-1"
+                            >
+                                <div class="flex-1 bg-gray-200 rounded-full h-2 dark:bg-zinc-600 overflow-hidden">
+                                    <div class="h-2 rounded-full transition-all duration-200"
+                                        :style="`width: ${total > 0 ? Math.min(100, used / total * 100) : 0}%`"
+                                        :class="used > total ? 'bg-red-500' : used === total ? 'bg-green-500' : 'bg-amber-400'">
+                                    </div>
+                                </div>
+                                <span class="text-xs font-medium whitespace-nowrap"
+                                    :class="used > total ? 'text-red-600 dark:text-red-400' : used === total ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'">
+                                    <span x-text="used"></span>/<span x-text="total"></span>
+                                    <span x-show="used > total"> — excede em <span x-text="used - total"></span></span>
+                                    <span x-show="used < total"> — faltam <span x-text="total - used"></span></span>
+                                    <span x-show="used === total"> ✓</span>
+                                </span>
+                            </div>
+                            @endif
 
                             @foreach ($group['options'] as $oi => $option)
                                 @php
@@ -348,8 +423,57 @@
                                     @if (!empty($group['fixed'])) x-data="{ qty: {{ (int)($option['default_qty'] ?? 0) }}, basePrice: {{ $optBasePrice }} }" @endif
                                     @if (!empty($group['fixed']) && !($isVariant && $gi === 0)) x-on:base-price-changed.window="basePrice = $event.detail.price" @endif>
 
-                                    {{-- Linha 1: nome + ações --}}
+                                    {{-- Linha 1: imagem + nome + ações --}}
                                     <div class="flex items-center gap-2">
+                                        {{-- Imagem da opção --}}
+                                        @php $optImgKey = $group['key'].'_'.$option['key']; @endphp
+                                        <div x-data="{
+                                                preview: null,
+                                                existingUrl: '{{ $option['image_url'] ?? '' }}',
+                                                handleChange(e) {
+                                                    const f = e.target.files[0];
+                                                    if (!f) return;
+                                                    const r = new FileReader();
+                                                    r.onload = ev => { this.preview = ev.target.result; this.existingUrl = ''; };
+                                                    r.readAsDataURL(f);
+                                                },
+                                                clear() {
+                                                    this.preview = null;
+                                                    this.existingUrl = '';
+                                                    this.$refs.oinput.value = '';
+                                                    $wire.clearOptionImage('{{ $group['key'] }}', '{{ $option['key'] }}');
+                                                }
+                                            }" class="shrink-0 relative group/optimg">
+                                            <div class="relative w-10 h-10 rounded-lg border border-dashed border-neutral-300 dark:border-zinc-500 hover:border-amber-400 dark:hover:border-amber-500 cursor-pointer overflow-hidden bg-neutral-50 dark:bg-zinc-700/50 flex items-center justify-center transition-colors"
+                                                 @click="$refs.oinput.click()">
+                                                <input x-ref="oinput" type="file" accept="image/*"
+                                                       wire:model="optionImages.{{ $optImgKey }}"
+                                                       @change="handleChange($event)" class="hidden" />
+                                                <template x-if="preview || existingUrl">
+                                                    <img :src="preview || existingUrl" class="w-full h-full object-cover" />
+                                                </template>
+                                                <template x-if="!preview && !existingUrl">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-neutral-400 dark:text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                    </svg>
+                                                </template>
+                                                <div wire:loading wire:target="optionImages.{{ $optImgKey }}"
+                                                     class="absolute inset-0 flex items-center justify-center bg-white/70 dark:bg-zinc-800/70">
+                                                    <svg class="animate-spin h-3 w-3 text-amber-500" fill="none" viewBox="0 0 24 24">
+                                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                                                    </svg>
+                                                </div>
+                                                <button type="button" x-show="preview || existingUrl" x-cloak
+                                                        @click.stop="clear()"
+                                                        class="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover/optimg:opacity-100 transition-opacity rounded-lg">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                        </div>
+
                                         <div class="flex-1">
                                             <flux:input wire:model="optionGroups.{{ $gi }}.options.{{ $oi }}.name"
                                                 placeholder="Nome da opção (ex: Coxinha de Frango)" />
@@ -429,7 +553,7 @@
                                                 type="number" min="0"
                                                 label="Qtd. fixa"
                                                 placeholder="0"
-                                                x-on:input="qty = parseFloat($event.target.value) || 0" />
+                                                x-on:input="qty = parseInt($event.target.value) || 0; $dispatch('fixedqtyopt{{ $gi }}', { oi: '{{ $oi }}', qty: qty })" />
                                             @error("optionGroups.{$gi}.options.{$oi}.default_qty")
                                                 <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
                                             @enderror

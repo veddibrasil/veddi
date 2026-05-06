@@ -9,13 +9,23 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ProductOptionGroup extends Model
 {
-    protected $fillable = ['company_id', 'name', 'total_qty', 'fixed', 'sort_order'];
+    protected $fillable = ['company_id', 'name', 'image_path', 'total_qty', 'fixed', 'sort_order'];
 
     protected $casts = [
         'total_qty' => 'integer',
         'fixed' => 'boolean',
         'sort_order' => 'integer',
     ];
+
+    public function getImageUrlAttribute(): ?string
+    {
+        if (! $this->image_path) {
+            return null;
+        }
+        $base = rtrim(config('filesystems.disks.s3.url', ''), '/');
+
+        return $base.'/'.ltrim($this->image_path, '/');
+    }
 
     public function company(): BelongsTo
     {

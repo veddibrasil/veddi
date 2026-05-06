@@ -62,6 +62,10 @@ class Form extends Component
 
     public array $optionGroups = [];
 
+    public array $groupImages = [];
+
+    public array $optionImages = [];
+
     public bool $showGroupPicker = false;
 
     public bool $isVariant = false;
@@ -98,6 +102,8 @@ class Form extends Component
             'optionGroups.*.options.*.description' => ['nullable', 'string', 'max:255'],
             'optionGroups.*.options.*.additional_price' => ['required_with:optionGroups.*.options.*', 'numeric', 'min:0'],
             'optionGroups.*.options.*.default_qty' => ['required_with:optionGroups.*.options.*', 'integer', 'min:0'],
+            'groupImages.*' => ['nullable', 'image', 'max:2048'],
+            'optionImages.*' => ['nullable', 'image', 'max:2048'],
         ];
     }
 
@@ -115,6 +121,10 @@ class Form extends Component
             'promo_price_value.required' => 'Informe o valor da promoção.',
             'image.image' => 'O arquivo deve ser uma imagem.',
             'image.max' => 'A imagem deve ter no máximo 2MB.',
+            'groupImages.*.image' => 'O arquivo do grupo deve ser uma imagem.',
+            'groupImages.*.max' => 'A imagem do grupo deve ter no máximo 2MB.',
+            'optionImages.*.image' => 'O arquivo da opção deve ser uma imagem.',
+            'optionImages.*.max' => 'A imagem da opção deve ter no máximo 2MB.',
             'optionGroups.*.name.required_with' => 'O nome do grupo é obrigatório.',
             'optionGroups.*.total_qty.required_with' => 'A quantidade total é obrigatória.',
             'optionGroups.*.total_qty.min' => 'A quantidade total deve ser pelo menos 1.',
@@ -165,6 +175,8 @@ class Form extends Component
                     'key' => 'gid-'.$group->id,
                     'group_id' => $group->id,
                     'name' => $group->name,
+                    'image_path' => $group->image_path,
+                    'image_url' => $group->image_url,
                     'total_qty' => (string) $group->total_qty,
                     'fixed' => (bool) $group->fixed,
                     'sort_order' => $group->pivot->sort_order,
@@ -172,6 +184,8 @@ class Form extends Component
                         'key' => 'oid-'.$opt->id,
                         'id' => $opt->id,
                         'name' => $opt->name,
+                        'image_path' => $opt->image_path,
+                        'image_url' => $opt->image_url,
                         'active' => (bool) $opt->active,
                         'description' => $opt->description ?? '',
                         'additional_price' => number_format((float) $opt->additional_price, 2, '.', ''),
@@ -259,6 +273,8 @@ class Form extends Component
             'key' => (string) Str::uuid(),
             'group_id' => null,
             'name' => '',
+            'image_path' => null,
+            'image_url' => null,
             'total_qty' => '100',
             'fixed' => false,
             'sort_order' => count($this->optionGroups),
@@ -285,6 +301,8 @@ class Form extends Component
             'key' => 'gid-'.$group->id,
             'group_id' => $group->id,
             'name' => $group->name,
+            'image_path' => $group->image_path,
+            'image_url' => $group->image_url,
             'total_qty' => (string) $group->total_qty,
             'fixed' => (bool) $group->fixed,
             'sort_order' => count($this->optionGroups),
@@ -292,6 +310,8 @@ class Form extends Component
                 'key' => 'oid-'.$opt->id,
                 'id' => $opt->id,
                 'name' => $opt->name,
+                'image_path' => $opt->image_path,
+                'image_url' => $opt->image_url,
                 'active' => (bool) $opt->active,
                 'description' => $opt->description ?? '',
                 'additional_price' => number_format((float) $opt->additional_price, 2, '.', ''),
@@ -305,6 +325,13 @@ class Form extends Component
 
     public function removeOptionGroup(int $index): void
     {
+        $group = $this->optionGroups[$index] ?? null;
+        if ($group) {
+            unset($this->groupImages[$group['key']]);
+            foreach ($group['options'] ?? [] as $opt) {
+                unset($this->optionImages[$group['key'].'_'.$opt['key']]);
+            }
+        }
         array_splice($this->optionGroups, $index, 1);
         $this->reindexOptionGroups();
     }
@@ -315,6 +342,8 @@ class Form extends Component
             'key' => (string) Str::uuid(),
             'id' => null,
             'name' => '',
+            'image_path' => null,
+            'image_url' => null,
             'active' => true,
             'description' => '',
             'additional_price' => '0.00',
@@ -323,8 +352,43 @@ class Form extends Component
         ];
     }
 
+    public function clearGroupImage(string $groupKey): void
+    {
+        unset($this->groupImages[$groupKey]);
+        foreach ($this->optionGroups as $i => $group) {
+            if ($group['key'] === $groupKey) {
+                $this->optionGroups[$i]['image_path'] = null;
+                $this->optionGroups[$i]['image_url'] = null;
+                break;
+            }
+        }
+    }
+
+    public function clearOptionImage(string $groupKey, string $optKey): void
+    {
+        $imageKey = $groupKey.'_'.$optKey;
+        unset($this->optionImages[$imageKey]);
+        foreach ($this->optionGroups as $gi => $group) {
+            if ($group['key'] !== $groupKey) {
+                continue;
+            }
+            foreach ($group['options'] as $oi => $opt) {
+                if ($opt['key'] === $optKey) {
+                    $this->optionGroups[$gi]['options'][$oi]['image_path'] = null;
+                    $this->optionGroups[$gi]['options'][$oi]['image_url'] = null;
+                    break 2;
+                }
+            }
+        }
+    }
+
     public function removeOption(int $groupIndex, int $optionIndex): void
     {
+        $group = $this->optionGroups[$groupIndex] ?? null;
+        $opt = $group['options'][$optionIndex] ?? null;
+        if ($group && $opt) {
+            unset($this->optionImages[$group['key'].'_'.$opt['key']]);
+        }
         array_splice($this->optionGroups[$groupIndex]['options'], $optionIndex, 1);
         $this->reindexOptions($groupIndex);
     }
@@ -418,6 +482,19 @@ class Form extends Component
         abort_unless($this->canSave, 403);
 
         $validated = $this->validate($this->rules(), $this->messages());
+
+        foreach ($validated['optionGroups'] ?? [] as $gi => $groupData) {
+            if (empty($groupData['fixed'])) {
+                continue;
+            }
+            $totalQty = (int) $groupData['total_qty'];
+            $usedQty  = collect($groupData['options'] ?? [])->sum(fn ($o) => (int) ($o['default_qty'] ?? 0));
+            if ($usedQty > $totalQty) {
+                $this->addError("optionGroups.{$gi}.total_qty", "A soma das qtds. fixas ({$usedQty}) ultrapassa a quantidade total ({$totalQty}).");
+
+                return;
+            }
+        }
 
         $imagePath = $this->isEditing ? $this->product->image_path : null;
         if ($this->image) {
@@ -537,8 +614,21 @@ class Form extends Component
                 $group = new ProductOptionGroup(['company_id' => $companyId]);
             }
 
+            $groupKey = $groupData['key'];
+            $groupImagePath = $groupData['image_path'] ?? null;
+            if (! empty($this->groupImages[$groupKey])) {
+                if ($groupImagePath) {
+                    Storage::disk('s3')->delete($groupImagePath);
+                }
+                $stored = $this->groupImages[$groupKey]->store('product-option-groups', 's3');
+                if ($stored !== false) {
+                    $groupImagePath = $stored;
+                }
+            }
+
             $group->fill([
                 'name' => $groupData['name'],
+                'image_path' => $groupImagePath,
                 'total_qty' => (int) $groupData['total_qty'],
                 'fixed' => (bool) ($groupData['fixed'] ?? false),
                 'sort_order' => $i,
@@ -567,8 +657,21 @@ class Form extends Component
                 $groupFixed = (bool) ($groupData['fixed'] ?? false);
                 $isVariantPriceGroup = $this->isVariant && $i === 0;
 
+                $optImageKey = $groupKey.'_'.$optData['key'];
+                $optImagePath = $optData['image_path'] ?? null;
+                if (! empty($this->optionImages[$optImageKey])) {
+                    if ($optImagePath) {
+                        Storage::disk('s3')->delete($optImagePath);
+                    }
+                    $stored = $this->optionImages[$optImageKey]->store('product-option-images', 's3');
+                    if ($stored !== false) {
+                        $optImagePath = $stored;
+                    }
+                }
+
                 $option->fill([
                     'name' => $optData['name'],
+                    'image_path' => $optImagePath,
                     'active' => (bool) ($optData['active'] ?? true),
                     'description' => $optData['description'] ?: null,
                     'additional_price' => ($isVariantPriceGroup || ! $groupFixed) ? (float) $optData['additional_price'] : 0.0,
