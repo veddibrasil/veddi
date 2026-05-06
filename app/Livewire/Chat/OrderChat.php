@@ -12,6 +12,7 @@ use App\Models\Branch;
 use App\Models\ProductCategory;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
+use Livewire\Attributes\Computed;
 use Livewire\Component;
 
 class OrderChat extends Component
@@ -63,6 +64,10 @@ class OrderChat extends Component
     public ?string $scheduledAt = null;
 
     public string $scheduleInput = '';
+
+    public string $scheduleDate = '';
+
+    public string $scheduleTime = '';
 
     public string $paymentMethod = 'PIX';
 
@@ -396,6 +401,51 @@ class OrderChat extends Component
         return collect($this->cart)->sum(fn ($item) => $item['qty']);
     }
 
+    #[Computed]
+    public function availableTimeSlots(): array
+    {
+        if (! $this->selectedBranchId || ! $this->scheduleDate) {
+            return [];
+        }
+
+        $branch = Branch::find($this->selectedBranchId);
+        if (! $branch || ! $branch->opens_at || ! $branch->closes_at) {
+            return [];
+        }
+
+        try {
+            $date = \Carbon\Carbon::createFromFormat('Y-m-d', $this->scheduleDate, config('app.timezone'));
+        } catch (\Exception) {
+            return [];
+        }
+
+        $dayOfWeek = (int) $date->format('w');
+        $availableDays = $branch->available_days;
+        if ($availableDays !== null && ! in_array($dayOfWeek, $availableDays)) {
+            return [];
+        }
+
+        $company = app()->bound('current.company') ? app('current.company') : null;
+        $minMinutes = $company?->schedule_min_advance_minutes ?? 60;
+        $minTime = now(config('app.timezone'))->addMinutes($minMinutes);
+
+        [$openHour, $openMin] = explode(':', $branch->opens_at);
+        [$closeHour, $closeMin] = explode(':', $branch->closes_at);
+
+        $cursor = $date->copy()->setTime((int) $openHour, (int) $openMin, 0);
+        $end = $date->copy()->setTime((int) $closeHour, (int) $closeMin, 0);
+
+        $slots = [];
+        while ($cursor->lte($end)) {
+            if ($cursor->gt($minTime)) {
+                $slots[] = $cursor->format('H:i');
+            }
+            $cursor->addMinutes(30);
+        }
+
+        return $slots;
+    }
+
     public function getBranchesProperty()
     {
         $companyId = $this->companyId;
@@ -485,6 +535,8 @@ class OrderChat extends Component
             'orderId' => $this->orderId,
             'scheduledAt' => $this->scheduledAt,
             'scheduleInput' => $this->scheduleInput,
+            'scheduleDate' => $this->scheduleDate,
+            'scheduleTime' => $this->scheduleTime,
             'paymentMethod' => $this->paymentMethod,
             'orderType' => $this->orderType,
             'deliveryFee' => $this->deliveryFee,
@@ -531,6 +583,8 @@ class OrderChat extends Component
         $this->orderId = null;
         $this->scheduledAt = null;
         $this->scheduleInput = '';
+        $this->scheduleDate = '';
+        $this->scheduleTime = '';
         $this->pixQrCode = null;
         $this->pixCopyPaste = null;
         $this->paymentId = null;

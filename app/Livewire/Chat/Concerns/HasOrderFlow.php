@@ -397,14 +397,14 @@ trait HasOrderFlow
         $company = app()->bound('current.company') ? app('current.company') : null;
         $minMinutes = $company?->schedule_min_advance_minutes ?? 60;
 
-        if (empty($this->scheduleInput)) {
+        if (empty($this->scheduleDate) || empty($this->scheduleTime)) {
             $this->addError('scheduledAt', 'Informe a data e horário desejados.');
 
             return;
         }
 
         try {
-            $scheduled = Carbon::createFromFormat('Y-m-d\TH:i', $this->scheduleInput, config('app.timezone'));
+            $scheduled = Carbon::createFromFormat('Y-m-d H:i', $this->scheduleDate.' '.$this->scheduleTime, config('app.timezone'));
         } catch (\Exception) {
             $this->addError('scheduledAt', 'Data/hora inválida.');
 

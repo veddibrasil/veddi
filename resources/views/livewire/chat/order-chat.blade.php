@@ -836,13 +836,26 @@
                 </div>
                 <div x-show="wantsSchedule" class="space-y-3" x-cloak>
                     <div>
-                        <label class="block text-xs font-semibold text-gray-600 mb-1.5">Data e horário desejados</label>
+                        <label class="block text-xs font-semibold text-gray-600 mb-1.5">Data desejada</label>
                         <input
-                            type="datetime-local"
-                            wire:model="scheduleInput"
-                            min="{{ now(config('app.timezone'))->addMinutes($currentCompany?->schedule_min_advance_minutes ?? 60)->format('Y-m-d\TH:i') }}"
+                            type="date"
+                            wire:model.live="scheduleDate"
+                            min="{{ now(config('app.timezone'))->format('Y-m-d') }}"
                             class="mc-input"
                         />
+                        @if ($scheduleDate)
+                            <label class="block text-xs font-semibold text-gray-600 mb-1.5 mt-3">Horário desejado</label>
+                            @if (count($this->availableTimeSlots) > 0)
+                                <select wire:model="scheduleTime" class="mc-input">
+                                    <option value="">Selecione o horário</option>
+                                    @foreach ($this->availableTimeSlots as $slot)
+                                        <option value="{{ $slot }}">{{ $slot }}</option>
+                                    @endforeach
+                                </select>
+                            @else
+                                <p class="text-amber-600 text-xs mt-1 flex items-center gap-1"><span>⚠</span> Nenhum horário disponível para este dia.</p>
+                            @endif
+                        @endif
                         @error('scheduledAt') <p class="text-red-600 text-xs mt-1 flex items-center gap-1"><span>⚠</span> {{ $message }}</p> @enderror
                         </div>
                         <div class="flex gap-2">
@@ -1481,7 +1494,7 @@
                 </div>
                 <div>
                     <p class="font-black text-green-600 text-lg">Pedido confirmado!</p>
-                    <p class="text-sm text-gray-500 mt-0.5">Seus salgados já estão sendo preparados. 🥟</p>
+                    <p class="text-sm text-gray-500 mt-0.5">Seu pedido já estará sendo preparado. 🥟</p>
                 </div>
 
                 {{-- Confirmação de cancelamento --}}
