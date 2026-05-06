@@ -32,7 +32,8 @@
 
                     @if (!$isVariant)
                     <div>
-                        <flux:input wire:model="price" type="number" step="0.01" min="0.01" label="Preço base (R$)" placeholder="0,00" />
+                        <flux:input wire:model="price" type="number" step="0.01" min="0.01" label="Preço base (R$)" placeholder="0,00"
+                            x-on:input="$dispatch('base-price-changed', { price: parseFloat($event.target.value) || 0 })" />
                         @error('price') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
                     @endif
@@ -281,13 +282,20 @@
                                         <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
                                     @enderror
                                 </div>
-                                <div class="sm:col-span-2 flex items-center gap-2 pt-1">
+                                <div class="sm:col-span-2 flex items-start gap-2 pt-1">
                                     <flux:checkbox wire:model.live="optionGroups.{{ $gi }}.fixed"
-                                        id="fixed-{{ $gi }}" />
-                                    <label for="fixed-{{ $gi }}" class="text-sm text-neutral-600 dark:text-neutral-300 cursor-pointer select-none">
-                                        Quantidades fixas
-                                        <span class="text-xs text-neutral-400 dark:text-neutral-500 ml-1">(o cliente não pode alterar)</span>
-                                    </label>
+                                        id="fixed-{{ $gi }}" class="mt-0.5" />
+                                    <div>
+                                        <label for="fixed-{{ $gi }}" class="text-sm text-neutral-600 dark:text-neutral-300 cursor-pointer select-none">
+                                            Quantidades fixas
+                                            <span class="text-xs text-neutral-400 dark:text-neutral-500 ml-1">(o cliente não pode alterar)</span>
+                                        </label>
+                                        @if (!empty($group['fixed']))
+                                        <p class="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
+                                            O preço cobrado por opção = preço base do produto × qtd. fixa da opção.
+                                        </p>
+                                        @endif
+                                    </div>
                                 </div>
                             </div>
                             <div class="mt-6 flex items-center gap-1">
@@ -329,9 +337,16 @@
                             <p class="text-xs font-medium text-neutral-500 uppercase tracking-wide dark:text-neutral-400">Opções</p>
 
                             @foreach ($group['options'] as $oi => $option)
-                                @php $paused = empty($option['active']); @endphp
+                                @php
+                                    $paused = empty($option['active']);
+                                    $optBasePrice = !empty($group['fixed'])
+                                        ? (($isVariant && $gi === 0) ? (float)($option['additional_price'] ?? 0) : (float)($price ?? 0))
+                                        : 0;
+                                @endphp
                                 <div class="rounded-lg border {{ $paused ? 'border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/20' : 'border-neutral-200 bg-neutral-50 dark:border-zinc-600 dark:bg-zinc-700/40' }} p-3 space-y-2"
-                                    wire:key="group-{{ $gi }}-option-{{ $oi }}">
+                                    wire:key="group-{{ $gi }}-option-{{ $oi }}"
+                                    @if (!empty($group['fixed'])) x-data="{ qty: {{ (int)($option['default_qty'] ?? 0) }}, basePrice: {{ $optBasePrice }} }" @endif
+                                    @if (!empty($group['fixed']) && !($isVariant && $gi === 0)) x-on:base-price-changed.window="basePrice = $event.detail.price" @endif>
 
                                     {{-- Linha 1: nome + ações --}}
                                     <div class="flex items-center gap-2">
@@ -397,7 +412,8 @@
                                                 class="text-xs text-neutral-500" />
                                         </div>
                                         @if (($isVariant && $gi === 0) || empty($group['fixed']))
-                                        <div class="w-28 shrink-0">
+                                        <div class="w-28 shrink-0"
+                                             @if ($isVariant && $gi === 0 && !empty($group['fixed'])) x-on:input="basePrice = parseFloat($event.target.value) || 0" @endif>
                                             <flux:input wire:model="optionGroups.{{ $gi }}.options.{{ $oi }}.additional_price"
                                                 type="number" step="0.01" min="0"
                                                 label="{{ $isVariant && $gi === 0 ? 'Preço (R$)' : 'Acréscimo (R$)' }}"
@@ -412,10 +428,16 @@
                                             <flux:input wire:model="optionGroups.{{ $gi }}.options.{{ $oi }}.default_qty"
                                                 type="number" min="0"
                                                 label="Qtd. fixa"
-                                                placeholder="0" />
+                                                placeholder="0"
+                                                x-on:input="qty = parseFloat($event.target.value) || 0" />
                                             @error("optionGroups.{$gi}.options.{$oi}.default_qty")
                                                 <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
                                             @enderror
+                                            <p class="text-xs text-blue-600 dark:text-blue-400 mt-1"
+                                               x-show="qty > 0 && basePrice > 0"
+                                               x-cloak
+                                               x-text="'= R$ ' + (basePrice * qty).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })">
+                                            </p>
                                         </div>
                                         @endif
                                     </div>
