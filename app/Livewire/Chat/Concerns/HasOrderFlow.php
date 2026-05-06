@@ -28,7 +28,7 @@ trait HasOrderFlow
 
         if ($option === '2') {
             $this->addMessage('user', '2 - Falar com o suporte');
-            $this->openSupportTicket();
+            $this->addMessage('bot', 'Para falar com a filial, use o botão do WhatsApp no topo do chat. ✅');
         }
     }
 

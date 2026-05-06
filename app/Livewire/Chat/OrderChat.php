@@ -3,7 +3,6 @@
 namespace App\Livewire\Chat;
 
 use App\Livewire\Chat\Concerns\HasCartManagement;
-use App\Livewire\Chat\Concerns\HasChatSupport;
 use App\Livewire\Chat\Concerns\HasCustomerProfile;
 use App\Livewire\Chat\Concerns\HasOrderFlow;
 use App\Livewire\Chat\Concerns\HasOrderRecovery;
@@ -11,6 +10,7 @@ use App\Livewire\Chat\Concerns\HasPaymentFlow;
 use App\Models\Branch;
 use App\Models\ProductCategory;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
@@ -18,7 +18,6 @@ use Livewire\Component;
 class OrderChat extends Component
 {
     use HasCartManagement;
-    use HasChatSupport;
     use HasCustomerProfile;
     use HasOrderFlow;
     use HasOrderRecovery;
@@ -117,18 +116,6 @@ class OrderChat extends Component
 
     public ?string $cardError = null;
 
-    // --- Support chat (order-based) ---
-    public string $supportMessage = '';
-
-    public ?int $lastAdminMessageId = null;
-
-    // --- Support chat (general / ticket-based) ---
-    public ?int $supportTicketId = null;
-
-    public string $generalSupportMessage = '';
-
-    public ?int $lastAdminSupportMessageId = null;
-
     // --- Coupon ---
     public string $couponInput = '';
 
@@ -152,10 +139,6 @@ class OrderChat extends Component
     public bool $showEndConfirm = false;
 
     public bool $showCancelConfirm = false;
-
-    public bool $showSupportModal = false;
-
-    public array $supportConversation = [];
 
     // -------------------------------------------------------------------------
     // Lifecycle
@@ -281,12 +264,6 @@ class OrderChat extends Component
 
         if ($this->orderId) {
             $listeners["echo:order.{$this->orderId},OrderStatusUpdated"] = 'checkPaymentStatus';
-            $listeners["echo:order.{$this->orderId},AdminMessageSent"] = 'receiveAdminMessage';
-        }
-
-        if ($this->supportTicketId) {
-            $listeners["echo:support.{$this->supportTicketId},AdminSupportMessageSent"] = 'receiveAdminSupportMessage';
-            $listeners["echo:support.{$this->supportTicketId},SupportTicketClosed"] = 'onSupportTicketClosed';
         }
 
         return $listeners;
@@ -307,10 +284,10 @@ class OrderChat extends Component
             ],
             'REGISTER_EMAIL' => [
                 'email' => [
-                    'required', 'email', 'max:200',
+                    'nullable', 'email', 'max:200',
                     app()->bound('current.company')
-                        ? Rule::unique('customers', 'email')->where('company_id', app('current.company')->id)
-                        : Rule::unique('customers', 'email'),
+                        ? Rule::unique('customers', 'email')->where('company_id', app('current.company')->id)->whereNotNull('email')
+                        : Rule::unique('customers', 'email')->whereNotNull('email'),
                 ],
             ],
             'REGISTER_ADDRESS' => [
@@ -355,15 +332,14 @@ class OrderChat extends Component
             'phone.regex' => 'Telefone inválido. Informe DDD + número (10 ou 11 dígitos).',
             'name.required' => 'Informe seu nome.',
             'name.min' => 'Nome muito curto.',
-            'email.required' => 'Informe seu e-mail.',
-            'email.email' => 'E-mail inválido.',
-            'email.unique' => 'Esse e-mail já está cadastrado. Use outro.',
             'address.required' => 'Informe o endereço.',
             'number.required' => 'Informe o número.',
             'neighborhood.required' => 'Informe o bairro.',
             'city.required' => 'Informe a cidade.',
             'cep.required' => 'Informe o CEP.',
             'cep.regex' => 'CEP inválido. Use o formato 00000-000.',
+            'email.email' => 'E-mail inválido.',
+            'email.unique' => 'Esse e-mail já está cadastrado. Use outro.',
             'taxId.required' => 'Informe seu CPF.',
             'taxId.regex' => 'CPF inválido. Use o formato 000.000.000-00.',
         ];
@@ -444,6 +420,39 @@ class OrderChat extends Component
         }
 
         return $slots;
+    }
+
+    #[Computed]
+    public function supportWhatsAppUrl(): ?string
+    {
+        if (! $this->selectedBranchId) {
+            return null;
+        }
+
+        $branch = Branch::find($this->selectedBranchId);
+        $phoneRaw = $branch?->phone;
+        if (! $phoneRaw) {
+            return null;
+        }
+
+        // wa.me expects an E.164-ish number without "+" or punctuation.
+        $digits = preg_replace('/\D+/', '', $phoneRaw) ?? '';
+        if ($digits === '') {
+            return null;
+        }
+
+        // If it looks like a BR local number without country code, prepend 55.
+        if (! Str::startsWith($digits, '55')) {
+            $digits = '55'.$digits;
+        }
+
+        $message = $this->orderId
+            ? "Olá! Preciso de ajuda com meu pedido #{$this->orderId}."
+            : 'Olá! Preciso de suporte no meu pedido.';
+
+        $query = http_build_query(['text' => $message]);
+
+        return "https://wa.me/{$digits}?{$query}";
     }
 
     public function getBranchesProperty()
@@ -552,11 +561,6 @@ class OrderChat extends Component
             'messages' => $this->messages,
             'lastNotifiedStatus' => $this->lastNotifiedStatus,
             'showCancelConfirm' => $this->showCancelConfirm,
-            'lastAdminMessageId' => $this->lastAdminMessageId,
-            'supportTicketId' => $this->supportTicketId,
-            'lastAdminSupportMessageId' => $this->lastAdminSupportMessageId,
-            'showSupportModal' => $this->showSupportModal,
-            'supportConversation' => $this->supportConversation,
             'pendingOrderSummary' => $this->pendingOrderSummary,
             'orderHistoryPreviousStep' => $this->orderHistoryPreviousStep,
         ]]);
@@ -605,13 +609,6 @@ class OrderChat extends Component
         $this->showEndConfirm = false;
         $this->showCancelConfirm = false;
         $this->lastNotifiedStatus = null;
-        $this->supportMessage = '';
-        $this->lastAdminMessageId = null;
-        $this->supportTicketId = null;
-        $this->generalSupportMessage = '';
-        $this->lastAdminSupportMessageId = null;
-        $this->showSupportModal = false;
-        $this->supportConversation = [];
         $this->pendingOrderSummary = null;
         $this->orderHistory = [];
         $this->orderHistoryPreviousStep = null;

@@ -47,16 +47,18 @@
             @if ($step !== 'CLOSED')
                 <div class="flex items-center gap-1" x-data="{ confirmEnd: false }">
                     {{-- Support icon --}}
-                    @if ($customerId && !in_array($step, ['IDENTIFY_PHONE', 'CLOSED', 'EDIT_PROFILE']) && !$showSupportModal)
-                        <button
-                            wire:click="goToSupport"
+                    @if ($customerId && $selectedBranchId && $this->supportWhatsAppUrl && !in_array($step, ['IDENTIFY_PHONE', 'CLOSED', 'EDIT_PROFILE']))
+                        <a
+                            href="{{ $this->supportWhatsAppUrl }}"
+                            target="_blank"
+                            rel="noopener noreferrer"
                             class="text-white/70 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
-                            title="Falar com suporte"
+                            title="Falar no WhatsApp"
                         >
-                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                            <svg class="w-5 h-5" viewBox="0 0 32 32" fill="currentColor" aria-hidden="true">
+                                <path d="M19.11 17.44c-.28-.14-1.64-.81-1.9-.9-.25-.09-.44-.14-.62.14-.18.28-.71.9-.88 1.09-.16.19-.32.21-.6.07-.28-.14-1.17-.43-2.24-1.37-.83-.74-1.39-1.66-1.55-1.94-.16-.28-.02-.43.12-.57.13-.13.28-.32.41-.49.13-.16.18-.28.28-.46.09-.18.05-.35-.02-.49-.07-.14-.62-1.5-.85-2.05-.22-.54-.45-.47-.62-.48h-.53c-.18 0-.46.07-.7.35-.25.28-.93.91-.93 2.22s.95 2.58 1.08 2.76c.14.18 1.87 2.86 4.53 4.02.63.27 1.12.43 1.5.55.63.2 1.2.17 1.65.1.5-.07 1.64-.67 1.87-1.31.23-.64.23-1.19.16-1.31-.06-.12-.25-.19-.53-.33zM16 3.2A12.77 12.77 0 0 0 4.8 22.02L3.2 28.8l6.93-1.56A12.78 12.78 0 1 0 16 3.2zm0 23.35c-2.08 0-4.11-.55-5.9-1.6l-.42-.25-4.11.92.95-4-.27-.43A10.58 10.58 0 1 1 16 26.55z"/>
                             </svg>
-                        </button>
+                        </a>
                     @endif
 
                     {{-- Order history --}}
@@ -319,7 +321,7 @@
         @elseif ($step === 'REGISTER_EMAIL')
             <div wire:key="step-register-email" class="space-y-2.5">
                 <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Seu e-mail</label>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Seu e-mail <span class="font-normal text-gray-400">(opcional)</span></label>
                     <input wire:model="email" type="email" placeholder="seu@email.com" class="mc-input"
                         wire:keydown.enter="submitEmail" autocomplete="email" />
                     @error('email') <p class="text-red-600 text-xs mt-1 flex items-center gap-1"><span>⚠</span> {{ $message }}</p> @enderror
@@ -328,6 +330,9 @@
                     <button wire:click="backToRegisterName" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
                     <button wire:click="submitEmail" class="mc-btn-primary flex-1">Continuar →</button>
                 </div>
+                <button wire:click="skipEmail" class="mc-btn-outline">
+                    Não quero informar o e-mail
+                </button>
             </div>
 
         {{-- ── REGISTER_ADDRESS ── --}}
@@ -525,8 +530,10 @@
                     @php $hasItemOptions = !empty($item['options']); @endphp
                     <div class="flex items-start gap-2.5 bg-gray-50 rounded-xl p-2.5 border border-gray-100">
                         <div class="flex-1 min-w-0">
-                            <p class="font-semibold text-sm text-gray-800 truncate">{{ $item['name'] }}</p>
-                            @if ($hasItemOptions)
+                            <p class="font-semibold text-sm text-gray-800 break-words">
+                                {{ $item['name'] }}
+                            </p>               
+                             @if ($hasItemOptions)
                                 @foreach ($item['options'] as $group)
                                     <p class="text-xs font-medium text-gray-500 mt-0.5">{{ $group['group_name'] }}:</p>
                                     @foreach ($group['selections'] as $sel)
@@ -1483,10 +1490,6 @@
             @if ($orderId && !in_array($lastNotifiedStatus, ['delivered', 'cancelled']))
                 <div wire:poll.15s="checkPaymentStatus" class="hidden"></div>
             @endif
-            {{-- Polling de mensagens do admin (fallback Echo) --}}
-            @if ($orderId)
-                <div wire:poll.4s="pollAdminMessages" class="hidden"></div>
-            @endif
 
             <div class="text-center space-y-3 py-1">
                 <div class="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto text-4xl">
@@ -1500,7 +1503,7 @@
                 {{-- Confirmação de cancelamento --}}
                 @php
                     $currentOrder = $orderId ? \App\Models\Order::find($orderId) : null;
-                    $canCancel = $currentOrder && in_array($currentOrder->status, ['awaiting_payment', 'paid', 'preparing']);
+                    $canCancel = $currentOrder && in_array($currentOrder->status, ['pending', 'awaiting_payment', 'scheduled', 'paid', 'preparing']);
                 @endphp
 
                 {{-- Confirmação de cancelamento --}}
@@ -1533,33 +1536,22 @@
                         Novo pedido e apagar histórico
                     </button>
                 </div>
-            </div>
 
-            {{-- Chat de acompanhamento do pedido --}}
-            @if ($orderId)
-                <div class="border-t border-gray-100 pt-3 mt-1">
-                    <div class="flex gap-2">
-                        <input
-                            wire:model="supportMessage"
-                            wire:keydown.enter="sendSupportMessage"
-                            type="text"
-                            placeholder="Mensagem sobre o pedido..."
-                            class="mc-input flex-3"
-                            autocomplete="off"
-                        />
-                        <button
-                            wire:click="sendSupportMessage"
-                            class="mc-btn-primary px-4 flex-1"
-                            wire:loading.attr="disabled"
-                            wire:target="sendSupportMessage"
-                        >
-                            <span wire:loading.remove wire:target="sendSupportMessage">Enviar</span>
-                            <span wire:loading wire:target="sendSupportMessage">...</span>
-                        </button>
-                    </div>
-                    @error('supportMessage') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-                </div>
-            @endif
+                @if ($selectedBranchId && $this->supportWhatsAppUrl)
+                    <a
+                        href="{{ $this->supportWhatsAppUrl }}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 text-sm transition-colors"
+                        title="Falar com a filial no WhatsApp"
+                    >
+                        <span class="text-base">WhatsApp</span>
+                        <svg class="w-5 h-5" viewBox="0 0 32 32" fill="currentColor" aria-hidden="true">
+                            <path d="M19.11 17.44c-.28-.14-1.64-.81-1.9-.9-.25-.09-.44-.14-.62.14-.18.28-.71.9-.88 1.09-.16.19-.32.21-.6.07-.28-.14-1.17-.43-2.24-1.37-.83-.74-1.39-1.66-1.55-1.94-.16-.28-.02-.43.12-.57.13-.13.28-.32.41-.49.13-.16.18-.28.28-.46.09-.18.05-.35-.02-.49-.07-.14-.62-1.5-.85-2.05-.22-.54-.45-.47-.62-.48h-.53c-.18 0-.46.07-.7.35-.25.28-.93.91-.93 2.22s.95 2.58 1.08 2.76c.14.18 1.87 2.86 4.53 4.02.63.27 1.12.43 1.5.55.63.2 1.2.17 1.65.1.5-.07 1.64-.67 1.87-1.31.23-.64.23-1.19.16-1.31-.06-.12-.25-.19-.53-.33zM16 3.2A12.77 12.77 0 0 0 4.8 22.02L3.2 28.8l6.93-1.56A12.78 12.78 0 1 0 16 3.2zm0 23.35c-2.08 0-4.11-.55-5.9-1.6l-.42-.25-4.11.92.95-4-.27-.43A10.58 10.58 0 1 1 16 26.55z"/>
+                        </svg>
+                    </a>
+                @endif
+            </div>
 
 
 
@@ -1706,130 +1698,6 @@
         </button>
     </div>
 
-    {{-- Always-active support listeners (Echo + poll fallback) --}}
-    @if ($supportTicketId)
-        <div wire:poll.4s="pollAdminSupportMessages" class="hidden"></div>
-        <div
-            wire:ignore
-            x-data
-            x-init="
-                if (window.Echo) {
-                    window.Echo.channel('support.{{ $supportTicketId }}')
-                        .listen('AdminSupportMessageSent', (data) => {
-                            $wire.receiveAdminSupportMessage(data);
-                        })
-                        .listen('SupportTicketClosed', (data) => {
-                            $wire.onSupportTicketClosed(data);
-                        });
-                }
-            "
-        ></div>
-    @endif
-
-    {{-- ═══════════════════════ SUPPORT MODAL ════════════════════════ --}}
-    @if ($showSupportModal)
-    <div
-        class="absolute inset-0 z-40 flex flex-col bg-white overflow-hidden
-               sm:rounded-2xl"
-        x-data
-        x-init="$nextTick(() => { const el = $el.querySelector('[data-support-msgs]'); if (el) el.scrollTop = el.scrollHeight; })"
-        x-on:livewire:updated.window="$nextTick(() => { const el = $el.querySelector('[data-support-msgs]'); if (el) el.scrollTop = el.scrollHeight; })"
-    >
-        {{-- Header --}}
-        <div class="shrink-0 px-4 py-3 flex items-center gap-3" style="background: linear-gradient(135deg, var(--mc-red-dark) 0%, var(--mc-red) 60%, var(--mc-red-light) 100%);">
-            <div class="flex-1 min-w-0">
-                <p class="text-white font-bold text-sm leading-tight">Suporte</p>
-                <p class="text-white/70 text-xs mt-0.5">
-                    @if ($supportTicketId)
-                        Ticket #{{ $supportTicketId }} • Online
-                    @else
-                        Ticket encerrado
-                    @endif
-                </p>
-            </div>
-            <button
-                wire:click="closeSupportModal"
-                class="text-white/70 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
-                title="Fechar suporte"
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-            </button>
-        </div>
-
-        {{-- Messages --}}
-        <div
-            data-support-msgs
-            class="flex-1 overflow-y-auto px-3 py-4 space-y-3 mc-scrollbar"
-        >
-            @forelse ($supportConversation as $msg)
-                @if ($msg['sender'] === 'system')
-                    <div class="flex justify-center">
-                        <p class="text-[11px] text-gray-400 bg-gray-100 rounded-full px-3 py-1">{{ $msg['message'] }}</p>
-                    </div>
-                @elseif ($msg['sender'] === 'customer')
-                    <div class="flex justify-end">
-                        <div class="max-w-[75%] mc-bubble-user text-white px-3 py-2">
-                            <p class="text-sm leading-relaxed whitespace-pre-line">{{ $msg['message'] }}</p>
-                            <span class="block text-[10px] mt-0.5 text-right text-white/60">{{ $msg['created_at'] }}</span>
-                        </div>
-                    </div>
-                @else
-                    <div class="flex justify-start">
-                        <div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 mr-1.5 mt-0.5" style="background: var(--mc-red)">
-                            🎩
-                        </div>
-                        <div class="max-w-[75%] mc-bubble-bot text-gray-800 px-3 py-2">
-                            <p class="text-sm leading-relaxed whitespace-pre-line">{{ $msg['message'] }}</p>
-                            <span class="block text-[10px] mt-0.5 text-right text-gray-400">{{ $msg['created_at'] }}</span>
-                        </div>
-                    </div>
-                @endif
-            @empty
-                <div class="flex flex-col items-center justify-center h-full gap-2 py-12">
-                    <span class="text-3xl">💬</span>
-                    <p class="text-sm text-gray-400 text-center">Como podemos ajudar?<br>Digite sua mensagem abaixo.</p>
-                </div>
-            @endforelse
-        </div>
-
-        {{-- Input --}}
-        @if ($supportTicketId)
-            <div class="border-t border-gray-100 bg-white px-4 py-3 shrink-0 flex gap-2">
-                <input
-                    wire:model="generalSupportMessage"
-                    wire:keydown.enter="sendGeneralSupportMessage"
-                    type="text"
-                    placeholder="Digite sua mensagem..."
-                    class="mc-input flex-3"
-                    autocomplete="off"
-                />
-                <button
-                    wire:click="sendGeneralSupportMessage"
-                    wire:loading.attr="disabled"
-                    wire:target="sendGeneralSupportMessage"
-                    class="mc-btn-primary shrink-0 px-4 flex-1"
-                >
-                
-                    <span wire:loading.remove  wire:target="sendGeneralSupportMessage">
-                        Enviar
-
-                    </span>
-                    <span wire:loading wire:target="sendGeneralSupportMessage">...</span>
-                </button>
-            </div>
-            @error('generalSupportMessage')
-                <p class="text-red-500 text-xs px-4 pb-2">{{ $message }}</p>
-            @enderror
-        @else
-            <div class="border-t border-gray-100 bg-gray-50 px-4 py-3 shrink-0 text-center">
-                <p class="text-xs text-gray-400">Ticket encerrado.</p>
-            </div>
-        @endif
-    </div>
-    @endif
-
     {{-- Snake modal backdrop (covers full chat card) --}}
     <div
         x-show="snakeOpen"
@@ -1962,8 +1830,14 @@
                                         @if ($product->is_variant && $product->optionGroups->isNotEmpty())
                                             @php
                                                 $variantFirstGroup = $product->optionGroups->first();
-                                                $variantMinOption  = $variantFirstGroup?->activeOptions->min('additional_price') ?? 0;
-                                                $variantMinPrice   = (float) $product->effective_price + (float) $variantMinOption;
+                                                if ($variantFirstGroup?->fixed) {
+                                                    $variantMinOption = $variantFirstGroup->activeOptions->min(
+                                                        fn ($o) => (float) $o->additional_price * max(1, (int) $o->default_qty)
+                                                    ) ?? 0;
+                                                } else {
+                                                    $variantMinOption = $variantFirstGroup?->activeOptions->min('additional_price') ?? 0;
+                                                }
+                                                $variantMinPrice = (float) $product->effective_price + (float) $variantMinOption;
                                             @endphp
                                             <p class="text-sm font-black {{ $sbDisabled ? 'text-gray-400' : 'mc-text-primary' }} mt-0.5">
                                                 A partir de R$ {{ number_format($variantMinPrice, 2, ',', '.') }}
@@ -2026,12 +1900,14 @@
                                                     return [
                                                         'id'        => $g->id,
                                                         'name'      => $g->name,
+                                                        'image_url' => $g->image_url,
                                                         'total_qty' => $g->total_qty,
                                                         'fixed'     => (bool) $g->fixed,
                                                         'options'   => [
                                                             ...$g->options->map(fn ($o) => [
                                                                 'id'               => $o->id,
                                                                 'name'             => $o->name,
+                                                                'image_url'        => $o->image_url,
                                                                 'description'      => $o->description,
                                                                 'additional_price' => $resolvePrice($o),
                                                                 'paused'           => false,
@@ -2043,6 +1919,7 @@
                                                             ...$g->inactiveOptions->map(fn ($o) => [
                                                                 'id'               => $o->id,
                                                                 'name'             => $o->name,
+                                                                'image_url'        => $o->image_url,
                                                                 'description'      => $o->description,
                                                                 'additional_price' => $resolvePrice($o),
                                                                 'paused'           => true,
@@ -2143,11 +2020,16 @@
                             <div>
                                 {{-- Cabeçalho do grupo --}}
                                 <div class="flex items-center justify-between mb-3">
-                                    <div>
-                                        <p class="font-bold text-sm text-gray-800" x-text="group.name"></p>
-                                        <p class="text-xs text-gray-400 mt-0.5">
-                                            Máximo <span class="font-semibold" x-text="group.total_qty"></span> unidades
-                                        </p>
+                                    <div class="flex items-center gap-2.5 min-w-0">
+                                        <template x-if="group.image_url">
+                                            <img :src="group.image_url" class="w-10 h-10 rounded-lg object-cover shrink-0" />
+                                        </template>
+                                        <div>
+                                            <p class="font-bold text-sm text-gray-800" x-text="group.name"></p>
+                                            <p class="text-xs text-gray-400 mt-0.5">
+                                                Máximo <span class="font-semibold" x-text="group.total_qty"></span> unidades
+                                            </p>
+                                        </div>
                                     </div>
                                     <span class="text-xs font-bold px-2 py-1 rounded-full"
                                         :class="getGroupTotal(group.id) > group.total_qty
@@ -2164,6 +2046,11 @@
                                     <template x-for="option in group.options" :key="option.id">
                                         <div class="flex items-center gap-3 p-2.5 rounded-xl border transition-colors"
                                             :class="option.paused ? 'border-amber-100 bg-amber-50' : 'border-gray-100 bg-gray-50'">
+                                            <template x-if="option.image_url">
+                                                <img :src="option.image_url"
+                                                     class="w-12 h-12 rounded-xl object-cover shrink-0"
+                                                     :class="option.paused ? 'grayscale opacity-50' : ''" />
+                                            </template>
                                             <div class="flex-1 min-w-0">
                                                 <div class="flex items-center gap-1.5 flex-wrap">
                                                     <p class="text-sm font-medium"

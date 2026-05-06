@@ -2,7 +2,6 @@
 
 namespace App\Livewire\Admin\Branches;
 
-use App\Enums\Plan;
 use App\Models\Branch;
 use App\Models\Coupon;
 use App\Models\Scopes\CompanyScope;
@@ -45,7 +44,7 @@ class Index extends Component
             $this->branchLimit = $company->maxBranches();
             $this->branchCount = $company->branches()->count();
             $this->canCreateMoreBranches = $this->canCreate && ($this->branchCount < $this->branchLimit);
-            $this->deliveryEnabled = $company->plan === Plan::Pro;
+            $this->deliveryEnabled = true;
         }
     }
 

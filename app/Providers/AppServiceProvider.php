@@ -7,12 +7,11 @@ use App\Contracts\OrderServiceInterface;
 use App\Contracts\RefundServiceInterface;
 use App\Contracts\TransactionServiceInterface;
 use App\Contracts\WalletServiceInterface;
-use App\Events\AdminMessageSent;
 use App\Events\CompanyActivated;
 use App\Events\NewOrderPlaced;
 use App\Events\OrderStatusUpdated;
+use App\Listeners\SendOrderDeliveredEmail;
 use App\Listeners\SendWelcomeSubscriptionEmail;
-use App\Listeners\SendWhatsAppAdminMessageNotification;
 use App\Listeners\SendWhatsAppOrderNotification;
 use App\Listeners\SendWhatsAppStatusNotification;
 use App\Models\Branch;
@@ -21,14 +20,12 @@ use App\Models\Coupon;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductCategory;
-use App\Models\SupportTicket;
 use App\Policies\BranchPolicy;
 use App\Policies\CompanyPolicy;
 use App\Policies\CouponPolicy;
 use App\Policies\OrderPolicy;
 use App\Policies\ProductCategoryPolicy;
 use App\Policies\ProductPolicy;
-use App\Policies\SupportTicketPolicy;
 use App\Services\Finance\TransactionService;
 use App\Services\Finance\WalletService;
 use App\Services\Order\OrderService;
@@ -82,7 +79,7 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(CompanyActivated::class, SendWelcomeSubscriptionEmail::class);
         Event::listen(NewOrderPlaced::class, SendWhatsAppOrderNotification::class);
         Event::listen(OrderStatusUpdated::class, SendWhatsAppStatusNotification::class);
-        Event::listen(AdminMessageSent::class, SendWhatsAppAdminMessageNotification::class);
+        Event::listen(OrderStatusUpdated::class, SendOrderDeliveredEmail::class);
     }
 
     protected function registerPolicies(): void
@@ -92,7 +89,6 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(ProductCategory::class, ProductCategoryPolicy::class);
         Gate::policy(Branch::class, BranchPolicy::class);
         Gate::policy(Coupon::class, CouponPolicy::class);
-        Gate::policy(SupportTicket::class, SupportTicketPolicy::class);
         Gate::policy(Company::class, CompanyPolicy::class);
     }
 

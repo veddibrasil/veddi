@@ -26,19 +26,12 @@ class NotificationBell extends Component
 
         return [
             "echo:orders.{$this->companyId},NewOrderPlaced" => 'onNewOrder',
-            "echo:admin-support.{$this->companyId},NewSupportMessage" => 'onNewSupportMessage',
         ];
     }
 
     public function onNewOrder(): void
     {
         // The DB record is created by CreateOrderNotification listener (server-side, once).
-        // Here we just re-render to pick up the new notification from the database.
-    }
-
-    public function onNewSupportMessage(): void
-    {
-        // The DB record is created by CreateSupportNotification listener (server-side, once).
         // Here we just re-render to pick up the new notification from the database.
     }
 

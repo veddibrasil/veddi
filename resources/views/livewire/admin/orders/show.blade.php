@@ -269,65 +269,6 @@
                 </div>
             </div>
 
-            {{-- Mini chat com o cliente --}}
-            <div
-                class="bg-white border rounded-xl shadow-sm flex flex-col dark:bg-zinc-800 dark:border-zinc-700"
-                x-data="{ scrollToBottom() { const el = $refs.msgList; if (el) el.scrollTop = el.scrollHeight; } }"
-                x-init="scrollToBottom()"
-                x-on:livewire:updated.window="$nextTick(() => scrollToBottom())"
-            >
-                <div class="px-4 py-3 border-b dark:border-zinc-700">
-                    <p class="font-semibold text-neutral-700 dark:text-neutral-200 text-sm">Chat com o cliente</p>
-                </div>
-
-                {{-- Poll de fallback caso Echo não chegue --}}
-                <div wire:poll.3s="loadMessages" class="hidden"></div>
-
-                {{-- Área de mensagens --}}
-                <div
-                    x-ref="msgList"
-                    class="overflow-y-auto px-3 py-3 space-y-2 min-h-40 max-h-75"
-                >
-                    @forelse ($chatMessages as $msg)
-                        <div class="flex {{ $msg['sender'] === 'admin' ? 'justify-end' : 'justify-start' }}">
-                            <div class="max-w-[85%] px-3 py-2 rounded-2xl text-sm leading-snug
-                                {{ $msg['sender'] === 'admin'
-                                    ? 'bg-amber-500 text-white rounded-br-sm'
-                                    : 'bg-neutral-100 text-neutral-800 rounded-bl-sm dark:bg-zinc-700 dark:text-neutral-100' }}">
-                                <p>{{ $msg['message'] }}</p>
-                                <p class="text-[10px] mt-0.5 {{ $msg['sender'] === 'admin' ? 'text-amber-100' : 'text-neutral-400 dark:text-neutral-500' }} text-right">
-                                    {{ $msg['created_at'] }}
-                                </p>
-                            </div>
-                        </div>
-                    @empty
-                        <p class="text-center text-xs text-neutral-400 dark:text-neutral-500 py-6">Nenhuma mensagem ainda. Inicie a conversa!</p>
-                    @endforelse
-                </div>
-
-                {{-- Input --}}
-                <div class="border-t dark:border-zinc-700 px-3 py-3 flex gap-2">
-                    <input
-                        wire:model="adminMessage"
-                        wire:keydown.enter="sendMessage"
-                        type="text"
-                        placeholder="Digite uma mensagem..."
-                        class="flex-1 text-sm rounded-xl border border-neutral-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400 dark:bg-zinc-700 dark:border-zinc-600 dark:text-neutral-100 dark:placeholder-neutral-400"
-                    />
-                    <button
-                        wire:click="sendMessage"
-                        wire:loading.attr="disabled"
-                        class="shrink-0 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors"
-                    >
-                        <span wire:loading.remove wire:target="sendMessage">Enviar</span>
-                        <span wire:loading wire:target="sendMessage">...</span>
-                    </button>
-                </div>
-                @error('adminMessage')
-                    <p class="text-xs text-red-500 px-3 pb-2">{{ $message }}</p>
-                @enderror
-            </div>
-
             {{-- Payment --}}
             <div class="bg-white border rounded-xl shadow-sm p-4 dark:bg-zinc-800 dark:border-zinc-700">
                 <p class="font-semibold text-neutral-700 mb-2 dark:text-neutral-200">Pagamento</p>

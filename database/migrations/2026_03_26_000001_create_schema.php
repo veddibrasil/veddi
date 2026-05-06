@@ -196,6 +196,7 @@ return new class extends Migration
                 'delivered',
                 'cancelled',
                 'refunded',
+                'scheduled',
             ])->default('pending');
             $table->string('payment_method')->nullable();
             $table->enum('order_type', ['delivery', 'pickup'])->nullable();
@@ -240,14 +241,6 @@ return new class extends Migration
             $table->json('webhook_payload')->nullable();
             $table->timestamp('expires_at')->nullable();
             $table->string('payment_token')->nullable()->unique();
-            $table->timestamps();
-        });
-
-        Schema::create('chat_messages', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('order_id')->constrained()->cascadeOnDelete();
-            $table->enum('sender', ['customer', 'admin']);
-            $table->text('message');
             $table->timestamps();
         });
 
@@ -353,27 +346,6 @@ return new class extends Migration
 
             $table->index(['coupon_id', 'customer_id'], 'coupon_usages_coupon_customer_idx');
             $table->index(['company_id', 'created_at']);
-        });
-
-        Schema::create('support_tickets', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('company_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('customer_id')->constrained()->cascadeOnDelete();
-            $table->enum('status', ['open', 'closed'])->default('open');
-            $table->timestamps();
-
-            $table->index(['company_id', 'status']);
-        });
-
-        Schema::create('support_messages', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('ticket_id')->constrained('support_tickets')->cascadeOnDelete();
-            $table->enum('sender', ['customer', 'admin']);
-            $table->text('message');
-            $table->timestamp('read_at')->nullable();
-            $table->timestamps();
-
-            $table->index(['ticket_id', 'created_at']);
         });
 
         Schema::create('company_notifications', function (Blueprint $table) {
@@ -517,8 +489,6 @@ return new class extends Migration
         Schema::dropIfExists('company_wallet_entries');
         Schema::dropIfExists('subscriptions');
         Schema::dropIfExists('company_notifications');
-        Schema::dropIfExists('support_messages');
-        Schema::dropIfExists('support_tickets');
         Schema::dropIfExists('coupon_usages');
         Schema::dropIfExists('stock_movements');
         Schema::dropIfExists('user_permissions');
@@ -528,7 +498,6 @@ return new class extends Migration
         Schema::dropIfExists('delivery_distance_tiers');
         Schema::dropIfExists('delivery_neighborhoods');
         Schema::dropIfExists('delivery_settings');
-        Schema::dropIfExists('chat_messages');
         Schema::dropIfExists('payments');
         Schema::dropIfExists('order_items');
         Schema::dropIfExists('orders');

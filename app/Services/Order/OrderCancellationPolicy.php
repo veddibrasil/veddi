@@ -16,7 +16,7 @@ class OrderCancellationPolicy
     /**
      * Statuses that require a refund when cancelled by customer.
      */
-    private const CUSTOMER_CANCELLABLE_WITH_REFUND = ['paid', 'preparing'];
+    private const CUSTOMER_CANCELLABLE_WITH_REFUND = ['scheduled', 'paid', 'preparing'];
 
     /**
      * Admin can cancel any status that isn't already terminal.

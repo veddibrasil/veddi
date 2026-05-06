@@ -3,9 +3,7 @@
 namespace App\Livewire\Admin\Orders;
 
 use App\Contracts\RefundServiceInterface;
-use App\Events\AdminMessageSent;
 use App\Events\OrderStatusUpdated;
-use App\Models\ChatMessage;
 use App\Models\Order;
 use App\Services\Order\OrderCancellationPolicy;
 use App\Services\Order\StockService;
@@ -15,10 +13,6 @@ use Livewire\Component;
 class Show extends Component
 {
     public Order $order;
-
-    public string $adminMessage = '';
-
-    public array $chatMessages = [];
 
     public bool $canUpdate = false;
 
@@ -38,45 +32,6 @@ class Show extends Component
             $this->canUpdate = $user->hasPermission('orders.update', app('current.company'));
         }
 
-        $this->loadMessages();
-    }
-
-    public function getListeners(): array
-    {
-        return [
-            "echo:order.{$this->order->id},CustomerMessageSent" => 'onCustomerMessage',
-        ];
-    }
-
-    public function onCustomerMessage(array $data): void
-    {
-        $this->chatMessages[] = [
-            'sender' => 'customer',
-            'message' => $data['message'],
-            'created_at' => $data['created_at'],
-        ];
-    }
-
-    public function sendMessage(): void
-    {
-        $this->validate(['adminMessage' => ['required', 'string', 'max:500']]);
-
-        $text = $this->adminMessage;
-        $this->adminMessage = '';
-
-        ChatMessage::create([
-            'order_id' => $this->order->id,
-            'sender' => 'admin',
-            'message' => $text,
-        ]);
-
-        AdminMessageSent::dispatch($this->order, $text);
-
-        $this->chatMessages[] = [
-            'sender' => 'admin',
-            'message' => $text,
-            'created_at' => now()->format('H:i'),
-        ];
     }
 
     public function updateStatus(string $status): void
@@ -142,19 +97,6 @@ class Show extends Component
     public function closeManualRefundModal(): void
     {
         $this->showManualRefundModal = false;
-    }
-
-    public function loadMessages(): void
-    {
-        $this->chatMessages = ChatMessage::where('order_id', $this->order->id)
-            ->orderBy('created_at')
-            ->get()
-            ->map(fn ($m) => [
-                'sender' => $m->sender,
-                'message' => $m->message,
-                'created_at' => $m->created_at->format('H:i'),
-            ])
-            ->toArray();
     }
 
     public function manualRefund(): void

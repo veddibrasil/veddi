@@ -53,9 +53,7 @@
                             <flux:sidebar.item icon="chart-bar" :href="route('admin.orders.report')" :current="request()->routeIs('admin.orders.report')" wire:navigate>
                                 Relatório
                             </flux:sidebar.item>
-                            <flux:sidebar.item icon="chat-bubble-left-right" :href="route('admin.support.index')" :current="request()->routeIs('admin.support.*')" wire:navigate>
-                                Suporte
-                            </flux:sidebar.item>
+            
                         </flux:sidebar.group>
                     @endif
 

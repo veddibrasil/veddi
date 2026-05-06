@@ -100,8 +100,17 @@ trait HasCustomerProfile
     public function submitEmail(): void
     {
         $this->validate($this->rules(), $this->messages());
-        $this->addMessage('user', $this->email);
+        if ($this->email) {
+            $this->addMessage('user', $this->email);
+        }
         $this->addMessage('bot', 'Agora me passe seu endereço de entrega.');
+        $this->transitionTo('REGISTER_ADDRESS');
+    }
+
+    public function skipEmail(): void
+    {
+        $this->email = '';
+        $this->addMessage('bot', 'Tudo bem! Agora me passe seu endereço de entrega.');
         $this->transitionTo('REGISTER_ADDRESS');
     }
 
@@ -112,10 +121,10 @@ trait HasCustomerProfile
         $normalized = preg_replace('/\D/', '', $this->phone);
 
         $customer = Customer::updateOrCreate(
-            ['phone' => $normalized],
+            ['company_id' => $this->companyId, 'phone' => $normalized],
             [
                 'name' => $this->name,
-                'email' => $this->email,
+                'email' => $this->email !== '' ? $this->email : null,
                 'address' => $this->address,
                 'complement' => $this->complement,
                 'neighborhood' => $this->neighborhood,
