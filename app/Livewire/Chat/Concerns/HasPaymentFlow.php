@@ -62,7 +62,7 @@ trait HasPaymentFlow
 
     private function recalculateCardFee(): void
     {
-        $company = app()->bound('current.company') ? app('current.company') : null;
+        $company = $this->currentCompany();
 
         if ($company?->card_fee_absorbed_by_company) {
             $this->cardFeeBreakdown = [];
@@ -137,7 +137,7 @@ trait HasPaymentFlow
         $this->orderId = $order->id;
 
         $customer = Customer::findOrFail($this->customerId);
-        $company = app()->bound('current.company') ? app('current.company') : null;
+        $company = $this->currentCompany();
 
         if ($this->taxId && ! $customer->tax_id) {
             $customer->update(['tax_id' => preg_replace('/\D/', '', $this->taxId)]);
@@ -164,6 +164,7 @@ trait HasPaymentFlow
             $this->transitionTo('PAYMENT_PIX');
         }
 
+        $this->submitting = false;
         $this->isLoading = false;
     }
 
@@ -262,7 +263,7 @@ trait HasPaymentFlow
         $this->paymentId = null;
 
         $customer = Customer::findOrFail($this->customerId);
-        $company = app()->bound('current.company') ? app('current.company') : null;
+        $company = $this->currentCompany();
 
         app(PaymentService::class)->expireAndRenew($order, $customer, $company, $this->paymentMethod);
         $this->addMessage('bot', 'O tempo para pagamento expirou. Gerando nova cobrança...');
@@ -270,6 +271,9 @@ trait HasPaymentFlow
 
     public function submitCardPayment(): void
     {
+        if ($this->submitting) {
+            return;
+        }
         $this->cardError = null;
 
         $this->validate([
@@ -288,12 +292,15 @@ trait HasPaymentFlow
             'cardHolderName.min' => 'Nome inválido.',
         ]);
 
+        $this->submitting = true;
+
         $order = Order::find($this->orderId);
         $customer = Customer::findOrFail($this->customerId);
-        $company = app()->bound('current.company') ? app('current.company') : null;
+        $company = $this->currentCompany();
 
         if (! $order) {
             $this->cardError = 'Pedido não encontrado. Tente novamente.';
+            $this->submitting = false;
 
             return;
         }
@@ -403,6 +410,7 @@ trait HasPaymentFlow
                     'decline_reason' => $declineReason,
                 ]);
                 $this->cardError = $this->friendlyDeclineMessage($declineReason);
+                $this->submitting = false;
             }
         } catch (\Throwable $e) {
             Log::channel('discord')->error('Erro ao processar cartão no chat', [
@@ -411,6 +419,7 @@ trait HasPaymentFlow
                 'error' => $e->getMessage(),
             ]);
             $this->cardError = 'Não foi possível processar o pagamento. Tente novamente.';
+            $this->submitting = false;
         }
     }
 
@@ -453,7 +462,7 @@ trait HasPaymentFlow
 
         try {
             app(OrderServiceInterface::class)->cancelOrder($order, $this->customerId);
-        } catch (RuntimeException $e) {
+        } catch (RuntimeException) {
             $this->showCancelConfirm = false;
             $this->addMessage('bot', 'Não foi possível cancelar o pedido. Entre em contato com a loja.');
 
@@ -463,7 +472,7 @@ trait HasPaymentFlow
         $this->showCancelConfirm = false;
         $this->lastNotifiedStatus = 'cancelled';
         $this->addMessage('bot', "❌ Pedido {$order->order_number} cancelado. Se precisar de ajuda, entre em contato com a loja.");
-        $this->transitionTo('ORDER_FAILED');
+        $this->transitionTo('ORDER_CANCELLED');
     }
 
     public function dismissCancelOrder(): void

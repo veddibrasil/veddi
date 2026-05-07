@@ -193,6 +193,10 @@ trait HasCustomerProfile
             return;
         }
 
+        if ($this->selectedBranchId !== null && $this->selectedBranchId !== $branch->id) {
+            $this->cart = [];
+        }
+
         $this->selectedBranchId = $branch->id;
         Log::channel('chat')->info('Filial selecionada', ['customer_id' => $this->customerId, 'branch_id' => $branch->id, 'branch_name' => $branch->name]);
         $this->addMessage('user', $branch->name);

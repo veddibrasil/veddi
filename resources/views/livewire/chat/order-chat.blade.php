@@ -46,6 +46,21 @@
             {{-- Restart + End chat buttons --}}
             @if ($step !== 'CLOSED')
                 <div class="flex items-center gap-1" x-data="{ confirmEnd: false }">
+                    {{-- WhatsApp support --}}
+                    @if ($selectedBranchId && $this->supportWhatsAppUrl && !in_array($step, ['IDENTIFY_PHONE', 'CLOSED', 'EDIT_PROFILE']))
+                        <a
+                            href="{{ $this->supportWhatsAppUrl }}"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="text-white/70 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
+                            title="Falar no WhatsApp"
+                        >
+                            <svg class="w-5 h-5" viewBox="0 0 32 32" fill="currentColor" aria-hidden="true">
+                                <path d="M19.11 17.44c-.28-.14-1.64-.81-1.9-.9-.25-.09-.44-.14-.62.14-.18.28-.71.9-.88 1.09-.16.19-.32.21-.6.07-.28-.14-1.17-.43-2.24-1.37-.83-.74-1.39-1.66-1.55-1.94-.16-.28-.02-.43.12-.57.13-.13.28-.32.41-.49.13-.16.18-.28.28-.46.09-.18.05-.35-.02-.49-.07-.14-.62-1.5-.85-2.05-.22-.54-.45-.47-.62-.48h-.53c-.18 0-.46.07-.7.35-.25.28-.93.91-.93 2.22s.95 2.58 1.08 2.76c.14.18 1.87 2.86 4.53 4.02.63.27 1.12.43 1.5.55.63.2 1.2.17 1.65.1.5-.07 1.64-.67 1.87-1.31.23-.64.23-1.19.16-1.31-.06-.12-.25-.19-.53-.33zM16 3.2A12.77 12.77 0 0 0 4.8 22.02L3.2 28.8l6.93-1.56A12.78 12.78 0 1 0 16 3.2zm0 23.35c-2.08 0-4.11-.55-5.9-1.6l-.42-.25-4.11.92.95-4-.27-.43A10.58 10.58 0 1 1 16 26.55z"/>
+                            </svg>
+                        </a>
+                    @endif
+
                     {{-- Order history --}}
                     @if ($customerId && !in_array($step, ['IDENTIFY_PHONE', 'CLOSED', 'EDIT_PROFILE', 'ORDER_HISTORY']))
                         <button
@@ -121,9 +136,21 @@
 
         {{-- Step progress dots --}}
         @php
-            $steps = ['BRANCH_SELECT','MENU_BROWSE','CART_REVIEW','IDENTIFY_PHONE','PAYMENT_PIX'];
-            $currentIdx = array_search($step, $steps);
-            if ($currentIdx === false) $currentIdx = in_array($step, ['REGISTER_NAME','REGISTER_EMAIL','REGISTER_ADDRESS']) ? 3 : (in_array($step, ['CHECKOUT_COUPON','CHECKOUT_ORDER_TYPE','CHECKOUT_DELIVERY_ADDRESS','CHECKOUT_DELIVERY_FEE','CHECKOUT_SCHEDULE','CHECKOUT_NOTES','CHECKOUT_CPF','CHECKOUT_PAYMENT_METHOD','CHECKOUT_CONFIRM']) ? 3 : ($step === 'ORDER_CONFIRMED' ? 5 : $currentIdx));
+            $currentIdx = match(true) {
+                $step === 'BRANCH_SELECT'                                            => 0,
+                $step === 'MENU_BROWSE'                                              => 1,
+                $step === 'CART_REVIEW'                                              => 2,
+                in_array($step, ['IDENTIFY_PHONE','RECOVER_ORDER',
+                    'REGISTER_NAME','REGISTER_EMAIL','REGISTER_ADDRESS',
+                    'CHECKOUT_COUPON','CHECKOUT_ORDER_TYPE',
+                    'CHECKOUT_DELIVERY_ADDRESS','CHECKOUT_DELIVERY_FEE',
+                    'CHECKOUT_SCHEDULE','CHECKOUT_NOTES','CHECKOUT_CPF',
+                    'CHECKOUT_PAYMENT_METHOD','CHECKOUT_CONFIRM',
+                    'EDIT_PROFILE','ORDER_HISTORY'])                                 => 3,
+                in_array($step, ['PAYMENT_PIX','PAYMENT_CARD_FORM','ORDER_FAILED']) => 4,
+                in_array($step, ['ORDER_CONFIRMED','ORDER_CANCELLED'])               => 5,
+                default                                                              => 0,
+            };
         @endphp
         <div class="flex items-center justify-center gap-1.5 pb-3 px-4">
             @for ($i = 0; $i < 5; $i++)
@@ -594,56 +621,62 @@
 
         {{-- ── CHECKOUT_SCHEDULE ── --}}
         @elseif ($step === 'CHECKOUT_SCHEDULE')
-            <div class="space-y-3" x-data="{ wantsSchedule: false }">
+            <div class="space-y-3">
                 <p class="text-sm font-semibold text-gray-700 text-center">Quando deseja receber seu pedido?</p>
 
-                <div x-show="!wantsSchedule" class="space-y-2">
-                    <div class="flex gap-2">
-                        <button wire:click="selectScheduleOption('now')" class="mc-btn-primary flex-1 !py-2 !px-3 !text-xs">
-                            ⚡ Agora, o mais rápido possível
-                        </button>
-                        <button @click="wantsSchedule = true" class="mc-btn-secondary flex-1 !py-2 !px-3 !text-xs">
-                            🕐 Agendar para outro horário
-                        </button>
+                @if (!$showScheduleForm)
+                    <div class="space-y-2">
+                        <div class="flex gap-2">
+                            <button wire:click="selectScheduleOption('now')" class="mc-btn-primary flex-1 !py-2 !px-3 !text-xs">
+                                ⚡ Agora, o mais rápido possível
+                            </button>
+                            <button wire:click="$set('showScheduleForm', true)" class="mc-btn-secondary flex-1 !py-2 !px-3 !text-xs">
+                                🕐 Agendar para outro horário
+                            </button>
+                        </div>
+                        <button wire:click="backFromSchedule" class="mc-btn-outline w-full">← Voltar</button>
                     </div>
-                    <button wire:click="backFromSchedule" class="mc-btn-outline w-full">← Voltar</button>
-                </div>
-                <div x-show="wantsSchedule" class="space-y-3" x-cloak>
-                    <div>
-                        <label class="block text-xs font-semibold text-gray-600 mb-1.5">Data desejada</label>
-                        <input
-                            type="date"
-                            wire:model.live="scheduleDate"
-                            min="{{ now(config('app.timezone'))->format('Y-m-d') }}"
-                            class="mc-input"
-                        />
-                        @if ($scheduleDate)
-                            @if (count($this->availableTimeSlots) > 0)
-                                <flux:select wire:model="scheduleTime" label="Horário desejado" class="mt-3">
-                                    <flux:select.option value="">Selecione o horário</flux:select.option>
-                                    @foreach ($this->availableTimeSlots as $slot)
-                                        <flux:select.option value="{{ $slot }}">{{ $slot }}</flux:select.option>
-                                    @endforeach
-                                </flux:select>
-                            @else
-                                <p class="text-amber-600 text-xs mt-1 flex items-center gap-1"><span>⚠</span> Nenhum horário disponível para este dia.</p>
+                @else
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1.5">Data desejada</label>
+                            <input
+                                type="date"
+                                wire:model.live="scheduleDate"
+                                min="{{ now(config('app.timezone'))->format('Y-m-d') }}"
+                                class="mc-input"
+                            />
+                            @if ($scheduleDate)
+                                @if (count($this->availableTimeSlots) > 0)
+                                    <div class="mt-3">
+                                        <label class="block text-xs font-semibold text-gray-600 mb-1.5">Horário desejado</label>
+                                        <flux:select wire:model="scheduleTime">
+                                            <flux:select.option value="">Selecione o horário</flux:select.option>
+                                            @foreach ($this->availableTimeSlots as $slot)
+                                                <flux:select.option value="{{ $slot }}">{{ $slot }}</flux:select.option>
+                                            @endforeach
+                                        </flux:select>
+                                    </div>
+                                @else
+                                    <p class="text-amber-600 text-xs mt-1 flex items-center gap-1"><span>⚠</span> Nenhum horário disponível para este dia.</p>
+                                @endif
                             @endif
-                        @endif
-                        @error('scheduledAt') <p class="text-red-600 text-xs mt-1 flex items-center gap-1"><span>⚠</span> {{ $message }}</p> @enderror
+                            @error('scheduledAt') <p class="text-red-600 text-xs mt-1 flex items-center gap-1"><span>⚠</span> {{ $message }}</p> @enderror
                         </div>
                         <div class="flex gap-2">
-                        <button @click="wantsSchedule = false" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
-                                <button
-                            wire:click="submitScheduleTime"
-                            class="mc-btn-primary flex-1"
-                            wire:loading.attr="disabled"
-                            wire:target="submitScheduleTime"
-                        >
-                            <span wire:loading.remove wire:target="submitScheduleTime">Confirmar agendamento →</span>
-                            <span wire:loading wire:target="submitScheduleTime">Verificando...</span>
-                        </button>
+                            <button wire:click="$set('showScheduleForm', false)" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
+                            <button
+                                wire:click="submitScheduleTime"
+                                class="mc-btn-primary flex-1"
+                                wire:loading.attr="disabled"
+                                wire:target="submitScheduleTime"
+                            >
+                                <span wire:loading.remove wire:target="submitScheduleTime">Confirmar agendamento →</span>
+                                <span wire:loading wire:target="submitScheduleTime">Verificando...</span>
+                            </button>
+                        </div>
                     </div>
-                </div>
+                @endif
             </div>
 
         {{-- ── CHECKOUT_NOTES ── --}}
@@ -694,6 +727,10 @@
                 <div class="flex gap-2">
                     @if ($currentCompany?->schedulingEnabled())
                         <button wire:click="backToSchedule" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
+                    @elseif ($orderType === 'delivery' && ($deliveryFee > 0 || $freeDelivery))
+                        <button wire:click="backToDeliveryFee" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
+                    @elseif ($orderType === 'delivery')
+                        <button wire:click="backToDeliveryAddress" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
                     @else
                         <button wire:click="backToOrderType" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
                     @endif
@@ -1332,6 +1369,22 @@
                 </div>
             </div>
 
+        {{-- ── ORDER_CANCELLED ── --}}
+        @elseif ($step === 'ORDER_CANCELLED')
+            <div class="text-center space-y-3 py-1">
+                <div class="w-14 h-14 rounded-full bg-orange-100 flex items-center justify-center mx-auto text-3xl">
+                    ❌
+                </div>
+                <div>
+                    <p class="font-bold text-orange-600 text-base">Pedido cancelado</p>
+                    <p class="text-xs text-gray-500 mt-1">Seu pedido foi cancelado. Que tal fazer um novo?</p>
+                </div>
+                <div class="flex gap-2">
+                    <button wire:click="startNewOrderKeepHistory" class="mc-btn-primary flex-1">Novo pedido</button>
+                    <button wire:click="startNewOrder" class="mc-btn-secondary flex-1 text-xs">Recomeçar</button>
+                </div>
+            </div>
+
         {{-- ── ORDER_FAILED ── --}}
         @elseif ($step === 'ORDER_FAILED')
             <div class="text-center space-y-3 py-1">
@@ -1759,138 +1812,3 @@
 
 </div>
 
-@script
-<script>
-    Alpine.data('chatApp', () => ({
-        copied: false,
-        cepLoading: false,
-
-        formatPhone(v) {
-            v = v.replace(/\D/g, '').slice(0, 11);
-            if (v.length === 0) return '';
-            if (v.length <= 2) return '(' + v;
-            if (v.length <= 6) return '(' + v.slice(0,2) + ') ' + v.slice(2);
-            if (v.length <= 10) return '(' + v.slice(0,2) + ') ' + v.slice(2,6) + '-' + v.slice(6);
-            return '(' + v.slice(0,2) + ') ' + v.slice(2,7) + '-' + v.slice(7);
-        },
-
-        formatCep(v) {
-            v = v.replace(/\D/g, '').slice(0, 8);
-            return v.length > 5 ? v.slice(0,5) + '-' + v.slice(5) : v;
-        },
-
-        formatCpf(v) {
-            v = v.replace(/\D/g, '').slice(0, 11);
-            if (v.length <= 3) return v;
-            if (v.length <= 6) return v.slice(0,3) + '.' + v.slice(3);
-            if (v.length <= 9) return v.slice(0,3) + '.' + v.slice(3,6) + '.' + v.slice(6);
-            return v.slice(0,3) + '.' + v.slice(3,6) + '.' + v.slice(6,9) + '-' + v.slice(9);
-        },
-
-        openOptionSelector(product) {
-            this.selectingProduct = product;
-            this.pendingSelections = {};
-            product.groups.forEach(group => {
-                this.pendingSelections[group.id] = {};
-                group.options.forEach(opt => {
-                    // fixo: usa prefilledQty (= default_qty); variável: usa seleção anterior no carrinho
-                    this.pendingSelections[group.id][opt.id] = opt.prefilledQty || 0;
-                });
-            });
-        },
-
-        addOrOpenOptionSelector(product, wire) {
-            if (product.allFixed) {
-                // Monta seleções diretamente dos default_qty, sem abrir painel
-                const selections = {};
-                product.groups.forEach(group => {
-                    selections[group.id] = { group_name: group.name, total_qty: group.total_qty, selections: {} };
-                    group.options.forEach(opt => {
-                        if (opt.prefilledQty > 0) {
-                            selections[group.id].selections[opt.id] = {
-                                name: opt.name, qty: opt.prefilledQty, additional_price: opt.additional_price,
-                            };
-                        }
-                    });
-                });
-                wire.addToCartWithOptions(product.id, selections);
-            } else {
-                this.openOptionSelector(product);
-            }
-        },
-
-        getGroupTotal(groupId) {
-            const sels = this.pendingSelections[groupId] || {};
-            return Object.values(sels).reduce((sum, qty) => sum + (parseInt(qty) || 0), 0);
-        },
-
-        canConfirm() {
-            if (!this.selectingProduct) return false;
-            return this.selectingProduct.groups.every(
-                group => group.fixed || this.getGroupTotal(group.id) <= group.total_qty
-            );
-        },
-
-        getTotalWithOptions() {
-            if (!this.selectingProduct) return 0;
-            let base = this.selectingProduct.price || 0;
-            let extra = 0;
-            this.selectingProduct.groups.forEach(group => {
-                group.options.forEach(opt => {
-                    const qty = group.fixed
-                        ? (opt.prefilledQty || 0)
-                        : (parseInt(this.pendingSelections[group.id]?.[opt.id]) || 0);
-                    extra += qty * (opt.additional_price || 0);
-                });
-            });
-            return base + extra;
-        },
-
-        confirmOptions(wire) {
-            if (!this.canConfirm()) return;
-            const selections = {};
-            this.selectingProduct.groups.forEach(group => {
-                selections[group.id] = {
-                    group_name: group.name,
-                    total_qty: group.total_qty,
-                    selections: {},
-                };
-                group.options.forEach(opt => {
-                    // fixo: usa prefilledQty; variável: usa o que o cliente escolheu
-                    const qty = group.fixed
-                        ? (opt.prefilledQty || 0)
-                        : (parseInt(this.pendingSelections[group.id]?.[opt.id]) || 0);
-                    if (qty > 0) {
-                        selections[group.id].selections[opt.id] = {
-                            name: opt.name,
-                            qty: qty,
-                            additional_price: opt.additional_price,
-                        };
-                    }
-                });
-            });
-            wire.addToCartWithOptions(this.selectingProduct.id, selections);
-            this.selectingProduct = null;
-            this.pendingSelections = {};
-        },
-
-        async lookupCep(cep, wire) {
-            const digits = cep.replace(/\D/g, '');
-            if (digits.length !== 8) return;
-            this.cepLoading = true;
-            try {
-                const res = await fetch('https://viacep.com.br/ws/' + digits + '/json/');
-                const data = await res.json();
-                if (!data.erro) {
-                    if (data.logradouro) wire.set('address', data.logradouro);
-                    if (data.bairro) wire.set('neighborhood', data.bairro);
-                    if (data.localidade) wire.set('city', data.localidade);
-                }
-            } catch(e) {}
-            this.cepLoading = false;
-        },
-    }));
-
-
-</script>
-@endscript

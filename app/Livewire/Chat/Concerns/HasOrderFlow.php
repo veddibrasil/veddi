@@ -36,6 +36,12 @@ trait HasOrderFlow
 
     public function confirmCart(): void
     {
+        if (empty($this->cart)) {
+            $this->cartError = 'Adicione pelo menos um produto antes de continuar.';
+
+            return;
+        }
+
         if (! $this->customerId) {
             $this->addMessage('bot', 'Ótimo pedido! Para continuar, preciso do seu número de telefone com DDD.');
             $this->transitionTo('IDENTIFY_PHONE');
@@ -131,7 +137,7 @@ trait HasOrderFlow
             $this->deliveryFee = 0.0;
             $this->freeDelivery = false;
 
-            $company = app()->bound('current.company') ? app('current.company') : null;
+            $company = $this->currentCompany();
             if ($company?->schedulingEnabled()) {
                 $this->transitionTo('CHECKOUT_SCHEDULE');
 
@@ -184,7 +190,7 @@ trait HasOrderFlow
             $this->deliveryFee = 0.0;
             $this->freeDelivery = false;
 
-            $company = app()->bound('current.company') ? app('current.company') : null;
+            $company = $this->currentCompany();
             if ($company?->schedulingEnabled()) {
                 $this->transitionTo('CHECKOUT_SCHEDULE');
 
@@ -229,7 +235,7 @@ trait HasOrderFlow
 
     public function confirmDeliveryFee(): void
     {
-        $company = app()->bound('current.company') ? app('current.company') : null;
+        $company = $this->currentCompany();
         if ($company?->schedulingEnabled()) {
             $this->transitionTo('CHECKOUT_SCHEDULE');
 
@@ -358,6 +364,11 @@ trait HasOrderFlow
         $this->transitionTo('CHECKOUT_DELIVERY_ADDRESS');
     }
 
+    public function backToDeliveryFee(): void
+    {
+        $this->transitionTo('CHECKOUT_DELIVERY_FEE');
+    }
+
     public function backToNotes(): void
     {
         $this->transitionTo('CHECKOUT_NOTES');
@@ -408,7 +419,7 @@ trait HasOrderFlow
     {
         $this->resetErrorBag('scheduledAt');
 
-        $company = app()->bound('current.company') ? app('current.company') : null;
+        $company = $this->currentCompany();
         $minMinutes = $company?->schedule_min_advance_minutes ?? 60;
 
         if (empty($this->scheduleDate) || empty($this->scheduleTime)) {

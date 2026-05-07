@@ -5,30 +5,41 @@
     <title>Cupom {{ $order->order_number }}</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: DejaVu Sans Mono, monospace; font-size: 10px; color: #111; background: #fff; padding: 14px 12px; }
+        body { font-family: DejaVu Sans Mono, monospace; font-size: 9px; color: #111; background: #fff; padding: 10px 10px; }
         .center { text-align: center; }
         .right { text-align: right; }
         .bold { font-weight: bold; }
-        .sm { font-size: 9px; }
+        .sm { font-size: 8px; }
         .muted { color: #777; }
-        .divider { border-top: 1px dashed #555; margin: 7px 0; }
-        .row { width: 100%; border-collapse: collapse; margin: 2px 0; }
+        .divider { border-top: 1px dashed #555; margin: 5px 0; }
+        .row { width: 100%; border-collapse: collapse; margin: 1px 0; }
         .row td { padding: 1px 0; vertical-align: top; }
-        .item-qty { font-size: 9px; color: #555; padding-bottom: 3px; }
-        .total-label { font-weight: bold; font-size: 12px; padding-top: 4px; }
-        .total-value { font-weight: bold; font-size: 12px; text-align: right; padding-top: 4px; }
+        .item-qty { font-size: 8px; color: #555; padding-bottom: 2px; }
+        .total-label { font-weight: bold; font-size: 11px; padding-top: 3px; }
+        .total-value { font-weight: bold; font-size: 11px; text-align: right; padding-top: 3px; }
     </style>
 </head>
 <body>
 
     {{-- Cabeçalho --}}
-    <div class="center bold" style="font-size: 13px;">{{ $company?->name ?? config('app.name') }}</div>
+    <div class="center bold" style="font-size: 12px;">{{ $company?->name ?? config('app.name') }}</div>
     <div class="center" style="margin-top: 2px;">{{ $order->branch->name }}</div>
     @if ($order->branch->address)
         <div class="center sm muted">{{ $order->branch->address }}</div>
     @endif
 
     <div class="divider"></div>
+
+    {{-- Tipo de pedido em destaque --}}
+    @if ($order->order_type === 'delivery')
+        <div style="border: 2px solid #111; text-align: center; font-weight: bold; font-size: 13px; letter-spacing: 2px; padding: 4px 0; margin-bottom: 5px;">
+            *** ENTREGA ***
+        </div>
+    @else
+        <div style="border: 1px dashed #555; text-align: center; font-size: 10px; padding: 2px 0; margin-bottom: 5px;">
+            RETIRADA NO LOCAL
+        </div>
+    @endif
 
     {{-- Informações do pedido --}}
     <table class="row">
@@ -40,10 +51,6 @@
             <td>Data</td>
             <td class="right">{{ $order->created_at->format('d/m/Y H:i') }}</td>
         </tr>
-        <tr>
-            <td>Tipo</td>
-            <td class="right">{{ $order->order_type === 'delivery' ? 'Entrega' : 'Retirada' }}</td>
-        </tr>
     </table>
 
     <div class="divider"></div>
@@ -52,27 +59,30 @@
     @foreach ($order->items as $item)
         <table class="row">
             <tr>
-                <td style="width: 65%;">{{ $item->product_name }}</td>
-                <td class="right">R$ {{ number_format($item->subtotal, 2, ',', '.') }}</td>
+                <td style="width: 65%; font-weight: bold; font-size: 10px;">
+                    {{ $item->quantity }}x {{ $item->product_name }}
+                </td>
+                <td class="right bold" style="font-size: 10px;">R$ {{ number_format($item->subtotal, 2, ',', '.') }}</td>
             </tr>
             <tr>
-                <td colspan="2" class="item-qty">
-                    {{ $item->quantity }}x R$ {{ number_format($item->unit_price, 2, ',', '.') }}
+                <td colspan="2" class="item-qty" style="padding-left: 8px; color: #555;">
+                    R$ {{ number_format($item->unit_price, 2, ',', '.') }} / un.
                 </td>
             </tr>
             @foreach ($item->options ?? [] as $group)
                 @if (!empty($group['selections']))
                     <tr>
-                        <td colspan="2" class="item-qty" style="color: #555; padding-left: 6px;">
-                            {{ $group['group_name'] ?? 'Opções' }}:
+                        <td colspan="2" style="padding-left: 8px; padding-top: 1px; font-size: 8px; color: #444;">
+                            <span style="font-weight: bold;">{{ $group['group_name'] ?? 'Opcoes' }}:</span>
                             @foreach ($group['selections'] as $sel)
-                                {{ $sel['qty'] }}x {{ $sel['name'] }}@if ((float) ($sel['additional_price'] ?? 0) > 0) (+R$ {{ number_format((float) $sel['additional_price'], 2, ',', '.') }})@endif{{ !$loop->last ? ', ' : '' }}
+                                <br>&nbsp;&nbsp;&bull; {{ $sel['qty'] }}x {{ $sel['name'] }}@if ((float) ($sel['additional_price'] ?? 0) > 0) <span style="color:#111;">(+R$ {{ number_format((float) $sel['additional_price'], 2, ',', '.') }})</span>@endif
                             @endforeach
                         </td>
                     </tr>
                 @endif
             @endforeach
         </table>
+        <div style="border-top: 1px dotted #ddd; margin: 3px 0;"></div>
     @endforeach
 
     <div class="divider"></div>
@@ -113,9 +123,9 @@
         <tr>
             <td>Pagamento</td>
             <td class="right bold">
-                @if ($order->payment_method === 'PIX') PIX
-                @elseif ($order->payment_method === 'CARD') Cartao
-                @elseif ($order->payment_method === 'CASH') Dinheiro
+                @if ($order->payment_method === 'pix') PIX
+                @elseif ($order->payment_method === 'card') Cartao
+                @elseif ($order->payment_method === 'cash') Dinheiro
                 @else {{ $order->payment_method }}
                 @endif
             </td>
@@ -134,14 +144,17 @@
     <div class="bold">{{ $order->customer->name }}</div>
     <div class="sm muted">{{ $order->customer->phone }}</div>
     @if ($order->order_type === 'delivery')
-        <div class="sm" style="margin-top: 3px;">
-            {{ $order->customer->address }}{{ $order->customer->number ? ', '.$order->customer->number : '' }}
-        </div>
-        @if ($order->customer->complement)
-            <div class="sm">{{ $order->customer->complement }}</div>
-        @endif
-        <div class="sm">
-            {{ $order->customer->neighborhood }}{{ $order->customer->city ? ' - '.$order->customer->city : '' }}
+        <div style="margin-top: 4px; border-left: 3px solid #111; padding-left: 5px;">
+            <div class="bold" style="font-size: 8px; letter-spacing: 1px;">ENDERECO DE ENTREGA</div>
+            <div style="margin-top: 1px;">
+                {{ $order->customer->address }}{{ $order->customer->number ? ', '.$order->customer->number : '' }}
+            </div>
+            @if ($order->customer->complement)
+                <div>{{ $order->customer->complement }}</div>
+            @endif
+            <div>
+                {{ $order->customer->neighborhood }}{{ $order->customer->city ? ' - '.$order->customer->city : '' }}
+            </div>
         </div>
     @endif
 

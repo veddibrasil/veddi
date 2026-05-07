@@ -1,6 +1,7 @@
 import './admin/order-show.js';
 import './chat/map-picker.js';
 import './chat/branch-locator.js';
+import './chat/chat-app.js';
 
 import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';

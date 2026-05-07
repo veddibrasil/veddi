@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
-use Illuminate\Support\Str;
 
 class Order extends Model
 {
@@ -79,10 +78,15 @@ class Order extends Model
     private static function generateOrderNumber(): string
     {
         $year = now()->year;
-        $prefix = app()->bound('current.company') ? app('current.company')->order_prefix : 'ORD';
-        $suffix = Str::upper(Str::ulid()->toBase32());
 
-        return sprintf('%s-%d-%s', $prefix, $year, $suffix);
+        if (! app()->bound('current.company')) {
+            return sprintf('ORD-%d-%s', $year, str_pad((string) random_int(1, 9999), 4, '0', STR_PAD_LEFT));
+        }
+
+        $company = Company::lockForUpdate()->find(app('current.company')->id);
+        $company->increment('order_sequence');
+
+        return sprintf('%s-%d-%s', $company->order_prefix, $year, str_pad((string) $company->order_sequence, 4, '0', STR_PAD_LEFT));
     }
 
     public function customer(): BelongsTo

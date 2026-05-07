@@ -73,6 +73,8 @@ class OrderChat extends Component
 
     public string $scheduleTime = '';
 
+    public bool $showScheduleForm = false;
+
     public string $paymentMethod = 'PIX';
 
     public string $orderType = 'delivery'; // 'delivery' | 'pickup'
@@ -155,7 +157,7 @@ class OrderChat extends Component
             return;
         }
 
-        $bound = app()->bound('current.company') ? app('current.company') : null;
+        $bound = $this->currentCompany();
 
         if (! $bound || $bound->id !== $this->companyId) {
             $company = \App\Models\Company::find($this->companyId);
@@ -202,7 +204,7 @@ class OrderChat extends Component
 
     private function initialize(): void
     {
-        $company = app()->bound('current.company') ? app('current.company') : null;
+        $company = $this->currentCompany();
         $companyName = $company?->name ?? config('app.name');
         $companyId = $this->companyId;
 
@@ -406,7 +408,7 @@ class OrderChat extends Component
             return [];
         }
 
-        $company = app()->bound('current.company') ? app('current.company') : null;
+        $company = $this->currentCompany();
         $minMinutes = $company?->schedule_min_advance_minutes ?? 60;
         $minTime = now(config('app.timezone'))->addMinutes($minMinutes);
 
@@ -425,6 +427,28 @@ class OrderChat extends Component
         }
 
         return $slots;
+    }
+
+    public function getSupportWhatsAppUrlProperty(): ?string
+    {
+        if (! $this->selectedBranchId) {
+            return null;
+        }
+
+        $branch = $this->branches->firstWhere('id', $this->selectedBranchId);
+        $phone = $branch?->phone ?? null;
+
+        if (! $phone) {
+            return null;
+        }
+
+        $digits = preg_replace('/\D/', '', $phone);
+
+        if (strlen($digits) === 10 || strlen($digits) === 11) {
+            $digits = '55'.$digits;
+        }
+
+        return 'https://wa.me/'.$digits;
     }
 
     public function getBranchesProperty()
@@ -534,8 +558,16 @@ class OrderChat extends Component
         ];
     }
 
+    protected function currentCompany(): ?\App\Models\Company
+    {
+        return app()->bound('current.company') ? app('current.company') : null;
+    }
+
     private function transitionTo(string $step): void
     {
+        if ($step === 'CHECKOUT_SCHEDULE') {
+            $this->showScheduleForm = false;
+        }
         $this->step = $step;
         $this->resetErrorBag();
         $this->saveToSession();
@@ -566,6 +598,8 @@ class OrderChat extends Component
             'number' => $this->number,
             'city' => $this->city,
             'cep' => $this->cep,
+            'customer_latitude' => $this->customer_latitude,
+            'customer_longitude' => $this->customer_longitude,
             'selectedBranchId' => $this->selectedBranchId,
             'cart' => $this->cart,
             'notes' => $this->notes,
@@ -658,7 +692,7 @@ class OrderChat extends Component
 
     public function render()
     {
-        $currentCompany = app()->bound('current.company') ? app('current.company') : null;
+        $currentCompany = $this->currentCompany();
 
         return view('livewire.chat.order-chat', compact('currentCompany'))
             ->layout('layouts.chat');
