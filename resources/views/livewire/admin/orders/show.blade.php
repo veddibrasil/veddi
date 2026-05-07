@@ -634,8 +634,8 @@
                         <div class="text-neutral-500 dark:text-neutral-400">Status</div>
                         <div>
                             <span class="px-2 py-0.5 rounded-full text-xs
-                                {{ $order->payment->status === 'paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-400' }}">
-                                {{ ucfirst($order->payment->status) }}
+                                {{ $order->payment->status == 'paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-400' }}">
+                                {{ $order->payment->status == 'paid' ? 'Pago' : ($order->payment->status == 'pending' ? 'Pendente' : ucfirst($order->payment->status)) }}
                             </span>
                         </div>
                         @if ($order->payment->paid_at)

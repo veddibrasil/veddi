@@ -42,6 +42,14 @@
             @endforeach
         </flux:select>
     </div>
+    <div class="mt-3 flex">
+        <flux:select wire:model.live="sort" class="w-56 shrink-0">
+            <flux:select.option value="menu">Ordenar: Cardápio</flux:select.option>
+            <flux:select.option value="price_desc">Ordenar: Maior preço</flux:select.option>
+            <flux:select.option value="price_asc">Ordenar: Menor preço</flux:select.option>
+            <flux:select.option value="created_desc">Ordenar: Mais recentes</flux:select.option>
+        </flux:select>
+    </div>
 
     <div class="bg-white border rounded-xl shadow-sm overflow-hidden dark:bg-zinc-800 dark:border-zinc-700">
         {{-- Cabeçalho de colunas --}}

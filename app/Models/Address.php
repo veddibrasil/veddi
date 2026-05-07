@@ -14,5 +14,12 @@ class Address extends Model
         'city',
         'state',
         'cep',
+        'latitude',
+        'longitude',
+    ];
+
+    protected $casts = [
+        'latitude' => 'float',
+        'longitude' => 'float',
     ];
 }

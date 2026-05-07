@@ -161,14 +161,29 @@ trait HasOrderFlow
 
         if ($this->customerId) {
             $customer = Customer::findOrFail($this->customerId);
-            $customer->update([
+
+            // Load saved coordinates before updating, so returning customers
+            // don't need to pick location again when address is unchanged.
+            if ($this->customer_latitude === '' && $customer->latitude) {
+                $this->customer_latitude = (string) $customer->latitude;
+                $this->customer_longitude = (string) $customer->longitude;
+            }
+
+            $updateData = [
                 'address' => $this->address,
                 'complement' => $this->complement,
                 'neighborhood' => $this->neighborhood,
                 'number' => $this->number,
                 'city' => $this->city,
                 'cep' => preg_replace('/\D/', '', $this->cep),
-            ]);
+            ];
+
+            if ($this->customer_latitude !== '' && $this->customer_longitude !== '') {
+                $updateData['latitude'] = (float) $this->customer_latitude;
+                $updateData['longitude'] = (float) $this->customer_longitude;
+            }
+
+            $customer->update($updateData);
         }
 
         $addressSummary = $this->address;
@@ -208,7 +223,7 @@ trait HasOrderFlow
                 $this->deliveryNeedsCoordinates($settings)
                 && ($this->customer_latitude === '' || $this->customer_longitude === '')
             ) {
-                $this->addMessage('bot', 'Para calcular sua entrega, clique em "Usar minha localização atual" e confirme o local no mapa.');
+                $this->addMessage('bot', 'Para calcular o frete, precisamos da sua localização. Use o mapa acima para buscar seu endereço, usar o GPS ou arrastar o pin.');
 
                 return;
             }

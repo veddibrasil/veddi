@@ -20,6 +20,8 @@ class Index extends Component
 
     public string $companyFilter = '';
 
+    public string $sort = 'menu';
+
     public ?int $deletingId = null;
 
     public bool $isSuperAdmin = false;
@@ -66,6 +68,11 @@ class Index extends Component
         $this->resetPage();
     }
 
+    public function updatingSort(): void
+    {
+        $this->resetPage();
+    }
+
     public function confirmDelete(int $id): void
     {
         $this->deletingId = $id;
@@ -98,14 +105,20 @@ class Index extends Component
             ? Product::withoutGlobalScope(CompanyScope::class)->with(['category', 'company'])
             : Product::with('category');
 
-        $products = $productQuery
+        $productsQuery = $productQuery
             ->when($this->search, fn ($q) => $q->where('name', 'like', "%{$this->search}%"))
             ->when($this->categoryFilter, fn ($q) => $q->where('product_category_id', $this->categoryFilter))
             ->when($this->isSuperAdmin && $this->companyFilter, fn ($q) => $q->where('company_id', $this->companyFilter))
-            ->when($this->lockedBranchId, fn ($q) => $q->whereHas('branches', fn ($bq) => $bq->where('branches.id', $this->lockedBranchId)))
-            ->orderBy('product_category_id')
-            ->orderBy('sort_order')
-            ->paginate(15);
+            ->when($this->lockedBranchId, fn ($q) => $q->whereHas('branches', fn ($bq) => $bq->where('branches.id', $this->lockedBranchId)));
+
+        $productsQuery = match ($this->sort) {
+            'price_desc' => $productsQuery->orderByDesc('price')->orderBy('name'),
+            'price_asc' => $productsQuery->orderBy('price')->orderBy('name'),
+            'created_desc' => $productsQuery->orderByDesc('created_at')->orderBy('name'),
+            default => $productsQuery->orderBy('product_category_id')->orderBy('sort_order')->orderBy('name'),
+        };
+
+        $products = $productsQuery->paginate(15);
 
         $categoryQuery = $this->isSuperAdmin
             ? ProductCategory::withoutGlobalScope(CompanyScope::class)

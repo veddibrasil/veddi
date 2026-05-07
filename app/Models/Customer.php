@@ -26,6 +26,8 @@ class Customer extends Model
         'city',
         'state',
         'cep',
+        'latitude',
+        'longitude',
     ];
 
     /**
@@ -149,6 +151,26 @@ class Customer extends Model
     public function setCepAttribute($value): void
     {
         $this->pendingAddressData['cep'] = $value;
+    }
+
+    public function getLatitudeAttribute(): ?float
+    {
+        return $this->addressRecord?->latitude;
+    }
+
+    public function setLatitudeAttribute($value): void
+    {
+        $this->pendingAddressData['latitude'] = $value !== null ? (float) $value : null;
+    }
+
+    public function getLongitudeAttribute(): ?float
+    {
+        return $this->addressRecord?->longitude;
+    }
+
+    public function setLongitudeAttribute($value): void
+    {
+        $this->pendingAddressData['longitude'] = $value !== null ? (float) $value : null;
     }
 
     public function orders(): HasMany

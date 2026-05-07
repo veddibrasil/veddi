@@ -25,6 +25,13 @@ function _mapSetError(prefix, msg) {
     else _mapShow(el, false);
 }
 
+function _mapSetSearchError(prefix, msg) {
+    var el = _mapEl(prefix, 'search-error');
+    if (!el) return;
+    if (msg) { el.textContent = '⚠ ' + msg; _mapShow(el, true); }
+    else _mapShow(el, false);
+}
+
 function _mapSetGeocoding(prefix, v) {
     var s = _mapStates[prefix];
     if (!s) return;
@@ -65,8 +72,62 @@ function _mapBuild(prefix, lat, lng) {
     });
 }
 
+function _mapOpenAt(prefix, lat, lng) {
+    if (!_mapStates[prefix]) _mapStates[prefix] = { map: null, marker: null, lat: null, lng: null, loading: false, reverseGeocoding: false, searching: false };
+    var s = _mapStates[prefix];
+    s.lat = lat;
+    s.lng = lng;
+    _mapShow(_mapEl(prefix, 'container'), true);
+    requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+            _mapBuild(prefix, lat, lng);
+        });
+    });
+}
+
+window.mapPickerSearch = async function (prefix) {
+    if (!_mapStates[prefix]) _mapStates[prefix] = { map: null, marker: null, lat: null, lng: null, loading: false, reverseGeocoding: false, searching: false };
+    var s = _mapStates[prefix];
+    var input = _mapEl(prefix, 'search-input');
+    var query = input ? input.value.trim() : '';
+    if (!query) {
+        _mapSetSearchError(prefix, 'Digite um endereço para buscar.');
+        return;
+    }
+    if (s.searching) return;
+
+    s.searching = true;
+    _mapSetSearchError(prefix, null);
+    var btn = _mapEl(prefix, 'search-btn');
+    if (btn) btn.disabled = true;
+    _mapShow(_mapEl(prefix, 'search-span-default'), false);
+    _mapShow(_mapEl(prefix, 'search-span-loading'), true);
+
+    try {
+        var res = await fetch(
+            'https://nominatim.openstreetmap.org/search?q=' + encodeURIComponent(query) + '&format=json&limit=1&accept-language=pt-BR',
+            { headers: { 'Accept-Language': 'pt-BR,pt;q=0.9' } }
+        );
+        var results = await res.json();
+        if (!results || results.length === 0) {
+            _mapSetSearchError(prefix, 'Endereço não encontrado. Tente ser mais específico.');
+        } else {
+            var r = results[0];
+            _mapOpenAt(prefix, parseFloat(r.lat), parseFloat(r.lon));
+            _mapSetSearchError(prefix, null);
+        }
+    } catch (e) {
+        _mapSetSearchError(prefix, 'Erro ao buscar endereço. Verifique sua conexão.');
+    }
+
+    s.searching = false;
+    if (btn) btn.disabled = false;
+    _mapShow(_mapEl(prefix, 'search-span-default'), true);
+    _mapShow(_mapEl(prefix, 'search-span-loading'), false);
+};
+
 window.mapPickerUseLocation = function (prefix) {
-    if (!_mapStates[prefix]) _mapStates[prefix] = { map: null, marker: null, lat: null, lng: null, loading: false, reverseGeocoding: false };
+    if (!_mapStates[prefix]) _mapStates[prefix] = { map: null, marker: null, lat: null, lng: null, loading: false, reverseGeocoding: false, searching: false };
     var s = _mapStates[prefix];
     if (!navigator.geolocation) {
         _mapSetError(prefix, 'Geolocalização não suportada pelo seu navegador.');
