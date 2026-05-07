@@ -123,7 +123,8 @@ window.mapPickerConfirmLocation = async function (prefix, wire) {
 
         var street = a.road || a.pedestrian || a.footway || '';
         var num    = a.house_number || '';
-        if (street) wire.set('address', num ? street + ', ' + num : street);
+        if (street) wire.set('address', street);
+        if (num) wire.set('number', num);
 
         var bairro = a.suburb || a.neighbourhood || a.city_district || a.quarter || '';
         if (bairro) wire.set('neighborhood', bairro);

@@ -36,8 +36,8 @@
             *** ENTREGA ***
         </div>
     @else
-        <div style="border: 1px dashed #555; text-align: center; font-size: 10px; padding: 2px 0; margin-bottom: 5px;">
-            RETIRADA NO LOCAL
+        <div style="border: 2px solid #111; text-align: center; font-weight: bold; font-size: 13px; letter-spacing: 2px; padding: 4px 0; margin-bottom: 5px;">
+            *** RETIRADA NO LOCAL ***
         </div>
     @endif
 

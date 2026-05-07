@@ -205,13 +205,10 @@ trait HasOrderFlow
 
         try {
             if (
-                $settings->service_radius_km !== null
-                && $settings->service_radius_km > 0
-                && $settings->branch_latitude !== null
-                && $settings->branch_longitude !== null
+                $this->deliveryNeedsCoordinates($settings)
                 && ($this->customer_latitude === '' || $this->customer_longitude === '')
             ) {
-                $this->addMessage('bot', 'Para validar se sua região é atendida, clique em "Usar minha localização atual" e confirme o local no mapa.');
+                $this->addMessage('bot', 'Para calcular sua entrega, clique em "Usar minha localização atual" e confirme o local no mapa.');
 
                 return;
             }
@@ -231,6 +228,18 @@ trait HasOrderFlow
         } catch (DeliveryException $e) {
             $this->addMessage('bot', $e->getMessage());
         }
+    }
+
+    private function deliveryNeedsCoordinates(\App\Models\DeliverySetting $settings): bool
+    {
+        if ($settings->branch_latitude === null || $settings->branch_longitude === null) {
+            return false;
+        }
+
+        $hasRadiusGate = $settings->service_radius_km !== null && $settings->service_radius_km > 0;
+        $isDistanceBased = $settings->fee_type === 'distance';
+
+        return $hasRadiusGate || $isDistanceBased;
     }
 
     public function confirmDeliveryFee(): void

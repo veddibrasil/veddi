@@ -26,9 +26,11 @@ class DeliveryService
             throw new DeliveryException("Pedido mínimo para entrega é R$ {$min}.");
         }
 
-        $this->validateServiceRadius($settings, $customerLat, $customerLng);
+        $distanceKm = $this->resolveDistance($settings, $customerLat, $customerLng);
 
-        $fee = $this->resolveFee($settings, $neighborhood, $customerLat, $customerLng);
+        $this->validateServiceRadius($settings, $distanceKm);
+
+        $fee = $this->resolveFee($settings, $neighborhood, $distanceKm);
 
         $free = false;
         if ($settings->free_delivery_above !== null && $subtotal >= $settings->free_delivery_above) {
@@ -39,26 +41,34 @@ class DeliveryService
         return ['fee' => $fee, 'free' => $free];
     }
 
-    private function validateServiceRadius(DeliverySetting $settings, ?float $customerLat, ?float $customerLng): void
+    private function resolveDistance(DeliverySetting $settings, ?float $customerLat, ?float $customerLng): ?float
     {
-        if ($settings->service_radius_km === null || $settings->service_radius_km <= 0) {
-            return;
+        if (
+            $settings->branch_latitude === null
+            || $settings->branch_longitude === null
+            || $customerLat === null
+            || $customerLng === null
+        ) {
+            return null;
         }
 
-        if ($settings->branch_latitude === null || $settings->branch_longitude === null) {
-            return;
-        }
-
-        if ($customerLat === null || $customerLng === null) {
-            return;
-        }
-
-        $distanceKm = $this->haversineDistance(
+        return $this->haversineDistance(
             $settings->branch_latitude,
             $settings->branch_longitude,
             $customerLat,
             $customerLng
         );
+    }
+
+    private function validateServiceRadius(DeliverySetting $settings, ?float $distanceKm): void
+    {
+        if ($settings->service_radius_km === null || $settings->service_radius_km <= 0) {
+            return;
+        }
+
+        if ($distanceKm === null) {
+            return;
+        }
 
         if ($distanceKm <= $settings->service_radius_km) {
             return;
@@ -72,13 +82,12 @@ class DeliveryService
     private function resolveFee(
         DeliverySetting $settings,
         string $neighborhood,
-        ?float $customerLat,
-        ?float $customerLng
+        ?float $distanceKm
     ): float {
         return match ($settings->fee_type) {
             'flat' => (float) $settings->flat_fee,
             'neighborhood' => $this->feeByNeighborhood($settings, $neighborhood),
-            'distance' => $this->feeByDistance($settings, $customerLat, $customerLng),
+            'distance' => $this->feeByDistance($settings, $distanceKm),
             default => 0.0,
         };
     }
@@ -97,28 +106,21 @@ class DeliveryService
         return (float) $match->fee;
     }
 
-    private function feeByDistance(DeliverySetting $settings, ?float $customerLat, ?float $customerLng): float
+    private function feeByDistance(DeliverySetting $settings, ?float $distanceKm): float
     {
         if ($settings->branch_latitude === null || $settings->branch_longitude === null) {
             throw new DeliveryException('Entrega por distância não configurada para esta filial. Entre em contato com a loja.');
         }
 
-        if ($customerLat === null || $customerLng === null) {
+        if ($distanceKm === null) {
             throw new DeliveryException('Não foi possível calcular a distância de entrega. Entre em contato com a loja.');
         }
-
-        $distanceKm = $this->haversineDistance(
-            $settings->branch_latitude,
-            $settings->branch_longitude,
-            $customerLat,
-            $customerLng
-        );
 
         $tier = $settings->distanceTiers()
             ->get()
             ->first(function ($t) use ($distanceKm) {
                 $aboveMin = $distanceKm >= $t->min_km;
-                $belowMax = $t->max_km === null || $distanceKm < $t->max_km;
+                $belowMax = $t->max_km === null || $distanceKm <= $t->max_km;
 
                 return $aboveMin && $belowMax;
             });
