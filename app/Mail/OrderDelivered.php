@@ -38,4 +38,3 @@ class OrderDelivered extends Mailable implements ShouldQueue
         );
     }
 }
-

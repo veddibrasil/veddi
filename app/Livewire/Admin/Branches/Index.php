@@ -80,8 +80,8 @@ class Index extends Component
         $isSuperAdmin = auth()->user()->isSuperAdmin();
 
         $query = $isSuperAdmin
-            ? Branch::withoutGlobalScope(CompanyScope::class)->with('company')->orderBy('name')
-            : Branch::orderBy('name');
+            ? Branch::withoutGlobalScope(CompanyScope::class)->with(['company', 'addressRecord'])->orderBy('name')
+            : Branch::with('addressRecord')->orderBy('name');
 
         $branches = $query->get();
 

@@ -17,6 +17,7 @@ class DeliverySetting extends Model
         'free_delivery_above',
         'branch_latitude',
         'branch_longitude',
+        'service_radius_km',
         'active',
     ];
 
@@ -26,6 +27,7 @@ class DeliverySetting extends Model
         'free_delivery_above' => 'float',
         'branch_latitude' => 'float',
         'branch_longitude' => 'float',
+        'service_radius_km' => 'float',
         'active' => 'boolean',
     ];
 

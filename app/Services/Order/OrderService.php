@@ -60,7 +60,9 @@ class OrderService implements OrderServiceInterface
             }
         }
 
-        $order = DB::transaction(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt) {
+        $customer = \App\Models\Customer::withoutGlobalScopes()->find($customerId);
+
+        $order = DB::transaction(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer) {
             $subtotal = 0.0;
             foreach ($cart as $cartKey => $item) {
                 $pid = (int) ($item['product_id'] ?? explode('_', (string) $cartKey)[0]);
@@ -110,6 +112,12 @@ class OrderService implements OrderServiceInterface
                 'payment_method' => strtolower($paymentMethod),
                 'order_type' => $orderType,
                 'coupon_id' => $coupon?->id,
+                'delivery_address' => $orderType === 'delivery' ? $customer?->address : null,
+                'delivery_number' => $orderType === 'delivery' ? $customer?->number : null,
+                'delivery_neighborhood' => $orderType === 'delivery' ? $customer?->neighborhood : null,
+                'delivery_city' => $orderType === 'delivery' ? $customer?->city : null,
+                'delivery_cep' => $orderType === 'delivery' ? $customer?->cep : null,
+                'delivery_complement' => $orderType === 'delivery' ? $customer?->complement : null,
             ]);
 
             foreach ($cart as $cartKey => $item) {

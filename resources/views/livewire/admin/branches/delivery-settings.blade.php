@@ -88,12 +88,10 @@
         },
     }">
 
-    <div class="flex items-center gap-3">
-        <a href="{{ route('admin.branches.index') }}" class="text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300">←</a>
-        <h1 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100">
-            Configurar Entrega — {{ $branch->name }}
-        </h1>
-    </div>
+    <x-admin.page-header
+        :back-route="route('admin.branches.index')"
+        :title="'Configurar Entrega — ' . $branch->name"
+    />
 
     @if (session('status'))
         <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm dark:bg-green-900/30 dark:border-green-700 dark:text-green-400">
@@ -101,19 +99,15 @@
         </div>
     @endif
 
-    {{-- Configurações Gerais --}}
-    <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
-        <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Configurações gerais</h2>
-
+    <x-admin.form-card title="Configurações gerais">
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
                 <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Tipo de cálculo de frete</label>
-                <select wire:model.live="fee_type" x-model="feeType"
-                    class="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 dark:bg-zinc-700 dark:border-zinc-600 dark:text-neutral-100">
+                <flux:select wire:model.live="fee_type" x-model="feeType">
                     <option value="flat">Taxa fixa</option>
                     <option value="neighborhood">Por bairro</option>
                     <option value="distance">Por distância (km)</option>
-                </select>
+                </flux:select>
                 @error('fee_type') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
             <div class="pb-1 flex items-end">
@@ -135,182 +129,182 @@
                 @error('free_delivery_above') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
         </div>
-    </div>
+
+        <div class="max-w-xs">
+            <flux:input wire:model="service_radius_km" type="number" step="0.01" min="0"
+                label="Raio de atuação (km)"
+                placeholder="Deixe em branco para sem limite" />
+            <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
+                Usado para limitar a distância máxima de entrega quando as coordenadas (lat/lng) estiverem configuradas.
+            </p>
+            @error('service_radius_km') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+        </div>
+    </x-admin.form-card>
 
     {{-- Taxa Fixa --}}
-    <div x-show="feeType === 'flat'" x-cloak
-        class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
-        <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Taxa fixa de entrega</h2>
-        <div class="max-w-xs">
-            <flux:input wire:model="flat_fee" type="number" step="0.01" min="0"
-                label="Valor do frete (R$)" placeholder="Ex: 5,00" />
-            @error('flat_fee') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-        </div>
+    <div x-show="feeType === 'flat'" x-cloak>
+        <x-admin.form-card title="Taxa fixa de entrega">
+            <div class="max-w-xs">
+                <flux:input wire:model="flat_fee" type="number" step="0.01" min="0"
+                    label="Valor do frete (R$)" placeholder="Ex: 5,00" />
+                @error('flat_fee') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            </div>
+        </x-admin.form-card>
     </div>
 
     {{-- Por Bairro --}}
-    <div x-show="feeType === 'neighborhood'" x-cloak
-        class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
-        <div class="flex items-center justify-between">
-            <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Bairros atendidos</h2>
-            <button wire:click="addNeighborhood" type="button"
-                class="text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 transition-colors">
-                + Adicionar bairro
-            </button>
-        </div>
-
-        @if (count($neighborhoods) === 0)
-            <p class="text-sm text-neutral-400 dark:text-neutral-500">Nenhum bairro cadastrado. Clique em "Adicionar bairro" para começar.</p>
-        @else
-            <div class="space-y-2">
-                {{-- Cabeçalho --}}
-                <div class="grid grid-cols-12 gap-2 text-xs font-medium text-neutral-400 uppercase px-1">
-                    <span class="col-span-6">Bairro</span>
-                    <span class="col-span-3">Taxa (R$)</span>
-                    <span class="col-span-2">Ativo</span>
-                    <span class="col-span-1"></span>
-                </div>
-                @foreach ($neighborhoods as $i => $n)
-                    <div class="grid grid-cols-12 gap-2 items-center">
-                        <div class="col-span-6">
-                            <flux:input wire:model="neighborhoods.{{ $i }}.neighborhood"
-                                placeholder="Ex: Centro" />
-                            @error("neighborhoods.{$i}.neighborhood") <p class="text-red-500 text-xs mt-0.5">{{ $message }}</p> @enderror
-                        </div>
-                        <div class="col-span-3">
-                            <flux:input wire:model="neighborhoods.{{ $i }}.fee"
-                                type="number" step="0.01" min="0" placeholder="5,00" />
-                            @error("neighborhoods.{$i}.fee") <p class="text-red-500 text-xs mt-0.5">{{ $message }}</p> @enderror
-                        </div>
-                        <div class="col-span-2 flex items-center">
-                            <flux:checkbox wire:model="neighborhoods.{{ $i }}.active" />
-                        </div>
-                        <div class="col-span-1 flex justify-end">
-                            <button wire:click="removeNeighborhood({{ $i }})" type="button"
-                                class="text-neutral-400 hover:text-red-500 text-lg leading-none">×</button>
-                        </div>
-                    </div>
-                @endforeach
+    <div x-show="feeType === 'neighborhood'" x-cloak>
+        <x-admin.form-card>
+            <div class="flex items-center justify-between">
+                <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Bairros atendidos</h2>
+                <button wire:click="addNeighborhood" type="button"
+                    class="text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 transition-colors">
+                    + Adicionar bairro
+                </button>
             </div>
-        @endif
+
+            @if (count($neighborhoods) === 0)
+                <p class="text-sm text-neutral-400 dark:text-neutral-500">Nenhum bairro cadastrado. Clique em "Adicionar bairro" para começar.</p>
+            @else
+                <div class="space-y-2">
+                    <div class="grid grid-cols-12 gap-2 text-xs font-medium text-neutral-400 uppercase px-1">
+                        <span class="col-span-6">Bairro</span>
+                        <span class="col-span-3">Taxa (R$)</span>
+                        <span class="col-span-2">Ativo</span>
+                        <span class="col-span-1"></span>
+                    </div>
+
+                    @foreach ($neighborhoods as $i => $n)
+                        <div class="grid grid-cols-12 gap-2 items-center">
+                            <div class="col-span-6">
+                                <flux:input wire:model="neighborhoods.{{ $i }}.neighborhood" placeholder="Ex: Centro" />
+                                @error("neighborhoods.{$i}.neighborhood") <p class="text-red-500 text-xs mt-0.5">{{ $message }}</p> @enderror
+                            </div>
+                            <div class="col-span-3">
+                                <flux:input wire:model="neighborhoods.{{ $i }}.fee" type="number" step="0.01" min="0" placeholder="5,00" />
+                                @error("neighborhoods.{$i}.fee") <p class="text-red-500 text-xs mt-0.5">{{ $message }}</p> @enderror
+                            </div>
+                            <div class="col-span-2 flex items-center">
+                                <flux:checkbox wire:model="neighborhoods.{{ $i }}.active" />
+                            </div>
+                            <div class="col-span-1 flex justify-end">
+                                <button wire:click="removeNeighborhood({{ $i }})" type="button"
+                                    class="text-neutral-400 hover:text-red-500 text-lg leading-none">×</button>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+        </x-admin.form-card>
     </div>
 
     {{-- Por Distância --}}
-    <div x-show="feeType === 'distance'" x-cloak
-        class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
-        <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Frete por distância</h2>
+    <div x-show="feeType === 'distance'" x-cloak>
+        <x-admin.form-card title="Frete por distância">
+            @once
+                <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+                <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+            @endonce
 
-        @once
-            <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
-            <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-        @endonce
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-                <flux:input wire:model="branch_latitude" type="number" step="any"
-                    label="Latitude da filial" placeholder="Ex: -23.5505" />
-                @error('branch_latitude') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-            </div>
-            <div>
-                <flux:input wire:model="branch_longitude" type="number" step="any"
-                    label="Longitude da filial" placeholder="Ex: -46.6333" />
-                @error('branch_longitude') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-            </div>
-        </div>
-
-        <div class="flex items-center gap-3 flex-wrap">
-            <button type="button" @click="mapOpenWithCurrentValues()"
-                class="inline-flex items-center gap-1.5 text-xs bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-4.724A1 1 0 013 14.382V5a1 1 0 011-1h16a1 1 0 011 1v9.382a1 1 0 01-.553.894L15 20M12 4v16"/></svg>
-                Selecionar no mapa
-            </button>
-            <button type="button" @click="mapUseLocation()" :disabled="mapLoading"
-                class="inline-flex items-center gap-1.5 text-xs bg-neutral-50 text-neutral-600 border border-neutral-200 px-3 py-1.5 rounded-lg hover:bg-neutral-100 transition-colors disabled:opacity-60 dark:bg-zinc-700 dark:text-neutral-300 dark:border-zinc-600">
-                <template x-if="!mapLoading">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                </template>
-                <template x-if="mapLoading">
-                    <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                </template>
-                <span x-text="mapLoading ? 'Obtendo localização...' : 'Usar minha localização'"></span>
-            </button>
-            <p x-show="mapError" x-text="'⚠ ' + mapError" class="text-red-500 text-xs"></p>
-        </div>
-
-        <div x-show="mapOpen" x-cloak
-            class="rounded-xl overflow-hidden border border-blue-200 shadow-sm dark:border-blue-700">
-            <div class="flex items-center justify-between bg-blue-50 px-3 py-2 dark:bg-blue-900/30">
-                <span class="text-xs font-medium text-blue-700 dark:text-blue-300">Arraste o pin ou clique no mapa para posicionar a filial</span>
-                <button type="button" @click="mapOpen = false; mapDestroy()" class="text-blue-400 hover:text-blue-700 text-lg leading-none">×</button>
-            </div>
-            <div id="branch-map-el" style="height:280px; width:100%;"></div>
-            <div class="flex gap-2 bg-blue-50 px-3 py-2 dark:bg-blue-900/30">
-                <button type="button" @click="mapOpen = false; mapDestroy()"
-                    class="flex-1 text-xs border border-neutral-300 text-neutral-600 px-3 py-1.5 rounded-lg hover:bg-neutral-50 dark:border-zinc-600 dark:text-neutral-300 dark:hover:bg-zinc-700">
-                    Cancelar
-                </button>
-                <button type="button" @click="mapConfirm()"
-                    class="flex-1 text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 transition-colors font-medium">
-                    Confirmar local →
-                </button>
-            </div>
-        </div>
-
-        <div class="flex items-center justify-between pt-2">
-            <h3 class="font-medium text-neutral-700 text-sm dark:text-neutral-300">Faixas de distância</h3>
-            <button wire:click="addDistanceTier" type="button"
-                class="text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 transition-colors">
-                + Adicionar faixa
-            </button>
-        </div>
-
-        @if (count($distanceTiers) === 0)
-            <p class="text-sm text-neutral-400 dark:text-neutral-500">Nenhuma faixa cadastrada. Clique em "Adicionar faixa" para começar.</p>
-        @else
-            <div class="space-y-2">
-                <div class="grid grid-cols-12 gap-2 text-xs font-medium text-neutral-400 uppercase px-1">
-                    <span class="col-span-3">De (km)</span>
-                    <span class="col-span-3">Até (km)</span>
-                    <span class="col-span-4">Taxa (R$)</span>
-                    <span class="col-span-2"></span>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <flux:input wire:model="branch_latitude" type="number" step="any"
+                        label="Latitude da filial" placeholder="Ex: -23.5505" />
+                    @error('branch_latitude') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
-                @foreach ($distanceTiers as $i => $tier)
-                    <div class="grid grid-cols-12 gap-2 items-center">
-                        <div class="col-span-3">
-                            <flux:input wire:model="distanceTiers.{{ $i }}.min_km"
-                                type="number" step="0.1" min="0" placeholder="0" />
-                            @error("distanceTiers.{$i}.min_km") <p class="text-red-500 text-xs mt-0.5">{{ $message }}</p> @enderror
-                        </div>
-                        <div class="col-span-3">
-                            <flux:input wire:model="distanceTiers.{{ $i }}.max_km"
-                                type="number" step="0.1" min="0" placeholder="sem limite" />
-                            @error("distanceTiers.{$i}.max_km") <p class="text-red-500 text-xs mt-0.5">{{ $message }}</p> @enderror
-                        </div>
-                        <div class="col-span-4">
-                            <flux:input wire:model="distanceTiers.{{ $i }}.fee"
-                                type="number" step="0.01" min="0" placeholder="5,00" />
-                            @error("distanceTiers.{$i}.fee") <p class="text-red-500 text-xs mt-0.5">{{ $message }}</p> @enderror
-                        </div>
-                        <div class="col-span-2 flex justify-end">
-                            <button wire:click="removeDistanceTier({{ $i }})" type="button"
-                                class="text-neutral-400 hover:text-red-500 text-lg leading-none">×</button>
-                        </div>
-                    </div>
-                @endforeach
-                <p class="text-xs text-neutral-400 dark:text-neutral-500">Deixe "Até" em branco na última faixa para cobrir qualquer distância.</p>
+                <div>
+                    <flux:input wire:model="branch_longitude" type="number" step="any"
+                        label="Longitude da filial" placeholder="Ex: -46.6333" />
+                    @error('branch_longitude') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                </div>
             </div>
-        @endif
+
+            <div class="flex items-center gap-3 flex-wrap">
+                <button type="button" @click="mapOpenWithCurrentValues()"
+                    class="inline-flex items-center gap-1.5 text-xs bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-4.724A1 1 0 013 14.382V5a1 1 0 011-1h16a1 1 0 011 1v9.382a1 1 0 01-.553.894L15 20M12 4v16"/></svg>
+                    Selecionar no mapa
+                </button>
+                <button type="button" @click="mapUseLocation()" :disabled="mapLoading"
+                    class="inline-flex items-center gap-1.5 text-xs bg-neutral-50 text-neutral-600 border border-neutral-200 px-3 py-1.5 rounded-lg hover:bg-neutral-100 transition-colors disabled:opacity-60 dark:bg-zinc-700 dark:text-neutral-300 dark:border-zinc-600">
+                    <template x-if="!mapLoading">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    </template>
+                    <template x-if="mapLoading">
+                        <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                    </template>
+                    <span x-text="mapLoading ? 'Obtendo localização...' : 'Usar minha localização'"></span>
+                </button>
+                <p x-show="mapError" x-text="'⚠ ' + mapError" class="text-red-500 text-xs"></p>
+            </div>
+
+            <div x-show="mapOpen" x-cloak
+                class="rounded-xl overflow-hidden border border-blue-200 shadow-sm dark:border-blue-700">
+                <div class="flex items-center justify-between bg-blue-50 px-3 py-2 dark:bg-blue-900/30">
+                    <span class="text-xs font-medium text-blue-700 dark:text-blue-300">Arraste o pin ou clique no mapa para posicionar a filial</span>
+                    <button type="button" @click="mapOpen = false; mapDestroy()" class="text-blue-400 hover:text-blue-700 text-lg leading-none">×</button>
+                </div>
+                <div id="branch-map-el" style="height:280px; width:100%;"></div>
+                <div class="flex gap-2 bg-blue-50 px-3 py-2 dark:bg-blue-900/30">
+                    <button type="button" @click="mapOpen = false; mapDestroy()"
+                        class="flex-1 text-xs border border-neutral-300 text-neutral-600 px-3 py-1.5 rounded-lg hover:bg-neutral-50 dark:border-zinc-600 dark:text-neutral-300 dark:hover:bg-zinc-700">
+                        Cancelar
+                    </button>
+                    <button type="button" @click="mapConfirm()"
+                        class="flex-1 text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 transition-colors font-medium">
+                        Confirmar local →
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-between pt-2">
+                <h3 class="font-medium text-neutral-700 text-sm dark:text-neutral-300">Faixas de distância</h3>
+                <button wire:click="addDistanceTier" type="button"
+                    class="text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 transition-colors">
+                    + Adicionar faixa
+                </button>
+            </div>
+
+            @if (count($distanceTiers) === 0)
+                <p class="text-sm text-neutral-400 dark:text-neutral-500">Nenhuma faixa cadastrada. Clique em "Adicionar faixa" para começar.</p>
+            @else
+                <div class="space-y-2">
+                    <div class="grid grid-cols-12 gap-2 text-xs font-medium text-neutral-400 uppercase px-1">
+                        <span class="col-span-3">De (km)</span>
+                        <span class="col-span-3">Até (km)</span>
+                        <span class="col-span-4">Taxa (R$)</span>
+                        <span class="col-span-2"></span>
+                    </div>
+
+                    @foreach ($distanceTiers as $i => $tier)
+                        <div class="grid grid-cols-12 gap-2 items-center">
+                            <div class="col-span-3">
+                                <flux:input wire:model="distanceTiers.{{ $i }}.min_km" type="number" step="0.1" min="0" placeholder="0" />
+                                @error("distanceTiers.{$i}.min_km") <p class="text-red-500 text-xs mt-0.5">{{ $message }}</p> @enderror
+                            </div>
+                            <div class="col-span-3">
+                                <flux:input wire:model="distanceTiers.{{ $i }}.max_km" type="number" step="0.1" min="0" placeholder="sem limite" />
+                                @error("distanceTiers.{$i}.max_km") <p class="text-red-500 text-xs mt-0.5">{{ $message }}</p> @enderror
+                            </div>
+                            <div class="col-span-4">
+                                <flux:input wire:model="distanceTiers.{{ $i }}.fee" type="number" step="0.01" min="0" placeholder="5,00" />
+                                @error("distanceTiers.{$i}.fee") <p class="text-red-500 text-xs mt-0.5">{{ $message }}</p> @enderror
+                            </div>
+                            <div class="col-span-2 flex justify-end">
+                                <button wire:click="removeDistanceTier({{ $i }})" type="button"
+                                    class="text-neutral-400 hover:text-red-500 text-lg leading-none">×</button>
+                            </div>
+                        </div>
+                    @endforeach
+
+                    <p class="text-xs text-neutral-400 dark:text-neutral-500">Deixe "Até" em branco na última faixa para cobrir qualquer distância.</p>
+                </div>
+            @endif
+        </x-admin.form-card>
     </div>
 
-    <div class="flex gap-3 pb-8">
-        <flux:button wire:click="save" class="!bg-amber-500 !text-white hover:!bg-amber-600"
-            wire:loading.attr="disabled">
-            <span wire:loading.remove wire:target="save">Salvar configurações</span>
-            <span wire:loading wire:target="save">Salvando...</span>
-        </flux:button>
-        <a href="{{ route('admin.branches.index') }}"
-            class="inline-flex items-center px-4 py-2 text-sm text-neutral-600 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200">
-            Cancelar
-        </a>
-    </div>
+    <x-admin.form-actions
+        save-label="Salvar configurações"
+        :cancel-route="route('admin.branches.index')"
+    />
 </div>

@@ -67,7 +67,6 @@ Requer: `auth`, `verified`, `company.role:company_admin`
 | `admin/orders/report` | Orders/Report | Relatório de vendas com analytics |
 | `admin/orders/{order}` | Orders/Show | Detalhe do pedido |
 | `admin/stock` | Stock/Index | Gestão de estoque por filial |
-| `admin/support` | Support/Index | Tickets de suporte |
 | `admin/categories` | Categories/Index | Categorias de produtos |
 | `admin/products` | Products/Index | Lista de produtos |
 | `admin/products/create` | Products/Form | Cadastro de produto |

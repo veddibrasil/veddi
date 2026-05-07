@@ -101,19 +101,18 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div x-data="{}"
                          x-init="$watch(() => $wire.showCategoryModal, val => val ? $flux.modal('create-category').show() : $flux.modal('create-category').close())">
-                        <label class="block text-sm font-medium text-neutral-700 mb-1 dark:text-neutral-300">Categoria</label>
-                        <div class="flex gap-2">
-                            <select wire:model="product_category_id"
-                                class="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 dark:bg-zinc-700 dark:border-zinc-600 dark:text-neutral-200 dark:focus:ring-amber-500">
-                                <option value="0">Selecione...</option>
+                        <flux:label class="block mb-1">Categoria</flux:label>
+                        <div class="relative">
+                            <flux:select wire:model="product_category_id">
+                                <flux:select.option value="0">Selecione...</flux:select.option>
                                 @foreach ($categories as $cat)
-                                    <option value="{{ $cat->id }}">{{ $cat->name }}</option>
+                                    <flux:select.option value="{{ $cat->id }}">{{ $cat->name }}</flux:select.option>
                                 @endforeach
-                            </select>
+                            </flux:select>
                             <button type="button" wire:click="openCategoryModal"
                                 title="Nova categoria"
-                                class="flex items-center justify-center w-9 h-9 rounded-lg border border-neutral-300 bg-white text-neutral-500 hover:bg-neutral-50 hover:text-neutral-700 dark:bg-zinc-700 dark:border-zinc-600 dark:text-neutral-300 dark:hover:bg-zinc-600 transition-colors">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                class="absolute inset-y-0 right-10 flex items-center justify-center w-8 border-l border-neutral-200 dark:border-zinc-600 text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300 transition-colors bg-transparent">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                                 </svg>
                             </button>
@@ -185,7 +184,7 @@
                 <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     @foreach ($branches as $branch)
                         <label class="flex items-center gap-2 text-sm cursor-pointer dark:text-neutral-200 p-2 rounded-lg hover:bg-neutral-50 dark:hover:bg-zinc-700">
-                            <input type="checkbox" wire:model="selectedBranches" value="{{ $branch->id }}"
+                            <flux:checkbox wire:model="selectedBranches" value="{{ $branch->id }}"
                                 class="rounded border-neutral-300 text-amber-500 focus:ring-amber-400 dark:border-zinc-600 dark:bg-zinc-700" />
                             {{ $branch->name }}
                         </label>

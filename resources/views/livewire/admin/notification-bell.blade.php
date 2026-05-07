@@ -95,14 +95,14 @@
                         <div @class([
                             'w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5',
                             'bg-green-100 dark:bg-green-900/40' => $notif->type === 'order',
-                            'bg-blue-100 dark:bg-blue-900/40'  => $notif->type === 'support',
+                            'bg-neutral-100 dark:bg-zinc-700/60' => $notif->type !== 'order',
                         ])>
                             @if($notif->type === 'order')
                                 <svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 11H4L5 9z"/>
                                 </svg>
                             @else
-                                <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg class="w-4 h-4 text-neutral-600 dark:text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
                                 </svg>
                             @endif

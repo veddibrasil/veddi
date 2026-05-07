@@ -71,21 +71,19 @@
                 <h3 class="font-bold text-neutral-800 dark:text-neutral-100">Vincular usuário à empresa</h3>
 
                 <div>
-                    <label class="block text-sm font-medium text-neutral-700 mb-1 dark:text-neutral-300">Empresa</label>
-                    <select wire:model="assignCompanyId" class="w-full border rounded-lg px-3 py-2 text-sm dark:bg-zinc-700 dark:border-zinc-600 dark:text-neutral-200">
-                        <option value="0">Selecione...</option>
+                    <flux:select wire:model="assignCompanyId" label="Empresa">
+                        <flux:select.option value="0">Selecione...</flux:select.option>
                         @foreach($companies as $company)
-                            <option value="{{ $company->id }}">{{ $company->name }}</option>
+                            <flux:select.option value="{{ $company->id }}">{{ $company->name }}</flux:select.option>
                         @endforeach
-                    </select>
+                    </flux:select>
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-neutral-700 mb-1 dark:text-neutral-300">Role</label>
-                    <select wire:model="assignRole" class="w-full border rounded-lg px-3 py-2 text-sm dark:bg-zinc-700 dark:border-zinc-600 dark:text-neutral-200">
-                        <option value="company_admin">Administrador da empresa</option>
-                        <option value="branch_manager">Gerente de filial</option>
-                    </select>
+                    <flux:select wire:model="assignRole" label="Role">
+                        <flux:select.option value="company_admin">Administrador da empresa</flux:select.option>
+                        <flux:select.option value="branch_manager">Gerente de filial</flux:select.option>
+                    </flux:select>
                 </div>
 
                 <div class="flex gap-3 pt-2">

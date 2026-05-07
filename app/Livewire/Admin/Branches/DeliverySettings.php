@@ -26,6 +26,8 @@ class DeliverySettings extends Component
 
     public string $branch_longitude = '';
 
+    public string $service_radius_km = '';
+
     public bool $active = true;
 
     public array $neighborhoods = [];
@@ -41,6 +43,7 @@ class DeliverySettings extends Component
             'free_delivery_above' => ['nullable', 'numeric', 'min:0'],
             'branch_latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'branch_longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'service_radius_km' => ['nullable', 'numeric', 'min:0'],
             'active' => ['boolean'],
             'neighborhoods.*.neighborhood' => ['required_if:fee_type,neighborhood', 'string', 'max:100'],
             'neighborhoods.*.fee' => ['required_if:fee_type,neighborhood', 'numeric', 'min:0'],
@@ -84,6 +87,7 @@ class DeliverySettings extends Component
         $this->free_delivery_above = $settings->free_delivery_above !== null ? (string) $settings->free_delivery_above : '';
         $this->branch_latitude = $settings->branch_latitude !== null ? (string) $settings->branch_latitude : '';
         $this->branch_longitude = $settings->branch_longitude !== null ? (string) $settings->branch_longitude : '';
+        $this->service_radius_km = $settings->service_radius_km !== null ? (string) $settings->service_radius_km : '';
         $this->active = $settings->active;
 
         $this->neighborhoods = $settings->neighborhoods->map(fn ($n) => [
@@ -140,6 +144,7 @@ class DeliverySettings extends Component
                     'free_delivery_above' => $this->free_delivery_above !== '' ? (float) $this->free_delivery_above : null,
                     'branch_latitude' => $this->branch_latitude !== '' ? (float) $this->branch_latitude : null,
                     'branch_longitude' => $this->branch_longitude !== '' ? (float) $this->branch_longitude : null,
+                    'service_radius_km' => $this->service_radius_km !== '' ? (float) $this->service_radius_km : null,
                     'active' => $this->active,
                 ]
             );

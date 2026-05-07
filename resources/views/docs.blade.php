@@ -34,7 +34,6 @@
         <a href="#planos" class="nav-link">Planos</a>
         <a href="#chat-pedidos" class="nav-link">Chat de Pedidos</a>
         <a href="#painel-admin" class="nav-link">Dashboard & Pedidos</a>
-        <a href="#suporte" class="nav-link">Suporte</a>
         <a href="#cardapio" class="nav-link">Cardápio</a>
         <a href="#estoque" class="nav-link">Estoque</a>
         <a href="#filiais" class="nav-link">Filiais & Entrega</a>
@@ -61,7 +60,6 @@
 
             <p class="text-xs font-bold text-zinc-400 uppercase tracking-widest px-3 mb-2 mt-4">Painel Admin</p>
             <a href="#painel-admin" class="nav-link">Dashboard & Pedidos</a>
-            <a href="#suporte" class="nav-link">Suporte</a>
             <a href="#cardapio" class="nav-link">Cardápio</a>
             <a href="#estoque" class="nav-link">Estoque</a>
             <a href="#filiais" class="nav-link">Filiais & Entrega</a>
@@ -355,7 +353,6 @@
                             <ul class="list">
                                 <li>O status do pedido é atualizado em tempo real na tela do cliente</li>
                                 <li>O cliente pode acompanhar: aguardando pagamento → pago → em preparo → pronto → entregue</li>
-                                <li>O cliente pode abrir um <strong>chamado de suporte</strong> diretamente no chat do pedido caso tenha algum problema</li>
                             </ul>
                         </div>
                     </div>
@@ -455,67 +452,6 @@
                         <div class="doc-img-placeholder">
                             <svg class="size-8 text-zinc-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"/></svg>
                             <p class="text-xs text-zinc-400 text-center px-4">Mídia não encontrada — salve em <code class="bg-zinc-100 px-1 rounded">public/images/docs/dashboard.png</code></p>
-                        </div>
-                    @endif
-                    </div>
-            </div>
-        </section>
-
-        {{-- Suporte --}}
-        <section id="suporte" class="scroll-mt-20">
-            <div class="section-card">
-                <div class="section-head">
-                    <div class="p-2.5 rounded-xl bg-cyan-100 shrink-0">
-                        <svg class="size-6 text-cyan-700" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M16.712 4.33a9.027 9.027 0 0 1 1.652 1.306c.51.51.944 1.064 1.306 1.652M16.712 4.33l-3.448 4.138m3.448-4.138a9.014 9.014 0 0 0-9.424 0M19.67 7.288l-4.138 3.448m4.138-3.448a9.014 9.014 0 0 1 0 9.424m-4.138-5.976a3.736 3.736 0 0 0-.88-1.388 3.737 3.737 0 0 0-1.388-.88m2.268 2.268a3.765 3.765 0 0 1 0 2.528m-2.268-4.796a3.765 3.765 0 0 0-2.528 0m4.796 4.796c-.181.506-.475.982-.88 1.388a3.736 3.736 0 0 1-1.388.88m2.268-2.268 4.138 3.448m0 0a9.027 9.027 0 0 1-1.306 1.652c-.51.51-1.064.944-1.652 1.306m0 0-3.448-4.138m3.448 4.138a9.014 9.014 0 0 1-9.424 0m5.976-4.138a3.765 3.765 0 0 1-2.528 0m0 0a3.736 3.736 0 0 1-1.388-.88 3.737 3.737 0 0 1-.88-1.388m2.268 2.268L7.288 19.67m0 0a9.024 9.024 0 0 1-1.652-1.306 9.027 9.027 0 0 1-1.306-1.652m0 0 4.138-3.448M4.33 16.712a9.014 9.014 0 0 1 0-9.424m4.138 5.976a3.765 3.765 0 0 1 0-2.528m0 0c.181-.506.475-.982.88-1.388a3.736 3.736 0 0 1 1.388-.88m-2.268 2.268L4.33 7.288m6.406 1.18L7.288 4.33m0 0a9.024 9.024 0 0 0-1.652 1.306A9.025 9.025 0 0 0 4.33 7.288"/>
-                        </svg>
-                    </div>
-                    <div>
-                        <h2 class="text-xl font-bold text-zinc-900">Suporte</h2>
-                        <div class="flex gap-2 mt-1">
-                            <span class="badge bg-purple-100 text-purple-700">company_admin</span>
-                            <span class="badge bg-indigo-100 text-indigo-700">branch_manager</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="mt-5 grid sm:grid-cols-2 gap-3">
-                    <div class="info-box">
-                        <p class="sub-title">Chamados de suporte <span class="font-mono text-purple-700 text-xs font-normal">/admin/support</span></p>
-                        <ul class="list">
-                            <li>Lista todos os chamados abertos pelos clientes sobre pedidos</li>
-                            <li>Filtre entre chamados abertos e fechados</li>
-                            <li>O contador de mensagens não lidas aparece ao lado de cada chamado</li>
-                            <li>Clique no chamado para ver a conversa completa</li>
-                        </ul>
-                    </div>
-                    <div class="info-box">
-                        <p class="sub-title">Atendimento no chat</p>
-                        <ul class="list">
-                            <li>Responda diretamente ao cliente em tempo real pelo painel</li>
-                            <li>Mensagens recebidas pelo cliente são notificadas instantaneamente (WebSocket)</li>
-                            <li>Ao abrir o chamado, todas as mensagens são marcadas como lidas automaticamente</li>
-                            <li>Feche o chamado quando resolvido — novas mensagens do cliente não entrarão mais</li>
-                            <li>Reabra o chamado se precisar continuar o atendimento</li>
-                        </ul>
-                    </div>
-                    <div class="info-box sm:col-span-2">
-                        <p class="sub-title">Como o cliente abre um chamado</p>
-                        <p class="text-sm text-zinc-600">Durante ou após o pedido no chat público, o cliente pode clicar no botão de suporte e enviar uma mensagem descrevendo o problema. O chamado aparece imediatamente na fila de suporte do painel.</p>
-                    </div>
-                </div>
-
-                    <div class="doc-media">
-                    @php $media = $docMedia('suporte.png') @endphp
-                    @if($media)
-                        @if($media['type'] === 'video')
-                            <video src="{{ $media['url'] }}" controls playsinline muted class="doc-img"></video>
-                        @else
-                            <img src="{{ $media['url'] }}" alt="Suporte / chamados" class="doc-img">
-                        @endif
-                    @else
-                        <div class="doc-img-placeholder">
-                            <svg class="size-8 text-zinc-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"/></svg>
-                            <p class="text-xs text-zinc-400 text-center px-4">Mídia não encontrada — salve em <code class="bg-zinc-100 px-1 rounded">public/images/docs/suporte.png</code></p>
                         </div>
                     @endif
                     </div>

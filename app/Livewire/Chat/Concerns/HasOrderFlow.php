@@ -198,10 +198,24 @@ trait HasOrderFlow
         }
 
         try {
+            if (
+                $settings->service_radius_km !== null
+                && $settings->service_radius_km > 0
+                && $settings->branch_latitude !== null
+                && $settings->branch_longitude !== null
+                && ($this->customer_latitude === '' || $this->customer_longitude === '')
+            ) {
+                $this->addMessage('bot', 'Para validar se sua região é atendida, clique em "Usar minha localização atual" e confirme o local no mapa.');
+
+                return;
+            }
+
             $result = app(DeliveryService::class)->validate(
                 $settings,
                 $this->neighborhood,
-                $this->cartTotal
+                $this->cartTotal,
+                $this->customer_latitude !== '' ? (float) $this->customer_latitude : null,
+                $this->customer_longitude !== '' ? (float) $this->customer_longitude : null
             );
 
             $this->deliveryFee = $result['fee'];
@@ -436,9 +450,10 @@ trait HasOrderFlow
                 return;
             }
 
-            if ($branch->opens_at && $branch->closes_at) {
-                if ($timeStr < $branch->opens_at || $timeStr > $branch->closes_at) {
-                    $this->addError('scheduledAt', "A filial funciona entre {$branch->opens_at} e {$branch->closes_at}.");
+            $hours = $branch->hoursForDay($dayOfWeek);
+            if ($hours['opens_at'] && $hours['closes_at']) {
+                if ($timeStr < $hours['opens_at'] || $timeStr > $hours['closes_at']) {
+                    $this->addError('scheduledAt', "A filial funciona entre {$hours['opens_at']} e {$hours['closes_at']}.");
 
                     return;
                 }

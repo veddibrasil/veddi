@@ -54,19 +54,17 @@
                 </div>
 
                 <div>
-                    <label class="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Status</label>
-                    <select wire:model.live="statusFilter"
-                        class="w-full border rounded-lg px-3 py-2 text-sm text-neutral-700 focus:outline-none focus:ring-2 focus:ring-amber-400 dark:bg-zinc-800 dark:border-zinc-600 dark:text-neutral-200 dark:focus:ring-amber-500">
-                        <option value="">Todos</option>
-                        <option value="pending">Pendente</option>
-                        <option value="awaiting_payment">Ag. Pagamento</option>
-                        <option value="paid">Pago</option>
-                        <option value="preparing">Preparando</option>
-                        <option value="ready">Pronto</option>
-                        <option value="delivered">Entregue</option>
-                        <option value="cancelled">Cancelado</option>
-                        <option value="refunded">Reembolsado</option>
-                    </select>
+                    <flux:select wire:model.live="statusFilter" label="Status">
+                        <flux:select.option value="">Todos</flux:select.option>
+                        <flux:select.option value="pending">Pendente</flux:select.option>
+                        <flux:select.option value="awaiting_payment">Ag. Pagamento</flux:select.option>
+                        <flux:select.option value="paid">Pago</flux:select.option>
+                        <flux:select.option value="preparing">Preparando</flux:select.option>
+                        <flux:select.option value="ready">Pronto</flux:select.option>
+                        <flux:select.option value="delivered">Entregue</flux:select.option>
+                        <flux:select.option value="cancelled">Cancelado</flux:select.option>
+                        <flux:select.option value="refunded">Reembolsado</flux:select.option>
+                    </flux:select>
                 </div>
 
             </div>
@@ -75,35 +73,29 @@
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
 
                 <div>
-                    <label class="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Filial</label>
-                    <select wire:model.live="branchFilter"
-                        class="w-full border rounded-lg px-3 py-2 text-sm text-neutral-700 focus:outline-none focus:ring-2 focus:ring-amber-400 dark:bg-zinc-800 dark:border-zinc-600 dark:text-neutral-200 dark:focus:ring-amber-500">
-                        <option value="">Todas</option>
+                    <flux:select wire:model.live="branchFilter" label="Filial">
+                        <flux:select.option value="">Todas</flux:select.option>
                         @foreach ($branches as $branch)
-                            <option value="{{ $branch->id }}">{{ $branch->name }}</option>
+                            <flux:select.option value="{{ $branch->id }}">{{ $branch->name }}</flux:select.option>
                         @endforeach
-                    </select>
+                    </flux:select>
                 </div>
 
                 <div>
-                    <label class="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Pagamento</label>
-                    <select wire:model.live="paymentMethod"
-                        class="w-full border rounded-lg px-3 py-2 text-sm text-neutral-700 focus:outline-none focus:ring-2 focus:ring-amber-400 dark:bg-zinc-800 dark:border-zinc-600 dark:text-neutral-200 dark:focus:ring-amber-500">
-                        <option value="">Todos</option>
-                        <option value="pix">PIX</option>
-                        <option value="card">Cartão</option>
-                        <option value="cash">Dinheiro</option>
-                    </select>
+                    <flux:select wire:model.live="paymentMethod" label="Pagamento">
+                        <flux:select.option value="">Todos</flux:select.option>
+                        <flux:select.option value="pix">PIX</flux:select.option>
+                        <flux:select.option value="card">Cartão</flux:select.option>
+                        <flux:select.option value="cash">Dinheiro</flux:select.option>
+                    </flux:select>
                 </div>
 
                 <div>
-                    <label class="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Tipo</label>
-                    <select wire:model.live="orderType"
-                        class="w-full border rounded-lg px-3 py-2 text-sm text-neutral-700 focus:outline-none focus:ring-2 focus:ring-amber-400 dark:bg-zinc-800 dark:border-zinc-600 dark:text-neutral-200 dark:focus:ring-amber-500">
-                        <option value="">Todos</option>
-                        <option value="delivery">Entrega</option>
-                        <option value="pickup">Retirada</option>
-                    </select>
+                    <flux:select wire:model.live="orderType" label="Tipo">
+                        <flux:select.option value="">Todos</flux:select.option>
+                        <flux:select.option value="delivery">Entrega</flux:select.option>
+                        <flux:select.option value="pickup">Retirada</flux:select.option>
+                    </flux:select>
                 </div>
 
             </div>

@@ -43,27 +43,25 @@
                     @error('newEmail') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Tipo de usuário</label>
-                    <select wire:model.live="newRole" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 dark:bg-zinc-700 dark:border-zinc-600 dark:text-neutral-100">
-                        <option value="">Selecione...</option>
+                    <flux:select wire:model.live="newRole" label="Tipo de usuário">
+                        <flux:select.option value="">Selecione...</flux:select.option>
                         @foreach($roles as $role)
-                            <option value="{{ $role->slug }}">
+                            <flux:select.option value="{{ $role->slug }}">
                                 {{ $role->name }}
                                 @if($role->is_system) (padrão) @endif
-                            </option>
+                            </flux:select.option>
                         @endforeach
-                    </select>
+                    </flux:select>
                     @error('newRole') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
                 @if($newRole === 'branch_manager')
                     <div>
-                        <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Filial</label>
-                        <select wire:model="newBranchId" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 dark:bg-zinc-700 dark:border-zinc-600 dark:text-neutral-100">
-                            <option value="0">Todas as filiais</option>
+                        <flux:select wire:model="newBranchId" label="Filial">
+                            <flux:select.option value="0">Todas as filiais</flux:select.option>
                             @foreach($branches as $branch)
-                                <option value="{{ $branch->id }}">{{ $branch->name }}</option>
+                                <flux:select.option value="{{ $branch->id }}">{{ $branch->name }}</flux:select.option>
                             @endforeach
-                        </select>
+                        </flux:select>
                     </div>
                 @endif
             </div>
@@ -95,27 +93,25 @@
                     @error('linkEmail') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Tipo de usuário</label>
-                    <select wire:model.live="linkRole" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 dark:bg-zinc-700 dark:border-zinc-600 dark:text-neutral-100">
-                        <option value="">Selecione...</option>
+                    <flux:select wire:model.live="linkRole" label="Tipo de usuário">
+                        <flux:select.option value="">Selecione...</flux:select.option>
                         @foreach($roles as $role)
-                            <option value="{{ $role->slug }}">
+                            <flux:select.option value="{{ $role->slug }}">
                                 {{ $role->name }}
                                 @if($role->is_system) (padrão) @endif
-                            </option>
+                            </flux:select.option>
                         @endforeach
-                    </select>
+                    </flux:select>
                     @error('linkRole') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
                 @if($linkRole === 'branch_manager')
                     <div>
-                        <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Filial</label>
-                        <select wire:model="linkBranchId" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 dark:bg-zinc-700 dark:border-zinc-600 dark:text-neutral-100">
-                            <option value="0">Todas as filiais</option>
+                        <flux:select wire:model="linkBranchId" label="Filial">
+                            <flux:select.option value="0">Todas as filiais</flux:select.option>
                             @foreach($branches as $branch)
-                                <option value="{{ $branch->id }}">{{ $branch->name }}</option>
+                                <flux:select.option value="{{ $branch->id }}">{{ $branch->name }}</flux:select.option>
                             @endforeach
-                        </select>
+                        </flux:select>
                     </div>
                 @endif
             </div>
@@ -159,18 +155,18 @@
                         <td class="px-4 py-3">
                             @if($editUserId === $user->id)
                                 <div class="flex items-center gap-2">
-                                    <select wire:model.live="editRole" class="border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 dark:bg-zinc-700 dark:border-zinc-600 dark:text-neutral-100">
+                                    <flux:select wire:model.live="editRole">
                                         @foreach($roles as $role)
-                                            <option value="{{ $role->slug }}">{{ $role->name }}</option>
+                                            <flux:select.option value="{{ $role->slug }}">{{ $role->name }}</flux:select.option>
                                         @endforeach
-                                    </select>
+                                    </flux:select>
                                     @if($editRole === 'branch_manager')
-                                        <select wire:model="editBranchId" class="border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 dark:bg-zinc-700 dark:border-zinc-600 dark:text-neutral-100">
-                                            <option value="0">Todas</option>
+                                        <flux:select wire:model="editBranchId">
+                                            <flux:select.option value="0">Todas</flux:select.option>
                                             @foreach($branches as $branch)
-                                                <option value="{{ $branch->id }}">{{ $branch->name }}</option>
+                                                <flux:select.option value="{{ $branch->id }}">{{ $branch->name }}</flux:select.option>
                                             @endforeach
-                                        </select>
+                                        </flux:select>
                                     @endif
                                     <button wire:click="saveEditRole" class="text-xs text-amber-600 font-medium hover:text-amber-700">Salvar</button>
                                     <button wire:click="cancelEdit" class="text-xs text-neutral-400 hover:text-neutral-600">✕</button>

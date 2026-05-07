@@ -49,22 +49,20 @@
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-                <label class="block text-sm font-medium text-neutral-700 mb-1 dark:text-neutral-300">Plano</label>
-                <select wire:model.live="plan" class="w-full rounded-md border border-neutral-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-neutral-800 dark:text-neutral-100 px-3 py-2 text-sm">
-                    <option value="free">Grátis</option>
-                    <option value="essencial">Essencial</option>
-                    <option value="pro">PRO</option>
-                </select>
+                <flux:select wire:model.live="plan" label="Plano">
+                    <flux:select.option value="free">Grátis</flux:select.option>
+                    <flux:select.option value="essencial">Essencial</flux:select.option>
+                    <flux:select.option value="pro">PRO</flux:select.option>
+                </flux:select>
                 @error('plan') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
             @if($isEditing)
             <div>
-                <label class="block text-sm font-medium text-neutral-700 mb-1 dark:text-neutral-300">Status</label>
-                <select wire:model="status" class="w-full rounded-md border border-neutral-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-neutral-800 dark:text-neutral-100 px-3 py-2 text-sm">
-                    <option value="ACTIVE">Ativo</option>
-                    <option value="PENDING_PAYMENT">Aguardando pagamento</option>
-                    <option value="BLOCKED">Bloqueado</option>
-                </select>
+                <flux:select wire:model="status" label="Status">
+                    <flux:select.option value="ACTIVE">Ativo</flux:select.option>
+                    <flux:select.option value="PENDING_PAYMENT">Aguardando pagamento</flux:select.option>
+                    <flux:select.option value="BLOCKED">Bloqueado</flux:select.option>
+                </flux:select>
                 @error('status') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
             @endif

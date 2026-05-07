@@ -488,7 +488,7 @@ class Form extends Component
                 continue;
             }
             $totalQty = (int) $groupData['total_qty'];
-            $usedQty  = collect($groupData['options'] ?? [])->sum(fn ($o) => (int) ($o['default_qty'] ?? 0));
+            $usedQty = collect($groupData['options'] ?? [])->sum(fn ($o) => (int) ($o['default_qty'] ?? 0));
             if ($usedQty > $totalQty) {
                 $this->addError("optionGroups.{$gi}.total_qty", "A soma das qtds. fixas ({$usedQty}) ultrapassa a quantidade total ({$totalQty}).");
 

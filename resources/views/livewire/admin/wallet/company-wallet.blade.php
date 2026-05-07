@@ -380,15 +380,13 @@
                 @if($payoutType === 'PIX')
                     <div class="space-y-3">
                         <div>
-                            <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Tipo da chave PIX</label>
-                            <select wire:model="pixKeyType"
-                                    class="w-full border border-neutral-300 dark:border-zinc-600 rounded-lg px-3 py-2 text-sm dark:bg-zinc-700 dark:text-white">
-                                <option value="EVP">Chave aleatória</option>
-                                <option value="CPF">CPF</option>
-                                <option value="CNPJ">CNPJ</option>
-                                <option value="EMAIL">E-mail</option>
-                                <option value="PHONE">Telefone</option>
-                            </select>
+                            <flux:select wire:model="pixKeyType" label="Tipo da chave PIX">
+                                <flux:select.option value="EVP">Chave aleatória</flux:select.option>
+                                <flux:select.option value="CPF">CPF</flux:select.option>
+                                <flux:select.option value="CNPJ">CNPJ</flux:select.option>
+                                <flux:select.option value="EMAIL">E-mail</flux:select.option>
+                                <flux:select.option value="PHONE">Telefone</flux:select.option>
+                            </flux:select>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Chave PIX</label>

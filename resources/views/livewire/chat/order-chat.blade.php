@@ -46,21 +46,6 @@
             {{-- Restart + End chat buttons --}}
             @if ($step !== 'CLOSED')
                 <div class="flex items-center gap-1" x-data="{ confirmEnd: false }">
-                    {{-- Support icon --}}
-                    @if ($customerId && $selectedBranchId && $this->supportWhatsAppUrl && !in_array($step, ['IDENTIFY_PHONE', 'CLOSED', 'EDIT_PROFILE']))
-                        <a
-                            href="{{ $this->supportWhatsAppUrl }}"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            class="text-white/70 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
-                            title="Falar no WhatsApp"
-                        >
-                            <svg class="w-5 h-5" viewBox="0 0 32 32" fill="currentColor" aria-hidden="true">
-                                <path d="M19.11 17.44c-.28-.14-1.64-.81-1.9-.9-.25-.09-.44-.14-.62.14-.18.28-.71.9-.88 1.09-.16.19-.32.21-.6.07-.28-.14-1.17-.43-2.24-1.37-.83-.74-1.39-1.66-1.55-1.94-.16-.28-.02-.43.12-.57.13-.13.28-.32.41-.49.13-.16.18-.28.28-.46.09-.18.05-.35-.02-.49-.07-.14-.62-1.5-.85-2.05-.22-.54-.45-.47-.62-.48h-.53c-.18 0-.46.07-.7.35-.25.28-.93.91-.93 2.22s.95 2.58 1.08 2.76c.14.18 1.87 2.86 4.53 4.02.63.27 1.12.43 1.5.55.63.2 1.2.17 1.65.1.5-.07 1.64-.67 1.87-1.31.23-.64.23-1.19.16-1.31-.06-.12-.25-.19-.53-.33zM16 3.2A12.77 12.77 0 0 0 4.8 22.02L3.2 28.8l6.93-1.56A12.78 12.78 0 1 0 16 3.2zm0 23.35c-2.08 0-4.11-.55-5.9-1.6l-.42-.25-4.11.92.95-4-.27-.43A10.58 10.58 0 1 1 16 26.55z"/>
-                            </svg>
-                        </a>
-                    @endif
-
                     {{-- Order history --}}
                     @if ($customerId && !in_array($step, ['IDENTIFY_PHONE', 'CLOSED', 'EDIT_PROFILE', 'ORDER_HISTORY']))
                         <button
@@ -339,106 +324,10 @@
         @elseif ($step === 'REGISTER_ADDRESS')
             <div wire:key="step-register-address" class="space-y-2">
 
-                {{-- Botão de localização --}}
-                <button type="button" id="map-reg-loc-btn" onclick="mapPickerUseLocation('reg')"
-                    class="w-full flex items-center justify-center gap-2 border border-blue-200 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 text-blue-700 text-xs font-semibold rounded-xl py-2.5 transition-colors disabled:opacity-60">
-                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-                    </svg>
-                    <span id="map-reg-span-default">Usar minha localização</span>
-                    <span id="map-reg-span-loading" style="display:none" class="flex items-center gap-1.5">
-                        <svg class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                        </svg>
-                        Obtendo localização...
-                    </span>
-                </button>
-                <p id="map-reg-error" style="display:none" class="text-red-500 text-xs -mt-1 flex items-center gap-1"></p>
+                <x-chat.map-picker prefix="reg" />
 
-                {{-- Mapa interativo --}}
-                <div id="map-reg-container" style="display:none" class="rounded-xl overflow-hidden border border-blue-200 shadow-sm">
-                    <div class="bg-blue-50 px-3 py-1.5 flex items-center justify-between">
-                        <span class="text-xs font-semibold text-blue-700">📍 Arraste o pin para ajustar</span>
-                        <button type="button" onclick="mapPickerCloseMap('reg')" class="text-blue-400 hover:text-blue-700 text-lg leading-none">×</button>
-                    </div>
-                    <div id="map-reg-el" style="height:200px; width:100%;"></div>
-                    <div class="flex gap-2 p-2 bg-gray-50 border-t border-gray-100">
-                        <button type="button" onclick="mapPickerCloseMap('reg')" class="mc-btn-secondary flex-1 !py-1.5 text-xs">Cancelar</button>
-                        <button type="button" id="map-reg-confirm-btn" onclick="mapPickerConfirmLocation('reg')"
-                            class="mc-btn-primary flex-1 !py-1.5 text-xs disabled:opacity-60">
-                            <span id="map-reg-span-confirm">Confirmar local →</span>
-                            <span id="map-reg-span-geocoding" style="display:none" class="flex items-center justify-center gap-1.5">
-                                <svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
-                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                                </svg>
-                                Buscando endereço...
-                            </span>
-                        </button>
-                    </div>
-                </div>
+                <x-chat.address-fields />
 
-                <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1">
-                        CEP
-                        <span x-show="cepLoading" class="text-blue-500 font-normal normal-case ml-1">Buscando...</span>
-                    </label>
-                    <input
-                        wire:model="cep"
-                        type="text"
-                        placeholder="00000-000"
-                        class="mc-input"
-                        autocomplete="postal-code"
-                        inputmode="numeric"
-                        maxlength="9"
-                        x-on:input="
-                            $event.target.value = formatCep($event.target.value);
-                            if ($event.target.value.replace(/\D/g,'').length === 8) lookupCep($event.target.value, $wire);
-                        "
-                    />
-                    @error('cep') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
-                </div>
-                 <div class="flex gap-2">
-                    <div class="flex-1">
-                        <label class="block text-xs font-semibold text-gray-600 mb-1">Rua</label>
-                        <input wire:model="address" type="text" placeholder="Ex: Av. Brasil, 100" class="mc-input w-full" autocomplete="street-address" />
-                        @error('address') 
-                            <p class="text-red-600 text-xs mt-0.5 flex items-center gap-1">
-                                <span>⚠</span> {{ $message }}
-                            </p> 
-                        @enderror
-                    </div>
-
-                    <div class="w-24">
-                        <label class="block text-xs font-semibold text-gray-600 mb-1">Número</label>
-                        <input wire:model="number" type="text" placeholder="123" class="mc-input w-full" autocomplete="number-address" />
-                        @error('number') 
-                            <p class="text-red-600 text-xs mt-0.5">
-                                <span>⚠</span> {{ $message }}
-                            </p> 
-                        @enderror
-                    </div>
-                </div>
-                
-                <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1">Complemento <span class="text-gray-400 font-normal">(opcional)</span></label>
-                    <input wire:model="complement" type="text" placeholder="Apto 12, Bloco B..." class="mc-input" autocomplete="address-line2" />
-                    @error('complement') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
-                </div>
-                <div class="grid grid-cols-2 gap-2">
-                    <div>
-                        <label class="block text-xs font-semibold text-gray-600 mb-1">Bairro</label>
-                        <input wire:model="neighborhood" type="text" placeholder="Zona 1" class="mc-input" autocomplete="address-level3" />
-                        @error('neighborhood') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-gray-600 mb-1">Cidade</label>
-                        <input wire:model="city" type="text" placeholder="Maringá" class="mc-input" autocomplete="address-level2" />
-                        @error('city') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
-                    </div>
-                </div>
                 <div class="flex gap-2 mt-1">
                     <button wire:click="backToRegisterEmail" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
                     <button wire:click="submitAddress" class="mc-btn-primary flex-1">Salvar e continuar →</button>
@@ -527,35 +416,7 @@
         @elseif ($step === 'CART_REVIEW')
             <div class="max-h-52 overflow-y-auto mc-scrollbar space-y-1.5 pr-0.5 mb-2">
                 @foreach ($cart as $cartKey => $item)
-                    @php $hasItemOptions = !empty($item['options']); @endphp
-                    <div class="flex items-start gap-2.5 bg-gray-50 rounded-xl p-2.5 border border-gray-100">
-                        <div class="flex-1 min-w-0">
-                            <p class="font-semibold text-sm text-gray-800 break-words">
-                                {{ $item['name'] }}
-                            </p>               
-                             @if ($hasItemOptions)
-                                @foreach ($item['options'] as $group)
-                                    <p class="text-xs font-medium text-gray-500 mt-0.5">{{ $group['group_name'] }}:</p>
-                                    @foreach ($group['selections'] as $sel)
-                                        <p class="text-xs text-gray-400 leading-tight">
-                                            {{ $sel['qty'] }}× {{ $sel['name'] }}@if ($sel['additional_price'] > 0) <span class="text-amber-600">(+R$ {{ number_format($sel['additional_price'], 2, ',', '.') }})</span>@endif
-                                        </p>
-                                    @endforeach
-                                @endforeach
-                            @else
-                                <p class="text-xs text-gray-400">R$ {{ number_format($item['price'], 2, ',', '.') }} cada</p>
-                            @endif
-                        </div>
-                        <div class="flex items-center gap-1 shrink-0">
-                            <button wire:click="updateCartQty('{{ $cartKey }}', {{ $item['qty'] - 1 }})"
-                                class="w-7 h-7 rounded-full bg-gray-200 hover:bg-gray-300 font-bold text-sm flex items-center justify-center">−</button>
-                            <span class="w-6 text-center text-sm font-bold">{{ $item['qty'] }}</span>
-                            <button wire:click="updateCartQty('{{ $cartKey }}', {{ $item['qty'] + 1 }})"
-                                class="w-7 h-7 rounded-full mc-bg-primary-light font-bold text-sm mc-text-primary flex items-center justify-center">+</button>
-                            <button wire:click="removeFromCart('{{ $cartKey }}')"
-                                class="w-7 h-7 rounded-full bg-red-50 hover:bg-red-100 text-red-500 text-sm flex items-center justify-center ml-0.5">✕</button>
-                        </div>
-                    </div>
+                    <x-chat.cart-item :item="$item" :cart-key="$cartKey" :editable="true" />
                 @endforeach
             </div>
 
@@ -660,104 +521,10 @@
                     </div>
                 @endif
 
-                {{-- Botão de localização --}}
-                <button type="button" id="map-chk-loc-btn" onclick="mapPickerUseLocation('chk')"
-                    class="w-full flex items-center justify-center gap-2 border border-blue-200 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 text-blue-700 text-xs font-semibold rounded-xl py-2.5 transition-colors disabled:opacity-60">
-                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-                    </svg>
-                    <span id="map-chk-span-default">Usar minha localização atual</span>
-                    <span id="map-chk-span-loading" style="display:none" class="flex items-center gap-1.5">
-                        <svg class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                        </svg>
-                        Obtendo localização...
-                    </span>
-                </button>
-                <p id="map-chk-error" style="display:none" class="text-red-500 text-xs -mt-1"></p>
+                <x-chat.map-picker prefix="chk" label="Usar minha localização atual" />
 
-                {{-- Mapa interativo --}}
-                <div id="map-chk-container" style="display:none" class="rounded-xl overflow-hidden border border-blue-200 shadow-sm">
-                    <div class="bg-blue-50 px-3 py-1.5 flex items-center justify-between">
-                        <span class="text-xs font-semibold text-blue-700">📍 Arraste o pin para ajustar</span>
-                        <button type="button" onclick="mapPickerCloseMap('chk')" class="text-blue-400 hover:text-blue-700 text-lg leading-none">×</button>
-                    </div>
-                    <div id="map-chk-el" style="height:200px; width:100%;"></div>
-                    <div class="flex gap-2 p-2 bg-gray-50 border-t border-gray-100">
-                        <button type="button" onclick="mapPickerCloseMap('chk')" class="mc-btn-secondary flex-1 !py-1.5 text-xs">Cancelar</button>
-                        <button type="button" id="map-chk-confirm-btn" onclick="mapPickerConfirmLocation('chk')"
-                            class="mc-btn-primary flex-1 !py-1.5 text-xs disabled:opacity-60">
-                            <span id="map-chk-span-confirm">Confirmar local →</span>
-                            <span id="map-chk-span-geocoding" style="display:none" class="flex items-center justify-center gap-1.5">
-                                <svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
-                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                                </svg>
-                                Buscando endereço...
-                            </span>
-                        </button>
-                    </div>
-                </div>
+                <x-chat.address-fields />
 
-                <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1">
-                        CEP
-                        <span x-show="cepLoading" class="text-blue-500 font-normal normal-case ml-1">Buscando...</span>
-                    </label>
-                    <input
-                        wire:model="cep"
-                        type="text"
-                        placeholder="00000-000"
-                        class="mc-input"
-                        autocomplete="postal-code"
-                        inputmode="numeric"
-                        maxlength="9"
-                        x-on:input="
-                            $event.target.value = formatCep($event.target.value);
-                            if ($event.target.value.replace(/\D/g,'').length === 8) lookupCep($event.target.value, $wire);
-                        "
-                    />
-                    @error('cep') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
-                </div>
-              <div class="flex gap-2">
-                <div class="flex-1">
-                    <label class="block text-xs font-semibold text-gray-600 mb-1">Rua</label>
-                    <input wire:model="address" type="text" placeholder="Ex: Av. Brasil, 100" class="mc-input w-full" autocomplete="street-address" />
-                    @error('address') 
-                        <p class="text-red-600 text-xs mt-0.5 flex items-center gap-1">
-                            <span>⚠</span> {{ $message }}
-                        </p> 
-                    @enderror
-                </div>
-
-                <div class="w-24">
-                    <label class="block text-xs font-semibold text-gray-600 mb-1">Número</label>
-                    <input wire:model="number" type="text" placeholder="123" class="mc-input w-full" autocomplete="number-address" />
-                    @error('number') 
-                        <p class="text-red-600 text-xs mt-0.5">
-                            <span>⚠</span> {{ $message }}
-                        </p> 
-                    @enderror
-                </div>
-            </div>
-                <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1">Complemento <span class="text-gray-400 font-normal">(opcional)</span></label>
-                    <input wire:model="complement" type="text" placeholder="Apto 12, Bloco B..." class="mc-input" autocomplete="address-line2" />
-                </div>
-                <div class="grid grid-cols-2 gap-2">
-                    <div>
-                        <label class="block text-xs font-semibold text-gray-600 mb-1">Bairro</label>
-                        <input wire:model="neighborhood" type="text" placeholder="Zona 1" class="mc-input" autocomplete="address-level3" />
-                        @error('neighborhood') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-gray-600 mb-1">Cidade</label>
-                        <input wire:model="city" type="text" placeholder="Maringá" class="mc-input" autocomplete="address-level2" />
-                        @error('city') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
-                    </div>
-                </div>
                 <div class="flex gap-2 mt-1">
                     <button wire:click="backToOrderType" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
                     <button wire:click="confirmDeliveryAddress" class="mc-btn-primary flex-1"
@@ -851,14 +618,13 @@
                             class="mc-input"
                         />
                         @if ($scheduleDate)
-                            <label class="block text-xs font-semibold text-gray-600 mb-1.5 mt-3">Horário desejado</label>
                             @if (count($this->availableTimeSlots) > 0)
-                                <select wire:model="scheduleTime" class="mc-input">
-                                    <option value="">Selecione o horário</option>
+                                <flux:select wire:model="scheduleTime" label="Horário desejado" class="mt-3">
+                                    <flux:select.option value="">Selecione o horário</flux:select.option>
                                     @foreach ($this->availableTimeSlots as $slot)
-                                        <option value="{{ $slot }}">{{ $slot }}</option>
+                                        <flux:select.option value="{{ $slot }}">{{ $slot }}</flux:select.option>
                                     @endforeach
-                                </select>
+                                </flux:select>
                             @else
                                 <p class="text-amber-600 text-xs mt-1 flex items-center gap-1"><span>⚠</span> Nenhum horário disponível para este dia.</p>
                             @endif
@@ -1118,25 +884,7 @@
                 {{-- Itens --}}
                 <div class="max-h-44 overflow-y-auto mc-scrollbar space-y-1.5 pr-0.5">
                     @foreach ($cart as $item)
-                        @php $hasItemOptions = !empty($item['options']); @endphp
-                        <div class="flex items-start gap-2.5 bg-gray-50 rounded-xl p-2.5 border border-gray-100">
-                            <div class="flex-1 min-w-0">
-                                <p class="font-semibold text-sm text-gray-800 truncate break-words">{{ $item['name'] }}</p>
-                                @if ($hasItemOptions)
-                                    @foreach ($item['options'] as $group)
-                                        <p class="text-xs font-medium text-gray-500 mt-0.5">{{ $group['group_name'] }}:</p>
-                                        @foreach ($group['selections'] as $sel)
-                                            <p class="text-xs text-gray-400 leading-tight">
-                                                {{ $sel['qty'] }}× {{ $sel['name'] }}@if ($sel['additional_price'] > 0) <span class="text-amber-600">(+R$ {{ number_format($sel['additional_price'], 2, ',', '.') }})</span>@endif
-                                            </p>
-                                        @endforeach
-                                    @endforeach
-                                @else
-                                    <p class="text-xs text-gray-400">R$ {{ number_format($item['price'], 2, ',', '.') }} cada</p>
-                                @endif
-                            </div>
-                            <span class="text-sm font-bold text-gray-700 shrink-0">{{ $item['qty'] }}×</span>
-                        </div>
+                        <x-chat.cart-item :item="$item" />
                     @endforeach
                 </div>
 
@@ -1537,20 +1285,6 @@
                     </button>
                 </div>
 
-                @if ($selectedBranchId && $this->supportWhatsAppUrl)
-                    <a
-                        href="{{ $this->supportWhatsAppUrl }}"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 text-sm transition-colors"
-                        title="Falar com a filial no WhatsApp"
-                    >
-                        <span class="text-base">WhatsApp</span>
-                        <svg class="w-5 h-5" viewBox="0 0 32 32" fill="currentColor" aria-hidden="true">
-                            <path d="M19.11 17.44c-.28-.14-1.64-.81-1.9-.9-.25-.09-.44-.14-.62.14-.18.28-.71.9-.88 1.09-.16.19-.32.21-.6.07-.28-.14-1.17-.43-2.24-1.37-.83-.74-1.39-1.66-1.55-1.94-.16-.28-.02-.43.12-.57.13-.13.28-.32.41-.49.13-.16.18-.28.28-.46.09-.18.05-.35-.02-.49-.07-.14-.62-1.5-.85-2.05-.22-.54-.45-.47-.62-.48h-.53c-.18 0-.46.07-.7.35-.25.28-.93.91-.93 2.22s.95 2.58 1.08 2.76c.14.18 1.87 2.86 4.53 4.02.63.27 1.12.43 1.5.55.63.2 1.2.17 1.65.1.5-.07 1.64-.67 1.87-1.31.23-.64.23-1.19.16-1.31-.06-.12-.25-.19-.53-.33zM16 3.2A12.77 12.77 0 0 0 4.8 22.02L3.2 28.8l6.93-1.56A12.78 12.78 0 1 0 16 3.2zm0 23.35c-2.08 0-4.11-.55-5.9-1.6l-.42-.25-4.11.92.95-4-.27-.43A10.58 10.58 0 1 1 16 26.55z"/>
-                        </svg>
-                    </a>
-                @endif
             </div>
 
 
@@ -1586,64 +1320,8 @@
                     <input wire:model="name" type="text" class="mc-input" autocomplete="name" />
                     @error('name') <p class="text-red-600 text-xs mt-0.5 flex items-center gap-1"><span>⚠</span> {{ $message }}</p> @enderror
                 </div>
-                <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1">
-                        CEP
-                        <span x-show="cepLoading" class="text-blue-500 font-normal normal-case ml-1">Buscando...</span>
-                    </label>
-                    <input
-                        wire:model="cep"
-                        type="text"
-                        placeholder="00000-000"
-                        class="mc-input"
-                        autocomplete="postal-code"
-                        inputmode="numeric"
-                        maxlength="9"
-                        x-on:input="
-                            $event.target.value = formatCep($event.target.value);
-                            if ($event.target.value.replace(/\D/g,'').length === 8) lookupCep($event.target.value, $wire);
-                        "
-                    />
-                    @error('cep') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
-                </div>
-                <div class="flex gap-2">
-                    <div class="flex-1">
-                        <label class="block text-xs font-semibold text-gray-600 mb-1">Rua</label>
-                        <input wire:model="address" type="text" placeholder="Ex: Av. Brasil, 100" class="mc-input w-full" autocomplete="street-address" />
-                        @error('address') 
-                            <p class="text-red-600 text-xs mt-0.5 flex items-center gap-1">
-                                <span>⚠</span> {{ $message }}
-                            </p> 
-                        @enderror
-                    </div>
+                <x-chat.address-fields />
 
-                    <div class="w-24">
-                        <label class="block text-xs font-semibold text-gray-600 mb-1">Número</label>
-                        <input wire:model="number" type="text" placeholder="123" class="mc-input w-full" autocomplete="number-address" />
-                        @error('number') 
-                            <p class="text-red-600 text-xs mt-0.5">
-                                <span>⚠</span> {{ $message }}
-                            </p> 
-                        @enderror
-                    </div>
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1">Complemento <span class="text-gray-400 font-normal">(opcional)</span></label>
-                    <input wire:model="complement" type="text" placeholder="Apto 12, Bloco B..." class="mc-input" autocomplete="address-line2" />
-                    @error('complement') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
-                </div>
-                <div class="grid grid-cols-2 gap-2">
-                    <div>
-                        <label class="block text-xs font-semibold text-gray-600 mb-1">Bairro</label>
-                        <input wire:model="neighborhood" type="text" class="mc-input" autocomplete="address-level3" />
-                        @error('neighborhood') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-gray-600 mb-1">Cidade</label>
-                        <input wire:model="city" type="text" class="mc-input" autocomplete="address-level2" />
-                        @error('city') <p class="text-red-600 text-xs mt-0.5"><span>⚠</span> {{ $message }}</p> @enderror
-                    </div>
-                </div>
                 <div class="flex gap-2 pt-1">
                     <button wire:click="cancelEditProfile" class="mc-btn-secondary flex-1">Cancelar</button>
                     <button wire:click="submitEditProfile" class="mc-btn-primary flex-1"
@@ -1879,60 +1557,8 @@
                                     </div>
                                     {{-- Qty controls --}}
                                     @php
-                                        $hasOptions = $product->optionGroups->isNotEmpty();
-                                        if ($hasOptions) {
-                                            // Seleções já existentes no carrinho: [groupId][optionId] => qty
-                                            $existingSels = [];
-                                            foreach ($cart[$product->id]['options'] ?? [] as $gId => $gData) {
-                                                foreach ($gData['selections'] ?? [] as $oId => $sel) {
-                                                    $existingSels[(int)$gId][(int)$oId] = (int)($sel['qty'] ?? 0);
-                                                }
-                                            }
-                                            $allFixed = $product->optionGroups->every(fn ($g) => $g->fixed);
-                                            $productData = [
-                                                'id'       => $product->id,
-                                                'name'     => $product->name,
-                                                'price'    => (float) $product->effective_price,
-                                                'allFixed' => $allFixed,
-                                                'groups'   => $product->optionGroups->values()->map(function ($g, $gi) use ($product, $existingSels) {
-                                                    $isVariantPriceGroup = $product->is_variant && $gi === 0;
-                                                    $resolvePrice = fn ($o) => ($isVariantPriceGroup || ! $g->fixed) ? (float) $o->additional_price : 0.0;
-                                                    return [
-                                                        'id'        => $g->id,
-                                                        'name'      => $g->name,
-                                                        'image_url' => $g->image_url,
-                                                        'total_qty' => $g->total_qty,
-                                                        'fixed'     => (bool) $g->fixed,
-                                                        'options'   => [
-                                                            ...$g->options->map(fn ($o) => [
-                                                                'id'               => $o->id,
-                                                                'name'             => $o->name,
-                                                                'image_url'        => $o->image_url,
-                                                                'description'      => $o->description,
-                                                                'additional_price' => $resolvePrice($o),
-                                                                'paused'           => false,
-                                                                // fixo: usa default_qty; variável: usa seleção existente no carrinho
-                                                                'prefilledQty'     => $g->fixed
-                                                                    ? (int) $o->default_qty
-                                                                    : ($existingSels[$g->id][$o->id] ?? 0),
-                                                            ])->toArray(),
-                                                            ...$g->inactiveOptions->map(fn ($o) => [
-                                                                'id'               => $o->id,
-                                                                'name'             => $o->name,
-                                                                'image_url'        => $o->image_url,
-                                                                'description'      => $o->description,
-                                                                'additional_price' => $resolvePrice($o),
-                                                                'paused'           => true,
-                                                                'prefilledQty'     => 0,
-                                                            ])->toArray(),
-                                                        ],
-                                                    ];
-                                                })->toArray(),
-                                            ];
-                                        } else {
-                                            $productData = null;
-                                            $allFixed    = false;
-                                        }
+                                        $productData = $this->buildProductDataForSidebar($product);
+                                        $hasOptions = $productData !== null;
                                     @endphp
                                     <div class="flex items-center gap-0.5 shrink-0">
                                         @if (! $sbOutOfStock)
@@ -2265,229 +1891,6 @@
         },
     }));
 
-    // ── Map Picker (pure JS) ─────────────────────────────────────────────────
-    var _mapStates = {};
 
-    function _mapEl(prefix, id) {
-        return document.getElementById('map-' + prefix + '-' + id);
-    }
-
-    function _mapShow(el, visible) {
-        if (el) el.style.display = visible ? '' : 'none';
-    }
-
-    function _mapSetLoading(prefix, v) {
-        var s = _mapStates[prefix];
-        if (!s) return;
-        s.loading = v;
-        var btn = _mapEl(prefix, 'loc-btn');
-        if (btn) btn.disabled = v;
-        _mapShow(_mapEl(prefix, 'span-default'), !v);
-        _mapShow(_mapEl(prefix, 'span-loading'), v);
-    }
-
-    function _mapSetError(prefix, msg) {
-        var el = _mapEl(prefix, 'error');
-        if (!el) return;
-        if (msg) { el.textContent = '⚠ ' + msg; _mapShow(el, true); }
-        else _mapShow(el, false);
-    }
-
-    function _mapSetGeocoding(prefix, v) {
-        var s = _mapStates[prefix];
-        if (!s) return;
-        s.reverseGeocoding = v;
-        var btn = _mapEl(prefix, 'confirm-btn');
-        if (btn) btn.disabled = v;
-        _mapShow(_mapEl(prefix, 'span-confirm'), !v);
-        _mapShow(_mapEl(prefix, 'span-geocoding'), v);
-    }
-
-    function _mapDestroy(prefix) {
-        var s = _mapStates[prefix];
-        if (s && s.map) { s.map.remove(); s.map = null; s.marker = null; }
-    }
-
-    function _mapBuild(prefix, lat, lng) {
-        _mapDestroy(prefix);
-        var container = _mapEl(prefix, 'el');
-        if (!container) return;
-        var s = _mapStates[prefix];
-        s.map = L.map(container, { zoomControl: true }).setView([lat, lng], 17);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-            maxZoom: 19,
-        }).addTo(s.map);
-        s.marker = L.marker([lat, lng], { draggable: true }).addTo(s.map);
-        s.marker.on('dragend', function () {
-            var pos = s.marker.getLatLng();
-            s.lat = pos.lat;
-            s.lng = pos.lng;
-        });
-        // Duplo rAF garante que o browser já pintou o container antes de recalcular
-        var mapRef = s.map;
-        requestAnimationFrame(function () {
-            requestAnimationFrame(function () {
-                if (mapRef) mapRef.invalidateSize();
-            });
-        });
-    }
-
-    window.mapPickerUseLocation = function (prefix) {
-        if (!_mapStates[prefix]) _mapStates[prefix] = { map: null, marker: null, lat: null, lng: null, loading: false, reverseGeocoding: false };
-        var s = _mapStates[prefix];
-        if (!navigator.geolocation) {
-            _mapSetError(prefix, 'Geolocalização não suportada pelo seu navegador.');
-            return;
-        }
-        _mapSetLoading(prefix, true);
-        _mapSetError(prefix, null);
-        navigator.geolocation.getCurrentPosition(
-            function (pos) {
-                s.lat = pos.coords.latitude;
-                s.lng = pos.coords.longitude;
-                _mapSetLoading(prefix, false);
-                _mapShow(_mapEl(prefix, 'container'), true);
-                // rAF duplo: aguarda o browser renderizar o container antes de inicializar o Leaflet
-                requestAnimationFrame(function () {
-                    requestAnimationFrame(function () {
-                        _mapBuild(prefix, s.lat, s.lng);
-                    });
-                });
-            },
-            function () {
-                _mapSetLoading(prefix, false);
-                _mapSetError(prefix, 'Não foi possível obter sua localização. Verifique as permissões do navegador.');
-            },
-            { enableHighAccuracy: true, timeout: 12000 }
-        );
-    };
-
-    window.mapPickerCloseMap = function (prefix) {
-        _mapShow(_mapEl(prefix, 'container'), false);
-        _mapDestroy(prefix);
-    };
-
-    window.mapPickerConfirmLocation = async function (prefix) {
-        if (!_mapStates[prefix]) return;
-        var s = _mapStates[prefix];
-        if (!s.lat || !s.lng) return;
-        if (s.marker) {
-            var pos = s.marker.getLatLng();
-            s.lat = pos.lat;
-            s.lng = pos.lng;
-        }
-        _mapSetGeocoding(prefix, true);
-        _mapSetError(prefix, null);
-        try {
-            var res = await fetch(
-                'https://nominatim.openstreetmap.org/reverse?lat=' + s.lat + '&lon=' + s.lng + '&format=json&accept-language=pt-BR',
-                { headers: { 'Accept-Language': 'pt-BR,pt;q=0.9' } }
-            );
-            var data = await res.json();
-            var a = data.address || {};
-
-            var street = a.road || a.pedestrian || a.footway || '';
-            var num    = a.house_number || '';
-            if (street) $wire.set('address', num ? street + ', ' + num : street);
-
-            var bairro = a.suburb || a.neighbourhood || a.city_district || a.quarter || '';
-            if (bairro) $wire.set('neighborhood', bairro);
-
-            var cidade = a.city || a.town || a.village || a.municipality || '';
-            if (cidade) $wire.set('city', cidade);
-
-            if (a.postcode) {
-                var digits = a.postcode.replace(/\D/g, '').slice(0, 8);
-                $wire.set('cep', digits.length === 8 ? digits.slice(0,5) + '-' + digits.slice(5) : digits);
-            }
-        } catch (e) {
-            _mapSetError(prefix, 'Erro ao buscar o endereço. Arraste o pin e tente novamente.');
-            _mapSetGeocoding(prefix, false);
-            return;
-        }
-        _mapSetGeocoding(prefix, false);
-        window.mapPickerCloseMap(prefix);
-    };
-
-    // ── Branch Nearest Locator ────────────────────────────────────────────────
-    function _haversineKm(lat1, lng1, lat2, lng2) {
-        var R = 6371;
-        var dLat = (lat2 - lat1) * Math.PI / 180;
-        var dLng = (lng2 - lng1) * Math.PI / 180;
-        var a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
-              + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180)
-              * Math.sin(dLng / 2) * Math.sin(dLng / 2);
-        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    }
-
-    window.branchLocate = function () {
-        var errEl = document.getElementById('branch-locate-error');
-
-        if (!navigator.geolocation) {
-            if (errEl) { errEl.textContent = '⚠ Geolocalização não suportada pelo navegador.'; errEl.classList.remove('hidden'); }
-            return;
-        }
-
-        if (errEl) errEl.classList.add('hidden');
-
-        navigator.geolocation.getCurrentPosition(
-            function (pos) {
-                var userLat = pos.coords.latitude;
-                var userLng = pos.coords.longitude;
-
-                var list = document.getElementById('branch-list');
-                if (!list) return;
-
-                var buttons = Array.from(list.querySelectorAll('button[data-branch-id]'));
-                var withCoords = [];
-                var withoutCoords = [];
-
-                buttons.forEach(function (b) {
-                    var lat = parseFloat(b.dataset.branchLat);
-                    var lng = parseFloat(b.dataset.branchLng);
-                    if (lat && lng) {
-                        var km = _haversineKm(userLat, userLng, lat, lng);
-                        b._distKm = km;
-                        withCoords.push(b);
-                    } else {
-                        withoutCoords.push(b);
-                    }
-                });
-
-                // Sort: open first by distance, then closed by distance
-                withCoords.sort(function (a, b) {
-                    var aOpen = a.dataset.branchOpen === '1';
-                    var bOpen = b.dataset.branchOpen === '1';
-                    if (aOpen !== bOpen) return aOpen ? -1 : 1;
-                    return a._distKm - b._distKm;
-                });
-
-                var sorted = withCoords.concat(withoutCoords);
-                sorted.forEach(function (b) { list.appendChild(b); });
-
-                // Show distances and nearest badge
-                var nearestSet = false;
-                withCoords.forEach(function (b) {
-                    var distEl = b.querySelector('.branch-distance');
-                    if (distEl) {
-                        var km = b._distKm;
-                        distEl.textContent = '📍 ' + (km < 1 ? Math.round(km * 1000) + ' m de distância' : km.toFixed(1) + ' km de distância');
-                        distEl.classList.remove('hidden');
-                    }
-                    if (!nearestSet && b.dataset.branchOpen === '1') {
-                        var badge = b.querySelector('.branch-nearest-badge');
-                        if (badge) badge.classList.remove('hidden');
-                        nearestSet = true;
-                    }
-                });
-
-            },
-            function () {
-                if (errEl) { errEl.textContent = '⚠ Não foi possível obter sua localização. Verifique as permissões.'; errEl.classList.remove('hidden'); }
-            },
-            { enableHighAccuracy: true, timeout: 12000 }
-        );
-    };
 </script>
 @endscript

@@ -17,6 +17,7 @@ class Order extends Model
         'company_id', 'order_number', 'customer_id', 'branch_id', 'subtotal', 'delivery_fee', 'total',
         'status', 'notes', 'scheduled_at', 'payment_method', 'order_type', 'coupon_id', 'discount', 'fee', 'net_value',
         'fee_billed_at',
+        'delivery_address_id',
     ];
 
     protected $casts = [
@@ -30,7 +31,50 @@ class Order extends Model
         static::creating(function (Order $order) {
             $order->order_number = static::generateOrderNumber();
         });
+
+        static::saving(function (Order $order) {
+            if ($order->pendingDeliveryAddressData === []) {
+                return;
+            }
+
+            $hasAny = collect($order->pendingDeliveryAddressData)
+                ->filter(fn ($v) => $v !== null && trim((string) $v) !== '')
+                ->isNotEmpty();
+
+            if (! $hasAny) {
+                $order->pendingDeliveryAddressData = [];
+
+                return;
+            }
+
+            $address = $order->delivery_address_id ? Address::find($order->delivery_address_id) : null;
+            if (! $address) {
+                $address = new Address;
+            }
+
+            $address->fill($order->pendingDeliveryAddressData);
+            $address->save();
+
+            $order->delivery_address_id = $address->id;
+            $order->pendingDeliveryAddressData = [];
+        });
+
+        static::deleting(function (Order $order) {
+            if (! $order->delivery_address_id) {
+                return;
+            }
+
+            $address = Address::find($order->delivery_address_id);
+            $address?->delete();
+        });
     }
+
+    /**
+     * Pending delivery address snapshot values set via mutators.
+     *
+     * @var array<string, mixed>
+     */
+    protected array $pendingDeliveryAddressData = [];
 
     private static function generateOrderNumber(): string
     {
@@ -66,6 +110,73 @@ class Order extends Model
         return $this->belongsTo(Coupon::class);
     }
 
+    public function deliveryAddressRecord(): BelongsTo
+    {
+        return $this->belongsTo(Address::class, 'delivery_address_id');
+    }
+
+    // --- Virtual accessors/mutators for delivery snapshot fields ---
+
+    public function getDeliveryAddressAttribute(): ?string
+    {
+        return $this->deliveryAddressRecord?->line1;
+    }
+
+    public function setDeliveryAddressAttribute($value): void
+    {
+        $this->pendingDeliveryAddressData['line1'] = $value;
+    }
+
+    public function getDeliveryNumberAttribute(): ?string
+    {
+        return $this->deliveryAddressRecord?->number;
+    }
+
+    public function setDeliveryNumberAttribute($value): void
+    {
+        $this->pendingDeliveryAddressData['number'] = $value;
+    }
+
+    public function getDeliveryComplementAttribute(): ?string
+    {
+        return $this->deliveryAddressRecord?->complement;
+    }
+
+    public function setDeliveryComplementAttribute($value): void
+    {
+        $this->pendingDeliveryAddressData['complement'] = $value;
+    }
+
+    public function getDeliveryNeighborhoodAttribute(): ?string
+    {
+        return $this->deliveryAddressRecord?->neighborhood;
+    }
+
+    public function setDeliveryNeighborhoodAttribute($value): void
+    {
+        $this->pendingDeliveryAddressData['neighborhood'] = $value;
+    }
+
+    public function getDeliveryCityAttribute(): ?string
+    {
+        return $this->deliveryAddressRecord?->city;
+    }
+
+    public function setDeliveryCityAttribute($value): void
+    {
+        $this->pendingDeliveryAddressData['city'] = $value;
+    }
+
+    public function getDeliveryCepAttribute(): ?string
+    {
+        return $this->deliveryAddressRecord?->cep;
+    }
+
+    public function setDeliveryCepAttribute($value): void
+    {
+        $this->pendingDeliveryAddressData['cep'] = $value;
+    }
+
     public function refunds(): HasMany
     {
         return $this->hasMany(PaymentRefund::class);
@@ -74,6 +185,22 @@ class Order extends Model
     public function isScheduled(): bool
     {
         return $this->scheduled_at !== null;
+    }
+
+    /** Returns the delivery address snapshot, falling back to customer address for legacy orders. */
+    public function deliveryFullAddress(): string
+    {
+        $address = $this->delivery_address ?: $this->customer?->address;
+        $neighborhood = $this->delivery_neighborhood ?: $this->customer?->neighborhood;
+        $city = $this->delivery_city ?: $this->customer?->city;
+
+        return implode(', ', array_filter([$address, $neighborhood, $city]));
+    }
+
+    /** Returns the status codes that allow admin editing of address and items. */
+    public function isEditable(): bool
+    {
+        return in_array($this->status, ['pending', 'awaiting_payment', 'paid', 'preparing', 'ready', 'scheduled']);
     }
 
     public function getStatusLabelAttribute(): string

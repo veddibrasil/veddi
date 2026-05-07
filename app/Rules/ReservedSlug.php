@@ -37,7 +37,6 @@ class ReservedSlug implements ValidationRule
         'mail',
         'ftp',
         'blog',
-        'support',
         'help',
         'status',
         'cdn',

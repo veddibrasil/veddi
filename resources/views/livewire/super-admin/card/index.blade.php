@@ -7,21 +7,17 @@
     {{-- Seleção de empresa --}}
   <div class="bg-white border rounded-xl shadow-sm p-4 dark:bg-zinc-800 dark:border-zinc-700">
         <div class="max-w-md">
-            <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                Selecionar empresa
-            </label>
-
-            <select
+            <flux:select
                 wire:model.live="selectedCompanyId"
                 wire:key="company-{{ $selectedCompanyId }}"
-                    class="w-full rounded-md border border-neutral-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-neutral-800 dark:text-neutral-100 px-3 py-2 text-sm"
+                label="Selecionar empresa"
             >
                 @foreach($companies as $company)
-                    <option value="{{ $company->id }}">
+                    <flux:select.option value="{{ $company->id }}">
                         {{ $company->name }}
-                    </option>
+                    </flux:select.option>
                 @endforeach
-            </select>
+            </flux:select>
 
             <div wire:loading wire:target="selectedCompanyId" class="text-xs text-neutral-500 mt-2">
                 Carregando dados da empresa...
@@ -132,20 +128,12 @@
                 </div>
 
                 <div>
-                    <label class="block text-xs text-neutral-500 mb-1">
-                        Prazo padrão de recebimento (dias)
-                    </label>
-
-                    <select wire:model="defaultAnticipationDays"
-                    class="w-full rounded-md border border-neutral-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-neutral-800 dark:text-neutral-100 px-3 py-2 text-sm"
-                        >
-
-                        <option value="2">D+2</option>
-                        <option value="7">D+7</option>
-                        <option value="15">D+15</option>
-                        <option value="30">D+30</option>
-
-                    </select>
+                    <flux:select wire:model="defaultAnticipationDays" label="Prazo padrão de recebimento (dias)">
+                        <flux:select.option value="2">D+2</flux:select.option>
+                        <flux:select.option value="7">D+7</flux:select.option>
+                        <flux:select.option value="15">D+15</flux:select.option>
+                        <flux:select.option value="30">D+30</flux:select.option>
+                    </flux:select>
 
                     @error('defaultAnticipationDays')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
                 </div>

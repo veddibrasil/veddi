@@ -1,24 +1,19 @@
 <div class="w-full space-y-6">
-    <div class="flex items-center gap-3">
-        <a href="{{ route('admin.branches.index') }}" class="text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300">←</a>
-        <h1 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100">
-            {{ $isEditing ? 'Editar Filial' : 'Nova Filial' }}
-        </h1>
-    </div>
+    <x-admin.page-header
+        :back-route="route('admin.branches.index')"
+        :title="$isEditing ? 'Editar Filial' : 'Nova Filial'"
+    />
 
-    <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
-        <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Informações da filial</h2>
-
-        @if($needsCompanySelect)
-        <div>
-      
-            <flux:select wire:model="company_id" label="Empresa" placeholder="Selecione uma empresa...">
-                @foreach($companies as $company)
-                    <flux:select.option value="{{ $company->id }}">{{ $company->name }}</flux:select.option>
-                @endforeach
-            </flux:select>
-            @error('company_id') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-        </div>
+    <x-admin.form-card title="Informações básicas">
+        @if ($needsCompanySelect)
+            <div>
+                <flux:select wire:model="company_id" label="Empresa" placeholder="Selecione uma empresa...">
+                    @foreach ($companies as $company)
+                        <flux:select.option value="{{ $company->id }}">{{ $company->name }}</flux:select.option>
+                    @endforeach
+                </flux:select>
+                @error('company_id') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            </div>
         @endif
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -27,56 +22,76 @@
                 @error('name') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
             <div>
-                <flux:input wire:model="phone" mask-dynamic="$input.replace(/\D/g,'').length <= 10 ? '(99) 9999-9999' : '(99) 99999-9999'" label="Telefone (opcional)" placeholder="(44) 99999-9999" />
+                <flux:input
+                    wire:model="phone"
+                    mask-dynamic="$input.replace(/\D/g,'').length <= 10 ? '(99) 9999-9999' : '(99) 99999-9999'"
+                    label="Telefone (opcional)"
+                    placeholder="(44) 99999-9999"
+                />
                 @error('phone') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+            <flux:checkbox wire:model="active" label="Filial ativa" />
+        </div>
+    </x-admin.form-card>
+
+    <x-admin.form-card title="Endereço">
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div class="sm:col-span-2">
-                <flux:input wire:model="address" label="Endereço" placeholder="Rua e número" />
+                <flux:input wire:model="address" label="Rua" placeholder="Ex: Av. Brasil" />
                 @error('address') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            </div>
+            <div>
+                <flux:input wire:model="number" label="Número" placeholder="123" />
+                @error('number') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            </div>
+            <div>
+                <flux:input wire:model="cep" label="CEP" placeholder="00000-000" />
+                @error('cep') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <div class="sm:col-span-2">
+                <flux:input wire:model="neighborhood" label="Bairro" placeholder="Centro" />
+                @error('neighborhood') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
             <div>
                 <flux:input wire:model="city" label="Cidade" placeholder="Maringá" />
                 @error('city') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
-        </div>
-
-        <div class="space-y-2">
-            <p class="block text-sm font-medium text-neutral-700 dark:text-neutral-300">Dias de funcionamento</p>
-            <div class="flex flex-wrap gap-x-4 gap-y-2">
-                @foreach([0 => 'Dom', 1 => 'Seg', 2 => 'Ter', 3 => 'Qua', 4 => 'Qui', 5 => 'Sex', 6 => 'Sáb'] as $dayIndex => $dayLabel)
-                    <flux:checkbox wire:model="available_days" value="{{ $dayIndex }}" label="{{ $dayLabel }}" />
-                @endforeach
-            </div>
-            @error('available_days') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-        </div>
-
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 items-end">
             <div>
-                <flux:input wire:model="opens_at" type="time" label="Abre às" />
-                @error('opens_at') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-            </div>
-            <div>
-                <flux:input wire:model="closes_at" type="time" label="Fecha às" />
-                @error('closes_at') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-            </div>
-            <div class="sm:col-span-2 pb-1">
-                <flux:checkbox wire:model="active" label="Filial ativa" />
+                <flux:input wire:model="state" label="UF" placeholder="SP" />
+                @error('state') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
         </div>
-    </div>
 
-    <div class="flex gap-3 pb-8">
-        <flux:button wire:click="save" class="!bg-amber-500 !text-white hover:!bg-amber-600"
-            wire:loading.attr="disabled">
-            <span wire:loading.remove wire:target="save">{{ $isEditing ? 'Salvar alterações' : 'Criar filial' }}</span>
-            <span wire:loading wire:target="save">Salvando...</span>
-        </flux:button>
-        <a href="{{ route('admin.branches.index') }}"
-            class="inline-flex items-center px-4 py-2 text-sm text-neutral-600 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200">
-            Cancelar
-        </a>
-    </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+                <flux:input wire:model="complement" label="Complemento (opcional)" placeholder="Apto 12, Bloco B..." />
+                @error('complement') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            </div>
+        </div>
+    </x-admin.form-card>
+
+    <x-admin.form-card title="Horário de funcionamento">
+        @error('available_days') <p class="text-red-500 text-xs">{{ $message }}</p> @enderror
+
+        <div class="divide-y divide-neutral-100 dark:divide-zinc-700">
+            @foreach ([0 => 'Domingo', 1 => 'Segunda', 2 => 'Terça', 3 => 'Quarta', 4 => 'Quinta', 5 => 'Sexta', 6 => 'Sábado'] as $dayIndex => $dayLabel)
+                <x-admin.business-hours-row
+                    :day-index="$dayIndex"
+                    :day-label="$dayLabel"
+                    :is-active="in_array($dayIndex, $available_days)"
+                />
+            @endforeach
+        </div>
+    </x-admin.form-card>
+
+    <x-admin.form-actions
+        :save-label="$isEditing ? 'Salvar alterações' : 'Criar filial'"
+        :cancel-route="route('admin.branches.index')"
+    />
 </div>

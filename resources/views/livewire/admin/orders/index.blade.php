@@ -6,26 +6,24 @@
             <flux:input wire:model.live="search" placeholder="Buscar por número ou cliente..." />
         </div>
         @if(auth()->user()->isSuperAdmin())
-        <select wire:model.live="companyFilter"
-            class="border rounded-lg px-3 py-2 text-sm text-neutral-700 focus:outline-none focus:ring-2 focus:ring-amber-400 dark:bg-zinc-800 dark:border-zinc-600 dark:text-neutral-200 dark:focus:ring-amber-500">
-            <option value="">Todas as empresas</option>
+        <flux:select wire:model.live="companyFilter" placeholder="Todas as empresas" class="w-48 shrink-0">
+            <flux:select.option value="">Todas as empresas</flux:select.option>
             @foreach ($companies as $company)
-                <option value="{{ $company->id }}">{{ $company->name }}</option>
+                <flux:select.option value="{{ $company->id }}">{{ $company->name }}</flux:select.option>
             @endforeach
-        </select>
+        </flux:select>
         @endif
-        <select wire:model.live="statusFilter"
-            class="border rounded-lg px-3 py-2 text-sm text-neutral-700 focus:outline-none focus:ring-2 focus:ring-amber-400 dark:bg-zinc-800 dark:border-zinc-600 dark:text-neutral-200 dark:focus:ring-amber-500">
-            <option value="">Todos os status</option>
-            <option value="pending">Pendente</option>
-            <option value="awaiting_payment">Aguardando Pagamento</option>
-            <option value="scheduled">Agendado</option>
-            <option value="paid">Pago</option>
-            <option value="preparing">Preparando</option>
-            <option value="ready">Pronto</option>
-            <option value="delivered">Entregue</option>
-            <option value="cancelled">Cancelado</option>
-        </select>
+        <flux:select wire:model.live="statusFilter" placeholder="Todos os status" class="w-44 shrink-0">
+            <flux:select.option value="">Todos os status</flux:select.option>
+            <flux:select.option value="pending">Pendente</flux:select.option>
+            <flux:select.option value="awaiting_payment">Aguardando Pagamento</flux:select.option>
+            <flux:select.option value="scheduled">Agendado</flux:select.option>
+            <flux:select.option value="paid">Pago</flux:select.option>
+            <flux:select.option value="preparing">Preparando</flux:select.option>
+            <flux:select.option value="ready">Pronto</flux:select.option>
+            <flux:select.option value="delivered">Entregue</flux:select.option>
+            <flux:select.option value="cancelled">Cancelado</flux:select.option>
+        </flux:select>
     </div>
 
     <div class="bg-white border rounded-xl shadow-sm overflow-hidden dark:bg-zinc-800 dark:border-zinc-700">

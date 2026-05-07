@@ -50,15 +50,13 @@
                                 </span>
                             </td>
                             <td class="py-2.5 text-center">
-                                <select
+                                <flux:select
                                     wire:model="overrides.{{ $permission->name }}"
-                                    class="border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400 dark:bg-zinc-700 dark:border-zinc-600 dark:text-neutral-100
-                                        {{ $override !== 'default' ? 'border-amber-400 dark:border-amber-500' : '' }}"
                                 >
-                                    <option value="default">Padrão</option>
-                                    <option value="grant">Conceder</option>
-                                    <option value="deny">Negar</option>
-                                </select>
+                                    <flux:select.option value="default">Padrão</flux:select.option>
+                                    <flux:select.option value="grant">Conceder</flux:select.option>
+                                    <flux:select.option value="deny">Negar</flux:select.option>
+                                </flux:select>
                             </td>
                         </tr>
                     @endforeach

@@ -8,9 +8,9 @@ use App\Livewire\Chat\Concerns\HasOrderFlow;
 use App\Livewire\Chat\Concerns\HasOrderRecovery;
 use App\Livewire\Chat\Concerns\HasPaymentFlow;
 use App\Models\Branch;
+use App\Models\Product;
 use App\Models\ProductCategory;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
@@ -46,6 +46,11 @@ class OrderChat extends Component
     public string $city = '';
 
     public string $cep = '';
+
+    // --- Customer location (for delivery range validation) ---
+    public string $customer_latitude = '';
+
+    public string $customer_longitude = '';
 
     // --- Branch ---
     public ?int $selectedBranchId = null;
@@ -422,39 +427,6 @@ class OrderChat extends Component
         return $slots;
     }
 
-    #[Computed]
-    public function supportWhatsAppUrl(): ?string
-    {
-        if (! $this->selectedBranchId) {
-            return null;
-        }
-
-        $branch = Branch::find($this->selectedBranchId);
-        $phoneRaw = $branch?->phone;
-        if (! $phoneRaw) {
-            return null;
-        }
-
-        // wa.me expects an E.164-ish number without "+" or punctuation.
-        $digits = preg_replace('/\D+/', '', $phoneRaw) ?? '';
-        if ($digits === '') {
-            return null;
-        }
-
-        // If it looks like a BR local number without country code, prepend 55.
-        if (! Str::startsWith($digits, '55')) {
-            $digits = '55'.$digits;
-        }
-
-        $message = $this->orderId
-            ? "Olá! Preciso de ajuda com meu pedido #{$this->orderId}."
-            : 'Olá! Preciso de suporte no meu pedido.';
-
-        $query = http_build_query(['text' => $message]);
-
-        return "https://wa.me/{$digits}?{$query}";
-    }
-
     public function getBranchesProperty()
     {
         $companyId = $this->companyId;
@@ -503,6 +475,63 @@ class OrderChat extends Component
     {
         $this->resetState();
         $this->initialize();
+    }
+
+    public function buildProductDataForSidebar(Product $product): ?array
+    {
+        if ($product->optionGroups->isEmpty()) {
+            return null;
+        }
+
+        $existingSels = [];
+        foreach ($this->cart[$product->id]['options'] ?? [] as $gId => $gData) {
+            foreach ($gData['selections'] ?? [] as $oId => $sel) {
+                $existingSels[(int) $gId][(int) $oId] = (int) ($sel['qty'] ?? 0);
+            }
+        }
+
+        $allFixed = $product->optionGroups->every(fn ($g) => $g->fixed);
+
+        return [
+            'id' => $product->id,
+            'name' => $product->name,
+            'price' => (float) $product->effective_price,
+            'allFixed' => $allFixed,
+            'groups' => $product->optionGroups->values()->map(function ($g, $gi) use ($product, $existingSels) {
+                $isVariantPriceGroup = $product->is_variant && $gi === 0;
+                $resolvePrice = fn ($o) => ($isVariantPriceGroup || ! $g->fixed) ? (float) $o->additional_price : 0.0;
+
+                return [
+                    'id' => $g->id,
+                    'name' => $g->name,
+                    'image_url' => $g->image_url,
+                    'total_qty' => $g->total_qty,
+                    'fixed' => (bool) $g->fixed,
+                    'options' => [
+                        ...$g->options->map(fn ($o) => [
+                            'id' => $o->id,
+                            'name' => $o->name,
+                            'image_url' => $o->image_url,
+                            'description' => $o->description,
+                            'additional_price' => $resolvePrice($o),
+                            'paused' => false,
+                            'prefilledQty' => $g->fixed
+                                ? (int) $o->default_qty
+                                : ($existingSels[$g->id][$o->id] ?? 0),
+                        ])->toArray(),
+                        ...$g->inactiveOptions->map(fn ($o) => [
+                            'id' => $o->id,
+                            'name' => $o->name,
+                            'image_url' => $o->image_url,
+                            'description' => $o->description,
+                            'additional_price' => $resolvePrice($o),
+                            'paused' => true,
+                            'prefilledQty' => 0,
+                        ])->toArray(),
+                    ],
+                ];
+            })->toArray(),
+        ];
     }
 
     private function transitionTo(string $step): void

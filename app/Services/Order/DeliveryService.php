@@ -26,6 +26,8 @@ class DeliveryService
             throw new DeliveryException("Pedido mínimo para entrega é R$ {$min}.");
         }
 
+        $this->validateServiceRadius($settings, $customerLat, $customerLng);
+
         $fee = $this->resolveFee($settings, $neighborhood, $customerLat, $customerLng);
 
         $free = false;
@@ -35,6 +37,36 @@ class DeliveryService
         }
 
         return ['fee' => $fee, 'free' => $free];
+    }
+
+    private function validateServiceRadius(DeliverySetting $settings, ?float $customerLat, ?float $customerLng): void
+    {
+        if ($settings->service_radius_km === null || $settings->service_radius_km <= 0) {
+            return;
+        }
+
+        if ($settings->branch_latitude === null || $settings->branch_longitude === null) {
+            return;
+        }
+
+        if ($customerLat === null || $customerLng === null) {
+            return;
+        }
+
+        $distanceKm = $this->haversineDistance(
+            $settings->branch_latitude,
+            $settings->branch_longitude,
+            $customerLat,
+            $customerLng
+        );
+
+        if ($distanceKm <= $settings->service_radius_km) {
+            return;
+        }
+
+        $km = number_format($distanceKm, 1, ',', '.');
+        $max = number_format($settings->service_radius_km, 1, ',', '.');
+        throw new DeliveryException("Seu endereço está fora da área de entrega ({$km} km). Raio máximo: {$max} km.");
     }
 
     private function resolveFee(
@@ -67,7 +99,7 @@ class DeliveryService
 
     private function feeByDistance(DeliverySetting $settings, ?float $customerLat, ?float $customerLng): float
     {
-        if (! $settings->branch_latitude || ! $settings->branch_longitude) {
+        if ($settings->branch_latitude === null || $settings->branch_longitude === null) {
             throw new DeliveryException('Entrega por distância não configurada para esta filial. Entre em contato com a loja.');
         }
 

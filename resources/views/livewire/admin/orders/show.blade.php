@@ -1,20 +1,15 @@
 <div class="space-y-4">
-    {{-- Header --}}
-    <div class="flex items-center justify-between gap-3">
-        <div class="flex items-center gap-3">
-            <a href="{{ route('admin.orders.index') }}" class="inline-flex items-center gap-1 text-sm text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300">
-                ← Pedidos
+    <x-admin.page-header :back-route="route('admin.orders.index')" :title="$order->order_number" title-class="font-mono">
+        <x-slot:actions>
+            <a href="{{ route('admin.orders.receipt', $order) }}" target="_blank"
+               class="inline-flex items-center gap-1.5 text-sm font-medium bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-zinc-700 dark:text-neutral-300 dark:hover:bg-zinc-600 px-3 py-2 rounded-lg transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                Imprimir cupom
             </a>
-            <h1 class="text-2xl font-bold text-neutral-800 font-mono dark:text-neutral-100">{{ $order->order_number }}</h1>
-        </div>
-        <a href="{{ route('admin.orders.receipt', $order) }}" target="_blank"
-           class="inline-flex items-center gap-1.5 text-sm font-medium bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-zinc-700 dark:text-neutral-300 dark:hover:bg-zinc-600 px-3 py-2 rounded-lg transition-colors">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-            </svg>
-            Imprimir cupom
-        </a>
-    </div>
+        </x-slot:actions>
+    </x-admin.page-header>
 
     @if (session('status'))
         <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm dark:bg-green-900/30 dark:border-green-700 dark:text-green-400">
@@ -47,7 +42,7 @@
         </div>
     @endif
 
-    {{-- Main Grid: left (items + notes) | right (customer, branch, status, payment) --}}
+    {{-- Main Grid: left (items + notes) | right (status, payment) --}}
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
         {{-- Left Column --}}
@@ -55,124 +50,137 @@
 
             {{-- Customer + Branch --}}
             <div class="grid grid-cols-2 gap-4">
-                <div class="bg-white border rounded-xl p-4 shadow-sm dark:bg-zinc-800 dark:border-zinc-700">
+                <x-admin.form-card padding="p-4">
                     <p class="text-xs text-neutral-400 uppercase tracking-wide mb-2 dark:text-neutral-500">Cliente</p>
                     <p class="font-semibold text-neutral-800 dark:text-neutral-100">{{ $order->customer->name }}</p>
                     <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ $order->customer->phone }}</p>
                     <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ $order->customer->email }}</p>
                     <p class="text-sm text-neutral-400 mt-1 dark:text-neutral-500">{{ $order->customer->address }}, {{ $order->customer->neighborhood }}</p>
-                </div>
-                <div class="bg-white border rounded-xl p-4 shadow-sm dark:bg-zinc-800 dark:border-zinc-700">
+                </x-admin.form-card>
+                <x-admin.form-card padding="p-4">
                     <p class="text-xs text-neutral-400 uppercase tracking-wide mb-2 dark:text-neutral-500">Filial</p>
                     <p class="font-semibold text-neutral-800 dark:text-neutral-100">{{ $order->branch->name }}</p>
                     <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ $order->branch->address }}</p>
                     <p class="text-xs text-neutral-400 mt-2 dark:text-neutral-500">Pedido em {{ $order->created_at->format('d/m/Y \à\s H:i') }}</p>
-                </div>
+                </x-admin.form-card>
             </div>
 
             {{-- Tipo de pedido --}}
             @if ($order->order_type === 'delivery')
                 @php
-                    $mapboxToken    = config('services.mapbox.token');
-                    $customerAddr   = implode(', ', array_filter([
-                        $order->customer->address,
-                        $order->customer->neighborhood,
-                        $order->customer->city,
-                    ]));
-                    $googleMapsUrl  = 'https://maps.google.com/?q=' . urlencode($customerAddr);
-                    $wazeUrl        = 'https://waze.com/ul?q=' . urlencode($customerAddr);
+                    $mapboxToken  = config('services.mapbox.token');
+                    $deliveryAddr = $order->deliveryFullAddress();
+                    $googleMapsUrl = 'https://maps.google.com/?q=' . urlencode($deliveryAddr);
+                    $wazeUrl       = 'https://waze.com/ul?q=' . urlencode($deliveryAddr);
                 @endphp
 
                 <div class="bg-white border rounded-xl shadow-sm overflow-hidden dark:bg-zinc-800 dark:border-zinc-700">
-                    {{-- Header --}}
                     <div class="flex items-center justify-between px-4 py-3 border-b dark:border-zinc-700">
                         <div class="flex items-center gap-2">
                             <span class="text-lg">🛵</span>
                             <div>
                                 <p class="font-semibold text-sm text-neutral-800 dark:text-neutral-100">Entrega</p>
-                                <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ $customerAddr }}</p>
+                                <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ $deliveryAddr }}</p>
                             </div>
                         </div>
+                        @if ($canUpdate && $order->isEditable() && !$editingAddress)
+                            <button type="button" wire:click="startEditAddress"
+                                    class="text-xs font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 transition-colors">
+                                Editar endereço
+                            </button>
+                        @endif
                     </div>
 
-                    {{-- Mapa --}}
-                    <div wire:ignore class="w-full h-52 bg-neutral-100 dark:bg-zinc-700 relative overflow-hidden">
-                        <img id="customer-map-{{ $order->id }}"
-                             data-token="{{ $mapboxToken }}"
-                             data-address="{{ $customerAddr }}"
-                             class="w-full h-full object-cover"
-                             alt="Mapa do endereço de entrega" />
-                        <div id="customer-map-loader-{{ $order->id }}"
-                             class="absolute inset-0 flex items-center justify-center text-sm text-neutral-400 dark:text-neutral-500">
-                            Carregando mapa...
+                    @if ($editingAddress)
+                        <div class="px-4 py-4 space-y-3">
+                            <div class="grid grid-cols-3 gap-3">
+                                <div class="col-span-2">
+                                    <label class="text-xs font-medium text-neutral-600 dark:text-neutral-400">Rua / Avenida <span class="text-red-500">*</span></label>
+                                    <flux:input wire:model="editDeliveryAddress" type="text" />
+                                    @error('editDeliveryAddress') <p class="text-xs text-red-500 mt-0.5">{{ $message }}</p> @enderror
+                                </div>
+                                <div>
+                                    <label class="text-xs font-medium text-neutral-600 dark:text-neutral-400">Número</label>
+                                    <flux:input wire:model="editDeliveryNumber" type="text" />
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="text-xs font-medium text-neutral-600 dark:text-neutral-400">Bairro</label>
+                                    <flux:input wire:model="editDeliveryNeighborhood" type="text" />
+                                </div>
+                                <div>
+                                    <label class="text-xs font-medium text-neutral-600 dark:text-neutral-400">Cidade <span class="text-red-500">*</span></label>
+                                    <flux:input wire:model="editDeliveryCity" type="text" />
+                                    @error('editDeliveryCity') <p class="text-xs text-red-500 mt-0.5">{{ $message }}</p> @enderror
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="text-xs font-medium text-neutral-600 dark:text-neutral-400">CEP</label>
+                                    <flux:input wire:model="editDeliveryCep" type="text" maxlength="9" />
+                                </div>
+                                <div>
+                                    <label class="text-xs font-medium text-neutral-600 dark:text-neutral-400">Complemento</label>
+                                    <flux:input wire:model="editDeliveryComplement" type="text" />
+                                </div>
+                            </div>
+                            <div class="flex justify-end gap-3 pt-1">
+                                <button wire:click="cancelEditAddress"
+                                        class="text-sm text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200">
+                                    Cancelar
+                                </button>
+                                <button wire:click="saveAddress"
+                                        wire:loading.attr="disabled"
+                                        class="px-4 py-2 text-sm font-medium bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-lg transition-colors">
+                                    <span wire:loading.remove wire:target="saveAddress">Salvar</span>
+                                    <span wire:loading wire:target="saveAddress">Salvando...</span>
+                                </button>
+                            </div>
                         </div>
-                    </div>
+                    @else
+                        <div class="w-full h-52 bg-neutral-100 dark:bg-zinc-700 relative overflow-hidden">
+                            <img id="customer-map-{{ $order->id }}"
+                                 data-token="{{ $mapboxToken }}"
+                                 data-address="{{ $deliveryAddr }}"
+                                 class="w-full h-full object-cover"
+                                 alt="Mapa do endereço de entrega" />
+                            <div id="customer-map-loader-{{ $order->id }}"
+                                 class="absolute inset-0 flex items-center justify-center text-sm text-neutral-400 dark:text-neutral-500">
+                                Carregando mapa...
+                            </div>
+                        </div>
 
-                    {{-- Botões de compartilhar --}}
-                    <div class="flex gap-2 px-4 py-3 border-t dark:border-zinc-700">
-                        <a href="{{ $googleMapsUrl }}" target="_blank"
-                           class="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 px-3 py-2 rounded-lg transition-colors">
-                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
-                            Google Maps
-                        </a>
-                        <a href="{{ $wazeUrl }}" target="_blank"
-                           class="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium bg-sky-50 text-sky-700 hover:bg-sky-100 dark:bg-sky-900/30 dark:text-sky-400 dark:hover:bg-sky-900/50 px-3 py-2 rounded-lg transition-colors">
-                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M20.54 6.63C19.08 4.15 16.71 2.37 14 1.76V1.5a2 2 0 0 0-4 0v.26C7.29 2.37 4.92 4.15 3.46 6.63A9.94 9.94 0 0 0 2 12c0 3.58 1.88 6.9 4.96 8.77.33.2.7.3 1.07.3.41 0 .82-.12 1.17-.36l1.3-.87c.44-.3.7-.79.7-1.32v-2.04c0-.88-.72-1.6-1.6-1.6H8v-1.26c0-.88.72-1.6 1.6-1.6h4.8c.88 0 1.6.72 1.6 1.6v1.26h-1.6c-.88 0-1.6.72-1.6 1.6v2.04c0 .53.26 1.02.7 1.32l1.3.87c.35.24.76.36 1.17.36.37 0 .74-.1 1.07-.3C20.12 18.9 22 15.58 22 12c0-1.96-.51-3.85-1.46-5.37z"/></svg>
-                            Waze
-                        </a>
-                        <button onclick="navigator.clipboard.writeText({{ Js::from($customerAddr) }})"
-                                class="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium bg-neutral-50 text-neutral-600 hover:bg-neutral-100 dark:bg-zinc-700 dark:text-neutral-300 dark:hover:bg-zinc-600 px-3 py-2 rounded-lg transition-colors">
-                            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                            Copiar
-                        </button>
-                    </div>
+                        <div class="flex gap-2 px-4 py-3 border-t dark:border-zinc-700">
+                            <a href="{{ $googleMapsUrl }}" target="_blank"
+                               class="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 px-3 py-2 rounded-lg transition-colors">
+                                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+                                Google Maps
+                            </a>
+                            <a href="{{ $wazeUrl }}" target="_blank"
+                               class="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium bg-sky-50 text-sky-700 hover:bg-sky-100 dark:bg-sky-900/30 dark:text-sky-400 dark:hover:bg-sky-900/50 px-3 py-2 rounded-lg transition-colors">
+                                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M20.54 6.63C19.08 4.15 16.71 2.37 14 1.76V1.5a2 2 0 0 0-4 0v.26C7.29 2.37 4.92 4.15 3.46 6.63A9.94 9.94 0 0 0 2 12c0 3.58 1.88 6.9 4.96 8.77.33.2.7.3 1.07.3.41 0 .82-.12 1.17-.36l1.3-.87c.44-.3.7-.79.7-1.32v-2.04c0-.88-.72-1.6-1.6-1.6H8v-1.26c0-.88.72-1.6 1.6-1.6h4.8c.88 0 1.6.72 1.6 1.6v1.26h-1.6c-.88 0-1.6.72-1.6 1.6v2.04c0 .53.26 1.02.7 1.32l1.3.87c.35.24.76.36 1.17.36.37 0 .74-.1 1.07-.3C20.12 18.9 22 15.58 22 12c0-1.96-.51-3.85-1.46-5.37z"/></svg>
+                                Waze
+                            </a>
+                            <button onclick="navigator.clipboard.writeText({{ Js::from($deliveryAddr) }})"
+                                    class="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium bg-neutral-50 text-neutral-600 hover:bg-neutral-100 dark:bg-zinc-700 dark:text-neutral-300 dark:hover:bg-zinc-600 px-3 py-2 rounded-lg transition-colors">
+                                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                Copiar
+                            </button>
+                        </div>
+                    @endif
                 </div>
 
                 @script
                 <script>
-                    (function () {
-                        const img    = document.getElementById('customer-map-{{ $order->id }}');
-                        const loader = document.getElementById('customer-map-loader-{{ $order->id }}');
-                        if (!img || img.dataset.initialized) return;
-                        img.dataset.initialized = 'true';
-
-                        const token   = img.dataset.token;
-                        const address = img.dataset.address;
-                        if (!token) return;
-
-                        fetch('https://api.mapbox.com/geocoding/v5/mapbox.places/' + encodeURIComponent(address) + '.json?access_token=' + token + '&country=BR&limit=1')
-                            .then(function (r) { return r.json(); })
-                            .then(function (data) {
-                                var coords = data.features && data.features[0] && data.features[0].center;
-                                if (!coords) {
-                                    if (loader) loader.textContent = 'Endereço não encontrado.';
-                                    return;
-                                }
-                                var lng = coords[0];
-                                var lat = coords[1];
-                                var pin = 'pin-s+f59e0b(' + lng + ',' + lat + ')';
-                                var src = 'https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/'
-                                    + pin + '/' + lng + ',' + lat + ',15/800x208@2x'
-                                    + '?access_token=' + token;
-
-                                var el = document.getElementById('customer-map-{{ $order->id }}');
-                                if (!el) return;
-                                el.onload = function () {
-                                    if (loader) loader.style.display = 'none';
-                                };
-                                el.onerror = function () {
-                                    if (loader) loader.textContent = 'Erro ao carregar o mapa.';
-                                };
-                                el.src = src;
-                            })
-                            .catch(function () {
-                                if (loader) loader.textContent = 'Erro ao buscar endereço.';
-                            });
-                    })();
+                    const orderId = @js($order->id);
+                    initCustomerMap(orderId);
+                    window.addEventListener('deliveryAddressUpdated', () => initCustomerMap(orderId));
+                    document.addEventListener('livewire:navigated', () => initCustomerMap(orderId));
                 </script>
                 @endscript
             @else
-                <div class="bg-white border rounded-xl p-4 shadow-sm dark:bg-zinc-800 dark:border-zinc-700">
+                <x-admin.form-card padding="p-4">
                     <div class="flex items-center gap-3">
                         <span class="inline-flex items-center justify-center w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-lg">🏪</span>
                         <div>
@@ -180,55 +188,346 @@
                             <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ $order->branch->name }} — {{ $order->branch->address }}</p>
                         </div>
                     </div>
-                </div>
+                </x-admin.form-card>
             @endif
 
             {{-- Items --}}
             <div class="bg-white border rounded-xl shadow-sm overflow-hidden dark:bg-zinc-800 dark:border-zinc-700">
-                <div class="px-4 py-3 border-b dark:border-zinc-700">
+                <div class="flex items-center justify-between px-4 py-3 border-b dark:border-zinc-700">
                     <p class="font-semibold text-neutral-700 dark:text-neutral-200">Itens do pedido</p>
+                    @if ($canUpdate && $order->isEditable() && !$editingItems)
+                        <button wire:click="startEditItems"
+                                class="text-xs font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 transition-colors">
+                            Editar itens
+                        </button>
+                    @endif
                 </div>
-                <div class="divide-y dark:divide-zinc-700">
-                    @foreach ($order->items as $item)
-                        <div class="flex items-center justify-between px-4 py-3">
+
+                @if ($editingItems)
+                    <div class="divide-y dark:divide-zinc-700">
+                        @foreach ($editableItems as $index => $item)
+                            <div class="flex items-center gap-3 px-4 py-3">
+                                <div class="flex-1 min-w-0">
+                                    <p class="font-medium text-sm text-neutral-800 dark:text-neutral-100 truncate">{{ $item['product_name'] }}</p>
+                                    @php $hasItemOptions = !empty($item['options'] ?? null); @endphp
+                                    @if ($hasItemOptions)
+                                        @foreach (($item['options'] ?? []) as $group)
+                                            <p class="text-xs font-medium text-neutral-500 mt-0.5 dark:text-neutral-400">{{ $group['group_name'] ?? 'Opções' }}:</p>
+                                            @foreach (($group['selections'] ?? []) as $sel)
+                                                <p class="text-xs text-neutral-400 leading-tight dark:text-neutral-500">
+                                                    {{ $sel['qty'] ?? 0 }}× {{ $sel['name'] ?? '-' }}@if ((float) ($sel['additional_price'] ?? 0) > 0) <span class="text-amber-600 dark:text-amber-400">(+R$ {{ number_format((float) ($sel['additional_price'] ?? 0), 2, ',', '.') }})</span>@endif
+                                                </p>
+                                            @endforeach
+                                        @endforeach
+                                    @else
+                                        <p class="text-xs text-neutral-400 dark:text-neutral-500">R$ {{ number_format($item['unit_price'], 2, ',', '.') }} cada</p>
+                                    @endif
+                                </div>
+                                <div class="flex items-center gap-2 shrink-0">
+                                    <button wire:click="updateItemQuantity({{ $index }}, {{ $item['quantity'] - 1 }})"
+                                            @if($item['quantity'] <= 1) disabled @endif
+                                            class="w-7 h-7 flex items-center justify-center rounded-full border text-neutral-500 hover:bg-neutral-100 disabled:opacity-40 disabled:cursor-not-allowed dark:border-zinc-600 dark:hover:bg-zinc-700 dark:text-neutral-400 transition-colors">
+                                        −
+                                    </button>
+                                    <span class="w-6 text-center text-sm font-semibold text-neutral-800 dark:text-neutral-100">{{ $item['quantity'] }}</span>
+                                    <button wire:click="updateItemQuantity({{ $index }}, {{ $item['quantity'] + 1 }})"
+                                            class="w-7 h-7 flex items-center justify-center rounded-full border text-neutral-500 hover:bg-neutral-100 dark:border-zinc-600 dark:hover:bg-zinc-700 dark:text-neutral-400 transition-colors">
+                                        +
+                                    </button>
+                                </div>
+                                <p class="w-20 text-right font-semibold text-sm text-neutral-800 dark:text-neutral-100">
+                                    R$ {{ number_format($item['subtotal'], 2, ',', '.') }}
+                                </p>
+                                <button wire:click="openSwapItem({{ $index }})"
+                                        class="text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors shrink-0">
+                                    Trocar
+                                </button>
+                                <button wire:click="removeItem({{ $index }})"
+                                        class="text-red-400 hover:text-red-600 dark:hover:text-red-400 transition-colors shrink-0">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        @endforeach
+
+                        <div class="px-4 py-3 space-y-2">
+                            <div class="relative">
+                                <input wire:model.live.debounce.300ms="productSearch"
+                                       type="text"
+                                       placeholder="Buscar produto para adicionar..."
+                                       class="w-full text-sm border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400 dark:bg-zinc-700 dark:border-zinc-600 dark:text-neutral-100 dark:placeholder-neutral-400" />
+                                @if (!empty($productResults))
+                                    <div class="absolute z-20 w-full mt-1 bg-white dark:bg-zinc-800 border dark:border-zinc-600 rounded-lg shadow-lg divide-y dark:divide-zinc-700 max-h-52 overflow-y-auto">
+                                        @foreach ($productResults as $result)
+                                            <button wire:click="addProductToEdit({{ $result['id'] }})"
+                                                    class="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-neutral-50 dark:hover:bg-zinc-700 transition-colors">
+                                                <span class="text-sm text-neutral-800 dark:text-neutral-100">{{ $result['name'] }}</span>
+                                                <span class="text-xs text-neutral-500 dark:text-neutral-400 shrink-0 ml-3">R$ {{ number_format($result['price'], 2, ',', '.') }}</span>
+                                            </button>
+                                        @endforeach
+                                    </div>
+                                @endif
+                            </div>
+                            @error('editableItems') <p class="text-xs text-red-500">{{ $message }}</p> @enderror
+                        </div>
+
+                        @php
+                            $editSubtotal = collect($editableItems)->sum('subtotal');
+                            $editTotal = max(0, $editSubtotal + $order->delivery_fee - $order->discount);
+                        @endphp
+                        <div class="px-4 py-3 bg-neutral-50 dark:bg-zinc-700/50 space-y-1.5">
+                            <div class="flex items-center justify-between text-sm text-neutral-500 dark:text-neutral-400">
+                                <span>Subtotal</span>
+                                <span>R$ {{ number_format($editSubtotal, 2, ',', '.') }}</span>
+                            </div>
+                            @if ($order->delivery_fee > 0)
+                                <div class="flex items-center justify-between text-sm text-neutral-500 dark:text-neutral-400">
+                                    <span>Frete</span>
+                                    <span>R$ {{ number_format($order->delivery_fee, 2, ',', '.') }}</span>
+                                </div>
+                            @endif
+                            @if ($order->discount > 0)
+                                <div class="flex items-center justify-between text-sm text-green-600 dark:text-green-400">
+                                    <span>Desconto</span>
+                                    <span>− R$ {{ number_format($order->discount, 2, ',', '.') }}</span>
+                                </div>
+                            @endif
+                            <div class="flex items-center justify-between pt-1 border-t dark:border-zinc-600">
+                                <p class="font-bold text-neutral-700 dark:text-neutral-200">Total</p>
+                                <p class="font-bold text-lg text-amber-600 dark:text-amber-400">R$ {{ number_format($editTotal, 2, ',', '.') }}</p>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-end gap-3 px-4 py-3 border-t dark:border-zinc-700">
+                            <button wire:click="cancelEditItems"
+                                    class="text-sm text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200">
+                                Cancelar
+                            </button>
+                            <button wire:click="saveItems"
+                                    wire:loading.attr="disabled"
+                                    class="px-4 py-2 text-sm font-medium bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-lg transition-colors">
+                                <span wire:loading.remove wire:target="saveItems">Salvar itens</span>
+                                <span wire:loading wire:target="saveItems">Salvando...</span>
+                            </button>
+                        </div>
+                    </div>
+                @else
+                    <div class="divide-y dark:divide-zinc-700">
+                        @foreach ($order->items as $item)
+                            <div class="flex items-center justify-between px-4 py-3">
+                                <div class="min-w-0">
+                                    <p class="font-medium text-sm text-neutral-800 dark:text-neutral-100">{{ $item->product_name }}</p>
+                                    @php $hasItemOptions = !empty($item->options); @endphp
+                                    @if ($hasItemOptions)
+                                        @foreach (($item->options ?? []) as $group)
+                                            <p class="text-xs font-medium text-neutral-500 mt-0.5 dark:text-neutral-400">{{ $group['group_name'] ?? 'Opções' }}:</p>
+                                            @foreach (($group['selections'] ?? []) as $sel)
+                                                <p class="text-xs text-neutral-400 leading-tight dark:text-neutral-500">
+                                                    {{ $sel['qty'] ?? 0 }}× {{ $sel['name'] ?? '-' }}@if ((float) ($sel['additional_price'] ?? 0) > 0) <span class="text-amber-600 dark:text-amber-400">(+R$ {{ number_format((float) ($sel['additional_price'] ?? 0), 2, ',', '.') }})</span>@endif
+                                                </p>
+                                            @endforeach
+                                        @endforeach
+                                    @else
+                                        <p class="text-xs text-neutral-400 dark:text-neutral-500">{{ $item->quantity }}x R$ {{ number_format($item->unit_price, 2, ',', '.') }}</p>
+                                    @endif
+                                </div>
+                                <p class="font-semibold text-sm text-neutral-800 dark:text-neutral-100">
+                                    R$ {{ number_format($item->subtotal, 2, ',', '.') }}
+                                </p>
+                            </div>
+                        @endforeach
+                        <div class="px-4 py-3 bg-neutral-50 dark:bg-zinc-700/50 space-y-1.5">
+                            <div class="flex items-center justify-between text-sm text-neutral-500 dark:text-neutral-400">
+                                <span>Subtotal</span>
+                                <span>R$ {{ number_format($order->subtotal, 2, ',', '.') }}</span>
+                            </div>
+                            @if ($order->delivery_fee > 0)
+                                <div class="flex items-center justify-between text-sm text-neutral-500 dark:text-neutral-400">
+                                    <span>Frete</span>
+                                    <span>R$ {{ number_format($order->delivery_fee, 2, ',', '.') }}</span>
+                                </div>
+                            @elseif ($order->order_type === 'delivery')
+                                <div class="flex items-center justify-between text-sm text-neutral-500 dark:text-neutral-400">
+                                    <span>Frete</span>
+                                    <span class="text-green-600 dark:text-green-400">Grátis</span>
+                                </div>
+                            @endif
+                            @if ($order->discount > 0)
+                                <div class="flex items-center justify-between text-sm text-green-600 dark:text-green-400">
+                                    <span>Desconto</span>
+                                    <span>− R$ {{ number_format($order->discount, 2, ',', '.') }}</span>
+                                </div>
+                            @endif
+                            <div class="flex items-center justify-between pt-1 border-t dark:border-zinc-600">
+                                <p class="font-bold text-neutral-700 dark:text-neutral-200">Total</p>
+                                <p class="font-bold text-lg text-amber-600 dark:text-amber-400">R$ {{ number_format($order->total, 2, ',', '.') }}</p>
+                            </div>
+                        </div>
+                    </div>
+                @endif
+            </div>
+
+            {{-- Swap item modal --}}
+            @if ($swappingItem)
+                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div class="bg-white dark:bg-zinc-800 border dark:border-zinc-700 rounded-2xl shadow-xl w-full max-w-2xl mx-4 overflow-hidden">
+                        <div class="flex items-center justify-between px-5 py-4 border-b dark:border-zinc-700">
                             <div>
-                                <p class="font-medium text-sm text-neutral-800 dark:text-neutral-100">{{ $item->product_name }}</p>
-                                <p class="text-xs text-neutral-400 dark:text-neutral-500">{{ $item->quantity }}x R$ {{ number_format($item->unit_price, 2, ',', '.') }}</p>
+                                <p class="font-semibold text-neutral-800 dark:text-neutral-100">Trocar item/opções</p>
+                                <p class="text-xs text-neutral-500 dark:text-neutral-400">Permitido somente se o valor unitário continuar igual.</p>
                             </div>
-                            <p class="font-semibold text-sm text-neutral-800 dark:text-neutral-100">
-                                R$ {{ number_format($item->subtotal, 2, ',', '.') }}
-                            </p>
+                            <button wire:click="cancelSwapItem"
+                                    class="text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors text-xl leading-none">✕</button>
                         </div>
-                    @endforeach
-                    <div class="px-4 py-3 bg-neutral-50 dark:bg-zinc-700/50 space-y-1.5">
-                        <div class="flex items-center justify-between text-sm text-neutral-500 dark:text-neutral-400">
-                            <span>Subtotal</span>
-                            <span>R$ {{ number_format($order->subtotal, 2, ',', '.') }}</span>
+
+                        <div class="p-5 space-y-4">
+                            @if ($swapError)
+                                <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm dark:bg-red-900/30 dark:border-red-700 dark:text-red-400">
+                                    {{ $swapError }}
+                                </div>
+                            @endif
+
+                            @php
+                                $currentUnit = $swapItemIndex !== null ? (float) ($editableItems[$swapItemIndex]['unit_price'] ?? 0) : 0;
+                                $candidateUnit = (float) $swapCalculatedUnitPrice;
+                                $samePrice = abs($currentUnit - $candidateUnit) <= 0.009;
+                            @endphp
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="bg-neutral-50 dark:bg-zinc-700/50 border dark:border-zinc-600 rounded-xl p-3">
+                                    <p class="text-xs text-neutral-500 dark:text-neutral-400">Valor unitário atual</p>
+                                    <p class="font-mono font-bold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($currentUnit, 2, ',', '.') }}</p>
+                                </div>
+                                <div class="bg-neutral-50 dark:bg-zinc-700/50 border dark:border-zinc-600 rounded-xl p-3">
+                                    <p class="text-xs text-neutral-500 dark:text-neutral-400">Valor unitário novo</p>
+                                    <p class="font-mono font-bold {{ $samePrice ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}">R$ {{ number_format($candidateUnit, 2, ',', '.') }}</p>
+                                </div>
+                            </div>
+
+                            @if ($swapItemIndex !== null)
+                                @php $maxSwapQty = (int) ($editableItems[$swapItemIndex]['quantity'] ?? 1); @endphp
+                                <div class="flex items-center justify-between gap-3 bg-neutral-50 dark:bg-zinc-700/50 border dark:border-zinc-600 rounded-xl p-3">
+                                    <div>
+                                        <p class="text-xs text-neutral-500 dark:text-neutral-400">Quantidade a trocar</p>
+                                        <p class="text-sm text-neutral-700 dark:text-neutral-200">Máx: {{ $maxSwapQty }}</p>
+                                    </div>
+                                    <div class="flex items-center gap-2 shrink-0">
+                                        <button wire:click="updateSwapQuantity({{ max(1, $swapQuantity - 1) }})"
+                                                @if ($swapQuantity <= 1) disabled @endif
+                                                class="w-8 h-8 flex items-center justify-center rounded-full border text-neutral-500 hover:bg-neutral-100 disabled:opacity-40 disabled:cursor-not-allowed dark:border-zinc-600 dark:hover:bg-zinc-700 dark:text-neutral-400 transition-colors">
+                                            −
+                                        </button>
+                                        <span class="w-10 text-center text-sm font-semibold text-neutral-800 dark:text-neutral-100">{{ $swapQuantity }}</span>
+                                        <button wire:click="updateSwapQuantity({{ min($maxSwapQty, $swapQuantity + 1) }})"
+                                                @if ($swapQuantity >= $maxSwapQty) disabled @endif
+                                                class="w-8 h-8 flex items-center justify-center rounded-full border text-neutral-500 hover:bg-neutral-100 disabled:opacity-40 disabled:cursor-not-allowed dark:border-zinc-600 dark:hover:bg-zinc-700 dark:text-neutral-400 transition-colors">
+                                            +
+                                        </button>
+                                    </div>
+                                </div>
+                            @endif
+
+                            <div class="space-y-2">
+                                <label class="text-xs font-semibold text-neutral-600 dark:text-neutral-300 uppercase tracking-wide">Buscar produto</label>
+                                <div class="relative" x-data @click.outside="$wire.closeSwapProductResults()">
+                                    <input wire:model.live.debounce.300ms="swapProductSearch"
+                                           wire:keydown.escape="$set('swapProductSearch',''); $wire.closeSwapProductResults()"
+                                           type="text"
+                                           placeholder="Digite para buscar..."
+                                           class="w-full text-sm border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:bg-zinc-700 dark:border-zinc-600 dark:text-neutral-100 dark:placeholder-neutral-400" />
+                                    @if (!empty($swapProductResults))
+                                        <div class="absolute z-20 w-full mt-1 bg-white dark:bg-zinc-800 border dark:border-zinc-600 rounded-lg shadow-lg divide-y dark:divide-zinc-700 max-h-56 overflow-y-auto">
+                                            @foreach ($swapProductResults as $result)
+                                                <button wire:click="selectSwapProduct({{ $result['id'] }})"
+                                                        class="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-neutral-50 dark:hover:bg-zinc-700 transition-colors">
+                                                    <span class="text-sm text-neutral-800 dark:text-neutral-100">{{ $result['name'] }}</span>
+                                                    <span class="text-xs text-neutral-500 dark:text-neutral-400 shrink-0 ml-3">Base R$ {{ number_format($result['base_price'], 2, ',', '.') }}</span>
+                                                </button>
+                                            @endforeach
+                                        </div>
+                                    @endif
+                                </div>
+                            </div>
+
+                            @if ($swapProductId)
+                                <div class="space-y-3">
+                                    <p class="text-xs font-semibold text-neutral-600 dark:text-neutral-300 uppercase tracking-wide">Opções</p>
+
+                                    @if (empty($swapGroups))
+                                        <p class="text-sm text-neutral-500 dark:text-neutral-400">Este produto não possui opções.</p>
+                                    @else
+                                        <div class="space-y-3">
+                                            @foreach ($swapGroups as $group)
+                                                @php
+                                                    $gid = (int) $group['id'];
+                                                    $groupTotal = collect($swapSelections[$gid] ?? [])->sum();
+                                                    $groupLimit = (int) ($group['total_qty'] ?? 0);
+                                                    $isFixed = (bool) ($group['fixed'] ?? false);
+                                                    $overLimit = ! $isFixed && $groupLimit > 0 && $groupTotal > $groupLimit;
+                                                @endphp
+                                                <div class="border dark:border-zinc-700 rounded-xl p-3">
+                                                    <div class="flex items-center justify-between">
+                                                        <p class="font-medium text-sm text-neutral-800 dark:text-neutral-100">{{ $group['name'] }}</p>
+                                                        <p class="text-xs {{ $overLimit ? 'text-red-600 dark:text-red-400' : 'text-neutral-500 dark:text-neutral-400' }}">
+                                                            {{ $isFixed ? 'Fixo' : 'Selecionado '.$groupTotal.' / '.$groupLimit }}
+                                                        </p>
+                                                    </div>
+
+                                                    <div class="mt-2 space-y-2">
+                                                        @foreach (($group['options'] ?? []) as $opt)
+                                                            @php
+                                                                $oid = (int) $opt['id'];
+                                                                $qty = (int) ($swapSelections[$gid][$oid] ?? 0);
+                                                                $paused = (bool) ($opt['paused'] ?? false);
+                                                            @endphp
+                                                            <div class="flex items-center justify-between gap-3">
+                                                                <div class="min-w-0">
+                                                                    <p class="text-sm text-neutral-800 dark:text-neutral-100 truncate">{{ $opt['name'] }}</p>
+                                                                    @if ((float) ($opt['additional_price'] ?? 0) > 0)
+                                                                        <p class="text-xs text-neutral-500 dark:text-neutral-400">+R$ {{ number_format((float) ($opt['additional_price'] ?? 0), 2, ',', '.') }}</p>
+                                                                    @endif
+                                                                    @if ($paused)
+                                                                        <p class="text-[11px] text-amber-600 dark:text-amber-400">Em pausa</p>
+                                                                    @endif
+                                                                </div>
+                                                                <div class="flex items-center gap-2 shrink-0">
+                                                                    <button wire:click="updateSwapSelection({{ $gid }}, {{ $oid }}, {{ max(0, $qty - 1) }})"
+                                                                            @if ($paused) disabled @endif
+                                                                            class="w-7 h-7 flex items-center justify-center rounded-full border text-neutral-500 hover:bg-neutral-100 disabled:opacity-40 disabled:cursor-not-allowed dark:border-zinc-600 dark:hover:bg-zinc-700 dark:text-neutral-400 transition-colors">
+                                                                        −
+                                                                    </button>
+                                                                    <span class="w-6 text-center text-sm font-semibold text-neutral-800 dark:text-neutral-100">{{ $qty }}</span>
+                                                                    <button wire:click="updateSwapSelection({{ $gid }}, {{ $oid }}, {{ $qty + 1 }})"
+                                                                            @if ($paused) disabled @endif
+                                                                            class="w-7 h-7 flex items-center justify-center rounded-full border text-neutral-500 hover:bg-neutral-100 disabled:opacity-40 disabled:cursor-not-allowed dark:border-zinc-600 dark:hover:bg-zinc-700 dark:text-neutral-400 transition-colors">
+                                                                        +
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        @endforeach
+                                                    </div>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    @endif
+                                </div>
+                            @endif
                         </div>
-                        @if ($order->delivery_fee > 0)
-                            <div class="flex items-center justify-between text-sm text-neutral-500 dark:text-neutral-400">
-                                <span>Frete</span>
-                                <span>R$ {{ number_format($order->delivery_fee, 2, ',', '.') }}</span>
-                            </div>
-                        @elseif ($order->order_type === 'delivery')
-                            <div class="flex items-center justify-between text-sm text-neutral-500 dark:text-neutral-400">
-                                <span>Frete</span>
-                                <span class="text-green-600 dark:text-green-400">Grátis</span>
-                            </div>
-                        @endif
-                        @if ($order->discount > 0)
-                            <div class="flex items-center justify-between text-sm text-green-600 dark:text-green-400">
-                                <span>Desconto</span>
-                                <span>− R$ {{ number_format($order->discount, 2, ',', '.') }}</span>
-                            </div>
-                        @endif
-                        <div class="flex items-center justify-between pt-1 border-t dark:border-zinc-600">
-                            <p class="font-bold text-neutral-700 dark:text-neutral-200">Total</p>
-                            <p class="font-bold text-lg text-amber-600 dark:text-amber-400">R$ {{ number_format($order->total, 2, ',', '.') }}</p>
+
+                        <div class="flex items-center justify-end gap-3 px-5 py-4 border-t dark:border-zinc-700 bg-neutral-50 dark:bg-zinc-900/20">
+                            <button wire:click="cancelSwapItem"
+                                    class="text-sm text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200">
+                                Cancelar
+                            </button>
+                            <button wire:click="applySwapItem"
+                                    @if (! $samePrice) disabled @endif
+                                    class="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors">
+                                Aplicar troca
+                            </button>
                         </div>
                     </div>
                 </div>
-            </div>
+            @endif
 
             @if ($order->notes)
                 <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 dark:bg-amber-900/20 dark:border-amber-700">
@@ -242,17 +541,7 @@
         <div class="space-y-4">
 
             {{-- Status --}}
-            @php
-                $statusMap = [
-                    'awaiting_payment' => ['label' => 'Ag. Pagamento', 'active' => 'bg-yellow-500 text-white',  'inactive' => 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-400 dark:hover:bg-yellow-900/50'],
-                    'paid'      => ['label' => 'Pago',       'active' => 'bg-green-500 text-white',  'inactive' => 'bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50'],
-                    'preparing' => ['label' => 'Preparando',  'active' => 'bg-blue-500 text-white',   'inactive' => 'bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50'],
-                    'ready'     => ['label' => 'Pronto',      'active' => 'bg-indigo-500 text-white', 'inactive' => 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50'],
-                    'delivered' => ['label' => 'Entregue',    'active' => 'bg-teal-500 text-white',   'inactive' => 'bg-teal-50 text-teal-700 hover:bg-teal-100 dark:bg-teal-900/30 dark:text-teal-400 dark:hover:bg-teal-900/50'],
-                    'cancelled' => ['label' => 'Cancelado',   'active' => 'bg-red-500 text-white',    'inactive' => 'bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50'],
-                ];
-            @endphp
-            <div class="bg-white border rounded-xl shadow-sm p-4 space-y-3 dark:bg-zinc-800 dark:border-zinc-700">
+            <x-admin.form-card padding="p-4 space-y-3">
                 <div class="flex items-center justify-between">
                     <p class="font-semibold text-neutral-700 dark:text-neutral-200">Atualizar status</p>
                     <p class="text-xs text-neutral-400 dark:text-neutral-500">
@@ -260,30 +549,28 @@
                     </p>
                 </div>
                 <div class="flex flex-wrap gap-2">
-                    @foreach ($statusMap as $status => $meta)
+                    @foreach ($this->statusMap as $status => $meta)
                         <button wire:click="updateStatus('{{ $status }}')"
                             class="px-4 py-2 rounded-lg text-sm font-medium transition-colors {{ $order->status === $status ? $meta['active'] : $meta['inactive'] }}">
                             {{ $meta['label'] }}
                         </button>
                     @endforeach
                 </div>
-            </div>
+            </x-admin.form-card>
 
             {{-- Payment --}}
-            <div class="bg-white border rounded-xl shadow-sm p-4 dark:bg-zinc-800 dark:border-zinc-700">
+            <x-admin.form-card padding="p-4">
                 <p class="font-semibold text-neutral-700 mb-2 dark:text-neutral-200">Pagamento</p>
                 <div class="grid grid-cols-2 gap-2 text-sm">
                     <div class="text-neutral-500 dark:text-neutral-400">Método</div>
                     <div class="font-semibold text-neutral-800 dark:text-neutral-100">
-                        @if ($order->payment_method === 'PIX') PIX
-                        @elseif ($order->payment_method === 'CARD') Cartão de Crédito
-                        @elseif ($order->payment_method === 'CASH') Dinheiro
+                        @if ($order->payment_method === 'pix') PIX
+                        @elseif ($order->payment_method === 'card') Cartão de Crédito
+                        @elseif ($order->payment_method === 'cash') Dinheiro
                         @else {{ $order->payment_method }}
                         @endif
                     </div>
                     @if ($order->payment)
-                        <div class="text-neutral-500 dark:text-neutral-400">ID Asaas</div>
-                        <div class="font-mono text-xs text-neutral-600 truncate dark:text-neutral-300">{{ $order->payment->asaas_payment_id }}</div>
                         <div class="text-neutral-500 dark:text-neutral-400">Status</div>
                         <div>
                             <span class="px-2 py-0.5 rounded-full text-xs
@@ -305,12 +592,12 @@
                         Iniciar Reembolso
                     </button>
                 @endif
-            </div>
+            </x-admin.form-card>
 
             {{-- Refund Timeline --}}
             @php $refunds = $order->refunds()->latest()->get(); @endphp
             @if ($refunds->isNotEmpty())
-                <div class="bg-white border rounded-xl shadow-sm p-4 dark:bg-zinc-800 dark:border-zinc-700">
+                <x-admin.form-card padding="p-4">
                     <p class="font-semibold text-neutral-700 mb-3 dark:text-neutral-200">Histórico de Estornos</p>
                     <div class="space-y-3">
                         @foreach ($refunds as $refund)
@@ -355,7 +642,7 @@
                             </div>
                         @endforeach
                     </div>
-                </div>
+                </x-admin.form-card>
             @endif
         </div>
     </div>
