@@ -160,6 +160,7 @@ class Show extends Component
     {
         $this->editingAddress = false;
         $this->resetErrorBag();
+        $this->dispatch('deliveryAddressUpdated');
     }
 
     public function saveAddress(): void
@@ -175,14 +176,13 @@ class Show extends Component
             'editDeliveryComplement' => ['nullable', 'string', 'max:100'],
         ]);
 
-        $this->order->update([
-            'delivery_address' => $validated['editDeliveryAddress'],
-            'delivery_number' => $validated['editDeliveryNumber'],
-            'delivery_neighborhood' => $validated['editDeliveryNeighborhood'],
-            'delivery_city' => $validated['editDeliveryCity'],
-            'delivery_cep' => $validated['editDeliveryCep'],
-            'delivery_complement' => $validated['editDeliveryComplement'],
-        ]);
+        $this->order->delivery_address = $validated['editDeliveryAddress'];
+        $this->order->delivery_number = $validated['editDeliveryNumber'];
+        $this->order->delivery_neighborhood = $validated['editDeliveryNeighborhood'];
+        $this->order->delivery_city = $validated['editDeliveryCity'];
+        $this->order->delivery_cep = $validated['editDeliveryCep'];
+        $this->order->delivery_complement = $validated['editDeliveryComplement'];
+        $this->order->save();
 
         $this->order->refresh();
         $this->editingAddress = false;

@@ -130,15 +130,6 @@
             </div>
         </div>
 
-        <div class="max-w-xs">
-            <flux:input wire:model="service_radius_km" type="number" step="0.01" min="0"
-                label="Raio de atuação (km)"
-                placeholder="Deixe em branco para sem limite" />
-            <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
-                Usado para limitar a distância máxima de entrega quando as coordenadas (lat/lng) estiverem configuradas.
-            </p>
-            @error('service_radius_km') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-        </div>
     </x-admin.form-card>
 
     {{-- Taxa Fixa --}}

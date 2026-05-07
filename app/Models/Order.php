@@ -190,11 +190,13 @@ class Order extends Model
     /** Returns the delivery address snapshot, falling back to customer address for legacy orders. */
     public function deliveryFullAddress(): string
     {
-        $address = $this->delivery_address ?: $this->customer?->address;
-        $neighborhood = $this->delivery_neighborhood ?: $this->customer?->neighborhood;
-        $city = $this->delivery_city ?: $this->customer?->city;
+        $record = $this->deliveryAddressRecord ?? $this->customer?->addressRecord;
 
-        return implode(', ', array_filter([$address, $neighborhood, $city]));
+        return implode(', ', array_filter([
+            $record?->line1,
+            $record?->neighborhood,
+            $record?->city,
+        ]));
     }
 
     /** Returns the status codes that allow admin editing of address and items. */

@@ -73,6 +73,15 @@
                 <flux:input wire:model="complement" label="Complemento (opcional)" placeholder="Apto 12, Bloco B..." />
                 @error('complement') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
+            <div>
+                <flux:input wire:model="service_radius_km" type="number" step="0.01" min="0"
+                    label="Raio de atuação (km)"
+                    placeholder="Deixe em branco para sem limite" />
+                <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
+                    Distância máxima de entrega a partir desta filial.
+                </p>
+                @error('service_radius_km') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            </div>
         </div>
     </x-admin.form-card>
 

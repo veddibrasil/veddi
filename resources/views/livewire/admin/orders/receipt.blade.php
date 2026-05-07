@@ -60,6 +60,18 @@
                     {{ $item->quantity }}x R$ {{ number_format($item->unit_price, 2, ',', '.') }}
                 </td>
             </tr>
+            @foreach ($item->options ?? [] as $group)
+                @if (!empty($group['selections']))
+                    <tr>
+                        <td colspan="2" class="item-qty" style="color: #555; padding-left: 6px;">
+                            {{ $group['group_name'] ?? 'Opções' }}:
+                            @foreach ($group['selections'] as $sel)
+                                {{ $sel['qty'] }}x {{ $sel['name'] }}@if ((float) ($sel['additional_price'] ?? 0) > 0) (+R$ {{ number_format((float) $sel['additional_price'], 2, ',', '.') }})@endif{{ !$loop->last ? ', ' : '' }}
+                            @endforeach
+                        </td>
+                    </tr>
+                @endif
+            @endforeach
         </table>
     @endforeach
 

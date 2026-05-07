@@ -68,10 +68,27 @@
             {{-- Tipo de pedido --}}
             @if ($order->order_type === 'delivery')
                 @php
-                    $mapboxToken  = config('services.mapbox.token');
-                    $deliveryAddr = $order->deliveryFullAddress();
-                    $googleMapsUrl = 'https://maps.google.com/?q=' . urlencode($deliveryAddr);
-                    $wazeUrl       = 'https://waze.com/ul?q=' . urlencode($deliveryAddr);
+                    $mapboxToken     = config('services.mapbox.token');
+                    $deliveryRecord  = $order->deliveryAddressRecord;
+                    $customerRecord  = $order->customer?->addressRecord;
+                    $sourceRecord    = $deliveryRecord ?? $customerRecord;
+
+                    $addrFull = implode(', ', array_filter([
+                        $sourceRecord?->line1,
+                        $sourceRecord?->number,
+                        $sourceRecord?->complement,
+                        $sourceRecord?->neighborhood,
+                        $sourceRecord?->city,
+                        $sourceRecord?->cep,
+                    ]));
+                    $googleMapsUrl = 'https://maps.google.com/?q=' . urlencode($addrFull);
+
+                    $rawPhone = preg_replace('/\D/', '', $order->customer?->phone ?? '');
+                    $whatsappPhone = strlen($rawPhone) <= 11 ? '55' . $rawPhone : $rawPhone;
+                    $whatsappUrl = 'https://wa.me/' . $whatsappPhone;
+
+                    $motoboyMsg = "🛵 *Entrega #{$order->order_number}*\n\n📍 *Endereço:* {$addrFull} \n\n {$googleMapsUrl}" ;
+                    $motoboyWhatsappUrl = 'https://wa.me/?text=' . rawurlencode($motoboyMsg);
                 @endphp
 
                 <div class="bg-white border rounded-xl shadow-sm overflow-hidden dark:bg-zinc-800 dark:border-zinc-700">
@@ -80,7 +97,9 @@
                             <span class="text-lg">🛵</span>
                             <div>
                                 <p class="font-semibold text-sm text-neutral-800 dark:text-neutral-100">Entrega</p>
-                                <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ $deliveryAddr }}</p>
+                                @if ($addrFull)
+                                    <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ $addrFull }}</p>
+                                @endif
                             </div>
                         </div>
                         @if ($canUpdate && $order->isEditable() && !$editingAddress)
@@ -92,7 +111,42 @@
                     </div>
 
                     @if ($editingAddress)
-                        <div class="px-4 py-4 space-y-3">
+                        <div class="px-4 py-4 space-y-3"
+                             x-data="{
+                                 cepLoading: false,
+                                 async fetchCep(val) {
+                                     const digits = val.replace(/\D/g, '');
+                                     if (digits.length !== 8) return;
+                                     this.cepLoading = true;
+                                     try {
+                                         const res = await fetch('https://viacep.com.br/ws/' + digits + '/json/');
+                                         const d = await res.json();
+                                         if (!d.erro) {
+                                             if (d.logradouro) $wire.set('editDeliveryAddress', d.logradouro);
+                                             if (d.bairro)     $wire.set('editDeliveryNeighborhood', d.bairro);
+                                             if (d.localidade) $wire.set('editDeliveryCity', d.localidade);
+                                         }
+                                     } catch(e) {}
+                                     this.cepLoading = false;
+                                 }
+                             }">
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="text-xs font-medium text-neutral-600 dark:text-neutral-400">CEP</label>
+                                    <div class="relative">
+                                        <flux:input wire:model="editDeliveryCep" type="text" maxlength="9"
+                                                    x-on:input.debounce.500ms="fetchCep($event.target.value)" />
+                                        <span x-show="cepLoading"
+                                              class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-neutral-400">
+                                            Buscando...
+                                        </span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-medium text-neutral-600 dark:text-neutral-400">Complemento</label>
+                                    <flux:input wire:model="editDeliveryComplement" type="text" />
+                                </div>
+                            </div>
                             <div class="grid grid-cols-3 gap-3">
                                 <div class="col-span-2">
                                     <label class="text-xs font-medium text-neutral-600 dark:text-neutral-400">Rua / Avenida <span class="text-red-500">*</span></label>
@@ -115,16 +169,6 @@
                                     @error('editDeliveryCity') <p class="text-xs text-red-500 mt-0.5">{{ $message }}</p> @enderror
                                 </div>
                             </div>
-                            <div class="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label class="text-xs font-medium text-neutral-600 dark:text-neutral-400">CEP</label>
-                                    <flux:input wire:model="editDeliveryCep" type="text" maxlength="9" />
-                                </div>
-                                <div>
-                                    <label class="text-xs font-medium text-neutral-600 dark:text-neutral-400">Complemento</label>
-                                    <flux:input wire:model="editDeliveryComplement" type="text" />
-                                </div>
-                            </div>
                             <div class="flex justify-end gap-3 pt-1">
                                 <button wire:click="cancelEditAddress"
                                         class="text-sm text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200">
@@ -139,14 +183,18 @@
                             </div>
                         </div>
                     @else
-                        <div class="w-full h-52 bg-neutral-100 dark:bg-zinc-700 relative overflow-hidden">
-                            <img id="customer-map-{{ $order->id }}"
+                        @once
+                            <link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet">
+                            <script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
+                        @endonce
+
+                        <div class="w-full h-52 relative">
+                            <div id="customer-map-{{ $order->id }}"
                                  data-token="{{ $mapboxToken }}"
-                                 data-address="{{ $deliveryAddr }}"
-                                 class="w-full h-full object-cover"
-                                 alt="Mapa do endereço de entrega" />
+                                 data-address="{{ $addrFull }}"
+                                 class="w-full h-full"></div>
                             <div id="customer-map-loader-{{ $order->id }}"
-                                 class="absolute inset-0 flex items-center justify-center text-sm text-neutral-400 dark:text-neutral-500">
+                                 class="absolute inset-0 flex items-center justify-center text-sm text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-zinc-700 pointer-events-none">
                                 Carregando mapa...
                             </div>
                         </div>
@@ -157,16 +205,25 @@
                                 <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
                                 Google Maps
                             </a>
-                            <a href="{{ $wazeUrl }}" target="_blank"
-                               class="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium bg-sky-50 text-sky-700 hover:bg-sky-100 dark:bg-sky-900/30 dark:text-sky-400 dark:hover:bg-sky-900/50 px-3 py-2 rounded-lg transition-colors">
-                                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M20.54 6.63C19.08 4.15 16.71 2.37 14 1.76V1.5a2 2 0 0 0-4 0v.26C7.29 2.37 4.92 4.15 3.46 6.63A9.94 9.94 0 0 0 2 12c0 3.58 1.88 6.9 4.96 8.77.33.2.7.3 1.07.3.41 0 .82-.12 1.17-.36l1.3-.87c.44-.3.7-.79.7-1.32v-2.04c0-.88-.72-1.6-1.6-1.6H8v-1.26c0-.88.72-1.6 1.6-1.6h4.8c.88 0 1.6.72 1.6 1.6v1.26h-1.6c-.88 0-1.6.72-1.6 1.6v2.04c0 .53.26 1.02.7 1.32l1.3.87c.35.24.76.36 1.17.36.37 0 .74-.1 1.07-.3C20.12 18.9 22 15.58 22 12c0-1.96-.51-3.85-1.46-5.37z"/></svg>
-                                Waze
-                            </a>
-                            <button onclick="navigator.clipboard.writeText({{ Js::from($deliveryAddr) }})"
+                            <button onclick="navigator.clipboard.writeText({{ Js::from($addrFull) }})" style="cursor: pointer"
                                     class="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium bg-neutral-50 text-neutral-600 hover:bg-neutral-100 dark:bg-zinc-700 dark:text-neutral-300 dark:hover:bg-zinc-600 px-3 py-2 rounded-lg transition-colors">
                                 <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                                 Copiar
                             </button>
+                            @if ($whatsappPhone)
+                                <a href="{{ $whatsappUrl }}" target="_blank"
+                                   class="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 px-3 py-2 rounded-lg transition-colors">
+                                    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z"/></svg>
+                                    Cliente
+                                </a>
+                            @endif
+                            @if ($addrFull)
+                                <a href="{{ $motoboyWhatsappUrl }}" target="_blank"
+                                   class="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium bg-orange-50 text-orange-700 hover:bg-orange-100 dark:bg-orange-900/30 dark:text-orange-400 dark:hover:bg-orange-900/50 px-3 py-2 rounded-lg transition-colors">
+                                    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z"/></svg>
+                                    Motoboy
+                                </a>
+                            @endif
                         </div>
                     @endif
                 </div>
@@ -177,6 +234,9 @@
                     initCustomerMap(orderId);
                     window.addEventListener('deliveryAddressUpdated', () => initCustomerMap(orderId));
                     document.addEventListener('livewire:navigated', () => initCustomerMap(orderId));
+                    Livewire.hook('commit', ({ succeed }) => {
+                        succeed(() => initCustomerMap(orderId));
+                    });
                 </script>
                 @endscript
             @else
@@ -253,10 +313,10 @@
 
                         <div class="px-4 py-3 space-y-2">
                             <div class="relative">
-                                <input wire:model.live.debounce.300ms="productSearch"
+                                <flux:input wire:model.live.debounce.300ms="productSearch"
                                        type="text"
                                        placeholder="Buscar produto para adicionar..."
-                                       class="w-full text-sm border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400 dark:bg-zinc-700 dark:border-zinc-600 dark:text-neutral-100 dark:placeholder-neutral-400" />
+                                        />
                                 @if (!empty($productResults))
                                     <div class="absolute z-20 w-full mt-1 bg-white dark:bg-zinc-800 border dark:border-zinc-600 rounded-lg shadow-lg divide-y dark:divide-zinc-700 max-h-52 overflow-y-auto">
                                         @foreach ($productResults as $result)

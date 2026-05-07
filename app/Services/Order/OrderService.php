@@ -112,13 +112,17 @@ class OrderService implements OrderServiceInterface
                 'payment_method' => strtolower($paymentMethod),
                 'order_type' => $orderType,
                 'coupon_id' => $coupon?->id,
-                'delivery_address' => $orderType === 'delivery' ? $customer?->address : null,
-                'delivery_number' => $orderType === 'delivery' ? $customer?->number : null,
-                'delivery_neighborhood' => $orderType === 'delivery' ? $customer?->neighborhood : null,
-                'delivery_city' => $orderType === 'delivery' ? $customer?->city : null,
-                'delivery_cep' => $orderType === 'delivery' ? $customer?->cep : null,
-                'delivery_complement' => $orderType === 'delivery' ? $customer?->complement : null,
             ]);
+
+            if ($orderType === 'delivery' && $customer) {
+                $order->delivery_address = $customer->address;
+                $order->delivery_number = $customer->number;
+                $order->delivery_neighborhood = $customer->neighborhood;
+                $order->delivery_city = $customer->city;
+                $order->delivery_cep = $customer->cep;
+                $order->delivery_complement = $customer->complement;
+                $order->save();
+            }
 
             foreach ($cart as $cartKey => $item) {
                 $pid = (int) ($item['product_id'] ?? explode('_', (string) $cartKey)[0]);
