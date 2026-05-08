@@ -15,7 +15,7 @@ class ReleaseCompanyTransactionsJob implements ShouldQueue
 
     public function __construct()
     {
-        $this->onQueue('low');
+        $this->onQueue('default');
     }
 
     public function handle(ReleaseService $releaseService): void
