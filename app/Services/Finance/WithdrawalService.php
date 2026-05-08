@@ -5,6 +5,7 @@ namespace App\Services\Finance;
 use App\Jobs\ProcessWithdrawal;
 use App\Models\Company;
 use App\Models\CompanyTransaction;
+use App\Models\CompanyWalletEntry;
 use App\Models\CompanyWithdrawal;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -39,13 +40,22 @@ class WithdrawalService
             }
         }
 
-        $balance = $this->balanceService->calculateBalance($company);
+        // Exclui transações já reservadas por outros saques pendentes (withdrawal_id IS NULL).
+        // Isso garante proteção contra sobre-saque sem alterar o saldo exibido na UI.
+        $releasedUnreserved = (float) CompanyTransaction::withoutGlobalScopes()
+            ->where('company_id', $company->id)
+            ->where('status', 'released')
+            ->where('withdrawn', false)
+            ->whereNull('withdrawal_id')
+            ->sum('net_value');
 
-        if ($amount > $balance['available_balance']) {
-            $available = number_format($balance['available_balance'], 2, ',', '.');
+        $available = round(max(0, $releasedUnreserved), 2);
+
+        if ($amount > $available) {
+            $availableFormatted = number_format($available, 2, ',', '.');
             $requested = number_format($amount, 2, ',', '.');
             throw new RuntimeException(
-                "Saldo disponível insuficiente. Disponível: R\$ {$available}, Solicitado: R\$ {$requested}."
+                "Saldo disponível insuficiente. Disponível: R\$ {$availableFormatted}, Solicitado: R\$ {$requested}."
             );
         }
     }
@@ -77,6 +87,29 @@ class WithdrawalService
                 $payoutData
             ));
 
+            // Registra movimentação imediatamente para aparecer no histórico da carteira.
+            $netAmount = $pixFee > 0 ? round($amount - $pixFee, 2) : $amount;
+
+            CompanyWalletEntry::create([
+                'company_id' => $company->id,
+                'order_id' => null,
+                'type' => 'withdrawal',
+                'amount' => $netAmount,
+                'description' => 'Saque #'.$withdrawal->id,
+                'reference' => (string) $withdrawal->id,
+            ]);
+
+            if ($pixFee > 0) {
+                CompanyWalletEntry::create([
+                    'company_id' => $company->id,
+                    'order_id' => null,
+                    'type' => 'pix_fee',
+                    'amount' => $pixFee,
+                    'description' => 'Taxa PIX - Saque #'.$withdrawal->id,
+                    'reference' => (string) $withdrawal->id,
+                ]);
+            }
+
             // Reserva transações elegíveis com lock pessimista para impedir
             // que dois saques concorrentes consumam o mesmo saldo.
             $transactions = CompanyTransaction::withoutGlobalScopes()
@@ -89,7 +122,7 @@ class WithdrawalService
                 ->lockForUpdate()
                 ->get();
 
-            $remaining = $amount;
+            $remaining = round($amount, 2);
             $reservedIds = [];
 
             foreach ($transactions as $tx) {
@@ -97,8 +130,56 @@ class WithdrawalService
                     break;
                 }
 
-                $reservedIds[] = $tx->id;
-                $remaining -= (float) $tx->net_value;
+                $txNet = round((float) $tx->net_value, 2);
+
+                // Reserva total do lançamento
+                if ($txNet <= $remaining) {
+                    $reservedIds[] = $tx->id;
+                    $remaining = round($remaining - $txNet, 2);
+
+                    continue;
+                }
+
+                // Reserva parcial: divide a transação para não debitar a mais.
+                // Ex.: pedido tem net_value=30 e usuário solicita só 20 => cria um novo lançamento de 20
+                // vinculado ao saque e mantém o restante (10) disponível.
+                $ratio = $txNet > 0 ? ($remaining / $txNet) : 0.0;
+                $txValue = round((float) $tx->value, 2);
+                $reservedValue = $txValue > 0 ? round($txValue * $ratio, 2) : 0.0;
+                $leftoverValue = round(max(0, $txValue - $reservedValue), 2);
+                $leftoverNet = round(max(0, $txNet - $remaining), 2);
+
+                // Novo lançamento reservado (parte sacada)
+                $reservedTx = $tx->replicate([
+                    'withdrawn',
+                    'withdrawn_at',
+                    'withdrawal_id',
+                    'created_at',
+                    'updated_at',
+                ]);
+                $reservedTx->fill([
+                    'value' => $reservedValue,
+                    'net_value' => $remaining,
+                    'withdrawal_id' => $withdrawal->id,
+                    'withdrawn' => false,
+                    'withdrawn_at' => null,
+                    'status' => 'released',
+                ]);
+                $reservedTx->metadata = array_merge((array) ($tx->metadata ?? []), [
+                    'split_from_transaction_id' => $tx->id,
+                ]);
+                $reservedTx->save();
+
+                // Atualiza o lançamento original para o restante (mantém disponível)
+                $tx->update([
+                    'value' => $leftoverValue,
+                    'net_value' => $leftoverNet,
+                    'updated_at' => now(),
+                ]);
+
+                $reservedIds[] = $reservedTx->id;
+                $remaining = 0.0;
+                break;
             }
 
             if ($remaining > 0) {

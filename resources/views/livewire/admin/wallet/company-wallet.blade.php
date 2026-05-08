@@ -85,7 +85,7 @@
     </div>
 
     {{-- Últimos saques --}}
-    @if(!empty($withdrawals))
+    @if($withdrawals->isNotEmpty())
         <div class="bg-white border rounded-xl shadow-sm p-6 dark:bg-zinc-800 dark:border-zinc-700">
             <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300 mb-4">Saques Recentes</h2>
 
@@ -94,34 +94,40 @@
                     <div class="flex items-center justify-between py-2 border-b border-neutral-100 dark:border-zinc-700 last:border-0">
                         <div>
                             <p class="text-sm font-medium text-neutral-800 dark:text-neutral-200">
-                                R$ {{ number_format($w['amount'], 2, ',', '.') }}
-                                <span class="text-neutral-400 dark:text-neutral-500 font-normal">({{ $w['payout_type'] }})</span>
-                                @if($w['payout_type'] === 'PIX' && ($w['pix_fee'] ?? 0) > 0)
-                                    <span class="text-xs text-neutral-400 dark:text-neutral-500">— taxa R$ {{ number_format($w['pix_fee'], 2, ',', '.') }}</span>
+                                R$ {{ number_format($w->amount, 2, ',', '.') }}
+                                <span class="text-neutral-400 dark:text-neutral-500 font-normal">({{ $w->payout_type }})</span>
+                                @if($w->payout_type === 'PIX' && ($w->pix_fee ?? 0) > 0)
+                                    <span class="text-xs text-neutral-400 dark:text-neutral-500">— taxa R$ {{ number_format($w->pix_fee, 2, ',', '.') }}</span>
                                 @endif
                             </p>
                             <p class="text-xs text-neutral-400 dark:text-neutral-500">
-                                {{ \Carbon\Carbon::parse($w['created_at'])->format('d/m/Y H:i') }}
+                                {{ $w->created_at->format('d/m/Y H:i') }}
                             </p>
                         </div>
                         <span @class([
                             'inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold',
-                            'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300' => $w['status'] === 'pending',
-                            'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' => $w['status'] === 'processing',
-                            'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' => $w['status'] === 'done',
-                            'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' => $w['status'] === 'failed',
+                            'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300' => $w->status === 'pending',
+                            'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' => $w->status === 'processing',
+                            'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' => $w->status === 'done',
+                            'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' => $w->status === 'failed',
                         ])>
-                            {{ match($w['status']) {
+                            {{ match($w->status) {
                                 'pending'    => 'Pendente',
                                 'processing' => 'Processando',
                                 'done'       => 'Concluído',
                                 'failed'     => 'Falhou',
-                                default      => $w['status'],
+                                default      => $w->status,
                             } }}
                         </span>
                     </div>
                 @endforeach
             </div>
+
+            @if($withdrawals->hasPages())
+                <div class="mt-4">
+                    {{ $withdrawals->links() }}
+                </div>
+            @endif
         </div>
     @endif
 

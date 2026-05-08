@@ -15,17 +15,17 @@ class BalanceService
      * Seguro para chamadas frequentes (ex.: resposta de API em tempo real).
      *
      * Fórmula:
-     *   total_balance       = SUM(net_value) WHERE status IN (confirmed, released) AND withdrawn=false
-     *   blocked_balance     = SUM(net_value) WHERE status=confirmed AND withdrawn=false
-     *   withdrawn_balance   = SUM(net_value) WHERE withdrawn=true
-     *   reserve_balance     = max(0, total_balance × 10%)
-     *   pending_withdrawals = SUM(amount) FROM company_withdrawals WHERE status IN (pending, processing)
-     *   released_gross      = SUM(net_value) WHERE status=released AND withdrawn=false
-     *   available_balance   = max(0, released_gross − pending_withdrawals − reserve_balance)
+     *   total_balance     = SUM(net_value) WHERE status IN (confirmed, released) AND withdrawn=false
+     *   blocked_balance   = SUM(net_value) WHERE status=confirmed AND withdrawn=false
+     *   withdrawn_balance = SUM(net_value) WHERE withdrawn=true
+     *   released_gross    = SUM(net_value) WHERE status=released AND withdrawn=false
+     *   available_balance = released_gross
      *
-     * Usar pending_withdrawals em vez de filtrar withdrawal_id IS NULL evita
-     * distorção causada pela super-reserva FIFO (última transação reservada
-     * pode ter net_value maior que o necessário para cobrir o saque).
+     * O saldo disponível reflete apenas transações efetivamente sacadas (withdrawn=true).
+     * Saques pendentes/em processamento não reduzem o saldo exibido — o débito visível
+     * ocorre somente quando o job conclui e marca as transações como withdrawn.
+     * A proteção contra sobre-saque é feita atomicamente em WithdrawalService via
+     * lockForUpdate + whereNull('withdrawal_id').
      */
     public function calculateBalance(Company $company): array
     {
@@ -49,18 +49,13 @@ class BalanceService
             ->where('withdrawn', false)
             ->sum('net_value');
 
-        $pendingWithdrawals = (float) CompanyWithdrawal::withoutGlobalScopes()
-            ->where('company_id', $companyId)
-            ->whereIn('status', ['pending', 'processing'])
-            ->sum('amount');
-
         $withdrawnBalance = (float) CompanyTransaction::withoutGlobalScopes()
             ->where('company_id', $companyId)
             ->where('withdrawn', true)
             ->sum('net_value');
 
-        $reserveBalance = round(max(0, $totalBalance * 0.10), 2);
-        $availableBalance = round(max(0, $releasedGross - $pendingWithdrawals - $reserveBalance), 2);
+        $reserveBalance = 0.0;
+        $availableBalance = round(max(0, $releasedGross), 2);
 
         return [
             'total_balance' => round($totalBalance, 2),
@@ -109,7 +104,7 @@ class BalanceService
      *
      * Cada entrada: ['date' => 'Y-m-d', 'releasing' => float, 'cumulative_available' => float]
      *
-     * cumulative_available já aplica a reserva de 10% no acumulado.
+     * cumulative_available representa o saldo acumulado estimado.
      */
     public function getFinancialForecast(Company $company, int $days = 30): array
     {
@@ -153,7 +148,7 @@ class BalanceService
             $forecast[] = [
                 'date' => $date,
                 'releasing' => round($daily, 2),
-                'cumulative_available' => round(max(0, $cumulative * 0.90), 2),
+                'cumulative_available' => round(max(0, $cumulative), 2),
             ];
         }
 

@@ -30,6 +30,28 @@ class ProcessWithdrawal implements ShouldQueue
 
     public function handle(StarkService $stark): void
     {
+        // Idempotency guard: atomic check-and-set prevents concurrent or retried runs
+        // from processing the same withdrawal twice (double debit).
+        $canProcess = DB::transaction(function () {
+            $withdrawal = CompanyWithdrawal::lockForUpdate()->findOrFail($this->withdrawalId);
+
+            if ($withdrawal->status === 'done') {
+                Log::channel('payments')->info('Saque já processado, ignorando execução duplicada', [
+                    'withdrawal_id' => $withdrawal->id,
+                ]);
+
+                return false;
+            }
+
+            $withdrawal->update(['status' => 'processing']);
+
+            return true;
+        });
+
+        if (! $canProcess) {
+            return;
+        }
+
         $withdrawal = CompanyWithdrawal::findOrFail($this->withdrawalId);
 
         Log::channel('payments')->info('Processando saque via Stark Bank', [
@@ -38,24 +60,6 @@ class ProcessWithdrawal implements ShouldQueue
             'amount' => $withdrawal->amount,
             'payout_type' => $withdrawal->payout_type,
         ]);
-
-        // Verificar saldo disponível
-        $balance = CompanyWalletEntry::balanceFor($withdrawal->company_id);
-
-        if ($balance < (float) $withdrawal->amount) {
-            $withdrawal->update(['status' => 'failed']);
-
-            Log::channel('payments')->warning('Saldo insuficiente para saque', [
-                'withdrawal_id' => $withdrawal->id,
-                'company_id' => $withdrawal->company_id,
-                'balance' => $balance,
-                'requested' => $withdrawal->amount,
-            ]);
-
-            return;
-        }
-
-        $withdrawal->update(['status' => 'processing']);
 
         try {
             $transferData = $this->buildStarkTransferData($withdrawal);
@@ -80,14 +84,61 @@ class ProcessWithdrawal implements ShouldQueue
                 ]);
 
                 // O lançamento definitivo só acontece depois da confirmação do repasse.
-                CompanyWalletEntry::create([
-                    'company_id' => $withdrawal->company_id,
-                    'order_id' => null,
-                    'type' => 'withdrawal',
-                    'amount' => $withdrawal->amount,
-                    'description' => 'Saque #'.$withdrawal->id,
-                    'reference' => $transfer['id'] ?? (string) $withdrawal->id,
-                ]);
+                // Guardas de idempotência: nunca criar dois lançamentos para o mesmo saque.
+                $withdrawalDescription = 'Saque #'.$withdrawal->id;
+                $feeDescription = 'Taxa PIX - Saque #'.$withdrawal->id;
+
+                $alreadyWithdrawalEntry = CompanyWalletEntry::where('company_id', $withdrawal->company_id)
+                    ->where('type', 'withdrawal')
+                    ->where('description', $withdrawalDescription)
+                    ->lockForUpdate()
+                    ->exists();
+
+                $alreadyPixFeeEntry = CompanyWalletEntry::where('company_id', $withdrawal->company_id)
+                    ->where('type', 'pix_fee')
+                    ->where('description', $feeDescription)
+                    ->lockForUpdate()
+                    ->exists();
+
+                $pixFee = $withdrawal->payout_type === 'PIX' ? (float) $withdrawal->pix_fee : 0.0;
+                $transferAmount = (float) $withdrawal->amount;
+                if ($withdrawal->payout_type === 'PIX') {
+                    $transferAmount = max(0.0, round($transferAmount - $pixFee, 2));
+                }
+
+                $starkReference = $transfer['id'] ?? (string) $withdrawal->id;
+
+                if (! $alreadyWithdrawalEntry) {
+                    CompanyWalletEntry::create([
+                        'company_id' => $withdrawal->company_id,
+                        'order_id' => null,
+                        'type' => 'withdrawal',
+                        'amount' => $transferAmount,
+                        'description' => $withdrawalDescription,
+                        'reference' => $starkReference,
+                    ]);
+                } elseif ($transfer['id'] ?? null) {
+                    CompanyWalletEntry::where('company_id', $withdrawal->company_id)
+                        ->where('type', 'withdrawal')
+                        ->where('description', $withdrawalDescription)
+                        ->update(['reference' => $starkReference]);
+                }
+
+                if ($pixFee > 0 && ! $alreadyPixFeeEntry) {
+                    CompanyWalletEntry::create([
+                        'company_id' => $withdrawal->company_id,
+                        'order_id' => null,
+                        'type' => 'pix_fee',
+                        'amount' => $pixFee,
+                        'description' => $feeDescription,
+                        'reference' => $starkReference,
+                    ]);
+                } elseif ($pixFee > 0 && ($transfer['id'] ?? null)) {
+                    CompanyWalletEntry::where('company_id', $withdrawal->company_id)
+                        ->where('type', 'pix_fee')
+                        ->where('description', $feeDescription)
+                        ->update(['reference' => $starkReference]);
+                }
             });
 
             Log::channel('payments')->info('Saque processado com sucesso via Stark Bank', [
@@ -122,8 +173,14 @@ class ProcessWithdrawal implements ShouldQueue
     {
         $company = $withdrawal->company;
 
+        $pixFee = $withdrawal->payout_type === 'PIX' ? (float) $withdrawal->pix_fee : 0.0;
+        $transferAmount = (float) $withdrawal->amount;
+        if ($withdrawal->payout_type === 'PIX') {
+            $transferAmount = max(0.0, round($transferAmount - $pixFee, 2));
+        }
+
         $base = [
-            'amount' => (float) $withdrawal->amount,
+            'amount' => $transferAmount,
             'owner_name' => $withdrawal->bank_owner_name ?? $company->default_bank_owner_name ?? $company->name,
             'owner_cpf_cnpj' => $withdrawal->bank_owner_cpf_cnpj ?? $company->default_bank_owner_cpf_cnpj ?? $company->owner_cpf_cnpj ?? '',
             'external_id' => 'withdrawal-'.$withdrawal->id,

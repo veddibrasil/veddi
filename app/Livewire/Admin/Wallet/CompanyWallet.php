@@ -22,8 +22,6 @@ class CompanyWallet extends Component
 
     public float $pixWithdrawalFee = 0.0;
 
-    public array $withdrawals = [];
-
     // Anticipation modal
     public bool $showAnticipationModal = false;
 
@@ -66,8 +64,6 @@ class CompanyWallet extends Component
         $this->refreshBalances($balanceService, $company);
 
         $this->pixWithdrawalFee = (float) config('payments.pix_withdrawal_fee', 0.50);
-
-        $this->loadHistory($company);
 
         if ($company->default_payout_type) {
             $this->payoutType = $company->default_payout_type;
@@ -152,7 +148,6 @@ class CompanyWallet extends Component
         $snapshot = $balanceService->updateSnapshot($company);
         $this->availableBalance = (float) $snapshot->available_balance;
         $this->pendingBalance = (float) $snapshot->blocked_balance;
-        $this->loadHistory($company);
 
         $this->showAnticipationModal = false;
         $this->eligibleTransactions = [];
@@ -238,7 +233,6 @@ class CompanyWallet extends Component
         $this->pendingBalance = (float) $snapshot->blocked_balance;
 
         $this->showWithdrawalModal = false;
-        $this->withdrawals = $company->withdrawals()->latest()->limit(20)->get()->toArray();
 
         session()->flash('success', 'Saque solicitado com sucesso. Será processado em instantes.');
     }
@@ -249,7 +243,6 @@ class CompanyWallet extends Component
     {
         $company = app('current.company');
         $this->refreshBalances($balanceService, $company);
-        $this->loadHistory($company);
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -261,23 +254,21 @@ class CompanyWallet extends Component
         $this->pendingBalance = $calculated['blocked_balance'];
     }
 
-    private function loadHistory($company): void
-    {
-        $this->withdrawals = $company->withdrawals()
-            ->latest()
-            ->limit(20)
-            ->get()
-            ->toArray();
-    }
-
     public function render(): View
     {
-        $entries = app('current.company')
+        $company = app('current.company');
+
+        $entries = $company
             ->walletEntries()
             ->latest()
             ->paginate(15);
 
-        return view('livewire.admin.wallet.company-wallet', compact('entries'))
+        $withdrawals = $company
+            ->withdrawals()
+            ->latest()
+            ->paginate(10, ['*'], 'withdrawalsPage');
+
+        return view('livewire.admin.wallet.company-wallet', compact('entries', 'withdrawals'))
             ->layout('layouts.app', ['title' => 'Carteira']);
     }
 }

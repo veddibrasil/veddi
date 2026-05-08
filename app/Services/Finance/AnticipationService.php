@@ -160,9 +160,9 @@ class AnticipationService
             if ($totalFee > 0) {
                 CompanyWalletEntry::create([
                     'company_id' => $company->id,
-                    'type' => 'anticipation_fee',
-                    'amount' => -$totalFee,
-                    'description' => 'Taxa de antecipação de recebíveis',
+                    'type' => 'fee',
+                    'amount' => $totalFee,
+                    'description' => 'Taxa plataforma - Antecipação de recebíveis',
                 ]);
             }
 
