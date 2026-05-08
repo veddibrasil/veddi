@@ -10,6 +10,7 @@ use App\Models\Customer;
 use App\Models\Order;
 use App\Services\Order\CouponService;
 use App\Services\Order\DeliveryService;
+use App\Services\Order\GeocodingService;
 use Carbon\Carbon;
 
 trait HasOrderFlow
@@ -167,6 +168,21 @@ trait HasOrderFlow
             if ($this->customer_latitude === '' && $customer->latitude) {
                 $this->customer_latitude = (string) $customer->latitude;
                 $this->customer_longitude = (string) $customer->longitude;
+            }
+
+            if ($this->customer_latitude === '' || $this->customer_longitude === '') {
+                $coords = app(GeocodingService::class)->geocode([
+                    'address' => $this->address,
+                    'number' => $this->number,
+                    'neighborhood' => $this->neighborhood,
+                    'city' => $this->city,
+                    'cep' => preg_replace('/\D/', '', $this->cep),
+                ]);
+
+                if ($coords !== null) {
+                    $this->customer_latitude = (string) $coords['latitude'];
+                    $this->customer_longitude = (string) $coords['longitude'];
+                }
             }
 
             $updateData = [
