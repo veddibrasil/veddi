@@ -8,9 +8,12 @@ use App\Services\Finance\WithdrawalService;
 use Illuminate\View\View;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
+use Livewire\WithPagination;
 
 class CompanyWallet extends Component
 {
+    use WithPagination;
+
     public int $companyId = 0;
 
     public float $availableBalance = 0.0;
@@ -18,8 +21,6 @@ class CompanyWallet extends Component
     public float $pendingBalance = 0.0;
 
     public float $pixWithdrawalFee = 0.0;
-
-    public array $entries = [];
 
     public array $withdrawals = [];
 
@@ -148,7 +149,9 @@ class CompanyWallet extends Component
 
         $count = $anticipationService->anticipateSelected($company, $selectedIds);
 
-        $this->refreshBalances($balanceService, $company);
+        $snapshot = $balanceService->updateSnapshot($company);
+        $this->availableBalance = (float) $snapshot->available_balance;
+        $this->pendingBalance = (float) $snapshot->blocked_balance;
         $this->loadHistory($company);
 
         $this->showAnticipationModal = false;
@@ -176,7 +179,7 @@ class CompanyWallet extends Component
         $this->showWithdrawalModal = false;
     }
 
-    public function requestWithdrawal(WithdrawalService $withdrawalService): void
+    public function requestWithdrawal(WithdrawalService $withdrawalService, BalanceService $balanceService): void
     {
         $company = app('current.company');
 
@@ -230,6 +233,10 @@ class CompanyWallet extends Component
             'default_bank_owner_name' => $this->bankOwnerName ?: null,
         ]);
 
+        $snapshot = $balanceService->updateSnapshot($company);
+        $this->availableBalance = (float) $snapshot->available_balance;
+        $this->pendingBalance = (float) $snapshot->blocked_balance;
+
         $this->showWithdrawalModal = false;
         $this->withdrawals = $company->withdrawals()->latest()->limit(20)->get()->toArray();
 
@@ -256,12 +263,6 @@ class CompanyWallet extends Component
 
     private function loadHistory($company): void
     {
-        $this->entries = $company->walletEntries()
-            ->latest()
-            ->limit(50)
-            ->get()
-            ->toArray();
-
         $this->withdrawals = $company->withdrawals()
             ->latest()
             ->limit(20)
@@ -271,7 +272,12 @@ class CompanyWallet extends Component
 
     public function render(): View
     {
-        return view('livewire.admin.wallet.company-wallet')
+        $entries = app('current.company')
+            ->walletEntries()
+            ->latest()
+            ->paginate(15);
+
+        return view('livewire.admin.wallet.company-wallet', compact('entries'))
             ->layout('layouts.app', ['title' => 'Carteira']);
     }
 }

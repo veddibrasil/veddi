@@ -15,7 +15,7 @@ class UpdateCompanyBalancesJob implements ShouldQueue
 
     public function __construct()
     {
-        $this->onQueue('low');
+        $this->onQueue('default');
     }
 
     public function handle(BalanceService $balanceService): void

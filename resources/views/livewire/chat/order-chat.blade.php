@@ -515,14 +515,14 @@
         @elseif ($step === 'CHECKOUT_ORDER_TYPE')
             <div class="space-y-3">
                 <p class="text-sm font-semibold text-gray-700 text-center">Como deseja receber seu pedido?</p>
-                <button wire:click="selectOrderType('delivery')" class="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-gray-200 hover:border-red-400 hover:bg-red-50 transition-colors">
+                <button wire:click="selectOrderType('delivery')" class="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-gray-200 hover:border-amber-300 hover:bg-amber-100 transition-colors">
                     <span class="text-2xl">🛵</span>
                     <div class="text-left">
                         <p class="font-bold text-gray-800">Entrega</p>
                         <p class="text-xs text-gray-500">Receba em seu endereço</p>
                     </div>
                 </button>
-                <button wire:click="selectOrderType('pickup')" class="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-gray-200 hover:border-red-400 hover:bg-red-50 transition-colors">
+                <button wire:click="selectOrderType('pickup')" class="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-gray-200 hover:border-amber-300 hover:bg-amber-100 transition-colors">
                     <span class="text-2xl">🏪</span>
                     <div class="text-left">
                         <p class="font-bold text-gray-800">Retirada no local</p>

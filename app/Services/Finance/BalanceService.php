@@ -6,6 +6,7 @@ use App\Events\WalletBalanceUpdated;
 use App\Models\Company;
 use App\Models\CompanyBalance;
 use App\Models\CompanyTransaction;
+use App\Models\CompanyWithdrawal;
 
 class BalanceService
 {
@@ -14,11 +15,17 @@ class BalanceService
      * Seguro para chamadas frequentes (ex.: resposta de API em tempo real).
      *
      * Fórmula:
-     *   total_balance     = SUM(net_value) WHERE status IN (confirmed, released) AND withdrawn=false
-     *   blocked_balance   = SUM(net_value) WHERE status=confirmed AND withdrawn=false
-     *   withdrawn_balance = SUM(net_value) WHERE withdrawn=true
-     *   reserve_balance   = max(0, total_balance × 10%)
-     *   available_balance = max(0, released_not_withdrawn − reserve_balance)
+     *   total_balance       = SUM(net_value) WHERE status IN (confirmed, released) AND withdrawn=false
+     *   blocked_balance     = SUM(net_value) WHERE status=confirmed AND withdrawn=false
+     *   withdrawn_balance   = SUM(net_value) WHERE withdrawn=true
+     *   reserve_balance     = max(0, total_balance × 10%)
+     *   pending_withdrawals = SUM(amount) FROM company_withdrawals WHERE status IN (pending, processing)
+     *   released_gross      = SUM(net_value) WHERE status=released AND withdrawn=false
+     *   available_balance   = max(0, released_gross − pending_withdrawals − reserve_balance)
+     *
+     * Usar pending_withdrawals em vez de filtrar withdrawal_id IS NULL evita
+     * distorção causada pela super-reserva FIFO (última transação reservada
+     * pode ter net_value maior que o necessário para cobrir o saque).
      */
     public function calculateBalance(Company $company): array
     {
@@ -36,12 +43,16 @@ class BalanceService
             ->where('withdrawn', false)
             ->sum('net_value');
 
-        $releasedBalance = (float) CompanyTransaction::withoutGlobalScopes()
+        $releasedGross = (float) CompanyTransaction::withoutGlobalScopes()
             ->where('company_id', $companyId)
             ->where('status', 'released')
             ->where('withdrawn', false)
-            ->whereNull('withdrawal_id')
             ->sum('net_value');
+
+        $pendingWithdrawals = (float) CompanyWithdrawal::withoutGlobalScopes()
+            ->where('company_id', $companyId)
+            ->whereIn('status', ['pending', 'processing'])
+            ->sum('amount');
 
         $withdrawnBalance = (float) CompanyTransaction::withoutGlobalScopes()
             ->where('company_id', $companyId)
@@ -49,7 +60,7 @@ class BalanceService
             ->sum('net_value');
 
         $reserveBalance = round(max(0, $totalBalance * 0.10), 2);
-        $availableBalance = round(max(0, $releasedBalance - $reserveBalance), 2);
+        $availableBalance = round(max(0, $releasedGross - $pendingWithdrawals - $reserveBalance), 2);
 
         return [
             'total_balance' => round($totalBalance, 2),
@@ -105,13 +116,19 @@ class BalanceService
         $today = now()->toDateString();
         $until = now()->addDays($days)->toDateString();
 
-        // Baseline: liberado mas ainda não sacado
-        $currentAvailable = (float) CompanyTransaction::withoutGlobalScopes()
+        // Baseline: liberado mas ainda não sacado (descontando saques pendentes)
+        $releasedGross = (float) CompanyTransaction::withoutGlobalScopes()
             ->where('company_id', $company->id)
             ->where('status', 'released')
             ->where('withdrawn', false)
-            ->whereNull('withdrawal_id')
             ->sum('net_value');
+
+        $pendingWithdrawals = (float) CompanyWithdrawal::withoutGlobalScopes()
+            ->where('company_id', $company->id)
+            ->whereIn('status', ['pending', 'processing'])
+            ->sum('amount');
+
+        $currentAvailable = max(0.0, $releasedGross - $pendingWithdrawals);
 
         // Transações confirmadas agrupadas por release_date (futuras)
         $releasing = CompanyTransaction::withoutGlobalScopes()

@@ -129,29 +129,35 @@
     <div class="bg-white border rounded-xl shadow-sm p-6 dark:bg-zinc-800 dark:border-zinc-700">
         <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300 mb-4">Histórico de Movimentações</h2>
 
-        @if(empty($entries))
+        @if($entries->isEmpty())
             <p class="text-sm text-neutral-400 dark:text-neutral-500 text-center py-8">Nenhuma movimentação ainda.</p>
         @else
             <div class="space-y-2">
                 @foreach($entries as $entry)
                     <div class="flex items-center justify-between py-2 border-b border-neutral-100 dark:border-zinc-700 last:border-0">
                         <div>
-                            <p class="text-sm text-neutral-800 dark:text-neutral-200">{{ $entry['description'] }}</p>
+                            <p class="text-sm text-neutral-800 dark:text-neutral-200">{{ $entry->description }}</p>
                             <p class="text-xs text-neutral-400 dark:text-neutral-500">
-                                {{ \Carbon\Carbon::parse($entry['created_at'])->format('d/m/Y H:i') }}
+                                {{ $entry->created_at->format('d/m/Y H:i') }}
                             </p>
                         </div>
                         <span @class([
                             'text-sm font-semibold',
-                            'text-green-600 dark:text-green-400' => $entry['type'] === 'credit',
-                            'text-red-500 dark:text-red-400' => in_array($entry['type'], ['fee', 'withdrawal', 'anticipation_fee', 'refund', 'pix_fee', 'card_fee']),
+                            'text-green-600 dark:text-green-400' => $entry->type === 'credit',
+                            'text-red-500 dark:text-red-400' => in_array($entry->type, ['fee', 'withdrawal', 'anticipation_fee', 'refund', 'pix_fee', 'card_fee']),
                         ])>
-                            {{ $entry['type'] === 'credit' ? '+' : '-' }}
-                            R$ {{ number_format(abs($entry['amount']), 2, ',', '.') }}
+                            {{ $entry->type === 'credit' ? '+' : '-' }}
+                            R$ {{ number_format(abs($entry->amount), 2, ',', '.') }}
                         </span>
                     </div>
                 @endforeach
             </div>
+
+            @if($entries->hasPages())
+                <div class="mt-4">
+                    {{ $entries->links() }}
+                </div>
+            @endif
         @endif
     </div>
 

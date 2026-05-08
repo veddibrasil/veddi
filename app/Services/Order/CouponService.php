@@ -139,7 +139,13 @@ class CouponService
             };
 
             if ($match) {
-                $base += (float) $product->effective_price * $item['qty'];
+                $optionsExtra = 0.0;
+                foreach ($item['options'] ?? [] as $group) {
+                    foreach ($group['selections'] ?? [] as $sel) {
+                        $optionsExtra += ($sel['qty'] ?? 0) * ($sel['additional_price'] ?? 0);
+                    }
+                }
+                $base += ((float) $product->effective_price + $optionsExtra) * $item['qty'];
             }
         }
 

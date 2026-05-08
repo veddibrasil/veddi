@@ -286,6 +286,84 @@ test('calculateDiscount percentual com escopo de categoria', function () {
     expect($discount)->toBe(3.0); // 10% de R$30
 });
 
+test('calculateDiscount percentual com escopo de produto inclui opções pagas', function () {
+    $ctx = setupCouponContext();
+    $coupon = makeCoupon([
+        'type' => 'percentage',
+        'discount_value' => 10,
+        'scope' => 'product',
+        'scope_ids' => [$ctx['product']->id],
+    ]);
+
+    // Produto R$30 + opção extra R$5 = R$35 por unidade, qty=2 → base R$70
+    $cart = [
+        $ctx['product']->id => [
+            'qty' => 2,
+            'name' => 'X-Burguer',
+            'price' => 30.0,
+            'options' => [
+                ['selections' => [['qty' => 1, 'additional_price' => 5.0]]],
+            ],
+        ],
+    ];
+
+    $discount = app(CouponService::class)->calculateDiscount($coupon, $cart, 70.0, 0.0);
+
+    expect($discount)->toBe(7.0); // 10% de R$70 (base inclui opções)
+});
+
+test('calculateDiscount fixo com escopo de categoria inclui opções pagas', function () {
+    $ctx = setupCouponContext();
+    $coupon = makeCoupon([
+        'type' => 'fixed',
+        'discount_value' => 20.0,
+        'scope' => 'category',
+        'scope_ids' => [$ctx['category']->id],
+    ]);
+
+    // Produto R$30 + opção extra R$10 = R$40
+    $cart = [
+        $ctx['product']->id => [
+            'qty' => 1,
+            'name' => 'X-Burguer',
+            'price' => 30.0,
+            'options' => [
+                ['selections' => [['qty' => 1, 'additional_price' => 10.0]]],
+            ],
+        ],
+    ];
+
+    $discount = app(CouponService::class)->calculateDiscount($coupon, $cart, 40.0, 0.0);
+
+    expect($discount)->toBe(20.0); // fixo R$20, base R$40 → ok
+});
+
+test('calculateDiscount percentual escopo produto com opção variável (qty > 1 na seleção)', function () {
+    $ctx = setupCouponContext();
+    $coupon = makeCoupon([
+        'type' => 'percentage',
+        'discount_value' => 50,
+        'scope' => 'product',
+        'scope_ids' => [$ctx['product']->id],
+    ]);
+
+    // Produto R$30 + 2 unidades de molho a R$2 cada = R$34 base
+    $cart = [
+        $ctx['product']->id => [
+            'qty' => 1,
+            'name' => 'X-Burguer',
+            'price' => 30.0,
+            'options' => [
+                ['selections' => [['qty' => 2, 'additional_price' => 2.0]]],
+            ],
+        ],
+    ];
+
+    $discount = app(CouponService::class)->calculateDiscount($coupon, $cart, 34.0, 0.0);
+
+    expect($discount)->toBe(17.0); // 50% de R$34
+});
+
 // ─── recordUsage ─────────────────────────────────────────────────────────────
 
 test('recordUsage salva registro de uso do cupom', function () {
