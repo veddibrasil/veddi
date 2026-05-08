@@ -85,6 +85,10 @@ function _mapOpenAt(prefix, lat, lng) {
     });
 }
 
+window.mapPickerOpenAt = function (prefix, lat, lng) {
+    _mapOpenAt(prefix, lat, lng);
+};
+
 window.mapPickerSearch = async function (prefix) {
     if (!_mapStates[prefix]) _mapStates[prefix] = { map: null, marker: null, lat: null, lng: null, loading: false, reverseGeocoding: false, searching: false };
     var s = _mapStates[prefix];

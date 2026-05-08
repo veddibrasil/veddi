@@ -170,6 +170,7 @@ trait HasOrderFlow
                 $this->customer_longitude = (string) $customer->longitude;
             }
 
+            $geocodedNow = false;
             if ($this->customer_latitude === '' || $this->customer_longitude === '') {
                 $coords = app(GeocodingService::class)->geocode([
                     'address' => $this->address,
@@ -182,7 +183,18 @@ trait HasOrderFlow
                 if ($coords !== null) {
                     $this->customer_latitude = (string) $coords['latitude'];
                     $this->customer_longitude = (string) $coords['longitude'];
+                    $geocodedNow = true;
                 }
+            }
+
+            if ($geocodedNow) {
+                $this->dispatch('chat-geocoded',
+                    lat: (float) $this->customer_latitude,
+                    lng: (float) $this->customer_longitude,
+                );
+                $this->addMessage('bot', 'Encontramos seu endereço no mapa 📍 Confira se o pin está no lugar certo. Arraste para ajustar se necessário, confirme no mapa e clique em "Confirmar endereço" novamente.');
+
+                return;
             }
 
             $updateData = [

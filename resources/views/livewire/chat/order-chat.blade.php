@@ -536,7 +536,8 @@
 
         {{-- ── CHECKOUT_DELIVERY_ADDRESS ── --}}
         @elseif ($step === 'CHECKOUT_DELIVERY_ADDRESS')
-            <div wire:key="step-checkout-delivery-address" class="space-y-2">
+            <div wire:key="step-checkout-delivery-address" class="space-y-2"
+                x-on:chat-geocoded.window="mapPickerOpenAt('chk', $event.detail.lat, $event.detail.lng)">
                 <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Endereço de entrega</p>
 
                 {{-- Endereço atual em destaque --}}
