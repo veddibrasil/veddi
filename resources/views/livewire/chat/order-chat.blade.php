@@ -375,10 +375,10 @@
                         data-branch-open="{{ $branchOpen ? '1' : '0' }}"
                         data-branch-lat="{{ $branch->deliverySetting?->branch_latitude ?? '' }}"
                         data-branch-lng="{{ $branch->deliverySetting?->branch_longitude ?? '' }}"
-                        class="w-full text-left border-2 rounded-xl p-3 transition-all active:scale-[0.98] {{ $branchOpen ? 'border-gray-100 hover:border-red-200 hover:bg-red-50' : 'border-gray-100 bg-gray-50 opacity-70' }}"
+                        class="w-full text-left rounded-xl p-3 active:scale-[0.98] {{ $branchOpen ? 'mc-card-hover' : 'border-2 border-gray-100 bg-gray-50 opacity-70' }}"
                     >
                         <div class="flex items-start gap-3">
-                            <div class="w-9 h-9 rounded-lg {{ $branchOpen ? 'bg-red-100' : 'bg-gray-200' }} flex items-center justify-center shrink-0">
+                            <div class="w-9 h-9 rounded-lg {{ $branchOpen ? 'mc-bg-primary-light' : 'bg-gray-200' }} flex items-center justify-center shrink-0">
                                 <span class="text-lg">🏪</span>
                             </div>
                             <div class="flex-1 min-w-0">
@@ -515,14 +515,14 @@
         @elseif ($step === 'CHECKOUT_ORDER_TYPE')
             <div class="space-y-3">
                 <p class="text-sm font-semibold text-gray-700 text-center">Como deseja receber seu pedido?</p>
-                <button wire:click="selectOrderType('delivery')" class="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-gray-200 hover:border-amber-300 hover:bg-amber-100 transition-colors">
+                <button wire:click="selectOrderType('delivery')" class="w-full flex items-center gap-3 p-4 rounded-xl mc-card-hover">
                     <span class="text-2xl">🛵</span>
                     <div class="text-left">
                         <p class="font-bold text-gray-800">Entrega</p>
                         <p class="text-xs text-gray-500">Receba em seu endereço</p>
                     </div>
                 </button>
-                <button wire:click="selectOrderType('pickup')" class="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-gray-200 hover:border-amber-300 hover:bg-amber-100 transition-colors">
+                <button wire:click="selectOrderType('pickup')" class="w-full flex items-center gap-3 p-4 rounded-xl mc-card-hover">
                     <span class="text-2xl">🏪</span>
                     <div class="text-left">
                         <p class="font-bold text-gray-800">Retirada no local</p>
@@ -1249,7 +1249,7 @@
                 <button
                     wire:click="submitCardPayment"
                     wire:loading.attr="disabled"
-                    class="w-full rounded-lg bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white font-semibold py-2.5 text-sm transition-colors"
+                    class="mc-btn-primary"
                 >
                     <span wire:loading.remove wire:target="submitCardPayment">
                         @if (!empty($cardFeeBreakdown))
@@ -1454,14 +1454,16 @@
             x-transition:leave-start="opacity-100 scale-100 translate-y-0"
             x-transition:leave-end="opacity-0 scale-95 translate-y-2"
             class="w-full rounded-2xl overflow-hidden shadow-2xl"
-            style="max-width:310px; background:linear-gradient(160deg,#180707 0%,#220b0b 50%,#1a0808 100%); border:1px solid rgba(255,255,255,.07)"
+            style="max-width:310px; background:linear-gradient(160deg,#0f0720 0%,#1a0b35 50%,#110820 100%); border:1px solid rgba(255,255,255,.07)"
         >
             {{-- Card header --}}
             <div class="flex items-center justify-between px-3 py-2" style="border-bottom:1px solid rgba(255,255,255,.06)">
                 <div class="flex items-center gap-2.5">
-                    <div class="w-8 h-8 rounded-xl flex items-center justify-center text-base shrink-0" style="background:rgba(220,38,38,.2);border:1px solid rgba(220,38,38,.2)">🥟</div>
-                    <div>
-                        <p class="font-black text-sm leading-tight" style="color:#fff">Coxinha Dash</p>
+                    <div class="w-8 h-8 rounded-full flex items-center justify-center text-base shrink-0" >
+                            <img src="{{ asset('logo_branca.png') }}" alt="{{ config('app.name') }}" class="w-full h-full object-cover p-0.5 rounded-full">
+                        </div>           
+                         <div>
+                        <p class="font-black text-sm leading-tight" style="color:#fff">Veddi Dash</p>
                         <p class="text-xs" style="color:rgba(255,255,255,.35)">Jogue enquanto espera</p>
                     </div>
                 </div>

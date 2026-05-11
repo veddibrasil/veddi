@@ -135,7 +135,7 @@
 
         // snake body
         snake.forEach(function(seg, i) {
-            ctx.fillStyle = i === 0 ? '#da291c' : (i % 2 === 0 ? '#e8392b' : '#c0261a');
+            ctx.fillStyle = i === 0 ? '#7c3aed' : (i % 2 === 0 ? '#8b5cf6' : '#6d28d9');
             var rx = seg.x*CELL+1, ry = seg.y*CELL+1, rw = CELL-2, rh = CELL-2, r = 4;
             ctx.beginPath();
             if (ctx.roundRect) {
@@ -218,10 +218,10 @@
             'box-shadow:0 4px 20px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.06)}',
             '.mc-sg-overlay{position:absolute;inset:0;display:flex;flex-direction:column;',
             'align-items:center;justify-content:center;gap:10px;',
-            'background:rgba(250,250,248,.93);backdrop-filter:blur(4px)}',
+            'background:rgba(245,243,255,.95);backdrop-filter:blur(4px)}',
             '.mc-sg-btn{padding:8px 24px;border-radius:10px;font-size:13px;font-weight:800;',
-            'color:#fff;background:linear-gradient(135deg,#ef4444,#b91c1c);border:none;cursor:pointer;',
-            'box-shadow:0 3px 10px rgba(220,38,38,.4);transition:all .15s}',
+            'color:#fff;background:linear-gradient(135deg,#8b5cf6,#6d28d9);border:none;cursor:pointer;',
+            'box-shadow:0 3px 10px rgba(124,58,237,.4);transition:all .15s}',
             '.mc-sg-btn:hover{transform:translateY(-1px)}',
             '.mc-sg-btn:active{transform:scale(.97)}',
             '.mc-sg-dpad{display:grid;grid-template-columns:repeat(3,34px);grid-template-rows:repeat(3,34px);gap:3px}',
@@ -231,9 +231,9 @@
             'border:1px solid rgba(255,255,255,.08);',
             'transition:all .1s;-webkit-user-select:none;user-select:none}',
             '.mc-sg-dpad button:hover{background:rgba(255,255,255,.13);color:rgba(255,255,255,.8)}',
-            '.mc-sg-dpad button:active{background:rgba(220,38,38,.35);color:#fff;transform:scale(.88)}',
-            '.mc-sg-dpad-pause{background:rgba(220,38,38,.15)!important;color:rgba(239,68,68,.7)!important;font-size:11px!important}',
-            '.mc-sg-dpad-pause:active{background:rgba(220,38,38,.4)!important}',
+            '.mc-sg-dpad button:active{background:rgba(124,58,237,.35);color:#fff;transform:scale(.88)}',
+            '.mc-sg-dpad-pause{background:rgba(124,58,237,.15)!important;color:rgba(139,92,246,.7)!important;font-size:11px!important}',
+            '.mc-sg-dpad-pause:active{background:rgba(124,58,237,.4)!important}',
             '</style>',
             '<div id="mc-sg-panel">',
             '  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">',
@@ -255,12 +255,12 @@
             '    <div class="mc-sg-overlay" id="mc-sg-overlay">',
             '      <div id="mc-sg-idle" style="text-align:center">',
             '        <div style="font-size:26px">\uD83E\uDD5F</div>',
-            '        <div style="font-size:13px;font-weight:800;color:#1f2937;margin-top:4px">Coxinha Dash</div>',
+            '        <div style="font-size:13px;font-weight:800;color:#6d28d9;margin-top:4px">Veddi Dash</div>',
             '        <div style="font-size:10px;color:#9ca3af;margin-top:2px">Colete as coxinhas sem bater!</div>',
             '      </div>',
             '      <div id="mc-sg-over" style="text-align:center;display:none">',
             '        <div style="font-size:24px">\uD83D\uDCA5</div>',
-            '        <div style="font-size:13px;font-weight:800;color:#dc2626;margin-top:4px">Game Over!</div>',
+            '        <div style="font-size:13px;font-weight:800;color:#7c3aed;margin-top:4px">Game Over!</div>',
             '        <div style="font-size:10px;color:#6b7280;margin-top:2px">Pontos: <strong id="mc-sg-over-score">0</strong></div>',
             '      </div>',
             '      <button class="mc-sg-btn" id="mc-sg-play-btn">Jogar \u2192</button>',
