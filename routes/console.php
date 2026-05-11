@@ -32,7 +32,7 @@ Schedule::job(new \App\Jobs\TransferAsaasBalanceToStark)
 
 Schedule::job(new \App\Jobs\RecordPlatformYieldSnapshot)
     ->name('record-platform-yield')
-    ->dailyAt('19:30')
+    ->dailyAt('6:00')
     ->withoutOverlapping()
     ->onOneServer();
 

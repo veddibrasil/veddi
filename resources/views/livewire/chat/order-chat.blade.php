@@ -922,7 +922,7 @@
                 {{-- Itens --}}
                 <div class="max-h-44 overflow-y-auto mc-scrollbar space-y-1.5 pr-0.5">
                     @foreach ($cart as $item)
-                        <x-chat.cart-item :item="$item" />
+                        <x-chat.cart-item :item="$item" :editable="true" />
                     @endforeach
                 </div>
 
