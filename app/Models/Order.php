@@ -22,6 +22,7 @@ class Order extends Model
     protected $casts = [
         'fee_billed_at' => 'datetime',
         'delivered_email_sent_at' => 'datetime',
+        'confirmation_email_sent_at' => 'datetime',
         'scheduled_at' => 'datetime',
     ];
 

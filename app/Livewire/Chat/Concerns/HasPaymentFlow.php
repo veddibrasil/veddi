@@ -40,6 +40,14 @@ trait HasPaymentFlow
             default => 'PIX',
         };
         $this->addMessage('user', $label);
+
+        if ($this->taxId === '') {
+            $this->addMessage('bot', 'Para gerar o pagamento precisamos do seu CPF. Por favor, informe.');
+            $this->transitionTo('CHECKOUT_CPF');
+
+            return;
+        }
+
         $this->transitionTo('CHECKOUT_CONFIRM');
     }
 

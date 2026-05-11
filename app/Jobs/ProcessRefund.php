@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Exceptions\AsaasCircuitOpenException;
 use App\Models\PaymentRefund;
+use App\Services\Finance\RefundCoverageService;
 use App\Services\Refund\RefundService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -59,6 +60,21 @@ class ProcessRefund implements ShouldQueue
             ]);
 
             return;
+        }
+
+        // Asaas credit card refunds require sufficient balance before proceeding
+        if ($this->refund->gateway === 'asaas') {
+            $ready = app(RefundCoverageService::class)->ensureCoverage($this->refund);
+
+            if (! $ready) {
+                Log::channel('payments')->info('ProcessRefund: aguardando cobertura Asaas — reagendando', [
+                    'refund_id' => $this->refund->id,
+                    'coverage_status' => $this->refund->coverage_status,
+                ]);
+                $this->release(600); // retry in 10 min while coverage is being arranged
+
+                return;
+            }
         }
 
         // Simulated payments (dev environment)

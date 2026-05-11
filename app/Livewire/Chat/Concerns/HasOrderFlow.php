@@ -304,24 +304,15 @@ trait HasOrderFlow
     {
         $this->validate($this->rules(), $this->messages());
         $this->addMessage('user', $this->notes ?: '(sem observações)');
-
-        if ($this->taxId !== '') {
-            $this->addMessage('bot', 'Escolha a forma de pagamento:');
-            $this->transitionTo('CHECKOUT_PAYMENT_METHOD');
-
-            return;
-        }
-
-        $this->addMessage('bot', 'Para gerar o pagamento precisamos do seu CPF. Por favor, informe.');
-        $this->transitionTo('CHECKOUT_CPF');
+        $this->addMessage('bot', 'Escolha a forma de pagamento:');
+        $this->transitionTo('CHECKOUT_PAYMENT_METHOD');
     }
 
     public function submitCpf(): void
     {
         $this->validate($this->rules(), $this->messages());
         $this->addMessage('user', $this->taxId);
-        $this->addMessage('bot', 'Escolha a forma de pagamento:');
-        $this->transitionTo('CHECKOUT_PAYMENT_METHOD');
+        $this->transitionTo('CHECKOUT_CONFIRM');
     }
 
     // --- Order history ---

@@ -809,7 +809,7 @@
                 </div>
 
                 <div class="flex gap-2">
-                    <button wire:click="backToNotes" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
+                    <button wire:click="backToPaymentMethod" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
                     <button
                         wire:click="submitCpf"
                         class="mc-btn-primary flex-1 flex items-center justify-center gap-2"
@@ -908,7 +908,7 @@
                     </svg>
                 </div>
 
-                <button wire:click="{{ $taxId ? 'backToCpf' : 'backToNotes' }}"
+                <button wire:click="backToNotes"
                     class="w-full text-xs text-center text-gray-400 hover:text-gray-600 py-1">
                     ← Voltar
                 </button>

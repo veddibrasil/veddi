@@ -131,6 +131,8 @@ Route::middleware(['auth', 'verified', 'super.admin'])
 
         Route::get('/card-taxas', \App\Livewire\SuperAdmin\Card\index::class)->name('card.index');
 
+        Route::get('/financeiro/rendimentos', \App\Livewire\SuperAdmin\Finance\Rendimentos::class)->name('finance.rendimentos');
+
         Route::post('/simulate/asaas-payment', AsaasSimulatePaymentController::class)->name('simulate.asaas-payment');
         Route::post('/simulate/stark-payment', StarkSimulatePaymentController::class)->name('simulate.stark-payment');
     });

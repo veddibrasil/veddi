@@ -10,6 +10,7 @@ use App\Contracts\WalletServiceInterface;
 use App\Events\CompanyActivated;
 use App\Events\NewOrderPlaced;
 use App\Events\OrderStatusUpdated;
+use App\Listeners\SendOrderConfirmationEmail;
 use App\Listeners\SendOrderDeliveredEmail;
 use App\Listeners\SendWelcomeSubscriptionEmail;
 use App\Listeners\SendWhatsAppOrderNotification;
@@ -78,6 +79,7 @@ class AppServiceProvider extends ServiceProvider
     {
         Event::listen(CompanyActivated::class, SendWelcomeSubscriptionEmail::class);
         Event::listen(NewOrderPlaced::class, SendWhatsAppOrderNotification::class);
+        Event::listen(NewOrderPlaced::class, SendOrderConfirmationEmail::class);
         Event::listen(OrderStatusUpdated::class, SendWhatsAppStatusNotification::class);
         Event::listen(OrderStatusUpdated::class, SendOrderDeliveredEmail::class);
     }

@@ -20,6 +20,19 @@ class AsaasService implements AsaasServiceInterface
 
     private string $baseUrl;
 
+    private const PIX_KEY_TYPE_ALIASES = [
+        'CPF' => 'CPF',
+        'CNPJ' => 'CNPJ',
+        'EMAIL' => 'EMAIL',
+        'PHONE' => 'PHONE',
+        'TELEFONE' => 'PHONE',
+        'CELULAR' => 'PHONE',
+        'EVP' => 'EVP',
+        'RANDOM' => 'EVP',
+        'CHAVE_ALEATORIA' => 'EVP',
+        'CHAVE ALEATORIA' => 'EVP',
+    ];
+
     public function __construct(private AsaasCircuitBreaker $circuitBreaker)
     {
         $this->apiKey = config('services.asaas.api_key', '');
@@ -59,6 +72,64 @@ class AsaasService implements AsaasServiceInterface
         }
     }
 
+    private function normalizePixKeyType(?string $type): ?string
+    {
+        if ($type === null) {
+            return null;
+        }
+
+        $normalized = strtoupper(trim($type));
+
+        return self::PIX_KEY_TYPE_ALIASES[$normalized] ?? $normalized;
+    }
+
+    private function inferPixKeyType(string $pixKey): ?string
+    {
+        $key = trim($pixKey);
+
+        if ($key === '') {
+            return null;
+        }
+
+        if (filter_var($key, FILTER_VALIDATE_EMAIL)) {
+            return 'EMAIL';
+        }
+
+        // EVP is a UUID (random key)
+        if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $key)) {
+            return 'EVP';
+        }
+
+        $digits = preg_replace('/\D/', '', $key);
+
+        if (strlen($digits) === 11) {
+            return 'CPF';
+        }
+
+        if (strlen($digits) === 14) {
+            return 'CNPJ';
+        }
+
+        // PHONE varies; treat as phone when it looks like a phone number (10-13 digits including country code)
+        if (strlen($digits) >= 10 && strlen($digits) <= 13) {
+            return 'PHONE';
+        }
+
+        return null;
+    }
+
+    private function sanitizePixKey(string $pixKey, ?string $pixKeyType): string
+    {
+        $key = trim($pixKey);
+        $type = $this->normalizePixKeyType($pixKeyType);
+
+        if ($type === 'CPF' || $type === 'CNPJ' || $type === 'PHONE') {
+            return preg_replace('/\D/', '', $key);
+        }
+
+        return $key;
+    }
+
     /**
      * Probe leve para verificar se o Asaas está respondendo.
      * Usado pelo scheduler de recovery automático.
@@ -90,6 +161,7 @@ class AsaasService implements AsaasServiceInterface
             'email' => $customer->email,
             'cpfCnpj' => preg_replace('/\D/', '', $customer->cpfCnpj),
             'mobilePhone' => $customer->phone,
+            'notificationDisabled' => true,
         ], fn ($v) => $v !== null));
 
         if ($response->failed()) {
@@ -365,6 +437,7 @@ class AsaasService implements AsaasServiceInterface
 
     /**
      * Find a customer in Asaas by CPF/CNPJ; create if not found.
+     * Ensures notificationDisabled=true on found customers to suppress Asaas emails/SMS.
      *
      * @param  array{name: string, email: string, cpfCnpj: string, phone?: string}  $data
      * @return string Asaas customer ID
@@ -378,9 +451,13 @@ class AsaasService implements AsaasServiceInterface
                 $response = $this->request('get', 'customers', ['cpfCnpj' => $cpfCnpj, 'limit' => 1], 10);
 
                 if ($response->successful()) {
-                    $existing = $response->json('data.0.id');
-                    if ($existing) {
-                        return $existing;
+                    $existing = $response->json('data.0');
+                    if ($existing && isset($existing['id'])) {
+                        if (! ($existing['notificationDisabled'] ?? false)) {
+                            $this->disableCustomerNotifications($existing['id']);
+                        }
+
+                        return $existing['id'];
                     }
                 }
             } catch (AsaasCircuitOpenException $e) {
@@ -391,6 +468,18 @@ class AsaasService implements AsaasServiceInterface
         }
 
         return $this->createCustomer($customer);
+    }
+
+    private function disableCustomerNotifications(string $customerId): void
+    {
+        try {
+            $this->request('put', "customers/{$customerId}", ['notificationDisabled' => true], 10);
+        } catch (\Throwable $e) {
+            Log::channel('payments')->warning('Falha ao desabilitar notificações do cliente Asaas', [
+                'customer_id' => $customerId,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -520,6 +609,42 @@ class AsaasService implements AsaasServiceInterface
             'operation' => $data['operationType'] ?? null,
         ]);
 
+        $operationType = strtoupper((string) ($data['operationType'] ?? ''));
+        if ($operationType === '') {
+            throw new RuntimeException('Asaas transfer error: operationType ausente.');
+        }
+
+        if ($operationType === 'PIX') {
+            $pixKey = (string) ($data['pixAddressKey'] ?? '');
+            $providedType = $this->normalizePixKeyType($data['pixAddressKeyType'] ?? null);
+            $inferredType = $this->inferPixKeyType($pixKey);
+
+            if ($pixKey === '') {
+                throw new RuntimeException('Asaas transfer error: pixAddressKey ausente para operação PIX.');
+            }
+
+            if ($providedType === null || $providedType === '') {
+                if ($inferredType === null) {
+                    throw new RuntimeException('Asaas transfer error: pixAddressKeyType ausente e não foi possível inferir pelo valor.');
+                }
+                $providedType = $inferredType;
+            } elseif ($inferredType !== null && $providedType !== $inferredType) {
+                throw new RuntimeException(sprintf(
+                    'Asaas transfer error: pixAddressKeyType (%s) não corresponde ao formato da chave (%s).',
+                    $providedType,
+                    $inferredType
+                ));
+            }
+
+            if (! in_array($providedType, ['CPF', 'CNPJ', 'EMAIL', 'PHONE', 'EVP'], true)) {
+                throw new RuntimeException('Asaas transfer error: pixAddressKeyType inválido: '.$providedType);
+            }
+
+            $data['operationType'] = 'PIX';
+            $data['pixAddressKeyType'] = $providedType;
+            $data['pixAddressKey'] = $this->sanitizePixKey($pixKey, $providedType);
+        }
+
         $response = $this->request('post', 'transfers', $data);
 
         if ($response->failed()) {
@@ -527,6 +652,10 @@ class AsaasService implements AsaasServiceInterface
                 'type' => 'payments',
                 'status' => $response->status(),
                 'body' => $response->body(),
+                'operation' => $data['operationType'] ?? null,
+                'value' => $data['value'] ?? null,
+                'pix_key_type' => $data['pixAddressKeyType'] ?? null,
+                'pix_key_length' => isset($data['pixAddressKey']) ? strlen((string) $data['pixAddressKey']) : null,
             ]);
             throw new RuntimeException('Asaas transfer error: '.$response->body(), $response->status());
         }
@@ -577,6 +706,119 @@ class AsaasService implements AsaasServiceInterface
         ]);
 
         return $data;
+    }
+
+    /**
+     * Retorna o saldo disponível na conta Asaas da plataforma.
+     *
+     * @return array{balance: float, totalInvoicedBalance: float}
+     */
+    public function getBalance(): array
+    {
+        try {
+            $response = $this->request('get', 'finance/balance', [], 10);
+
+            if ($response->failed()) {
+                Log::channel('payments')->warning('Falha ao buscar saldo Asaas', [
+                    'status' => $response->status(),
+                ]);
+
+                return ['balance' => 0.0, 'totalInvoicedBalance' => 0.0];
+            }
+
+            return [
+                'balance' => (float) ($response->json('balance') ?? 0.0),
+                'totalInvoicedBalance' => (float) ($response->json('totalInvoicedBalance') ?? 0.0),
+            ];
+        } catch (AsaasCircuitOpenException) {
+            return ['balance' => 0.0, 'totalInvoicedBalance' => 0.0];
+        } catch (\Throwable $e) {
+            Log::channel('payments')->warning('Exceção ao buscar saldo Asaas', ['error' => $e->getMessage()]);
+
+            return ['balance' => 0.0, 'totalInvoicedBalance' => 0.0];
+        }
+    }
+
+    /**
+     * Simula antecipação de um recebível no Asaas.
+     * Retorna netValue (após taxa) e fee, ou null se não elegível.
+     *
+     * @return array{netValue: float, fee: float, eligible: bool}
+     */
+    public function simulateAnticipation(string $asaasPaymentId): array
+    {
+        try {
+            $response = $this->request('post', 'anticipations/simulate', [
+                'payment' => $asaasPaymentId,
+            ], 15);
+
+            if ($response->failed()) {
+                Log::channel('payments')->warning('Simulação de antecipação Asaas falhou', [
+                    'asaas_payment_id' => $asaasPaymentId,
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+
+                return ['netValue' => 0.0, 'fee' => 0.0, 'eligible' => false];
+            }
+
+            $data = $response->json();
+
+            return [
+                'netValue' => (float) ($data['netValue'] ?? 0.0),
+                'fee' => (float) ($data['anticipationFee'] ?? 0.0),
+                'eligible' => true,
+            ];
+        } catch (AsaasCircuitOpenException) {
+            return ['netValue' => 0.0, 'fee' => 0.0, 'eligible' => false];
+        } catch (\Throwable $e) {
+            Log::channel('payments')->warning('Exceção na simulação de antecipação Asaas', [
+                'asaas_payment_id' => $asaasPaymentId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['netValue' => 0.0, 'fee' => 0.0, 'eligible' => false];
+        }
+    }
+
+    /**
+     * Solicita antecipação de um recebível no Asaas.
+     * O saldo fica disponível após RECEIVABLE_ANTICIPATION_CREDITED webhook.
+     *
+     * @return array{id: string, status: string}
+     */
+    public function createAnticipation(string $asaasPaymentId): array
+    {
+        Log::channel('payments')->info('Solicitando antecipação no Asaas', [
+            'asaas_payment_id' => $asaasPaymentId,
+        ]);
+
+        $response = $this->request('post', 'anticipations', [
+            'payment' => $asaasPaymentId,
+        ]);
+
+        if ($response->failed()) {
+            Log::channel('discord')->error('Erro ao solicitar antecipação no Asaas', [
+                'type' => 'payments',
+                'asaas_payment_id' => $asaasPaymentId,
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+            throw new RuntimeException('Asaas anticipation error: '.$response->body(), $response->status());
+        }
+
+        $data = $response->json();
+
+        Log::channel('payments')->info('Antecipação solicitada no Asaas', [
+            'anticipation_id' => $data['id'] ?? null,
+            'asaas_payment_id' => $asaasPaymentId,
+            'status' => $data['status'] ?? null,
+        ]);
+
+        return [
+            'id' => $data['id'] ?? '',
+            'status' => $data['status'] ?? '',
+        ];
     }
 
     /**

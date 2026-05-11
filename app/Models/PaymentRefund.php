@@ -25,12 +25,15 @@ class PaymentRefund extends Model
         'failure_message',
         'requested_at',
         'processed_at',
+        'coverage_status',
+        'coverage_meta',
     ];
 
     protected $casts = [
         'amount' => 'decimal:2',
         'raw_request' => 'array',
         'raw_response' => 'array',
+        'coverage_meta' => 'array',
         'requested_at' => 'datetime',
         'processed_at' => 'datetime',
     ];

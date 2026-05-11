@@ -55,4 +55,10 @@ interface AsaasServiceInterface
     public function refundPayment(string $asaasPaymentId, ?float $value = null): array;
 
     public function validateWebhookToken(string $token): bool;
+
+    public function getBalance(): array;
+
+    public function simulateAnticipation(string $asaasPaymentId): array;
+
+    public function createAnticipation(string $asaasPaymentId): array;
 }

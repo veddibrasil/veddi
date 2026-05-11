@@ -36,7 +36,7 @@ return [
     'release_days' => [
         'pix' => (int) env('PIX_RELEASE_DAYS', 2),
         'boleto' => 2,
-        'cartao' => 15,
+        'cartao' => 32,
     ],
 
     /*

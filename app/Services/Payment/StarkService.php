@@ -212,7 +212,7 @@ class StarkService implements PaymentGatewayInterface
      */
     public function getBalance(): float
     {
-        $balance = Balance::current();
+        $balance = Balance::get();
 
         return $balance->amount / 100;
     }

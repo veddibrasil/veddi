@@ -15,6 +15,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 
 class ProcessAsaasWebhook implements ShouldQueue
 {
@@ -33,6 +34,20 @@ class ProcessAsaasWebhook implements ShouldQueue
 
     public function handle(CompanyService $companyService): void
     {
+        // Anticipation events — handled before payment routing
+        if (str_starts_with($this->event, 'RECEIVABLE_ANTICIPATION_')) {
+            $this->handleAnticipationEvent();
+
+            return;
+        }
+
+        // Transfer events (Asaas→Stark daily transfers)
+        if (in_array($this->event, ['TRANSFER_DONE', 'TRANSFER_FAILED'])) {
+            $this->handleTransferEvent();
+
+            return;
+        }
+
         // Check if this is an order payment first (has externalReference = order_id)
         $externalRef = $this->payload['payment']['externalReference'] ?? null;
 
@@ -282,6 +297,75 @@ class ProcessAsaasWebhook implements ShouldQueue
             : now();
 
         $companyService->markOverdue($company, $dueDate);
+    }
+
+    private function handleAnticipationEvent(): void
+    {
+        $anticipation = $this->payload['anticipation'] ?? [];
+        $anticipationId = $anticipation['id'] ?? null;
+        $asaasPaymentId = $anticipation['payment'] ?? null;
+
+        Log::channel('payments')->info('Asaas webhook: evento de antecipação recebido', [
+            'event' => $this->event,
+            'anticipation_id' => $anticipationId,
+            'asaas_payment_id' => $asaasPaymentId,
+        ]);
+
+        if ($this->event !== 'RECEIVABLE_ANTICIPATION_CREDITED' || ! $asaasPaymentId) {
+            return;
+        }
+
+        // Find refund awaiting this anticipation and redispatch ProcessRefund
+        $refund = PaymentRefund::whereJsonContains('coverage_meta->asaas_payment_id', $asaasPaymentId)
+            ->where('coverage_status', 'awaiting_anticipation')
+            ->whereIn('status', ['requested', 'in_progress'])
+            ->first();
+
+        if (! $refund) {
+            Log::channel('payments')->debug('Asaas webhook: nenhum estorno aguardando antecipação', [
+                'asaas_payment_id' => $asaasPaymentId,
+            ]);
+
+            return;
+        }
+
+        $refund->update(['coverage_status' => 'covered']);
+
+        Log::channel('payments')->info('Asaas webhook: antecipação creditada — redespachando estorno', [
+            'refund_id' => $refund->id,
+            'asaas_payment_id' => $asaasPaymentId,
+        ]);
+
+        // Reset to requested so ProcessRefund will proceed
+        if ($refund->status === 'in_progress' && $refund->external_refund_id === null) {
+            $refund->update(['status' => 'requested']);
+        }
+
+        Queue::later(10, new ProcessRefund($refund->fresh()));
+    }
+
+    private function handleTransferEvent(): void
+    {
+        $transfer = $this->payload['transfer'] ?? [];
+        $transferId = $transfer['id'] ?? null;
+        $value = $transfer['value'] ?? null;
+
+        if ($this->event === 'TRANSFER_DONE') {
+            Log::channel('payments')->info('Asaas webhook: transferência concluída', [
+                'transfer_id' => $transferId,
+                'value' => $value,
+            ]);
+
+            return;
+        }
+
+        // TRANSFER_FAILED
+        Log::channel('discord')->error('Asaas webhook: transferência falhou', [
+            'type' => 'payments',
+            'transfer_id' => $transferId,
+            'value' => $value,
+            'payload' => $this->payload,
+        ]);
     }
 
     public function failed(\Throwable $exception): void

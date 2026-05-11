@@ -353,6 +353,7 @@
                             <ul class="list">
                                 <li>O status do pedido é atualizado em tempo real na tela do cliente</li>
                                 <li>O cliente pode acompanhar: aguardando pagamento → pago → em preparo → pronto → entregue</li>
+                                <li>Se o cliente tiver e-mail cadastrado, recebe um e-mail de confirmação do pedido</li>
                             </ul>
                         </div>
                     </div>

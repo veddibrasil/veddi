@@ -8,7 +8,6 @@ use App\DTOs\CreditCardDTO;
 use App\DTOs\CreditCardHolderDTO;
 use App\Events\OrderStatusUpdated;
 use App\Exceptions\AsaasCircuitOpenException;
-use App\Mail\OrderConfirmation;
 use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Order;
@@ -18,7 +17,6 @@ use App\Services\Payment\PaymentOrchestrator;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
 class ProcessOrder implements ShouldQueue
@@ -70,23 +68,6 @@ class ProcessOrder implements ShouldQueue
                 'order_id' => $this->order->id,
                 'order_number' => $this->order->order_number,
             ]);
-
-            if ($this->customer->email) {
-                try {
-                    Mail::to($this->customer->email)
-                        ->queue(new OrderConfirmation(
-                            $this->order->load('items'),
-                            $this->customer,
-                            $this->company,
-                        ));
-                } catch (\Throwable $e) {
-                    Log::channel('orders')->warning('Falha ao enfileirar email de confirmação', [
-                        'order_id' => $this->order->id,
-                        'email' => $this->customer->email,
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            }
 
             // Notifica o componente Livewire via Reverb para carregar os dados de pagamento
             OrderStatusUpdated::dispatch($this->order->fresh());
