@@ -21,12 +21,16 @@ use App\Models\Coupon;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Models\Role;
+use App\Models\User;
 use App\Policies\BranchPolicy;
 use App\Policies\CompanyPolicy;
 use App\Policies\CouponPolicy;
 use App\Policies\OrderPolicy;
 use App\Policies\ProductCategoryPolicy;
 use App\Policies\ProductPolicy;
+use App\Policies\RolePolicy;
+use App\Policies\UserPolicy;
 use App\Services\Finance\TransactionService;
 use App\Services\Finance\WalletService;
 use App\Services\Order\OrderService;
@@ -92,6 +96,13 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Branch::class, BranchPolicy::class);
         Gate::policy(Coupon::class, CouponPolicy::class);
         Gate::policy(Company::class, CompanyPolicy::class);
+        Gate::policy(Role::class, RolePolicy::class);
+        Gate::policy(User::class, UserPolicy::class);
+
+        Gate::define('stock.view', fn (User $user) => $user->hasPermission('stock.view', app('current.company')));
+        Gate::define('stock.adjust', fn (User $user) => $user->hasPermission('stock.adjust', app('current.company')));
+        Gate::define('stock.toggle', fn (User $user) => $user->hasPermission('stock.toggle', app('current.company')));
+        Gate::define('company.settings', fn (User $user) => $user->hasPermission('company.settings', app('current.company')));
     }
 
     protected function configureNotifications(): void

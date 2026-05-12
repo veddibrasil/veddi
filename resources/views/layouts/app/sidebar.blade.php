@@ -53,11 +53,14 @@
                             <flux:sidebar.item icon="list-bullet" :href="route('admin.orders.index')" :current="request()->routeIs('admin.orders.index') || request()->routeIs('admin.orders.show')" wire:navigate>
                                 Pedidos
                             </flux:sidebar.item>
-                            <flux:sidebar.item icon="chart-bar" :href="route('admin.orders.report')" :current="request()->routeIs('admin.orders.report')" wire:navigate>
-                                Relatório
-                            </flux:sidebar.item>
+
             
                         </flux:sidebar.group>
+                    @endif
+                    @if ($can('orders.report'))
+                        <flux:sidebar.item icon="chart-bar" :href="route('admin.orders.report')" :current="request()->routeIs('admin.orders.report')" wire:navigate>
+                            Relatório
+                        </flux:sidebar.item>
                     @endif
 
                     @php

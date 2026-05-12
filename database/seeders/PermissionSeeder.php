@@ -12,8 +12,9 @@ class PermissionSeeder extends Seeder
     {
         $permissions = [
             // Pedidos
-            ['name' => 'orders.view',   'group' => 'orders',     'label' => 'Visualizar pedidos'],
-            ['name' => 'orders.update', 'group' => 'orders',     'label' => 'Atualizar status de pedidos'],
+            ['name' => 'orders.view',   'group' => 'orders', 'label' => 'Visualizar pedidos'],
+            ['name' => 'orders.update', 'group' => 'orders', 'label' => 'Atualizar status de pedidos'],
+            ['name' => 'orders.report', 'group' => 'orders', 'label' => 'Visualizar relatório de pedidos'],
 
             // Produtos
             ['name' => 'products.view',   'group' => 'products', 'label' => 'Visualizar produtos'],
@@ -60,7 +61,7 @@ class PermissionSeeder extends Seeder
         }
 
         $companyAdminPermissions = [
-            'orders.view', 'orders.update',
+            'orders.view', 'orders.update', 'orders.report',
             'products.view', 'products.create', 'products.update', 'products.delete',
             'categories.view', 'categories.create', 'categories.update', 'categories.delete',
             'branches.view', 'branches.create', 'branches.update', 'branches.delete',
@@ -72,7 +73,7 @@ class PermissionSeeder extends Seeder
         ];
 
         $branchManagerPermissions = [
-            'orders.view', 'orders.update',
+            'orders.view', 'orders.update', 'orders.report',
             'products.view', 'products.create', 'products.update', 'products.delete',
             'categories.view', 'categories.create', 'categories.update', 'categories.delete',
             'branches.view',

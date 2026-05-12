@@ -25,6 +25,11 @@ class OrderPolicy
             && $order->company_id === $this->company()->id;
     }
 
+    public function report(User $user): bool
+    {
+        return $user->hasPermission('orders.report', $this->company());
+    }
+
     private function company(): Company
     {
         return app('current.company');

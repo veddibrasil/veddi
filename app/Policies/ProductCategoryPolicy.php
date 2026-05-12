@@ -13,6 +13,11 @@ class ProductCategoryPolicy
         return $user->hasPermission('categories.view', $this->company());
     }
 
+    public function view(User $user, ProductCategory $category): bool
+    {
+        return $user->hasPermission('categories.view', $this->company());
+    }
+
     public function create(User $user): bool
     {
         return $user->hasPermission('categories.create', $this->company());

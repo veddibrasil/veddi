@@ -37,7 +37,7 @@ class Report extends Component
             $this->canView = true;
         } elseif (app()->bound('current.company')) {
             $company = app('current.company');
-            $this->canView = $user->hasPermission('orders.view', $company);
+            $this->canView = $user->hasPermission('orders.report', $company);
         }
 
         abort_unless($this->canView, 403);
