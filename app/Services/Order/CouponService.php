@@ -120,10 +120,12 @@ class CouponService
         )));
         $products = Product::withoutGlobalScope(CompanyScope::class)
             ->whereIn('id', $productIds)
+            ->with('optionGroups')
             ->get()
             ->keyBy('id');
 
         $base = 0.0;
+        $optionPricing = app(CartOptionPricing::class);
 
         foreach ($cart as $cartKey => $item) {
             $pid = (int) ($item['product_id'] ?? explode('_', (string) $cartKey)[0]);
@@ -139,13 +141,9 @@ class CouponService
             };
 
             if ($match) {
-                $optionsExtra = 0.0;
-                foreach ($item['options'] ?? [] as $group) {
-                    foreach ($group['selections'] ?? [] as $sel) {
-                        $optionsExtra += ($sel['qty'] ?? 0) * ($sel['additional_price'] ?? 0);
-                    }
-                }
-                $base += ((float) $product->effective_price + $optionsExtra) * $item['qty'];
+                $resolved = $optionPricing->resolve($product, is_array($item) ? $item : []);
+                $optionsExtra = (float) $resolved['extra'];
+                $base += ((float) $product->effective_price + $optionsExtra) * (int) ($item['qty'] ?? 0);
             }
         }
 

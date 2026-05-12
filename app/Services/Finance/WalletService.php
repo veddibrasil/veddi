@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\CompanyWalletEntry;
 use App\Models\Order;
 use App\Models\Payment;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class WalletService implements WalletServiceInterface
@@ -22,6 +23,27 @@ class WalletService implements WalletServiceInterface
         if (! $company) {
             Log::channel('payments')->warning('Empresa do pedido não encontrada para crédito na carteira', [
                 'order_id' => $order->id,
+            ]);
+
+            return;
+        }
+
+        $reference = $payment->external_id;
+        if (! $reference) {
+            Log::channel('payments')->warning('Pagamento sem external_id — evitando crédito duplicado/indeterminado na carteira', [
+                'order_id' => $order->id,
+                'payment_id' => $payment->id,
+            ]);
+
+            return;
+        }
+
+        // Idempotência: webhooks/jobs podem repetir. Se já creditou este pedido para este pagamento, não duplica.
+        if (CompanyWalletEntry::where('order_id', $order->id)->where('reference', $reference)->where('type', 'credit')->exists()) {
+            Log::channel('payments')->info('Crédito na carteira já existe (idempotente)', [
+                'company_id' => $company->id,
+                'order_id' => $order->id,
+                'reference' => $reference,
             ]);
 
             return;
@@ -44,49 +66,51 @@ class WalletService implements WalletServiceInterface
 
         $feeAmount = round(($baseAmount - $pixFee - $cardFee) * $feeRate, 2);
 
-        // Crédito bruto: valor cheio do pedido (sem descontar taxas absorvidas).
-        // As taxas absorvidas entram como lançamentos negativos separados.
-        CompanyWalletEntry::create([
-            'company_id' => $company->id,
-            'order_id' => $order->id,
-            'type' => 'credit',
-            'amount' => $baseAmount,
-            'description' => "Pedido #{$order->order_number}",
-            'reference' => $payment->external_id,
-        ]);
-
-        if ($pixFee > 0) {
+        DB::transaction(function () use ($company, $order, $reference, $payment, $baseAmount, $pixFee, $cardFee, $feeAmount) {
+            // Crédito bruto: valor cheio do pedido (sem descontar taxas absorvidas).
+            // As taxas absorvidas entram como lançamentos separados (subtraídas do saldo).
             CompanyWalletEntry::create([
                 'company_id' => $company->id,
                 'order_id' => $order->id,
-                'type' => 'pix_fee',
-                'amount' => $pixFee,
-                'description' => "Taxa PIX absorvida - Pedido #{$order->order_number}",
-                'reference' => $payment->external_id,
+                'type' => 'credit',
+                'amount' => $baseAmount,
+                'description' => "Pedido #{$order->order_number}",
+                'reference' => $reference,
             ]);
-        }
 
-        if ($cardFee > 0) {
-            CompanyWalletEntry::create([
-                'company_id' => $company->id,
-                'order_id' => $order->id,
-                'type' => 'card_fee',
-                'amount' => $cardFee,
-                'description' => "Taxa cartão absorvida - Pedido #{$order->order_number}",
-                'reference' => $payment->external_id,
-            ]);
-        }
+            if ($pixFee > 0) {
+                CompanyWalletEntry::create([
+                    'company_id' => $company->id,
+                    'order_id' => $order->id,
+                    'type' => 'pix_fee',
+                    'amount' => $pixFee,
+                    'description' => "Taxa PIX absorvida - Pedido #{$order->order_number}",
+                    'reference' => $reference,
+                ]);
+            }
 
-        if ($feeAmount > 0) {
-            CompanyWalletEntry::create([
-                'company_id' => $company->id,
-                'order_id' => $order->id,
-                'type' => 'fee',
-                'amount' => $feeAmount,
-                'description' => "Taxa plataforma - Pedido #{$order->order_number}",
-                'reference' => $payment->external_id,
-            ]);
-        }
+            if ($cardFee > 0) {
+                CompanyWalletEntry::create([
+                    'company_id' => $company->id,
+                    'order_id' => $order->id,
+                    'type' => 'card_fee',
+                    'amount' => $cardFee,
+                    'description' => "Taxa cartão absorvida - Pedido #{$order->order_number}",
+                    'reference' => $reference,
+                ]);
+            }
+
+            if ($feeAmount > 0) {
+                CompanyWalletEntry::create([
+                    'company_id' => $company->id,
+                    'order_id' => $order->id,
+                    'type' => 'fee',
+                    'amount' => $feeAmount,
+                    'description' => "Taxa plataforma - Pedido #{$order->order_number}",
+                    'reference' => $reference,
+                ]);
+            }
+        });
 
         Log::channel('payments')->info('Carteira da empresa creditada', [
             'company_id' => $company->id,
@@ -125,6 +149,27 @@ class WalletService implements WalletServiceInterface
             return;
         }
 
+        $reference = $payment->external_id;
+        if (! $reference) {
+            Log::channel('payments')->warning('Pagamento sem external_id — evitando débito/estorno indeterminado na carteira', [
+                'order_id' => $order->id,
+                'payment_id' => $payment->id,
+            ]);
+
+            return;
+        }
+
+        // Idempotência: evita lançar estorno duas vezes para o mesmo pagamento.
+        if (CompanyWalletEntry::where('order_id', $order->id)->where('reference', $reference)->where('type', 'refund')->exists()) {
+            Log::channel('payments')->info('Débito de reembolso já existe (idempotente)', [
+                'company_id' => $company->id,
+                'order_id' => $order->id,
+                'reference' => $reference,
+            ]);
+
+            return;
+        }
+
         // Reproduce the same amounts used in creditForOrder
         $baseAmount = (float) ($payment->original_amount ?? $payment->amount);
         $feeRate = $company->plan?->feePercentage() ?? 0.0;
@@ -141,51 +186,55 @@ class WalletService implements WalletServiceInterface
 
         $feeAmount = round(($baseAmount - $pixFee - $cardFee) * $feeRate, 2);
 
-        // Reverse the credit entry
-        CompanyWalletEntry::create([
-            'company_id' => $company->id,
-            'order_id' => $order->id,
-            'type' => 'refund',
-            'amount' => -$baseAmount,
-            'description' => "Estorno crédito - Pedido #{$order->order_number}",
-            'reference' => $payment->external_id,
-        ]);
-
-        // Reverse the pix_fee entry (restore the deducted fee)
-        if ($pixFee > 0) {
+        // Balance semantics em CompanyWalletEntry::balanceFor():
+        // - type=credit soma amount
+        // - qualquer outro type subtrai amount
+        //
+        // Para "desfazer" o crédito líquido (+base - pixFee - cardFee - feeAmount),
+        // criamos lançamentos refund com sinais que resultam em: -base + pixFee + cardFee + feeAmount.
+        DB::transaction(function () use ($company, $order, $reference, $baseAmount, $pixFee, $cardFee, $feeAmount) {
             CompanyWalletEntry::create([
                 'company_id' => $company->id,
                 'order_id' => $order->id,
                 'type' => 'refund',
-                'amount' => $pixFee,
-                'description' => "Estorno taxa PIX - Pedido #{$order->order_number}",
-                'reference' => $payment->external_id,
+                'amount' => $baseAmount,
+                'description' => "Estorno pedido (remover crédito) - Pedido #{$order->order_number}",
+                'reference' => $reference,
             ]);
-        }
 
-        // Reverse the card_fee entry (restore the deducted fee)
-        if ($cardFee > 0) {
-            CompanyWalletEntry::create([
-                'company_id' => $company->id,
-                'order_id' => $order->id,
-                'type' => 'refund',
-                'amount' => $cardFee,
-                'description' => "Estorno taxa cartão - Pedido #{$order->order_number}",
-                'reference' => $payment->external_id,
-            ]);
-        }
+            if ($pixFee > 0) {
+                CompanyWalletEntry::create([
+                    'company_id' => $company->id,
+                    'order_id' => $order->id,
+                    'type' => 'refund',
+                    'amount' => -$pixFee,
+                    'description' => "Estorno taxa PIX (reverter desconto) - Pedido #{$order->order_number}",
+                    'reference' => $reference,
+                ]);
+            }
 
-        // Reverse the platform fee entry (restore the fee charged)
-        if ($feeAmount > 0) {
-            CompanyWalletEntry::create([
-                'company_id' => $company->id,
-                'order_id' => $order->id,
-                'type' => 'refund',
-                'amount' => $feeAmount,
-                'description' => "Estorno taxa plataforma - Pedido #{$order->order_number}",
-                'reference' => $payment->external_id,
-            ]);
-        }
+            if ($cardFee > 0) {
+                CompanyWalletEntry::create([
+                    'company_id' => $company->id,
+                    'order_id' => $order->id,
+                    'type' => 'refund',
+                    'amount' => -$cardFee,
+                    'description' => "Estorno taxa cartão (reverter desconto) - Pedido #{$order->order_number}",
+                    'reference' => $reference,
+                ]);
+            }
+
+            if ($feeAmount > 0) {
+                CompanyWalletEntry::create([
+                    'company_id' => $company->id,
+                    'order_id' => $order->id,
+                    'type' => 'refund',
+                    'amount' => -$feeAmount,
+                    'description' => "Estorno taxa plataforma (reverter desconto) - Pedido #{$order->order_number}",
+                    'reference' => $reference,
+                ]);
+            }
+        });
 
         $netDebit = $baseAmount - $pixFee - $cardFee - $feeAmount;
 

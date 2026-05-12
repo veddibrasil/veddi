@@ -24,21 +24,21 @@ class IdentifyCompany
             }
         }
 
-        // 2. Try slug from route parameter or query string
+        // 2. Try slug from route parameter
         if (! $company) {
-            $slug = $request->route('company') ?? $request->query('company');
+            $slug = $request->route('company');
             $company = $slug
                 ? Company::where('slug', $slug)->where('active', true)->first()
                 : null;
         }
 
-        // 3. Authenticated user's company (multi-tenant: resolve to the user's own company)
+        // 3. Authenticated user's company (multi-tenant: never trust query-string overrides)
         if (! $company && auth()->check()) {
             $company = auth()->user()->companies()->where('active', true)->orderBy('id')->first();
         }
 
-        // 4. Fallback: first active company (single-tenant dev compatibility)
-        if (! $company) {
+        // 4. Fallback: first active company (single-tenant dev compatibility; debug only)
+        if (! $company && config('app.debug')) {
             $company = Company::where('active', true)->orderBy('id')->first();
         }
 

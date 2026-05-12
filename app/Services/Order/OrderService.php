@@ -51,6 +51,7 @@ class OrderService implements OrderServiceInterface
                 ->where('branch_product.available', true)
             )
             ->where('active', true)
+            ->with('optionGroups')
             ->get()
             ->keyBy('id');
 
@@ -64,15 +65,13 @@ class OrderService implements OrderServiceInterface
 
         $order = DB::transaction(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer) {
             $subtotal = 0.0;
+            $optionPricing = app(CartOptionPricing::class);
             foreach ($cart as $cartKey => $item) {
                 $pid = (int) ($item['product_id'] ?? explode('_', (string) $cartKey)[0]);
-                $optionsExtra = 0.0;
-                foreach ($item['options'] ?? [] as $group) {
-                    foreach ($group['selections'] ?? [] as $sel) {
-                        $optionsExtra += ($sel['qty'] ?? 0) * ($sel['additional_price'] ?? 0);
-                    }
-                }
-                $subtotal += ((float) $products[$pid]->effective_price + $optionsExtra) * $item['qty'];
+                $product = $products[$pid];
+                $resolved = $optionPricing->resolve($product, is_array($item) ? $item : []);
+                $optionsExtra = (float) $resolved['extra'];
+                $subtotal += ((float) $product->effective_price + $optionsExtra) * (int) ($item['qty'] ?? 0);
             }
 
             $discount = 0.0;
@@ -127,12 +126,8 @@ class OrderService implements OrderServiceInterface
             foreach ($cart as $cartKey => $item) {
                 $pid = (int) ($item['product_id'] ?? explode('_', (string) $cartKey)[0]);
                 $product = $products[$pid];
-                $optionsExtra = 0.0;
-                foreach ($item['options'] ?? [] as $group) {
-                    foreach ($group['selections'] ?? [] as $sel) {
-                        $optionsExtra += ($sel['qty'] ?? 0) * ($sel['additional_price'] ?? 0);
-                    }
-                }
+                $resolved = $optionPricing->resolve($product, is_array($item) ? $item : []);
+                $optionsExtra = (float) $resolved['extra'];
                 $unitPrice = (float) $product->effective_price + $optionsExtra;
 
                 OrderItem::create([
@@ -140,9 +135,9 @@ class OrderService implements OrderServiceInterface
                     'product_id' => $pid,
                     'product_name' => $product->name,
                     'unit_price' => $unitPrice,
-                    'quantity' => $item['qty'],
-                    'subtotal' => $unitPrice * $item['qty'],
-                    'options' => $item['options'] ?? null,
+                    'quantity' => (int) ($item['qty'] ?? 0),
+                    'subtotal' => $unitPrice * (int) ($item['qty'] ?? 0),
+                    'options' => $resolved['options'] !== [] ? $resolved['options'] : null,
                 ]);
             }
 

@@ -19,10 +19,11 @@ return Application::configure(basePath: dirname(__DIR__))
                 \Illuminate\Http\Request::HEADER_X_FORWARDED_PORT |
                 \Illuminate\Http\Request::HEADER_X_FORWARDED_PROTO,
         );
-        $middleware->validateCsrfTokens(except: [
-            'webhooks/*',
-            'dev/simulate/*',
-        ]);
+        $csrfExcept = ['webhooks/*'];
+        if (filter_var(env('APP_DEBUG', false), FILTER_VALIDATE_BOOLEAN)) {
+            $csrfExcept[] = 'dev/simulate/*';
+        }
+        $middleware->validateCsrfTokens(except: $csrfExcept);
         // Resolve tenant on every web request (including Livewire AJAX calls)
         $middleware->web(append: [
             \App\Http\Middleware\IdentifyCompany::class,

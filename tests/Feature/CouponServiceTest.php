@@ -9,6 +9,8 @@ use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Models\ProductOption;
+use App\Models\ProductOptionGroup;
 use App\Services\Order\CouponService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -216,6 +218,61 @@ test('calculateDiscount calcula desconto percentual sobre pedido', function () {
     expect($discount)->toBe(20.0);
 });
 
+test('calculateDiscount não confia no additional_price do client-side (usa DB)', function () {
+    $ctx = setupCouponContext();
+    config()->set('plans.free.fee_percentage', 0.0);
+
+    $group = ProductOptionGroup::withoutGlobalScopes()->create([
+        'company_id' => $ctx['company']->id,
+        'name' => 'Adicionais',
+        'total_qty' => 10,
+        'fixed' => false,
+        'sort_order' => 1,
+    ]);
+
+    $option = ProductOption::withoutGlobalScopes()->create([
+        'product_option_group_id' => $group->id,
+        'name' => 'Bacon',
+        'active' => true,
+        'additional_price' => 5.00,
+        'default_qty' => 0,
+        'sort_order' => 1,
+    ]);
+
+    $group->products()->attach($ctx['product']->id, ['sort_order' => 1]);
+
+    $coupon = makeCoupon([
+        'type' => 'percentage',
+        'discount_value' => 10,
+        'scope' => 'product',
+        'scope_ids' => [$ctx['product']->id],
+    ]);
+
+    // client tenta fraudar additional_price (0.01), mas o servidor deve usar 5.00 do DB
+    $cart = [
+        (string) $ctx['product']->id => [
+            'product_id' => $ctx['product']->id,
+            'qty' => 1,
+            'options' => [
+                $group->id => [
+                    'selections' => [
+                        $option->id => [
+                            'id' => $option->id,
+                            'qty' => 1,
+                            'additional_price' => 0.01,
+                        ],
+                    ],
+                ],
+            ],
+        ],
+    ];
+
+    $subtotal = (float) $ctx['product']->effective_price + 5.00;
+    $discount = app(CouponService::class)->calculateDiscount($coupon, $cart, $subtotal, 0.0);
+
+    expect($discount)->toBe(3.5); // 10% de (30 + 5)
+});
+
 test('calculateDiscount calcula desconto fixo', function () {
     setupCouponContext();
     $coupon = makeCoupon(['type' => 'fixed', 'discount_value' => 15]);
@@ -296,13 +353,34 @@ test('calculateDiscount percentual com escopo de produto inclui opções pagas',
     ]);
 
     // Produto R$30 + opção extra R$5 = R$35 por unidade, qty=2 → base R$70
+    $group = ProductOptionGroup::withoutGlobalScopes()->create([
+        'company_id' => $ctx['company']->id,
+        'name' => 'Adicionais',
+        'total_qty' => 10,
+        'fixed' => false,
+        'sort_order' => 1,
+    ]);
+    $option = ProductOption::withoutGlobalScopes()->create([
+        'product_option_group_id' => $group->id,
+        'name' => 'Extra',
+        'active' => true,
+        'additional_price' => 5.00,
+        'default_qty' => 0,
+        'sort_order' => 1,
+    ]);
+    $group->products()->attach($ctx['product']->id, ['sort_order' => 1]);
+
     $cart = [
         $ctx['product']->id => [
             'qty' => 2,
             'name' => 'X-Burguer',
             'price' => 30.0,
             'options' => [
-                ['selections' => [['qty' => 1, 'additional_price' => 5.0]]],
+                $group->id => [
+                    'selections' => [
+                        $option->id => ['id' => $option->id, 'qty' => 1, 'additional_price' => 0.01],
+                    ],
+                ],
             ],
         ],
     ];
@@ -322,13 +400,34 @@ test('calculateDiscount fixo com escopo de categoria inclui opções pagas', fun
     ]);
 
     // Produto R$30 + opção extra R$10 = R$40
+    $group = ProductOptionGroup::withoutGlobalScopes()->create([
+        'company_id' => $ctx['company']->id,
+        'name' => 'Adicionais',
+        'total_qty' => 10,
+        'fixed' => false,
+        'sort_order' => 1,
+    ]);
+    $option = ProductOption::withoutGlobalScopes()->create([
+        'product_option_group_id' => $group->id,
+        'name' => 'Extra',
+        'active' => true,
+        'additional_price' => 10.00,
+        'default_qty' => 0,
+        'sort_order' => 1,
+    ]);
+    $group->products()->attach($ctx['product']->id, ['sort_order' => 1]);
+
     $cart = [
         $ctx['product']->id => [
             'qty' => 1,
             'name' => 'X-Burguer',
             'price' => 30.0,
             'options' => [
-                ['selections' => [['qty' => 1, 'additional_price' => 10.0]]],
+                $group->id => [
+                    'selections' => [
+                        $option->id => ['id' => $option->id, 'qty' => 1, 'additional_price' => 0.01],
+                    ],
+                ],
             ],
         ],
     ];
@@ -348,13 +447,34 @@ test('calculateDiscount percentual escopo produto com opção variável (qty > 1
     ]);
 
     // Produto R$30 + 2 unidades de molho a R$2 cada = R$34 base
+    $group = ProductOptionGroup::withoutGlobalScopes()->create([
+        'company_id' => $ctx['company']->id,
+        'name' => 'Molhos',
+        'total_qty' => 10,
+        'fixed' => false,
+        'sort_order' => 1,
+    ]);
+    $option = ProductOption::withoutGlobalScopes()->create([
+        'product_option_group_id' => $group->id,
+        'name' => 'Molho',
+        'active' => true,
+        'additional_price' => 2.00,
+        'default_qty' => 0,
+        'sort_order' => 1,
+    ]);
+    $group->products()->attach($ctx['product']->id, ['sort_order' => 1]);
+
     $cart = [
         $ctx['product']->id => [
             'qty' => 1,
             'name' => 'X-Burguer',
             'price' => 30.0,
             'options' => [
-                ['selections' => [['qty' => 2, 'additional_price' => 2.0]]],
+                $group->id => [
+                    'selections' => [
+                        $option->id => ['id' => $option->id, 'qty' => 2, 'additional_price' => 0.01],
+                    ],
+                ],
             ],
         ],
     ];

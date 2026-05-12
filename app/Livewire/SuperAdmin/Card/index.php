@@ -6,7 +6,7 @@ use App\Models\Company;
 use App\Models\PaymentSettings;
 use Livewire\Component;
 
-class Index extends Component
+class index extends Component
 {
     // Empresas
     public $companies = [];
