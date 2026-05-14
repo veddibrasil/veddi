@@ -99,10 +99,26 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Role::class, RolePolicy::class);
         Gate::policy(User::class, UserPolicy::class);
 
-        Gate::define('stock.view', fn (User $user) => $user->hasPermission('stock.view', app('current.company')));
-        Gate::define('stock.adjust', fn (User $user) => $user->hasPermission('stock.adjust', app('current.company')));
-        Gate::define('stock.toggle', fn (User $user) => $user->hasPermission('stock.toggle', app('current.company')));
-        Gate::define('company.settings', fn (User $user) => $user->hasPermission('company.settings', app('current.company')));
+        Gate::define('stock.view', function (User $user) {
+            $company = app('current.company');
+
+            return $company && $user->hasPermission('stock.view', $company);
+        });
+        Gate::define('stock.adjust', function (User $user) {
+            $company = app('current.company');
+
+            return $company && $user->hasPermission('stock.adjust', $company);
+        });
+        Gate::define('stock.toggle', function (User $user) {
+            $company = app('current.company');
+
+            return $company && $user->hasPermission('stock.toggle', $company);
+        });
+        Gate::define('company.settings', function (User $user) {
+            $company = app('current.company');
+
+            return $company && $user->hasPermission('company.settings', $company);
+        });
     }
 
     protected function configureNotifications(): void

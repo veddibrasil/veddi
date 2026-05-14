@@ -118,4 +118,3 @@ test('não reenfila email de confirmação se já foi enviado', function () {
 
     Mail::assertNotQueued(OrderConfirmation::class);
 });
-

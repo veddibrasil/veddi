@@ -43,7 +43,7 @@
 
                 <p class="text-xs text-neutral-500 dark:text-neutral-400">
                     @if($isAtLimit)
-                        Novos pedidos estão bloqueados. Faça upgrade ou aguarde o próximo mês.
+                        Limite de pedidos a 1% atingido este mês. A partir do próximo pedido, a taxa por volume de 3% será aplicada.
                     @else
                         {{ $remaining }} pedido{{ $remaining !== 1 ? 's' : '' }} restante{{ $remaining !== 1 ? 's' : '' }} este mês.
                     @endif

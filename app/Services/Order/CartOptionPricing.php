@@ -4,7 +4,6 @@ namespace App\Services\Order;
 
 use App\Models\Product;
 use App\Models\ProductOption;
-use App\Models\ProductOptionGroup;
 use Illuminate\Support\Collection;
 use RuntimeException;
 
@@ -40,19 +39,23 @@ class CartOptionPricing
 
         [$groupIds, $optionIds] = $this->extractIds($rawGroups);
 
-        $groups = ProductOptionGroup::query()->whereIn('id', $groupIds)->get()->keyBy('id');
-        $options = ProductOption::query()->whereIn('id', $optionIds)->get()->keyBy('id');
+        // Options scoped to valid group IDs prevents cross-company option injection.
+        $options = ProductOption::query()
+            ->whereIn('id', $optionIds)
+            ->whereIn('product_option_group_id', $groupIds)
+            ->get()
+            ->keyBy('id');
 
         $extra = 0.0;
         $normalized = [];
 
         foreach ($this->iterateGroups($rawGroups) as $groupId => $groupData) {
             $groupId = (int) $groupId;
-            if (! $productGroupById->has($groupId) || ! $groups->has($groupId)) {
+            if (! $productGroupById->has($groupId)) {
                 throw new RuntimeException("Grupo de opção inválido para o produto #{$product->id}.");
             }
 
-            $group = $groups[$groupId];
+            $group = $productGroupById[$groupId];
             $groupIndex = (int) ($groupIndexById[$groupId] ?? 0);
             $isVariantPriceGroup = (bool) $product->is_variant && $groupIndex === 0;
 
@@ -165,4 +168,3 @@ class CartOptionPricing
         }
     }
 }
-

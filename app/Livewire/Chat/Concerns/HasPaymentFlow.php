@@ -41,7 +41,7 @@ trait HasPaymentFlow
         };
         $this->addMessage('user', $label);
 
-        if ($this->taxId === '') {
+        if ($this->taxId === '' && in_array($method, ['PIX', 'CARD'])) {
             $this->addMessage('bot', 'Para gerar o pagamento precisamos do seu CPF. Por favor, informe.');
             $this->transitionTo('CHECKOUT_CPF');
 

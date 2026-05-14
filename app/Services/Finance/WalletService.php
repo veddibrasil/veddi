@@ -38,17 +38,6 @@ class WalletService implements WalletServiceInterface
             return;
         }
 
-        // Idempotência: webhooks/jobs podem repetir. Se já creditou este pedido para este pagamento, não duplica.
-        if (CompanyWalletEntry::where('order_id', $order->id)->where('reference', $reference)->where('type', 'credit')->exists()) {
-            Log::channel('payments')->info('Crédito na carteira já existe (idempotente)', [
-                'company_id' => $company->id,
-                'order_id' => $order->id,
-                'reference' => $reference,
-            ]);
-
-            return;
-        }
-
         // Para cartão: usar o valor original do pedido (antes das taxas de cartão).
         // As taxas de cartão já foram cobradas do cliente e vão direto ao Asaas.
         $baseAmount = (float) ($payment->original_amount ?? $payment->amount);
@@ -66,7 +55,16 @@ class WalletService implements WalletServiceInterface
 
         $feeAmount = round(($baseAmount - $pixFee - $cardFee) * $feeRate, 2);
 
-        DB::transaction(function () use ($company, $order, $reference, $payment, $baseAmount, $pixFee, $cardFee, $feeAmount) {
+        $alreadyCredited = false;
+
+        // Idempotência dentro da transaction com lock para evitar race condition em webhooks concorrentes.
+        DB::transaction(function () use ($company, $order, $reference, $baseAmount, $pixFee, $cardFee, $feeAmount, &$alreadyCredited) {
+            if (CompanyWalletEntry::where('order_id', $order->id)->where('reference', $reference)->where('type', 'credit')->lockForUpdate()->exists()) {
+                $alreadyCredited = true;
+
+                return;
+            }
+
             // Crédito bruto: valor cheio do pedido (sem descontar taxas absorvidas).
             // As taxas absorvidas entram como lançamentos separados (subtraídas do saldo).
             CompanyWalletEntry::create([
@@ -111,6 +109,16 @@ class WalletService implements WalletServiceInterface
                 ]);
             }
         });
+
+        if ($alreadyCredited) {
+            Log::channel('payments')->info('Crédito na carteira já existe (idempotente)', [
+                'company_id' => $company->id,
+                'order_id' => $order->id,
+                'reference' => $reference,
+            ]);
+
+            return;
+        }
 
         Log::channel('payments')->info('Carteira da empresa creditada', [
             'company_id' => $company->id,
@@ -159,17 +167,6 @@ class WalletService implements WalletServiceInterface
             return;
         }
 
-        // Idempotência: evita lançar estorno duas vezes para o mesmo pagamento.
-        if (CompanyWalletEntry::where('order_id', $order->id)->where('reference', $reference)->where('type', 'refund')->exists()) {
-            Log::channel('payments')->info('Débito de reembolso já existe (idempotente)', [
-                'company_id' => $company->id,
-                'order_id' => $order->id,
-                'reference' => $reference,
-            ]);
-
-            return;
-        }
-
         // Reproduce the same amounts used in creditForOrder
         $baseAmount = (float) ($payment->original_amount ?? $payment->amount);
         $feeRate = $company->plan?->feePercentage() ?? 0.0;
@@ -186,13 +183,23 @@ class WalletService implements WalletServiceInterface
 
         $feeAmount = round(($baseAmount - $pixFee - $cardFee) * $feeRate, 2);
 
+        $alreadyRefunded = false;
+
         // Balance semantics em CompanyWalletEntry::balanceFor():
         // - type=credit soma amount
         // - qualquer outro type subtrai amount
         //
         // Para "desfazer" o crédito líquido (+base - pixFee - cardFee - feeAmount),
         // criamos lançamentos refund com sinais que resultam em: -base + pixFee + cardFee + feeAmount.
-        DB::transaction(function () use ($company, $order, $reference, $baseAmount, $pixFee, $cardFee, $feeAmount) {
+        //
+        // Idempotência dentro da transaction com lock para evitar race condition em webhooks concorrentes.
+        DB::transaction(function () use ($company, $order, $reference, $baseAmount, $pixFee, $cardFee, $feeAmount, &$alreadyRefunded) {
+            if (CompanyWalletEntry::where('order_id', $order->id)->where('reference', $reference)->where('type', 'refund')->lockForUpdate()->exists()) {
+                $alreadyRefunded = true;
+
+                return;
+            }
+
             CompanyWalletEntry::create([
                 'company_id' => $company->id,
                 'order_id' => $order->id,
@@ -235,6 +242,16 @@ class WalletService implements WalletServiceInterface
                 ]);
             }
         });
+
+        if ($alreadyRefunded) {
+            Log::channel('payments')->info('Débito de reembolso já existe (idempotente)', [
+                'company_id' => $company->id,
+                'order_id' => $order->id,
+                'reference' => $reference,
+            ]);
+
+            return;
+        }
 
         $netDebit = $baseAmount - $pixFee - $cardFee - $feeAmount;
 

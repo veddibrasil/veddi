@@ -81,4 +81,3 @@ test('WalletService debitForRefund desfaz o crédito líquido do pedido', functi
     app(WalletService::class)->debitForRefund($order, $payment);
     expect(CompanyWalletEntry::balanceFor($company->id))->toBe(0.0);
 });
-
