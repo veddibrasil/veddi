@@ -2,11 +2,13 @@
 
 namespace App\Livewire\Admin\Pdv;
 
+use App\Exceptions\CouponException;
 use App\Models\Branch;
+use App\Models\Coupon;
 use App\Models\Customer;
 use App\Models\Product;
 use App\Models\ProductCategory;
-use App\Services\Customer\CustomerService;
+use App\Services\Order\CouponService;
 use App\Services\Order\OrderService;
 use App\Services\Payment\PaymentOrchestrator;
 use Illuminate\Support\Facades\DB;
@@ -30,13 +32,15 @@ class Terminal extends Component
     public array $cart = [];
 
     // ── Cliente (opcional) ───────────────────────────────────────────────────
-    public string $customerPhone = '';
+    public string $customerQuery = '';
 
     public string $customerName = '';
 
     public ?int $customerId = null;
 
     public bool $customerFound = false;
+
+    public array $customerResults = [];
 
     // ── Pagamento ─────────────────────────────────────────────────────────────
     public string $paymentMethod = 'cash';
@@ -48,10 +52,26 @@ class Terminal extends Component
 
     public ?string $pixQrCode = null;
 
+    public ?int $pixOrderId = null;
+
+    // ── Cupom ─────────────────────────────────────────────────────────────────
+    public string $couponInput = '';
+
+    public ?array $appliedCoupon = null;
+
+    public float $couponDiscount = 0.0;
+
+    public ?string $couponError = null;
+
+    // ── Observação ────────────────────────────────────────────────────────────
+    public string $notes = '';
+
     // ── Resultado ─────────────────────────────────────────────────────────────
     public float $changeAmount = 0.0;
 
     public ?string $lastOrderNumber = null;
+
+    public ?float $lastOrderTotal = null;
 
     // ── Permissões ────────────────────────────────────────────────────────────
     public bool $canOperate = false;
@@ -237,18 +257,65 @@ class Terminal extends Component
     {
         $this->customerFound = false;
         $this->customerId = null;
+        $this->customerResults = [];
 
-        if (blank($this->customerPhone)) {
+        $query = trim($this->customerQuery);
+
+        if (blank($query)) {
             return;
         }
 
-        $customer = app(CustomerService::class)->findByPhone($this->customerPhone);
+        $company = app('current.company');
+        $normalized = preg_replace('/\D/', '', $query);
 
-        if ($customer) {
+        $results = Customer::where('company_id', $company->id)
+            ->where('phone', '!=', 'pdv-guest')
+            ->where(function ($q) use ($query, $normalized) {
+                $q->where('name', 'like', '%'.$query.'%');
+                if (filled($normalized)) {
+                    $q->orWhere('phone', 'like', '%'.$normalized.'%')
+                        ->orWhere('tax_id', 'like', '%'.$normalized.'%');
+                }
+            })
+            ->limit(5)
+            ->get(['id', 'name', 'phone', 'tax_id']);
+
+        if ($results->isEmpty()) {
+            return;
+        }
+
+        if ($results->count() === 1) {
+            $customer = $results->first();
             $this->customerId = $customer->id;
             $this->customerName = $customer->name ?? '';
             $this->customerFound = true;
+
+            return;
         }
+
+        $this->customerResults = $results->map(fn ($c) => [
+            'id' => $c->id,
+            'name' => $c->name ?? '—',
+            'phone' => $c->phone,
+            'tax_id' => $c->tax_id,
+        ])->toArray();
+    }
+
+    public function selectCustomer(int $customerId): void
+    {
+        $company = app('current.company');
+
+        $customer = Customer::where('company_id', $company->id)->find($customerId);
+
+        if (! $customer) {
+            return;
+        }
+
+        $this->customerId = $customer->id;
+        $this->customerName = $customer->name ?? '';
+        $this->customerFound = true;
+        $this->customerResults = [];
+        $this->customerQuery = $customer->name ?? '';
     }
 
     // ── Pagamento ─────────────────────────────────────────────────────────────
@@ -269,6 +336,52 @@ class Terminal extends Component
         $this->resetPaymentState();
     }
 
+    // ── Cupom ─────────────────────────────────────────────────────────────────
+
+    public function applyCoupon(): void
+    {
+        $this->couponError = null;
+        $code = strtoupper(trim($this->couponInput));
+
+        if ($code === '') {
+            $this->couponError = 'Informe um código de cupom.';
+
+            return;
+        }
+
+        try {
+            $couponService = app(CouponService::class);
+
+            $coupon = $couponService->validate(
+                $code,
+                $this->customerId ?? 0,
+                $this->cart,
+                $this->cartTotal
+            );
+
+            $discount = $couponService->calculateDiscount($coupon, $this->cart, $this->cartTotal, 0.0);
+
+            $this->appliedCoupon = [
+                'id' => $coupon->id,
+                'code' => $coupon->code,
+                'type' => $coupon->type,
+                'discount' => $discount,
+                'label' => $coupon->name,
+            ];
+            $this->couponDiscount = $discount;
+        } catch (CouponException $e) {
+            $this->couponError = $e->getMessage();
+        }
+    }
+
+    public function removeCoupon(): void
+    {
+        $this->appliedCoupon = null;
+        $this->couponDiscount = 0.0;
+        $this->couponError = null;
+        $this->couponInput = '';
+    }
+
     public function processOrder(): void
     {
         if (empty($this->cart) || ! $this->selectedBranchId) {
@@ -287,16 +400,23 @@ class Terminal extends Component
             ];
         }
 
+        $coupon = $this->appliedCoupon
+            ? Coupon::find($this->appliedCoupon['id'])
+            : null;
+
         DB::beginTransaction();
         try {
+            $isPaidOnCreate = in_array($this->paymentMethod, ['cash', 'credit_card']);
+
             $order = app(OrderService::class)->createOrder(
                 customerId: $customerId,
                 branchId: $this->selectedBranchId,
                 cart: $orderCart,
-                notes: '',
+                notes: $this->notes,
                 paymentMethod: $this->paymentMethod,
                 orderType: 'pdv',
-                status: $this->paymentMethod === 'cash' ? 'paid' : 'awaiting_payment',
+                status: $isPaidOnCreate ? 'paid' : 'awaiting_payment',
+                coupon: $coupon,
             );
 
             if ($this->paymentMethod === 'cash') {
@@ -307,19 +427,24 @@ class Terminal extends Component
 
                 $result = app(PaymentOrchestrator::class)->processCash($order);
                 $this->changeAmount = $result['change'];
+            } elseif ($this->paymentMethod === 'credit_card') {
+                app(PaymentOrchestrator::class)->processCardMachine($order);
             } elseif ($this->paymentMethod === 'pix') {
                 $customer = Customer::withoutGlobalScopes()->find($customerId);
                 $result = app(PaymentOrchestrator::class)->processPix($order, $customer, $company);
                 $this->pixCopyPaste = $result['copy_paste'] ?? null;
                 $this->pixQrCode = $result['qr_code'] ?? null;
+                $this->pixOrderId = $order->id;
                 DB::commit();
                 $this->step = 'pix';
                 $this->lastOrderNumber = $order->order_number;
+                $this->lastOrderTotal = (float) $order->total;
 
                 return;
             }
 
             DB::commit();
+            $this->lastOrderTotal = (float) $order->total;
         } catch (\Throwable $e) {
             DB::rollBack();
             $this->addError('order', $e->getMessage());
@@ -331,15 +456,37 @@ class Terminal extends Component
         $this->step = 'success';
     }
 
+    public function checkPixStatus(): void
+    {
+        if (! $this->pixOrderId) {
+            return;
+        }
+
+        $payment = \App\Models\Payment::where('order_id', $this->pixOrderId)
+            ->where('status', 'paid')
+            ->first();
+
+        if ($payment) {
+            $this->step = 'success';
+        }
+    }
+
     public function resetTerminal(): void
     {
         $this->cart = [];
-        $this->customerPhone = '';
+        $this->customerQuery = '';
         $this->customerName = '';
         $this->customerId = null;
         $this->customerFound = false;
+        $this->customerResults = [];
         $this->lastOrderNumber = null;
+        $this->lastOrderTotal = null;
         $this->changeAmount = 0.0;
+        $this->notes = '';
+        $this->appliedCoupon = null;
+        $this->couponDiscount = 0.0;
+        $this->couponError = null;
+        $this->couponInput = '';
         $this->step = 'catalog';
         $this->resetPaymentState();
     }
@@ -359,6 +506,12 @@ class Terminal extends Component
 
             return $item['qty'] * ((float) $item['price'] + $optionsExtra);
         }, $this->cart)), 2);
+    }
+
+    #[Computed]
+    public function cartTotalAfterDiscount(): float
+    {
+        return max(0.0, round($this->cartTotal - $this->couponDiscount, 2));
     }
 
     #[Computed]
@@ -518,6 +671,11 @@ class Terminal extends Component
         $this->cashReceivedInput = '';
         $this->pixCopyPaste = null;
         $this->pixQrCode = null;
+        $this->pixOrderId = null;
+        $this->appliedCoupon = null;
+        $this->couponDiscount = 0.0;
+        $this->couponError = null;
+        $this->couponInput = '';
     }
 
     public function render()

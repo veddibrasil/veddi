@@ -164,6 +164,35 @@ class PaymentOrchestrator
     }
 
     /**
+     * Maquininha física no PDV — operador cobrou no terminal externo, só registra.
+     */
+    public function processCardMachine(Order $order): array
+    {
+        $payment = Payment::create([
+            'order_id' => $order->id,
+            'stark_payment_id' => null,
+            'payment_gateway' => 'card_machine',
+            'amount' => (float) $order->total,
+            'pix_fee' => 0.0,
+            'status' => 'paid',
+            'paid_at' => now(),
+            'payment_token' => hash('sha256', 'card'.$order->id.now()->timestamp),
+        ]);
+
+        Log::channel('payments')->info('Pagamento em cartão (maquininha PDV) registrado', [
+            'order_id' => $order->id,
+            'amount' => $order->total,
+        ]);
+
+        return [
+            'id' => $payment->id,
+            'status' => 'paid',
+            'method' => 'credit_card',
+            'gateway' => 'card_machine',
+        ];
+    }
+
+    /**
      * Cartão de crédito permanece no Asaas.
      * Este método não cria o Payment — apenas retorna o gateway correto.
      * O ProcessOrder mantém a lógica completa de cartão internamente.

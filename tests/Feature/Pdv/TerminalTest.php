@@ -305,6 +305,119 @@ test('pedido PDV é associado à empresa correta', function () {
     expect($order->branch->company_id)->not->toBe($otherCompany->id);
 });
 
+// ─── Pedido com cartão ────────────────────────────────────────────────────────
+
+test('pedido PDV com cartão registra como pago via card_machine', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'credit_card')
+        ->call('processOrder')
+        ->assertSet('step', 'success');
+
+    $order = Order::withoutGlobalScopes()->first();
+    expect($order->status)->toBe('paid');
+    expect($order->payment_method)->toBe('credit_card');
+
+    $payment = Payment::where('order_id', $order->id)->first();
+    expect($payment)->not->toBeNull();
+    expect($payment->status)->toBe('paid');
+    expect($payment->payment_gateway)->toBe('card_machine');
+    expect($payment->paid_at)->not->toBeNull();
+});
+
+// ─── Notas no pedido ─────────────────────────────────────────────────────────
+
+test('pedido PDV salva observação do operador', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'cash')
+        ->set('notes', 'sem cebola')
+        ->call('processOrder');
+
+    $order = Order::withoutGlobalScopes()->first();
+    expect($order->notes)->toBe('sem cebola');
+});
+
+// ─── Cupom ───────────────────────────────────────────────────────────────────
+
+test('cupom válido aplica desconto no PDV', function () {
+    ['admin' => $admin, 'product' => $product, 'company' => $company] = pdvContext();
+
+    $coupon = \App\Models\Coupon::create([
+        'company_id' => $company->id,
+        'code' => 'TESTE10',
+        'name' => '10% off',
+        'type' => 'percentage',
+        'discount_value' => 10,
+        'scope' => 'order',
+        'active' => true,
+    ]);
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('couponInput', 'TESTE10')
+        ->call('applyCoupon')
+        ->assertSet('couponError', null);
+
+    expect($component->get('couponDiscount'))->toBe(0.8); // 10% de R$ 8,00
+    expect($component->get('appliedCoupon.code'))->toBe('TESTE10');
+});
+
+test('cupom inválido exibe erro no PDV', function () {
+    ['admin' => $admin] = pdvContext();
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', 1) // produto já adicionado na fixture
+        ->call('proceedToPayment')
+        ->set('couponInput', 'INEXISTENTE')
+        ->call('applyCoupon')
+        ->assertSet('couponDiscount', 0.0);
+});
+
+test('pedido PDV com cupom registra desconto correto', function () {
+    ['admin' => $admin, 'product' => $product, 'company' => $company] = pdvContext();
+
+    \App\Models\Coupon::create([
+        'company_id' => $company->id,
+        'code' => 'FIXO2',
+        'name' => 'R$2 off',
+        'type' => 'fixed',
+        'discount_value' => 2.00,
+        'scope' => 'order',
+        'active' => true,
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('couponInput', 'FIXO2')
+        ->call('applyCoupon')
+        ->set('paymentMethod', 'cash')
+        ->call('processOrder')
+        ->assertSet('step', 'success');
+
+    $order = Order::withoutGlobalScopes()->first();
+    expect((float) $order->total)->toBe(6.0);   // R$ 8 - R$ 2
+    expect((float) $order->discount)->toBe(2.0);
+});
+
 // ─── processCash direto ───────────────────────────────────────────────────────
 
 test('processCash cria payment com status paid sem gateway', function () {
