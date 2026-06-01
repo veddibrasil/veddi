@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Payment;
+use App\Models\PdvCashSession;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\User;
@@ -64,6 +65,13 @@ function pdvContext(): array
     ]);
 
     $admin = User::factory()->create(['is_super_admin' => true]);
+
+    PdvCashSession::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'user_id' => $admin->id,
+        'opening_amount' => 0,
+    ]);
 
     return compact('company', 'branch', 'category', 'product', 'admin');
 }
@@ -416,6 +424,131 @@ test('pedido PDV com cupom registra desconto correto', function () {
     $order = Order::withoutGlobalScopes()->first();
     expect((float) $order->total)->toBe(6.0);   // R$ 8 - R$ 2
     expect((float) $order->discount)->toBe(2.0);
+});
+
+// ─── Cancelamento no terminal ─────────────────────────────────────────────────
+
+test('operador cancela pedido PDV dentro de 5 minutos', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'cash')
+        ->call('processOrder')
+        ->assertSet('step', 'success');
+
+    $orderId = $component->get('lastOrderId');
+    expect($orderId)->not->toBeNull();
+
+    $component
+        ->call('cancelLastOrder')
+        ->assertSet('step', 'catalog')
+        ->assertSet('lastOrderId', null);
+
+    $order = Order::withoutGlobalScopes()->find($orderId);
+    expect($order->status)->toBe('cancelled');
+});
+
+test('cancelamento fora do prazo de 5 minutos exibe erro', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'cash')
+        ->call('processOrder')
+        ->assertSet('step', 'success');
+
+    $orderId = $component->get('lastOrderId');
+    Order::withoutGlobalScopes()->where('id', $orderId)->update(['created_at' => now()->subMinutes(6)]);
+
+    $component->call('cancelLastOrder');
+
+    $component->assertHasErrors('cancel');
+
+    $order = Order::withoutGlobalScopes()->find($orderId);
+    expect($order->status)->not->toBe('cancelled');
+});
+
+test('pedido em status terminal não pode ser cancelado no PDV', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'cash')
+        ->call('processOrder')
+        ->assertSet('step', 'success');
+
+    $orderId = $component->get('lastOrderId');
+    Order::withoutGlobalScopes()->where('id', $orderId)->update(['status' => 'delivered']);
+
+    $component->call('cancelLastOrder');
+
+    $component->assertHasErrors('cancel');
+
+    $order = Order::withoutGlobalScopes()->find($orderId);
+    expect($order->status)->toBe('delivered');
+});
+
+// ─── checkPixStatus ───────────────────────────────────────────────────────────
+
+test('checkPixStatus mantém step pix quando pagamento não confirmado', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $mockStark = Mockery::mock(\App\Services\Payment\StarkService::class);
+    $mockStark->shouldReceive('createPixCharge')->andReturn([
+        'id' => 'pix_abc',
+        'brcode' => '00020126',
+        'qr_code_url' => null,
+        'amount' => 8.0,
+    ]);
+    app()->instance(\App\Services\Payment\StarkService::class, $mockStark);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'pix')
+        ->call('processOrder')
+        ->assertSet('step', 'pix')
+        ->call('checkPixStatus')
+        ->assertSet('step', 'pix');
+});
+
+test('checkPixStatus avança para success quando pagamento confirmado', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $mockStark = Mockery::mock(\App\Services\Payment\StarkService::class);
+    $mockStark->shouldReceive('createPixCharge')->andReturn([
+        'id' => 'pix_xyz',
+        'brcode' => '00020126',
+        'qr_code_url' => null,
+        'amount' => 8.0,
+    ]);
+    app()->instance(\App\Services\Payment\StarkService::class, $mockStark);
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'pix')
+        ->call('processOrder')
+        ->assertSet('step', 'pix');
+
+    $orderId = $component->get('pixOrderId');
+    Payment::where('order_id', $orderId)->update(['status' => 'paid']);
+
+    $component->call('checkPixStatus')->assertSet('step', 'success');
 });
 
 // ─── processCash direto ───────────────────────────────────────────────────────

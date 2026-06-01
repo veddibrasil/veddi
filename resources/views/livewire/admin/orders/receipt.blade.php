@@ -5,25 +5,32 @@
     <title>Cupom {{ $order->order_number }}</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: DejaVu Sans Mono, monospace; font-size: 9px; color: #111; background: #fff; padding: 10px 10px; }
+        body { font-family: DejaVu Sans Mono, monospace; font-size: 9px; color: #1a0025; background: #fff; padding: 10px 10px; }
         .center { text-align: center; }
         .right { text-align: right; }
         .bold { font-weight: bold; }
         .sm { font-size: 8px; }
-        .muted { color: #777; }
-        .divider { border-top: 1px dashed #555; margin: 5px 0; }
+        .muted { color: #8b5a9e; }
+        .brand { color: #7A00A3; }
+        .divider { border-top: 1px dashed #c06eec; margin: 5px 0; }
         .row { width: 100%; border-collapse: collapse; margin: 1px 0; }
         .row td { padding: 1px 0; vertical-align: top; }
-        .item-qty { font-size: 8px; color: #555; padding-bottom: 2px; }
-        .total-label { font-weight: bold; font-size: 11px; padding-top: 3px; }
-        .total-value { font-weight: bold; font-size: 11px; text-align: right; padding-top: 3px; }
+        .item-qty { font-size: 8px; color: #8b5a9e; padding-bottom: 2px; }
+        .total-label { font-weight: bold; font-size: 11px; padding-top: 3px; color: #7A00A3; }
+        .total-value { font-weight: bold; font-size: 11px; text-align: right; padding-top: 3px; color: #7A00A3; }
+        .type-banner { text-align: center; font-weight: bold; font-size: 11px; letter-spacing: 2px; padding: 5px 0; margin-bottom: 5px; background-color: #7A00A3; color: #ffffff; }
+        .order-number { color: #7A00A3; font-weight: bold; }
+        .troco { color: #7A00A3; font-weight: bold; }
+        .footer { text-align: center; font-size: 8px; color: #9B10C8; }
+        .option-price { color: #7A00A3; }
+        .address-bar { margin-top: 4px; border-left: 3px solid #7A00A3; padding-left: 5px; }
     </style>
 </head>
 <body>
 
     {{-- Cabeçalho --}}
-    <div class="center bold" style="font-size: 12px;">{{ $company?->name ?? config('app.name') }}</div>
-    <div class="center" style="margin-top: 2px;">{{ $order->branch->name }}</div>
+    <div class="center bold brand" style="font-size: 13px;">{{ $company?->name ?? config('app.name') }}</div>
+    <div class="center muted" style="margin-top: 2px;">{{ $order->branch->name }}</div>
     @if ($order->branch->address)
         <div class="center sm muted">{{ $order->branch->address }}</div>
     @endif
@@ -31,21 +38,19 @@
     <div class="divider"></div>
 
     {{-- Tipo de pedido em destaque --}}
-    @if ($order->order_type === 'delivery')
-        <div style="border: 2px solid #111; text-align: center; font-weight: bold; font-size: 13px; letter-spacing: 2px; padding: 4px 0; margin-bottom: 5px;">
-            *** ENTREGA ***
-        </div>
+    @if ($order->order_type === 'pdv')
+        <div class="type-banner">BALCAO / PDV</div>
+    @elseif ($order->order_type === 'delivery')
+        <div class="type-banner">ENTREGA</div>
     @else
-        <div style="border: 2px solid #111; text-align: center; font-weight: bold; font-size: 13px; letter-spacing: 2px; padding: 4px 0; margin-bottom: 5px;">
-            *** RETIRADA NO LOCAL ***
-        </div>
+        <div class="type-banner">RETIRADA NO LOCAL</div>
     @endif
 
     {{-- Informações do pedido --}}
     <table class="row">
         <tr>
             <td>Pedido</td>
-            <td class="right bold">{{ $order->order_number }}</td>
+            <td class="right order-number">{{ $order->order_number }}</td>
         </tr>
         <tr>
             <td>Data</td>
@@ -75,14 +80,14 @@
                         <td colspan="2" style="padding-left: 8px; padding-top: 1px; font-size: 8px; color: #444;">
                             <span style="font-weight: bold;">{{ $group['group_name'] ?? 'Opcoes' }}:</span>
                             @foreach ($group['selections'] as $sel)
-                                <br>&nbsp;&nbsp;&bull; {{ $sel['qty'] }}x {{ $sel['name'] }}@if ((float) ($sel['additional_price'] ?? 0) > 0) <span style="color:#111;">(+R$ {{ number_format((float) $sel['additional_price'], 2, ',', '.') }})</span>@endif
+                                <br>&nbsp;&nbsp;&bull; {{ $sel['qty'] }}x {{ $sel['name'] }}@if ((float) ($sel['additional_price'] ?? 0) > 0) <span class="option-price">(+R$ {{ number_format((float) $sel['additional_price'], 2, ',', '.') }})</span>@endif
                             @endforeach
                         </td>
                     </tr>
                 @endif
             @endforeach
         </table>
-        <div style="border-top: 1px dotted #ddd; margin: 3px 0;"></div>
+        <div style="border-top: 1px dotted #dca8f5; margin: 3px 0;"></div>
     @endforeach
 
     <div class="divider"></div>
@@ -110,7 +115,7 @@
                 <td class="right">- R$ {{ number_format($order->discount, 2, ',', '.') }}</td>
             </tr>
         @endif
-        <tr style="border-top: 1px solid #ccc;">
+        <tr style="border-top: 1px solid #dca8f5;">
             <td class="total-label">TOTAL</td>
             <td class="total-value">R$ {{ number_format($order->total, 2, ',', '.') }}</td>
         </tr>
@@ -124,12 +129,22 @@
             <td>Pagamento</td>
             <td class="right bold">
                 @if ($order->payment_method === 'pix') PIX
-                @elseif ($order->payment_method === 'card') Cartao
+                @elseif (in_array($order->payment_method, ['card', 'credit_card'])) Cartao
                 @elseif ($order->payment_method === 'cash') Dinheiro
                 @else {{ $order->payment_method }}
                 @endif
             </td>
         </tr>
+        @if ($order->payment_method === 'cash' && $order->cash_received > 0)
+            <tr>
+                <td class="sm">Recebido</td>
+                <td class="right sm">R$ {{ number_format($order->cash_received, 2, ',', '.') }}</td>
+            </tr>
+            <tr>
+                <td class="sm troco">Troco</td>
+                <td class="right sm troco">R$ {{ number_format($order->cash_change ?? 0, 2, ',', '.') }}</td>
+            </tr>
+        @endif
         @if ($order->payment?->status === 'paid' && $order->payment->paid_at)
             <tr>
                 <td class="sm muted">Pago em</td>
@@ -141,10 +156,15 @@
     <div class="divider"></div>
 
     {{-- Cliente --}}
-    <div class="bold">{{ $order->customer->name }}</div>
-    <div class="sm muted">{{ $order->customer->phone }}</div>
+    @php $isGuestCustomer = $order->customer->phone === 'pdv-guest'; @endphp
+    @if (!$isGuestCustomer)
+        <div class="bold">{{ $order->customer->name }}</div>
+        <div class="sm muted">{{ $order->customer->phone }}</div>
+    @else
+        <div class="muted sm">Cliente balcao</div>
+    @endif
     @if ($order->order_type === 'delivery')
-        <div style="margin-top: 4px; border-left: 3px solid #111; padding-left: 5px;">
+        <div class="address-bar">
             <div class="bold" style="font-size: 8px; letter-spacing: 1px;">ENDERECO DE ENTREGA</div>
             <div style="margin-top: 1px;">
                 {{ $order->customer->address }}{{ $order->customer->number ? ', '.$order->customer->number : '' }}
@@ -165,7 +185,7 @@
 
     <div class="divider"></div>
 
-    <div class="center muted" style="font-size: 8px;">Obrigado pela preferencia!</div>
+    <div class="footer">Obrigado pela preferencia!</div>
 
 </body>
 </html>

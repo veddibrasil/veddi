@@ -117,6 +117,7 @@ Route::middleware(['auth', 'verified', 'company.active'])
 
         // PDV — exige plano PDV + permissão pdv.operate (verificado no componente)
         Route::get('/pdv', \App\Livewire\Admin\Pdv\Terminal::class)->name('pdv');
+        Route::get('/pdv/report', \App\Livewire\Admin\Pdv\Report::class)->name('pdv.report');
 
     });
 

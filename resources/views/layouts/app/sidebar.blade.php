@@ -55,17 +55,27 @@
                                     Pedidos
                                 </flux:sidebar.item>
                             @endif
-                            @if($can('pdv.operate') && $company?->plan?->hasPdv())
-                                <flux:sidebar.item icon="computer-desktop" :href="route('admin.pdv')" :current="request()->routeIs('admin.pdv')" wire:navigate>
-                                    Terminal PDV
-                                </flux:sidebar.item>
-                            @endif
+    
                         </flux:sidebar.group>
                     @endif
+
                     @if ($can('orders.report'))
                         <flux:sidebar.item icon="chart-bar" :href="route('admin.orders.report')" :current="request()->routeIs('admin.orders.report')" wire:navigate>
                             Relatório
                         </flux:sidebar.item>
+                    @endif
+
+                     @if( $can('pdv.operate'))
+                        <flux:sidebar.group heading="PDV" class="grid">
+                            @if($can('pdv.operate') && $company?->plan?->hasPdv())
+                                <flux:sidebar.item icon="computer-desktop" :href="route('admin.pdv')" :current="request()->routeIs('admin.pdv')" wire:navigate>
+                                    Terminal PDV
+                                </flux:sidebar.item>
+                                <flux:sidebar.item icon="chart-bar" :href="route('admin.pdv.report')" :current="request()->routeIs('admin.pdv.report')" wire:navigate>
+                                    Relatório PDV
+                                </flux:sidebar.item>
+                            @endif
+                        </flux:sidebar.group>
                     @endif
 
                     @php

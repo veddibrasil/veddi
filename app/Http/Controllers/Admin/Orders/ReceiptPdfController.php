@@ -15,7 +15,9 @@ class ReceiptPdfController extends Controller
         if ($user->isSuperAdmin()) {
             $canView = true;
         } elseif (app()->bound('current.company')) {
-            $canView = $user->hasPermission('orders.view', app('current.company'));
+            $company = app('current.company');
+            $canView = $user->hasPermission('orders.view', $company)
+                || $user->hasPermission('pdv.operate', $company);
         } else {
             $canView = false;
         }
