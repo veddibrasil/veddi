@@ -31,11 +31,11 @@
                         <p class="text-xs text-white font-semibold">Limite de filiais atingido</p>
                         <p class="text-xs text-neutral-300 mt-0.5">
                             Seu plano permite {{ $branchLimit }} filial(ais).
-                            @if($branchLimit < 3)
-                                Faça upgrade para o <span class="text-amber-400 font-bold">PRO</span> e tenha até 3.
+                            @if($branchLimit < 5)
+                                Faça upgrade para o <span class="text-amber-400 font-bold">PRO</span> ou <span class="text-blue-400 font-bold">PDV</span> e tenha mais filiais.
                             @endif
                         </p>
-                        @if($branchLimit < 3)
+                        @if($branchLimit < 5)
                             <a href="{{ route('admin.billing') }}" class="mt-2 inline-block text-xs font-bold text-amber-400 hover:text-amber-300 underline underline-offset-2">
                                 Ver planos →
                             </a>

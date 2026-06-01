@@ -54,4 +54,14 @@ return [
         'asaas_description' => 'Assinatura Plano VEDDI PRO',
     ],
 
+    'pdv' => [
+        'monthly_price' => (float) env('PLAN_PDV_PRICE', 199.00),
+        'fee_percentage' => 0.00,
+        'setup_fee' => (float) env('PLAN_SETUP_FEE', 99.00),
+        'has_monthly_subscription' => true,
+        'max_orders_per_month' => null,
+        'max_branches' => 5,
+        'asaas_description' => 'Assinatura Plano VEDDI PDV',
+    ],
+
 ];

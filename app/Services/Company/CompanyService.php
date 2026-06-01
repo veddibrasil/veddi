@@ -2,6 +2,7 @@
 
 namespace App\Services\Company;
 
+use App\Enums\Plan;
 use App\Events\CompanyActivated;
 use App\Events\CompanyBlocked;
 use App\Models\Company;
@@ -35,7 +36,13 @@ class CompanyService
         Log::channel('payments')->info('Empresa ativada', ['company_id' => $company->id]);
 
         if ($updated > 0) {
-            CompanyActivated::dispatch($company->fresh());
+            $fresh = $company->fresh();
+
+            if ($fresh->plan === Plan::Pdv) {
+                UserPermissionService::grantPdvPermissions($fresh);
+            }
+
+            CompanyActivated::dispatch($fresh);
         }
     }
 

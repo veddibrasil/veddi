@@ -773,3 +773,7 @@ a.bg-amber-600:hover, button.bg-amber-600:hover {
     justify-content: center;
     padding: 0 4px;
 }
+
+/* ─── PDV fullscreen mode (sidebar hidden) ──────────────────────────────── */
+body.pdv-fullscreen [data-flux-sidebar] { display: none !important; }
+body.pdv-fullscreen [data-flux-header] { display: none !important; }

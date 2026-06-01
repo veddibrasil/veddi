@@ -17,6 +17,7 @@ class Order extends Model
         'status', 'notes', 'scheduled_at', 'payment_method', 'order_type', 'coupon_id', 'discount', 'fee', 'net_value',
         'fee_billed_at',
         'delivery_address_id',
+        'cash_received', 'cash_change',
     ];
 
     protected $casts = [

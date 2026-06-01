@@ -54,6 +54,9 @@ class PermissionSeeder extends Seeder
             ['name' => 'coupons.create', 'group' => 'coupons', 'label' => 'Criar cupom'],
             ['name' => 'coupons.update', 'group' => 'coupons', 'label' => 'Editar cupom'],
             ['name' => 'coupons.delete', 'group' => 'coupons', 'label' => 'Remover cupom'],
+
+            // PDV
+            ['name' => 'pdv.operate', 'group' => 'pdv', 'label' => 'Operar terminal PDV'],
         ];
 
         foreach ($permissions as $data) {
@@ -70,6 +73,7 @@ class PermissionSeeder extends Seeder
             'roles.manage',
             'stock.view', 'stock.adjust', 'stock.toggle',
             'coupons.view', 'coupons.create', 'coupons.update', 'coupons.delete',
+            'pdv.operate',
         ];
 
         $branchManagerPermissions = [

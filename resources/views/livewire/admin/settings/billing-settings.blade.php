@@ -22,6 +22,10 @@
                 <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
                     📦 Essencial
                 </span>
+            @elseif($plan === 'pdv')
+                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                    🖥️ PDV
+                </span>
             @else
                 <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-neutral-100 text-neutral-600 dark:bg-zinc-700 dark:text-neutral-300">
                     Grátis
@@ -67,7 +71,7 @@
             <p class="text-xs text-neutral-400 dark:text-neutral-500">Taxa de ativação paga em {{ $setupFeePaidAt }}</p>
         @endif
 
-        @if(in_array($plan, ['essencial', 'pro']) && $amount)
+        @if(in_array($plan, ['essencial', 'pro', 'pdv']) && $amount)
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
                 <div class="space-y-0.5">
                     <p class="text-xs text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Valor mensal</p>
@@ -90,7 +94,7 @@
             </div>
         @endif
 
-        @if(in_array($plan, ['essencial', 'pro']) && !$asaasSubscriptionId && $status === 'ACTIVE')
+        @if(in_array($plan, ['essencial', 'pro', 'pdv']) && !$asaasSubscriptionId && $status === 'ACTIVE')
             <p class="text-sm text-neutral-500 dark:text-neutral-400">
                 A assinatura está sendo gerada. Aguarde alguns instantes e recarregue a página.
             </p>
@@ -103,7 +107,7 @@
         @endif
 
         {{-- Downgrade to free link --}}
-        @if(in_array($plan, ['essencial', 'pro']))
+        @if(in_array($plan, ['essencial', 'pro', 'pdv']))
             <div class="pt-1 border-t dark:border-zinc-700">
                 <button wire:click="confirmChangePlan('free')"
                         class="text-sm text-neutral-400 hover:text-red-500 dark:text-neutral-500 dark:hover:text-red-400 transition-colors">
@@ -118,6 +122,7 @@
         $upgradePlans = [
             'essencial' => ['label' => 'Essencial', 'price' => config('plans.essencial.monthly_price', 59.00), 'icon' => '📦', 'features' => ['Pedidos ilimitados', 'Zero taxas por pedido', '1 filial']],
             'pro'       => ['label' => 'PRO',       'price' => config('plans.pro.monthly_price', 119.00),      'icon' => '🚀', 'features' => ['Pedidos ilimitados', 'Zero taxas por pedido', 'Até 3 filiais']],
+            'pdv'       => ['label' => 'PDV',       'price' => config('plans.pdv.monthly_price', 199.00),      'icon' => '🖥️', 'features' => ['Pedidos ilimitados', 'Terminal PDV', 'Até 5 filiais']],
         ];
         $availableUpgrades = collect($upgradePlans)->filter(fn($p, $key) => $key !== $plan);
     @endphp
@@ -161,7 +166,7 @@
     @endforeach
 
     {{-- Cobranças Recentes --}}
-    @if(in_array($plan, ['essencial', 'pro']) && $asaasSubscriptionId)
+    @if(in_array($plan, ['essencial', 'pro', 'pdv']) && $asaasSubscriptionId)
         <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
             <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Cobranças Recentes</h2>
 
@@ -490,7 +495,7 @@
                         </flux:button>
                     </span>
                 </div>
-            @else
+            @elseif($targetPlan === 'pro')
                 <div class="flex items-start gap-4">
                     <div class="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0">
                         <svg class="w-5 h-5 text-amber-600 dark:text-amber-400" fill="currentColor" viewBox="0 0 20 20">
@@ -504,6 +509,48 @@
                                 Cobrança única de <strong>R$ {{ number_format(config('plans.pro.setup_fee', 99.00) + config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}</strong> no cartão (taxa de ativação R$ {{ number_format(config('plans.pro.setup_fee', 99.00), 2, ',', '.') }} + 1º mês R$ {{ number_format(config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}). A partir do 2º mês: R$ {{ number_format(config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}/mês.
                             @else
                                 Você será cobrado <strong>R$ {{ number_format(config('plans.pro.monthly_price', 119.00), 2, ',', '.') }}/mês</strong> no cartão de crédito. O primeiro mês é cobrado imediatamente.
+                            @endif
+                        </flux:subheading>
+                    </div>
+                </div>
+                @include('livewire.admin.settings._payment-method-selector')
+                <div class="border rounded-lg px-4 py-3 bg-neutral-50 dark:bg-zinc-700/50 dark:border-zinc-600">
+                    <label class="flex items-start gap-3 cursor-pointer">
+                        <input type="checkbox" x-model="termsAccepted" class="mt-0.5 accent-[#7A00A3] shrink-0">
+                        <span class="text-sm text-neutral-700 dark:text-neutral-300">
+                            Li e aceito os
+                            <button type="button" x-on:click="$flux.modal('terms-modal').show()"
+                                    class="text-[#7A00A3] hover:underline font-medium">
+                                Termos de Responsabilidade
+                            </button>
+                        </span>
+                    </label>
+                </div>
+                <div class="flex justify-end gap-3 pt-1">
+                    <flux:modal.close>
+                        <flux:button variant="ghost" wire:click="cancelPlanChange">Cancelar</flux:button>
+                    </flux:modal.close>
+                    <span :class="{ 'opacity-50 pointer-events-none cursor-not-allowed': !termsAccepted }">
+                        <flux:button
+                            x-on:click="syncToWire()"
+                            wire:click="changePlan"
+                            variant="primary">
+                            Continuar para pagamento
+                        </flux:button>
+                    </span>
+                </div>
+            @elseif($targetPlan === 'pdv')
+                <div class="flex items-start gap-4">
+                    <div class="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+                        <span class="text-xl">🖥️</span>
+                    </div>
+                    <div>
+                        <flux:heading size="lg">Fazer upgrade para PDV?</flux:heading>
+                        <flux:subheading class="mt-1">
+                            @if($plan === 'free')
+                                Cobrança única de <strong>R$ {{ number_format(config('plans.pdv.setup_fee', 99.00) + config('plans.pdv.monthly_price', 199.00), 2, ',', '.') }}</strong> no cartão (taxa de ativação R$ {{ number_format(config('plans.pdv.setup_fee', 99.00), 2, ',', '.') }} + 1º mês R$ {{ number_format(config('plans.pdv.monthly_price', 199.00), 2, ',', '.') }}). A partir do 2º mês: R$ {{ number_format(config('plans.pdv.monthly_price', 199.00), 2, ',', '.') }}/mês.
+                            @else
+                                Você será cobrado <strong>R$ {{ number_format(config('plans.pdv.monthly_price', 199.00), 2, ',', '.') }}/mês</strong> no cartão de crédito. O primeiro mês é cobrado imediatamente.
                             @endif
                         </flux:subheading>
                     </div>

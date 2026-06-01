@@ -115,6 +115,9 @@ Route::middleware(['auth', 'verified', 'company.active'])
 
         Route::get('/coupons', \App\Livewire\Admin\Coupons\Index::class)->name('coupons.index');
 
+        // PDV — exige plano PDV + permissão pdv.operate (verificado no componente)
+        Route::get('/pdv', \App\Livewire\Admin\Pdv\Terminal::class)->name('pdv');
+
     });
 
 // --- Super Admin Panel (sem CompanyScope, sem identify.company) ---

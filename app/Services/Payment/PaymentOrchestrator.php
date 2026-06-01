@@ -40,6 +40,7 @@ class PaymentOrchestrator
     ): array {
         return match (strtoupper($method)) {
             'CREDIT_CARD' => $this->processCreditCard($order, $customer, $company),
+            'CASH' => $this->processCash($order),
             default => $this->processPix($order, $customer, $company),
         };
     }
@@ -123,6 +124,42 @@ class PaymentOrchestrator
             'gateway' => 'stark',
             'qr_code' => $payment->pix_qr_code,
             'copy_paste' => $payment->pix_copy_paste,
+        ];
+    }
+
+    /**
+     * Pagamento em dinheiro (PDV). Cria Payment marcado como pago imediatamente.
+     * Troco calculado com base em cash_received salvo no pedido.
+     */
+    public function processCash(Order $order): array
+    {
+        $cashReceived = (float) ($order->cash_received ?? $order->total);
+        $change = max(0.0, round($cashReceived - (float) $order->total, 2));
+
+        $payment = Payment::create([
+            'order_id' => $order->id,
+            'stark_payment_id' => null,
+            'payment_gateway' => 'cash',
+            'amount' => (float) $order->total,
+            'pix_fee' => 0.0,
+            'status' => 'paid',
+            'paid_at' => now(),
+            'payment_token' => hash('sha256', 'cash'.$order->id.now()->timestamp),
+        ]);
+
+        Log::channel('payments')->info('Pagamento em dinheiro registrado (PDV)', [
+            'order_id' => $order->id,
+            'amount' => $order->total,
+            'cash_received' => $cashReceived,
+            'change' => $change,
+        ]);
+
+        return [
+            'id' => $payment->id,
+            'status' => 'paid',
+            'method' => 'cash',
+            'gateway' => 'cash',
+            'change' => $change,
         ];
     }
 

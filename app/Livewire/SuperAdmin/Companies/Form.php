@@ -209,6 +209,10 @@ class Form extends Component
                 $baseData['status'] = 'ACTIVE';
                 $baseData['asaas_subscription_id'] = null;
                 $company->update($baseData);
+
+                if ($targetPlan === Plan::Pdv) {
+                    UserPermissionService::grantPdvPermissions($company->fresh());
+                }
             } else {
                 // Normal flow: await payment via Asaas
                 $baseData['active'] = false;

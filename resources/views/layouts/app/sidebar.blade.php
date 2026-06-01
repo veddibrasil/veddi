@@ -48,13 +48,18 @@
                         </flux:sidebar.item>
                     </flux:sidebar.group>
 
-                    @if($can('orders.view'))
+                    @if($can('orders.view') || $can('pdv.operate'))
                         <flux:sidebar.group heading="Pedidos" class="grid">
-                            <flux:sidebar.item icon="list-bullet" :href="route('admin.orders.index')" :current="request()->routeIs('admin.orders.index') || request()->routeIs('admin.orders.show')" wire:navigate>
-                                Pedidos
-                            </flux:sidebar.item>
-
-            
+                            @if($can('orders.view'))
+                                <flux:sidebar.item icon="list-bullet" :href="route('admin.orders.index')" :current="request()->routeIs('admin.orders.index') || request()->routeIs('admin.orders.show')" wire:navigate>
+                                    Pedidos
+                                </flux:sidebar.item>
+                            @endif
+                            @if($can('pdv.operate') && $company?->plan?->hasPdv())
+                                <flux:sidebar.item icon="computer-desktop" :href="route('admin.pdv')" :current="request()->routeIs('admin.pdv')" wire:navigate>
+                                    Terminal PDV
+                                </flux:sidebar.item>
+                            @endif
                         </flux:sidebar.group>
                     @endif
                     @if ($can('orders.report'))

@@ -1,4 +1,5 @@
 import './admin/order-show.js';
+import './admin/pdv-app.js';
 import './chat/map-picker.js';
 import './chat/branch-locator.js';
 import './chat/chat-app.js';

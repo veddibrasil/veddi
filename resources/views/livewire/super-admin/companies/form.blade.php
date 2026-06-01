@@ -53,6 +53,7 @@
                     <flux:select.option value="free">Grátis</flux:select.option>
                     <flux:select.option value="essencial">Essencial</flux:select.option>
                     <flux:select.option value="pro">PRO</flux:select.option>
+                    <flux:select.option value="pdv">PDV</flux:select.option>
                 </flux:select>
                 @error('plan') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>

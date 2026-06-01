@@ -7,6 +7,7 @@ enum Plan: string
     case Free = 'free';
     case Essencial = 'essencial';
     case Pro = 'pro';
+    case Pdv = 'pdv';
 
     /**
      * Human-readable label for this plan.
@@ -17,7 +18,13 @@ enum Plan: string
             Plan::Free => 'Grátis',
             Plan::Essencial => 'Essencial',
             Plan::Pro => 'PRO',
+            Plan::Pdv => 'PDV',
         };
+    }
+
+    public function hasPdv(): bool
+    {
+        return $this === Plan::Pdv;
     }
 
     /**
