@@ -23,6 +23,10 @@ class CheckCompanyRole
             return $next($request);
         }
 
+        if (! $company) {
+            abort(403, 'Acesso não autorizado.');
+        }
+
         $userRole = $user->roleForCompany($company);
 
         if (! $userRole || ! in_array($userRole, $roles)) {
