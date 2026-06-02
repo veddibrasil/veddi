@@ -33,8 +33,9 @@ class IdentifyCompany
         }
 
         // 3. Authenticated user's company (multi-tenant: never trust query-string overrides)
+        // Do not filter by active — EnsureCompanyIsActive handles inactive/pending redirects.
         if (! $company && auth()->check()) {
-            $company = auth()->user()->companies()->where('active', true)->orderBy('id')->first();
+            $company = auth()->user()->companies()->orderBy('id')->first();
         }
 
         // 4. Fallback: first active company (single-tenant dev compatibility; debug only)
