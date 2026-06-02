@@ -18,6 +18,8 @@ class Order extends Model
         'fee_billed_at',
         'delivery_address_id',
         'cash_received', 'cash_change',
+        'manual_discount',
+        'pdv_cash_session_id',
     ];
 
     protected $casts = [
@@ -109,6 +111,11 @@ class Order extends Model
     public function payment(): HasOne
     {
         return $this->hasOne(Payment::class)->latestOfMany();
+    }
+
+    public function pdvCashSession(): BelongsTo
+    {
+        return $this->belongsTo(PdvCashSession::class, 'pdv_cash_session_id');
     }
 
     public function coupon(): BelongsTo

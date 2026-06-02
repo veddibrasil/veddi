@@ -19,6 +19,7 @@ interface OrderServiceInterface
         float $deliveryFee = 0.0,
         ?Coupon $coupon = null,
         ?Carbon $scheduledAt = null,
+        float $extraDiscount = 0.0,
     ): Order;
 
     public function cancelOrder(Order $order, int $customerId): void;

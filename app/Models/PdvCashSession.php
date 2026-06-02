@@ -14,9 +14,11 @@ class PdvCashSession extends Model
         'company_id',
         'branch_id',
         'user_id',
+        'terminal_name',
         'opening_amount',
         'closing_amount',
         'expected_amount',
+        'reconciliation_notes',
         'closed_at',
     ];
 

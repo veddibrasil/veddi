@@ -3,9 +3,18 @@ Alpine.data('pdvApp', () => ({
     pendingSelections: {},
     sidebarHidden: false,
 
+    // Barcode scanner state
+    _barcodeBuffer: '',
+    _barcodeLastKeyTime: 0,
+    _barcodeClearTimer: null,
+    _barcodeThreshold: 50, // ms between keystrokes — USB scanners type at < 30ms
+
     init() {
         this.sidebarHidden = localStorage.getItem('pdv_sidebar_hidden') === '1';
         this._applySidebarState();
+        this._initBarcodeScanner();
+        this._initShortcuts();
+        this._focusSearch();
     },
 
     toggleSidebar() {
@@ -16,6 +25,101 @@ Alpine.data('pdvApp', () => ({
 
     _applySidebarState() {
         document.body.classList.toggle('pdv-fullscreen', this.sidebarHidden);
+    },
+
+    _initBarcodeScanner() {
+        window.addEventListener('keydown', (e) => {
+            // Skip if user is actively typing in a text input/textarea
+            const tag = e.target.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+            if (e.target.isContentEditable) return;
+
+            const now = Date.now();
+            const gap = now - this._barcodeLastKeyTime;
+            this._barcodeLastKeyTime = now;
+
+            if (e.key === 'Enter') {
+                if (this._barcodeBuffer.length >= 3) {
+                    // Dispatch to Livewire: set barcodeInput + call lookupByBarcode
+                    const wire = Livewire.find(document.querySelector('[wire\\:id]')?.getAttribute('wire:id'));
+                    if (wire) {
+                        wire.set('barcodeInput', this._barcodeBuffer).then(() => {
+                            wire.call('lookupByBarcode');
+                        });
+                    }
+                }
+                this._barcodeBuffer = '';
+                clearTimeout(this._barcodeClearTimer);
+                return;
+            }
+
+            if (e.key.length === 1) {
+                // Fast sequential keys = scanner; slow keys = user typing something else
+                if (gap < this._barcodeThreshold || this._barcodeBuffer.length === 0) {
+                    this._barcodeBuffer += e.key;
+                } else {
+                    this._barcodeBuffer = e.key;
+                }
+
+                clearTimeout(this._barcodeClearTimer);
+                this._barcodeClearTimer = setTimeout(() => {
+                    this._barcodeBuffer = '';
+                }, 1000);
+            }
+        });
+    },
+
+    _wire() {
+        return Livewire.find(document.querySelector('[wire\\:id]')?.getAttribute('wire:id'));
+    },
+
+    _focusSearch() {
+        requestAnimationFrame(() => {
+            document.getElementById('pdv-product-search')?.focus();
+        });
+    },
+
+    _initShortcuts() {
+        window.addEventListener('keydown', (e) => {
+            const tag = e.target.tagName;
+            const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable;
+            const wire = this._wire();
+
+            if (!wire) return;
+            const step = wire.get('step');
+
+            if (e.key === 'Escape') {
+                this.selectingProduct = null;
+                this.pendingSelections = {};
+                if (step === 'payment') {
+                    e.preventDefault();
+                    wire.call('backToCatalog');
+                    this._focusSearch();
+                }
+                return;
+            }
+
+            if (typing) return;
+
+            if (e.key === '/') {
+                e.preventDefault();
+                this._focusSearch();
+                return;
+            }
+
+            if (e.key === 'F2') {
+                e.preventDefault();
+                wire.call('proceedToPayment');
+                return;
+            }
+
+            if (e.key === 'F10') {
+                e.preventDefault();
+                if (step === 'payment') {
+                    wire.call('processOrder');
+                }
+            }
+        });
     },
 
     openOptionSelector(product) {

@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Payment;
+use App\Models\PdvAuditLog;
 use App\Models\PdvCashSession;
 use App\Models\Product;
 use App\Models\ProductCategory;
@@ -452,7 +453,7 @@ test('operador cancela pedido PDV dentro de 5 minutos', function () {
     expect($order->status)->toBe('cancelled');
 });
 
-test('cancelamento fora do prazo de 5 minutos exibe erro', function () {
+test('operador cancela pedido PDV de sessão mesmo após 5 minutos', function () {
     ['admin' => $admin, 'product' => $product] = pdvContext();
 
     $this->actingAs($admin);
@@ -469,10 +470,8 @@ test('cancelamento fora do prazo de 5 minutos exibe erro', function () {
 
     $component->call('cancelLastOrder');
 
-    $component->assertHasErrors('cancel');
-
     $order = Order::withoutGlobalScopes()->find($orderId);
-    expect($order->status)->not->toBe('cancelled');
+    expect($order->status)->toBe('cancelled');
 });
 
 test('pedido em status terminal não pode ser cancelado no PDV', function () {
@@ -588,4 +587,68 @@ test('processCash cria payment com status paid sem gateway', function () {
     expect($payment->status)->toBe('paid');
     expect($payment->payment_gateway)->toBe('cash');
     expect($payment->paid_at)->not->toBeNull();
+});
+
+// ─── Auditoria e caixa profissional ──────────────────────────────────────────
+
+test('suprimento e sangria alteram valor esperado do caixa', function () {
+    ['admin' => $admin] = pdvContext();
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->call('toggleCashMovementForm', 'supply')
+        ->set('cashMovementAmountInput', '50.00')
+        ->set('cashMovementReason', 'Troco adicional')
+        ->call('registerCashMovement')
+        ->call('toggleCashMovementForm', 'withdrawal')
+        ->set('cashMovementAmountInput', '20.00')
+        ->set('cashMovementReason', 'Retirada para cofre')
+        ->call('registerCashMovement');
+
+    $session = PdvCashSession::withoutGlobalScopes()->find($component->get('cashSessionId'));
+
+    expect($component->instance()->cashSessionExpected($session))->toBe(30.0);
+    expect(PdvAuditLog::withoutGlobalScopes()->where('action', 'cash_supply')->count())->toBe(1);
+    expect(PdvAuditLog::withoutGlobalScopes()->where('action', 'cash_withdrawal')->count())->toBe(1);
+});
+
+test('PDV registra auditoria para venda cancelamento e fechamento', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'cash')
+        ->call('processOrder')
+        ->assertSet('step', 'success');
+
+    $orderId = $component->get('lastOrderId');
+
+    expect(PdvAuditLog::withoutGlobalScopes()
+        ->where('action', 'order_created')
+        ->where('order_id', $orderId)
+        ->exists()
+    )->toBeTrue();
+
+    $component->call('cancelLastOrder');
+
+    expect(PdvAuditLog::withoutGlobalScopes()
+        ->where('action', 'order_cancelled')
+        ->where('order_id', $orderId)
+        ->exists()
+    )->toBeTrue();
+
+    $session = PdvCashSession::withoutGlobalScopes()->whereNull('closed_at')->first();
+
+    Livewire::test(Terminal::class)
+        ->set('closingAmountInput', (string) $component->instance()->cashSessionExpected($session))
+        ->call('closeCashSession');
+
+    expect(PdvAuditLog::withoutGlobalScopes()
+        ->where('action', 'cash_closed')
+        ->exists()
+    )->toBeTrue();
 });

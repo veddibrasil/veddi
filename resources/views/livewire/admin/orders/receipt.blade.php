@@ -115,6 +115,12 @@
                 <td class="right">- R$ {{ number_format($order->discount, 2, ',', '.') }}</td>
             </tr>
         @endif
+        @if (($order->manual_discount ?? 0) > 0)
+            <tr>
+                <td>Desconto operador</td>
+                <td class="right">- R$ {{ number_format($order->manual_discount, 2, ',', '.') }}</td>
+            </tr>
+        @endif
         <tr style="border-top: 1px solid #dca8f5;">
             <td class="total-label">TOTAL</td>
             <td class="total-value">R$ {{ number_format($order->total, 2, ',', '.') }}</td>

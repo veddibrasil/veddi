@@ -57,12 +57,15 @@ class Report extends Component
 
     public function render()
     {
-        $allOrders = (clone $this->buildOrderQuery())->get(['total', 'payment_method', 'status']);
+        $allOrders = (clone $this->buildOrderQuery())->get(['total', 'payment_method', 'status', 'discount', 'manual_discount']);
 
-        $totalRevenue = $allOrders->whereNotIn('status', ['cancelled', 'refunded'])->sum('total');
-        $cashTotal = $allOrders->whereNotIn('status', ['cancelled', 'refunded'])->where('payment_method', 'cash')->sum('total');
-        $pixTotal = $allOrders->whereNotIn('status', ['cancelled', 'refunded'])->where('payment_method', 'pix')->sum('total');
-        $cardTotal = $allOrders->whereNotIn('status', ['cancelled', 'refunded'])->where('payment_method', 'credit_card')->sum('total');
+        $activeOrders = $allOrders->whereNotIn('status', ['cancelled', 'refunded']);
+        $totalRevenue = $activeOrders->sum('total');
+        $cashTotal = $activeOrders->where('payment_method', 'cash')->sum('total');
+        $pixTotal = $activeOrders->where('payment_method', 'pix')->sum('total');
+        $cardTotal = $activeOrders->where('payment_method', 'credit_card')->sum('total');
+        $cancelledCount = $allOrders->whereIn('status', ['cancelled', 'refunded'])->count();
+        $totalDiscounts = $activeOrders->sum(fn ($o) => ($o->discount ?? 0) + ($o->manual_discount ?? 0));
 
         $orders = (clone $this->buildOrderQuery())->latest()->paginate(25);
 
@@ -83,6 +86,7 @@ class Report extends Component
         return view('livewire.admin.pdv.report', compact(
             'orders', 'branches', 'sessions',
             'totalRevenue', 'cashTotal', 'pixTotal', 'cardTotal',
+            'cancelledCount', 'totalDiscounts',
         ))->layout('layouts.app', ['title' => 'Relatório PDV']);
     }
 }

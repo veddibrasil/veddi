@@ -1,18 +1,30 @@
-<div class="flex flex-col flex-1 min-h-0" x-data="pdvApp()">
+<div class="flex flex-col flex-1 min-h-0 bg-zinc-50 text-neutral-900 dark:bg-[#0f1926] dark:text-neutral-100" x-data="pdvApp()">
 
-    {{-- Header --}}
-    <div class="flex items-center justify-between px-6 py-3 bg-white border-b dark:bg-zinc-900 dark:border-zinc-700 shrink-0">
-        <div class="flex items-center gap-3">
-            <flux:icon.computer-desktop class="size-5 text-amber-500" />
-            <h1 class="text-lg font-bold text-neutral-800 dark:text-neutral-100">Terminal PDV</h1>
-            @if ($cashSessionId)
-                <span class="hidden sm:inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                    <span class="size-1.5 rounded-full bg-green-500"></span>
-                    Caixa aberto
-                </span>
-            @endif
+    {{-- ══ Header ══ --}}
+    <div class="flex items-center justify-between gap-4 px-5 py-3 bg-white border-b border-neutral-200 shadow-sm dark:bg-zinc-900 dark:border-zinc-800 shrink-0">
+        <div class="flex items-center gap-3 min-w-0">
+            <div class="size-9 rounded-lg bg-amber-500 text-white flex items-center justify-center shadow-sm shadow-amber-500/20 dark:bg-amber-400 dark:text-white">
+                <flux:icon.computer-desktop class="size-5" />
+            </div>
+            <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                    <h1 class="text-base font-bold text-neutral-900 dark:text-neutral-100">Terminal PDV</h1>
+                    @if ($cashSessionId)
+                        <span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                            <span class="size-1.5 rounded-full bg-green-500"></span>
+                            Caixa aberto
+                        </span>
+                    @endif
+                </div>
+                <p class="hidden sm:block text-xs text-neutral-500 dark:text-neutral-400 truncate">
+                    {{ $this->branches->firstWhere('id', $selectedBranchId)?->name ?? $this->branches->first()?->name ?? 'Filial' }}
+                    @if ($cashSessionId && $this->shiftStats['terminal'])
+                        · {{ $this->shiftStats['terminal'] }}
+                    @endif
+                </p>
+            </div>
         </div>
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2 shrink-0">
             @if ($this->branches->count() > 1)
                 <flux:select wire:model.live="selectedBranchId" class="w-56">
                     @foreach ($this->branches as $branch)
@@ -25,8 +37,9 @@
                 </span>
             @endif
 
-            @if ($cashSessionId && in_array($step, ['catalog', 'payment']))
-                <flux:button wire:click="proceedToCloseCash" variant="ghost" size="sm" icon="lock-closed" class="text-neutral-500 hover:text-red-600">
+            @if ($cashSessionId && !in_array($step, ['open_cash', 'close_cash']))
+                <flux:button wire:click="showSessionHistory" variant="outline" size="sm" icon="clock" class="hidden sm:flex" title="Histórico da sessão" />
+                <flux:button wire:click="proceedToCloseCash" variant="outline" size="sm" icon="lock-closed" class="hover:text-red-600">
                     Fechar caixa
                 </flux:button>
             @endif
@@ -34,7 +47,7 @@
             <button
                 @click="toggleSidebar()"
                 :title="sidebarHidden ? 'Mostrar menu lateral' : 'Ocultar menu lateral'"
-                class="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 dark:hover:bg-zinc-800 dark:hover:text-neutral-300 transition-colors"
+                class="p-2 rounded-lg border border-neutral-200 text-neutral-500 hover:text-neutral-800 hover:bg-neutral-50 dark:border-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-neutral-200 transition-colors"
             >
                 <svg x-show="!sidebarHidden" xmlns="http://www.w3.org/2000/svg" class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7M4 12h16" />
@@ -46,7 +59,95 @@
         </div>
     </div>
 
-    {{-- Tela: Abertura de caixa --}}
+    {{-- ══ Barra de turno ══ --}}
+    @if ($cashSessionId && !in_array($step, ['open_cash', 'close_cash']))
+        @php $stats = $this->shiftStats; @endphp
+        <div class="shrink-0 px-5 py-2 bg-amber-600 text-white border-b border-amber-700 dark:bg-amber-900/40 dark:border-amber-800 flex items-center gap-3 text-xs overflow-x-auto">
+            <span class="flex items-center gap-1">
+                <flux:icon.user-circle class="size-3.5" />
+                {{ $stats['operator'] }}
+            </span>
+            <span class="text-white/30">|</span>
+            <span class="flex items-center gap-1">
+                <flux:icon.clock class="size-3.5" />
+                Turno aberto há {{ $stats['duration'] }}
+            </span>
+            <span class="text-white/30">|</span>
+            <span class="flex items-center gap-1">
+                <flux:icon.shopping-bag class="size-3.5" />
+                {{ $stats['orders'] }} pedido{{ $stats['orders'] !== 1 ? 's' : '' }}
+            </span>
+            @if ($stats['revenue'] > 0)
+                <span class="text-white/30">|</span>
+                    <span class="flex items-center gap-1 font-bold text-amber-100">
+                    R$ {{ number_format($stats['revenue'], 2, ',', '.') }}
+                </span>
+            @endif
+            <span class="text-white/30">|</span>
+            <button
+                type="button"
+                wire:click="toggleCashMovementForm('supply')"
+                class="inline-flex items-center gap-1 rounded-md bg-white/10 px-2 py-1 font-semibold text-white transition hover:bg-white/20"
+            >
+                <flux:icon.plus class="size-3.5" />
+                Suprimento
+            </button>
+            <button
+                type="button"
+                wire:click="toggleCashMovementForm('withdrawal')"
+                class="inline-flex items-center gap-1 rounded-md bg-white/10 px-2 py-1 font-semibold text-white transition hover:bg-white/20"
+            >
+                <flux:icon.minus class="size-3.5" />
+                Sangria
+            </button>
+        </div>
+        @if ($showCashMovementForm)
+            <div class="shrink-0 border-b border-amber-100 bg-amber-50 px-5 py-3 dark:border-amber-900/30 dark:bg-amber-900/10">
+                <div class="flex flex-col gap-2 lg:flex-row lg:items-start">
+                    <div class="min-w-36">
+                        <p class="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                            {{ $cashMovementType === 'withdrawal' ? 'Sangria' : 'Suprimento' }}
+                        </p>
+                        <p class="text-xs text-amber-600/80 dark:text-amber-300/80">Movimentação manual do caixa.</p>
+                    </div>
+                    <div class="grid flex-1 gap-2 sm:grid-cols-[10rem_minmax(0,1fr)_auto]">
+                        <div>
+                            <flux:input
+                                wire:model="cashMovementAmountInput"
+                                placeholder="R$ 0,00"
+                                type="number"
+                                step="0.01"
+                                min="0"
+                            />
+                            @error('cash_movement_amount')
+                                <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                            @enderror
+                        </div>
+                        <div>
+                            <flux:input
+                                wire:model="cashMovementReason"
+                                wire:keydown.enter="registerCashMovement"
+                                placeholder="Motivo"
+                            />
+                            @error('cash_movement_reason')
+                                <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                            @enderror
+                        </div>
+                        <div class="flex gap-2">
+                            <flux:button wire:click="registerCashMovement" variant="primary" size="sm">
+                                Registrar
+                            </flux:button>
+                            <flux:button wire:click="toggleCashMovementForm('{{ $cashMovementType }}')" variant="ghost" size="sm">
+                                Cancelar
+                            </flux:button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        @endif
+    @endif
+
+    {{-- ══ Abertura de caixa ══ --}}
     @if ($step === 'open_cash')
         <div class="flex-1 flex items-center justify-center p-8">
             <div class="w-full max-w-sm space-y-5">
@@ -55,20 +156,31 @@
                         <flux:icon.banknotes class="size-8 text-amber-500 dark:text-amber-400" />
                     </div>
                     <h2 class="text-xl font-bold text-neutral-800 dark:text-neutral-100">Abrir caixa</h2>
-                    <p class="text-sm text-neutral-500 dark:text-neutral-400 mt-1">Informe o valor em dinheiro disponível no caixa para iniciar o turno.</p>
+                    <p class="text-sm text-neutral-500 dark:text-neutral-400 mt-1">Informe o troco inicial e identifique este terminal.</p>
                 </div>
 
-                <div class="space-y-2">
-                    <flux:label>Valor de abertura (troco inicial)</flux:label>
-                    <flux:input
-                        wire:model="openingAmountInput"
-                        wire:keydown.enter="openCashSession"
-                        placeholder="R$ 0,00"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                    />
-                    <p class="text-xs text-neutral-400 dark:text-neutral-500">Deixe em branco se o caixa começa sem troco.</p>
+                <div class="space-y-3">
+                    <div class="space-y-2">
+                        <flux:label>Nome do terminal (opcional)</flux:label>
+                        <flux:input
+                            wire:model="terminalName"
+                            placeholder="Ex: Caixa 1, PDV Balcão..."
+                        />
+                        <p class="text-xs text-neutral-400 dark:text-neutral-500">Útil quando há múltiplos caixas na mesma filial.</p>
+                    </div>
+
+                    <div class="space-y-2">
+                        <flux:label>Valor de abertura (troco inicial)</flux:label>
+                        <flux:input
+                            wire:model="openingAmountInput"
+                            wire:keydown.enter="openCashSession"
+                            placeholder="R$ 0,00"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                        />
+                        <p class="text-xs text-neutral-400 dark:text-neutral-500">Deixe em branco se o caixa começa sem troco.</p>
+                    </div>
                 </div>
 
                 <flux:button wire:click="openCashSession" variant="primary" size="base" class="w-full">
@@ -77,11 +189,15 @@
             </div>
         </div>
 
-    {{-- Tela: Fechamento de caixa --}}
+    {{-- ══ Fechamento de caixa ══ --}}
     @elseif ($step === 'close_cash')
         @php
             $session = $this->cashSession;
-            $expectedCash = $session ? $this->cashSessionExpected($session) : 0.0;
+            $cashBreakdown = $this->cashSessionBreakdown($session);
+            $expectedCash = $cashBreakdown['expected'];
+            $closingVal = filled($closingAmountInput) ? (float) str_replace(',', '.', $closingAmountInput) : null;
+            $closingDiff = $closingVal !== null ? round($closingVal - $expectedCash, 2) : null;
+            $needsNotes = $closingDiff !== null && abs($closingDiff) > 5.0;
         @endphp
         <div class="flex-1 flex items-center justify-center p-8 overflow-y-auto">
             <div class="w-full max-w-sm space-y-5">
@@ -90,18 +206,49 @@
                         <flux:icon.lock-closed class="size-8 text-amber-600 dark:text-amber-400" />
                     </div>
                     <h2 class="text-xl font-bold text-neutral-800 dark:text-neutral-100">Fechar caixa</h2>
+                    @if ($session?->terminal_name)
+                        <p class="text-sm text-neutral-500 dark:text-neutral-400 mt-1">{{ $session->terminal_name }}</p>
+                    @endif
                 </div>
 
                 @if ($session)
+                    @php $turnoStats = $this->shiftStats; @endphp
+                    <div class="bg-amber-50 rounded-xl p-3 border border-amber-100 dark:bg-amber-900/10 dark:border-amber-900/20 text-xs text-amber-700 dark:text-amber-400 space-y-1">
+                        <div class="flex justify-between">
+                            <span>Duração do turno</span>
+                            <span class="font-medium">{{ $turnoStats['duration'] }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Pedidos no turno</span>
+                            <span class="font-medium">{{ $turnoStats['orders'] }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Faturamento total</span>
+                            <span class="font-medium">R$ {{ number_format($turnoStats['revenue'], 2, ',', '.') }}</span>
+                        </div>
+                    </div>
+
                     <div class="bg-neutral-50 rounded-xl p-4 border dark:bg-zinc-800 dark:border-zinc-700 space-y-2 text-sm">
                         <div class="flex justify-between">
                             <span class="text-neutral-500">Abertura</span>
-                            <span class="font-medium">R$ {{ number_format($session->opening_amount, 2, ',', '.') }}</span>
+                            <span class="font-medium">R$ {{ number_format($cashBreakdown['opening'], 2, ',', '.') }}</span>
                         </div>
                         <div class="flex justify-between">
                             <span class="text-neutral-500">Vendas em dinheiro</span>
-                            <span class="font-medium text-green-600">+ R$ {{ number_format(max(0, $expectedCash - $session->opening_amount), 2, ',', '.') }}</span>
+                            <span class="font-medium text-green-600">+ R$ {{ number_format($cashBreakdown['cash_sales'], 2, ',', '.') }}</span>
                         </div>
+                        @if ($cashBreakdown['supplies'] > 0)
+                            <div class="flex justify-between">
+                                <span class="text-neutral-500">Suprimentos</span>
+                                <span class="font-medium text-green-600">+ R$ {{ number_format($cashBreakdown['supplies'], 2, ',', '.') }}</span>
+                            </div>
+                        @endif
+                        @if ($cashBreakdown['withdrawals'] > 0)
+                            <div class="flex justify-between">
+                                <span class="text-neutral-500">Sangrias</span>
+                                <span class="font-medium text-red-600">- R$ {{ number_format($cashBreakdown['withdrawals'], 2, ',', '.') }}</span>
+                            </div>
+                        @endif
                         <div class="border-t pt-2 flex justify-between font-bold dark:border-zinc-600">
                             <span>Esperado no caixa</span>
                             <span class="text-amber-500 dark:text-amber-400">R$ {{ number_format($expectedCash, 2, ',', '.') }}</span>
@@ -112,20 +259,43 @@
                 <div class="space-y-2">
                     <flux:label>Valor contado no caixa</flux:label>
                     <flux:input
-                        wire:model="closingAmountInput"
+                        wire:model.live="closingAmountInput"
                         placeholder="R$ 0,00"
                         type="number"
                         step="0.01"
                         min="0"
                     />
-                    @if (filled($closingAmountInput) && $session)
-                        @php $diff = round((float) str_replace(',', '.', $closingAmountInput) - $expectedCash, 2); @endphp
-                        <p class="text-sm {{ $diff >= 0 ? 'text-green-600' : 'text-red-600' }}">
-                            Diferença: {{ $diff >= 0 ? '+' : '' }}R$ {{ number_format(abs($diff), 2, ',', '.') }}
-                            {{ $diff >= 0 ? '(sobra)' : '(falta)' }}
-                        </p>
+                    @error('closingAmountInput')
+                        <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                    @enderror
+                    @if ($closingDiff !== null)
+                        @if (abs($closingDiff) < 0.01)
+                            <p class="text-sm text-green-600 dark:text-green-400">Caixa conferido exatamente.</p>
+                        @else
+                            <p class="text-sm {{ $closingDiff >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}">
+                                {{ $closingDiff >= 0 ? 'Sobra' : 'Falta' }}: R$ {{ number_format(abs($closingDiff), 2, ',', '.') }}
+                                @if ($needsNotes)
+                                    — <span class="font-semibold">justificativa obrigatória</span>
+                                @endif
+                            </p>
+                        @endif
                     @endif
                 </div>
+
+                @if ($needsNotes)
+                    <div class="space-y-2">
+                        <flux:label>Justificativa da diferença <span class="text-red-500">*</span></flux:label>
+                        <flux:textarea
+                            wire:model="reconciliationNotes"
+                            placeholder="Explique o motivo da diferença..."
+                            rows="2"
+                            class="resize-none"
+                        />
+                        @error('reconciliation_notes')
+                            <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                        @enderror
+                    </div>
+                @endif
 
                 <div class="flex gap-2">
                     <flux:button wire:click="cancelCloseCash" variant="ghost" size="base" class="flex-1">
@@ -138,373 +308,157 @@
             </div>
         </div>
 
-    {{-- Tela: Sucesso --}}
-    @elseif ($step === 'success')
-        <div class="flex-1 flex items-center justify-center p-8">
-            <div class="text-center space-y-4 max-w-sm">
-                <div class="mx-auto size-16 rounded-full bg-green-100 flex items-center justify-center dark:bg-green-900/40">
-                    <flux:icon.check-circle class="size-10 text-green-600 dark:text-green-400" />
-                </div>
-                <h2 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100">Pedido registrado!</h2>
-                <p class="font-mono text-amber-500 dark:text-amber-400 font-semibold text-lg">{{ $lastOrderNumber }}</p>
-                @if ($lastOrderTotal)
-                    <p class="text-sm text-neutral-500 dark:text-neutral-400">
-                        Total: <span class="font-semibold text-neutral-700 dark:text-neutral-200">R$ {{ number_format($lastOrderTotal, 2, ',', '.') }}</span>
-                    </p>
-                @endif
-                @if ($changeAmount > 0)
-                    <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 dark:bg-amber-900/20 dark:border-amber-700">
-                        <p class="text-sm text-amber-700 dark:text-amber-300">Troco para o cliente</p>
-                        <p class="text-3xl font-bold text-amber-700 dark:text-amber-300">
-                            R$ {{ number_format($changeAmount, 2, ',', '.') }}
-                        </p>
-                    </div>
-                @endif
-                <div class="flex gap-2">
-                    <flux:button wire:click="resetTerminal" variant="primary" size="base" class="flex-1">
-                        Novo pedido
-                    </flux:button>
-                    @if ($lastOrderId)
-                        <flux:button
-                            x-data
-                            x-on:click="window.open('{{ route('admin.orders.receipt', ['order' => $lastOrderId]) }}', '_blank')"
-                            variant="outline"
-                            size="base"
-                            icon="printer"
-                            title="Imprimir comprovante"
-                        />
-                    @endif
-                </div>
-                @if ($lastOrderId)
-                    @if ($confirmingCancelOrder)
-                        <div class="border border-red-200 rounded-xl p-3 space-y-2 text-sm bg-red-50 dark:bg-red-900/20 dark:border-red-700">
-                            <p class="text-red-700 dark:text-red-300 font-medium">Cancelar pedido {{ $lastOrderNumber }}?</p>
-                            <p class="text-xs text-red-500">Estoque será restaurado. Sem reembolso automático.</p>
-                            <div class="flex gap-2">
-                                <flux:button wire:click="$set('confirmingCancelOrder', false)" variant="ghost" size="sm">Não</flux:button>
-                                <flux:button wire:click="cancelLastOrder" variant="danger" size="sm" class="flex-1">Sim, cancelar</flux:button>
-                            </div>
-                        </div>
-                        @error('cancel') <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
-                    @else
-                        <flux:button wire:click="$set('confirmingCancelOrder', true)" variant="ghost" size="sm" class="w-full text-red-500 hover:text-red-700">
-                            Cancelar este pedido
-                        </flux:button>
-                    @endif
-                @endif
-            </div>
-        </div>
+    {{-- ══ Layout 3 colunas: catálogo + painel direito ══ --}}
+    @else
+        <div class="flex flex-col lg:flex-row flex-1 overflow-hidden relative p-3 gap-3">
 
-    {{-- Tela: PIX aguardando --}}
-    @elseif ($step === 'pix')
-        <div
-            class="flex-1 flex items-center justify-center p-8"
-            x-data="{
-                pollCount: 0,
-                maxPolls: 60,
-                timedOut: false,
-                timer: null,
-                start() {
-                    this.timer = setInterval(() => {
-                        if (this.timedOut) { clearInterval(this.timer); return; }
-                        $wire.checkPixStatus();
-                        this.pollCount++;
-                        if (this.pollCount >= this.maxPolls) {
-                            this.timedOut = true;
-                            clearInterval(this.timer);
-                        }
-                    }, 3000);
-                }
-            }"
-            x-init="start()"
-        >
-            <div class="text-center space-y-4 max-w-sm">
-                <div class="mx-auto size-16 rounded-full bg-blue-100 flex items-center justify-center dark:bg-blue-900/40">
-                    <flux:icon.qr-code class="size-10 text-blue-600 dark:text-blue-400" />
-                </div>
-                <h2 class="text-xl font-bold text-neutral-800 dark:text-neutral-100">PIX gerado</h2>
-                <p class="text-sm text-neutral-500 dark:text-neutral-400">
-                    Pedido <span class="font-mono font-semibold text-amber-500">{{ $lastOrderNumber }}</span>
-                    @if ($lastOrderTotal)
-                        · <span class="font-semibold text-neutral-700 dark:text-neutral-200">R$ {{ number_format($lastOrderTotal, 2, ',', '.') }}</span>
-                    @endif
-                </p>
-                <template x-if="timedOut">
-                    <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-700 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-300">
-                        <p class="font-medium">Verificação automática encerrada.</p>
-                        <p class="text-xs mt-0.5">Use o botão abaixo para verificar manualmente ou cancele o pedido.</p>
+            {{-- ── Overlay: Histórico de sessão ── --}}
+            @if ($showSessionHistory)
+                <div class="absolute inset-0 z-20 flex flex-col bg-white dark:bg-zinc-900">
+                    <div class="shrink-0 px-4 py-3 flex items-center gap-3 border-b dark:border-zinc-700 bg-white dark:bg-zinc-900">
+                        <flux:button wire:click="backFromSessionHistory" variant="ghost" icon="arrow-left" size="sm" />
+                        <h2 class="text-base font-bold text-neutral-800 dark:text-neutral-100">Pedidos da sessão</h2>
                     </div>
-                </template>
-                <template x-if="!timedOut">
-                    <div class="flex items-center justify-center gap-2 text-sm text-blue-600 dark:text-blue-400">
-                        <flux:icon.arrow-path class="size-4 animate-spin" />
-                        <span>Aguardando pagamento... (<span x-text="maxPolls - pollCount"></span> verificações restantes)</span>
-                    </div>
-                </template>
-                @if ($pixCopyPaste)
-                    <div class="bg-neutral-50 border rounded-xl p-3 text-left dark:bg-zinc-800 dark:border-zinc-600">
-                        <p class="text-xs text-neutral-500 mb-1">Copia e cola</p>
-                        <p class="font-mono text-xs break-all text-neutral-700 dark:text-neutral-300 select-all">{{ $pixCopyPaste }}</p>
-                    </div>
-                    <flux:button
-                        x-data
-                        x-on:click="navigator.clipboard.writeText('{{ $pixCopyPaste }}')"
-                        variant="outline"
-                        size="sm"
-                        icon="clipboard"
-                    >
-                        Copiar código
-                    </flux:button>
-                @endif
-                <flux:button wire:click="checkPixStatus" variant="ghost" size="sm" class="w-full">
-                    Verificar pagamento
-                </flux:button>
-                <flux:button wire:click="resetTerminal" variant="ghost" size="sm" class="w-full text-neutral-400 hover:text-red-500">
-                    Cancelar e novo pedido
-                </flux:button>
-            </div>
-        </div>
-
-    {{-- Tela: Pagamento --}}
-    @elseif ($step === 'payment')
-        <div class="flex-1 flex items-center justify-center p-8 overflow-y-auto">
-            <div class="w-full max-w-md space-y-5">
-                <div class="flex items-center gap-2">
-                    <flux:button wire:click="backToCatalog" variant="ghost" icon="arrow-left" size="sm" />
-                    <h2 class="text-lg font-bold text-neutral-800 dark:text-neutral-100">Pagamento</h2>
-                </div>
-
-                {{-- Resumo do pedido --}}
-                <div class="bg-neutral-50 rounded-xl p-4 border dark:bg-zinc-800 dark:border-zinc-700 space-y-2">
-                    @foreach ($cart as $cartKey => $item)
-                        @php
-                            $itemOptionsExtra = 0.0;
-                            foreach ($item['options'] ?? [] as $group) {
-                                foreach ($group['selections'] ?? [] as $sel) {
-                                    $itemOptionsExtra += ($sel['qty'] ?? 0) * ($sel['additional_price'] ?? 0);
-                                }
-                            }
-                            $itemUnitPrice = (float) $item['price'] + $itemOptionsExtra;
-                        @endphp
-                        <div class="text-sm">
-                            <div class="flex justify-between">
-                                <span class="text-neutral-700 dark:text-neutral-300">{{ $item['qty'] }}× {{ $item['name'] }}</span>
-                                <span class="font-medium text-neutral-800 dark:text-neutral-100">
-                                    R$ {{ number_format($itemUnitPrice * $item['qty'], 2, ',', '.') }}
-                                </span>
-                            </div>
-                            @foreach ($item['options'] ?? [] as $group)
-                                @foreach ($group['selections'] ?? [] as $sel)
-                                    <p class="text-xs text-neutral-400 dark:text-neutral-500 ml-3 leading-tight">
-                                        {{ $sel['qty'] }}× {{ $sel['name'] }}@if (($sel['additional_price'] ?? 0) > 0) <span class="text-amber-500">(+R$ {{ number_format($sel['additional_price'], 2, ',', '.') }})</span>@endif
-                                    </p>
-                                @endforeach
-                            @endforeach
-                        </div>
-                    @endforeach
-                    @if ($couponDiscount > 0)
-                        <div class="flex justify-between text-sm text-green-600 dark:text-green-400">
-                            <span>Subtotal</span>
-                            <span>R$ {{ number_format($this->cartTotal, 2, ',', '.') }}</span>
-                        </div>
-                        <div class="flex justify-between text-sm text-green-600 dark:text-green-400">
-                            <span>Desconto ({{ $appliedCoupon['code'] }})</span>
-                            <span>− R$ {{ number_format($couponDiscount, 2, ',', '.') }}</span>
-                        </div>
-                    @endif
-                    <div class="border-t pt-2 flex justify-between font-bold dark:border-zinc-600">
-                        <span>Total</span>
-                        <span class="text-amber-500 dark:text-amber-400">R$ {{ number_format($this->cartTotalAfterDiscount, 2, ',', '.') }}</span>
-                    </div>
-                </div>
-
-                {{-- Cupom --}}
-                <div class="space-y-2">
-                    <flux:label>Cupom de desconto (opcional)</flux:label>
-                    @if ($appliedCoupon)
-                        <div class="flex items-center justify-between px-3 py-2 bg-green-50 border border-green-200 rounded-xl dark:bg-green-900/20 dark:border-green-700">
-                            <div>
-                                <span class="text-sm font-semibold text-green-700 dark:text-green-300">{{ $appliedCoupon['code'] }}</span>
-                                <span class="text-xs text-green-600 dark:text-green-400 ml-2">{{ $appliedCoupon['label'] }}</span>
-                            </div>
-                            <button wire:click="removeCoupon" class="text-xs text-red-500 hover:text-red-700 ml-2">Remover</button>
-                        </div>
-                    @else
-                        <div class="flex gap-2">
-                            <flux:input
-                                wire:model="couponInput"
-                                wire:keydown.enter="applyCoupon"
-                                placeholder="Código do cupom"
-                                class="flex-1 uppercase"
-                            />
-                            <flux:button wire:click="applyCoupon" variant="outline">Aplicar</flux:button>
-                        </div>
-                        @if ($couponError)
-                            <p class="text-sm text-red-600 dark:text-red-400">{{ $couponError }}</p>
-                        @endif
-                    @endif
-                </div>
-
-                {{-- Cliente (opcional) --}}
-                <div class="space-y-2">
-                    <flux:label>Cliente (opcional)</flux:label>
-                    <div class="flex gap-2">
-                        <flux:input
-                            wire:model="customerQuery"
-                            wire:keydown.enter="lookupCustomer"
-                            placeholder="Nome, telefone ou CPF..."
-                            class="flex-1"
-                        />
-                        <flux:button wire:click="lookupCustomer" variant="outline" icon="magnifying-glass" />
-                    </div>
-                    @if ($customerFound)
-                        <p class="text-sm text-green-600 dark:text-green-400">✓ {{ $customerName }}</p>
-                    @elseif (!empty($customerResults))
-                        <div class="border rounded-xl overflow-hidden dark:border-zinc-600">
-                            @foreach ($customerResults as $result)
-                                <button
-                                    wire:click="selectCustomer({{ $result['id'] }})"
-                                    class="w-full flex items-center justify-between px-3 py-2 text-left text-sm hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors border-b last:border-b-0 dark:border-zinc-600"
-                                >
-                                    <span class="font-medium text-neutral-800 dark:text-neutral-100">{{ $result['name'] }}</span>
-                                    <span class="text-xs text-neutral-400 dark:text-neutral-500 shrink-0 ml-2">
-                                        {{ $result['phone'] }}
-                                        @if ($result['tax_id'])
-                                            · {{ $result['tax_id'] }}
-                                        @endif
-                                    </span>
-                                </button>
-                            @endforeach
-                        </div>
-                    @elseif (filled($customerQuery) && !$customerFound)
-                        @if ($showCreateCustomer)
-                            <div class="space-y-2 border rounded-xl p-3 dark:border-zinc-600">
-                                <p class="text-xs font-semibold text-neutral-600 dark:text-neutral-300">Novo cliente</p>
-                                <flux:input wire:model="newCustomerName" placeholder="Nome completo" />
-                                <flux:input wire:model="newCustomerPhone" wire:keydown.enter="createCustomer" placeholder="Telefone (somente números)" />
-                                @if ($createCustomerError)
-                                    <p class="text-xs text-red-600 dark:text-red-400">{{ $createCustomerError }}</p>
-                                @endif
-                                <div class="flex gap-2">
-                                    <flux:button wire:click="cancelCreateCustomer" variant="ghost" size="sm">Cancelar</flux:button>
-                                    <flux:button wire:click="createCustomer" variant="primary" size="sm" class="flex-1">Cadastrar</flux:button>
-                                </div>
+                    <div class="flex-1 overflow-y-auto p-4">
+                        @if ($this->sessionOrders->isEmpty())
+                            <div class="text-center py-12 text-neutral-400 dark:text-neutral-500">
+                                <flux:icon.shopping-bag class="size-10 mx-auto mb-2 opacity-40" />
+                                <p class="text-sm">Nenhum pedido nesta sessão ainda.</p>
                             </div>
                         @else
-                            <div class="flex items-center justify-between">
-                                <p class="text-sm text-neutral-500 dark:text-neutral-400">Cliente não encontrado — pedido como balcão.</p>
-                                <flux:button wire:click="showCreateCustomerForm" variant="ghost" size="sm" icon="user-plus">
-                                    Criar
-                                </flux:button>
+                            <div class="space-y-2">
+                                @foreach ($this->sessionOrders as $sessionOrder)
+                                    @php
+                                        $isCancelled = in_array($sessionOrder->status, ['cancelled', 'refunded']);
+                                        $methodLabel = match(strtolower($sessionOrder->payment_method ?? '')) {
+                                            'pix' => 'PIX',
+                                            'credit_card' => 'Cartão',
+                                            'cash' => 'Dinheiro',
+                                            default => $sessionOrder->payment_method,
+                                        };
+                                    @endphp
+                                    <div class="bg-white border rounded-xl px-4 py-3 dark:bg-zinc-800 dark:border-zinc-700 {{ $isCancelled ? 'opacity-60' : '' }}">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <div class="flex-1 min-w-0">
+                                                <div class="flex items-center gap-2 flex-wrap">
+                                                    <span class="font-mono text-sm font-semibold text-amber-500 dark:text-amber-400">{{ $sessionOrder->order_number }}</span>
+                                                    <span class="text-xs px-1.5 py-0.5 rounded-full font-medium
+                                                        {{ $isCancelled ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' }}">
+                                                        {{ $isCancelled ? 'Cancelado' : 'Pago' }}
+                                                    </span>
+                                                </div>
+                                                <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">
+                                                    {{ $sessionOrder->created_at->format('H:i') }}
+                                                    · {{ $methodLabel }}
+                                                    @if ($sessionOrder->customer && $sessionOrder->customer->phone !== 'pdv-guest')
+                                                        · {{ $sessionOrder->customer->name }}
+                                                    @endif
+                                                </p>
+                                                @if (($sessionOrder->discount > 0 || $sessionOrder->manual_discount > 0) && !$isCancelled)
+                                                    <p class="text-xs text-green-600 dark:text-green-400 mt-0.5">
+                                                        Desconto: R$ {{ number_format($sessionOrder->discount + $sessionOrder->manual_discount, 2, ',', '.') }}
+                                                    </p>
+                                                @endif
+                                            </div>
+                                            <div class="text-right shrink-0">
+                                                <p class="text-sm font-bold text-neutral-800 dark:text-neutral-100">
+                                                    R$ {{ number_format($sessionOrder->total, 2, ',', '.') }}
+                                                </p>
+                                                @if (!$isCancelled)
+                                                    @if ($confirmingCancelSessionOrderId === $sessionOrder->id)
+                                                        <div class="mt-1 space-y-1">
+                                                            <p class="text-xs text-red-600 dark:text-red-400">Confirmar cancelamento?</p>
+                                                            <div class="flex gap-1">
+                                                                <flux:button wire:click="$set('confirmingCancelSessionOrderId', null)" variant="ghost" size="sm" class="text-xs px-2 py-0.5">Não</flux:button>
+                                                                <flux:button wire:click="cancelPdvOrder({{ $sessionOrder->id }})" variant="danger" size="sm" class="text-xs px-2 py-0.5">Sim</flux:button>
+                                                            </div>
+                                                        </div>
+                                                    @else
+                                                        <button
+                                                            wire:click="$set('confirmingCancelSessionOrderId', {{ $sessionOrder->id }})"
+                                                            class="text-xs text-red-400 hover:text-red-600 mt-1"
+                                                        >
+                                                            Cancelar
+                                                        </button>
+                                                    @endif
+                                                @endif
+                                            </div>
+                                        </div>
+                                        @error('cancel')
+                                            <p class="text-xs text-red-600 dark:text-red-400 mt-1">{{ $message }}</p>
+                                        @enderror
+                                    </div>
+                                @endforeach
                             </div>
                         @endif
-                    @endif
-                </div>
-
-                {{-- Método de pagamento --}}
-                <div class="space-y-2">
-                    <flux:label>Método de pagamento</flux:label>
-                    <flux:radio.group wire:model.live="paymentMethod" variant="segmented" class="w-full">
-                        <flux:radio value="cash" label="Dinheiro" />
-                        <flux:radio value="pix" label="PIX" />
-                        <flux:radio value="credit_card" label="Cartão" />
-                    </flux:radio.group>
-                </div>
-
-                {{-- Campo dinheiro recebido --}}
-                @if ($paymentMethod === 'cash')
-                    <div class="space-y-2">
-                        <flux:label>Valor recebido (deixe em branco = valor exato)</flux:label>
-                        <flux:input
-                            wire:model="cashReceivedInput"
-                            placeholder="R$ 0,00"
-                            type="number"
-                            step="0.01"
-                            min="{{ $this->cartTotalAfterDiscount }}"
-                        />
-                        @if (filled($cashReceivedInput) && (float) str_replace(',', '.', $cashReceivedInput) >= $this->cartTotalAfterDiscount)
-                            <p class="text-sm text-green-600 dark:text-green-400">
-                                Troco: R$ {{ number_format(max(0, (float) str_replace(',', '.', $cashReceivedInput) - $this->cartTotalAfterDiscount), 2, ',', '.') }}
-                            </p>
-                        @endif
                     </div>
-                @endif
-
-                {{-- Observação --}}
-                <div class="space-y-2">
-                    <flux:label>Observação (opcional)</flux:label>
-                    <flux:textarea
-                        wire:model="notes"
-                        placeholder="Ex: sem cebola, embrulhar separado..."
-                        rows="2"
-                        class="resize-none"
-                    />
                 </div>
+            @endif
 
-                @error('order')
-                    <p class="text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
-                @enderror
-
-                <flux:button
-                    wire:click="processOrder"
-                    variant="primary"
-                    size="base"
-                    class="w-full"
-                    wire:loading.attr="disabled"
-                >
-                    <span wire:loading.remove>Confirmar pedido</span>
-                    <span wire:loading>Processando...</span>
-                </flux:button>
-            </div>
-        </div>
-
-    {{-- Tela principal: Catálogo + Carrinho --}}
-    @else
-        <div class="flex flex-1 overflow-hidden">
-
-            {{-- Coluna esquerda: Catálogo --}}
-            <div class="flex flex-col flex-1 overflow-hidden border-r dark:border-zinc-700 relative">
-
-                {{-- Busca e categorias --}}
-                <div class="px-4 py-3 space-y-2 shrink-0 border-b bg-neutral-50 dark:bg-zinc-800/50 dark:border-zinc-700">
-                    <flux:input
-                        wire:model.live.debounce.300ms="search"
-                        placeholder="Buscar produto..."
-                        icon="magnifying-glass"
-                    />
-                    <div class="flex gap-2 flex-wrap">
+            {{-- ── Coluna esquerda: Categorias ── --}}
+            <div class="hidden lg:flex w-48 shrink-0 flex-col rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900 overflow-hidden">
+                <div class="px-3 py-3 border-b border-neutral-100 dark:border-zinc-800 shrink-0">
+                    <p class="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">Categorias</p>
+                </div>
+                <div class="flex-1 overflow-y-auto p-2 space-y-1">
+                    <button
+                        wire:click="selectCategory(null)"
+                        class="w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors {{ $activeCategoryId === null ? 'bg-amber-500 text-white font-bold shadow-sm shadow-amber-500/20 dark:bg-amber-400 dark:text-white' : 'text-neutral-600 hover:bg-amber-50 hover:text-amber-700 dark:text-neutral-300 dark:hover:bg-amber-900/20 dark:hover:text-amber-300' }}"
+                    >
+                        Todos
+                    </button>
+                    @foreach ($this->categories as $category)
                         <button
-                            wire:click="selectCategory(null)"
-                            class="px-3 py-1 rounded-full text-xs font-medium transition-colors
-                                {{ $activeCategoryId === null
-                                    ? 'bg-amber-500 text-white'
-                                    : 'bg-white border text-neutral-600 hover:bg-neutral-100 dark:bg-zinc-700 dark:border-zinc-600 dark:text-neutral-300' }}"
+                            wire:click="selectCategory({{ $category->id }})"
+                            class="w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors {{ $activeCategoryId === $category->id ? 'bg-amber-500 text-white font-bold shadow-sm shadow-amber-500/20 dark:bg-amber-400 dark:text-white' : 'text-neutral-600 hover:bg-amber-50 hover:text-amber-700 dark:text-neutral-300 dark:hover:bg-amber-900/20 dark:hover:text-amber-300' }}"
                         >
-                            Todos
+                            {{ $category->name }}
                         </button>
-                        @foreach ($this->categories as $category)
-                            <button
-                                wire:click="selectCategory({{ $category->id }})"
-                                class="px-3 py-1 rounded-full text-xs font-medium transition-colors
-                                    {{ $activeCategoryId === $category->id
-                                        ? 'bg-amber-500 text-white'
-                                        : 'bg-white border text-neutral-600 hover:bg-neutral-100 dark:bg-zinc-700 dark:border-zinc-600 dark:text-neutral-300' }}"
-                            >
-                                {{ $category->name }}
-                            </button>
-                        @endforeach
+                    @endforeach
+                </div>
+            </div>
+
+            {{-- ── Coluna central: Produtos ── --}}
+            <div class="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900 relative">
+
+                {{-- Busca e código de barras --}}
+                <div class="px-4 py-3 shrink-0 border-b border-neutral-100 bg-white dark:bg-zinc-900 dark:border-zinc-800">
+                    <div class="flex flex-col lg:flex-row gap-2">
+                        <flux:input
+                            id="pdv-product-search"
+                            wire:model.live.debounce.300ms="search"
+                            placeholder="Buscar produto por nome..."
+                            icon="magnifying-glass"
+                            class="flex-1"
+                        />
+                        <div class="relative" x-data="{ focused: false }">
+                            <input
+                                wire:model="barcodeInput"
+                                wire:keydown.enter.prevent="lookupByBarcode"
+                                @focus="focused = true"
+                                @blur="focused = false"
+                                placeholder="Cód. barras"
+                                class="h-9 w-full lg:w-36 text-sm border rounded-lg px-3 bg-neutral-50 dark:bg-zinc-800 dark:border-zinc-700 dark:text-neutral-100 focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition"
+                                :class="focused ? 'border-amber-400 lg:w-40' : 'border-neutral-300'"
+                            />
+                            @error('barcode')
+                                <div class="absolute top-full mt-1 left-0 z-20 bg-red-50 border border-red-200 rounded-lg px-2 py-1 text-xs text-red-700 whitespace-nowrap dark:bg-red-900/30 dark:border-red-700 dark:text-red-300">
+                                    {{ $message }}
+                                </div>
+                            @enderror
+                        </div>
                     </div>
                 </div>
 
                 {{-- Grid de produtos --}}
-                <div class="flex-1 overflow-y-auto p-4">
+                <div class="flex-1 overflow-y-auto p-4 bg-zinc-50 dark:bg-[#0f1926]/50">
                     @if ($this->products->isEmpty())
                         <div class="text-center py-12 text-neutral-400 dark:text-neutral-500">
                             <flux:icon.shopping-bag class="size-10 mx-auto mb-2 opacity-40" />
                             <p class="text-sm">Nenhum produto disponível</p>
                         </div>
                     @else
-                        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                        <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
                             @foreach ($this->products as $product)
                                 @php
                                     $productData = $this->buildProductDataForSidebar($product);
@@ -519,33 +473,30 @@
                                     $stockQty = $this->productStocks[$product->id] ?? null;
                                     $stockOut = $stockQty !== null && $pdvCartQty >= $stockQty;
                                 @endphp
-                                <div class="group bg-white border rounded-xl p-3 text-left hover:border-amber-400 hover:shadow-md transition-all dark:bg-zinc-800 dark:border-zinc-700 dark:hover:border-amber-500 flex flex-col">
-                                    {{-- Imagem --}}
+                                <div class="group bg-white border border-neutral-200 rounded-xl p-2.5 text-left hover:border-amber-400 hover:shadow-lg hover:-translate-y-0.5 transition-all dark:bg-zinc-900 dark:border-zinc-800 dark:hover:border-amber-500 flex flex-col min-h-56">
                                     @if ($product->image_path)
                                         <img
                                             src="{{ $product->image_url }}"
                                             alt="{{ $product->name }}"
-                                            class="w-full aspect-square object-cover rounded-lg mb-2"
+                                            class="w-full aspect-[4/3] object-cover rounded-lg mb-2 bg-neutral-100 dark:bg-zinc-800"
                                         />
                                     @else
-                                        <div class="w-full aspect-square bg-neutral-100 rounded-lg mb-2 flex items-center justify-center dark:bg-zinc-700">
+                                        <div class="w-full aspect-[4/3] bg-neutral-100 rounded-lg mb-2 flex items-center justify-center dark:bg-zinc-800">
                                             <flux:icon.shopping-bag class="size-8 text-neutral-300 dark:text-zinc-500" />
                                         </div>
                                     @endif
 
-                                    {{-- Nome e preço --}}
-                                    <p class="text-xs font-semibold text-neutral-800 dark:text-neutral-100 leading-tight line-clamp-2 flex-1">
-                                        {{ $product->name }}
-                                    </p>
-                                    <p class="text-sm font-bold text-amber-500 dark:text-amber-400 mt-1">
-                                        @if ($hasOptions && $product->is_variant)
-                                            A partir de R$ {{ number_format($product->effective_price, 2, ',', '.') }}
-                                        @else
-                                            R$ {{ number_format($product->effective_price, 2, ',', '.') }}
+                                    <div class="flex-1 min-h-0">
+                                        <p class="text-sm font-bold text-neutral-900 dark:text-neutral-100 leading-tight line-clamp-2">
+                                            {{ $product->name }}
+                                        </p>
+                                        @if ($product->barcode)
+                                            <p class="text-[10px] text-neutral-400 dark:text-neutral-500 font-mono mt-0.5 truncate" title="{{ $product->barcode }}">
+                                                {{ $product->barcode }}
+                                            </p>
                                         @endif
-                                    </p>
+                                    </div>
 
-                                    {{-- Badge de grupos de opções --}}
                                     @if ($hasOptions)
                                         <div class="flex flex-wrap gap-1 mt-1">
                                             @foreach ($product->optionGroups as $optGroup)
@@ -556,7 +507,6 @@
                                         </div>
                                     @endif
 
-                                    {{-- Badge de estoque --}}
                                     @if ($stockQty !== null)
                                         @if ($stockOut)
                                             <span class="inline-block text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 mt-1">
@@ -569,41 +519,48 @@
                                         @endif
                                     @endif
 
-                                    {{-- Controles de quantidade --}}
-                                    <div class="flex items-center justify-end gap-1 mt-2">
-                                        @if ($pdvCartQty > 0)
-                                            <button
-                                                @if ($hasOptions)
-                                                    wire:click="decrementProductFromCart({{ $product->id }})"
-                                                @else
-                                                    wire:click="updateCartQty('{{ $product->id }}', {{ $pdvCartQty - 1 }})"
-                                                @endif
-                                                class="size-6 rounded-full border flex items-center justify-center text-neutral-500 hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition-colors dark:border-zinc-600"
-                                            >
-                                                <span class="text-sm font-bold leading-none">−</span>
-                                            </button>
-                                            <span class="w-6 text-center text-sm font-semibold text-neutral-800 dark:text-neutral-100">{{ $pdvCartQty }}</span>
-                                        @endif
-                                        <button
-                                            @if (!$stockOut)
-                                                @if ($hasOptions)
-                                                    @click="addOrOpenOptionSelector(@js($productData), $wire)"
-                                                @else
-                                                    wire:click="addProduct({{ $product->id }})"
-                                                @endif
+                                    <div class="flex items-center justify-between gap-2 mt-3 pt-2 border-t border-neutral-100 dark:border-zinc-800">
+                                        <p class="text-sm font-black text-neutral-900 dark:text-neutral-100">
+                                            @if ($hasOptions && $product->is_variant)
+                                                <span class="block text-[10px] font-semibold text-neutral-400 dark:text-neutral-500">A partir de</span>
                                             @endif
-                                            {{ $stockOut ? 'disabled' : '' }}
-                                            class="size-6 rounded-full text-white flex items-center justify-center transition-colors {{ $stockOut ? 'bg-neutral-300 cursor-not-allowed dark:bg-zinc-600' : 'bg-amber-500 hover:bg-amber-600 active:scale-90' }}"
-                                        >
-                                            <span class="text-sm font-bold leading-none">+</span>
-                                        </button>
+                                            R$ {{ number_format($product->effective_price, 2, ',', '.') }}
+                                        </p>
+                                        <div class="flex items-center justify-end gap-1">
+                                            @if ($pdvCartQty > 0)
+                                                <button
+                                                    @if ($hasOptions)
+                                                        wire:click="decrementProductFromCart({{ $product->id }})"
+                                                    @else
+                                                        wire:click="updateCartQty('{{ $product->id }}', {{ $pdvCartQty - 1 }})"
+                                                    @endif
+                                                    class="size-6 rounded-full border flex items-center justify-center text-neutral-500 hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition-colors dark:border-zinc-600"
+                                                >
+                                                    <span class="text-sm font-bold leading-none">−</span>
+                                                </button>
+                                                <span class="w-6 text-center text-sm font-semibold text-neutral-800 dark:text-neutral-100">{{ $pdvCartQty }}</span>
+                                            @endif
+                                            <button
+                                                @if (!$stockOut)
+                                                    @if ($hasOptions)
+                                                        @click="addOrOpenOptionSelector(@js($productData), $wire)"
+                                                    @else
+                                                        wire:click="addProduct({{ $product->id }})"
+                                                    @endif
+                                                @endif
+                                                {{ $stockOut ? 'disabled' : '' }}
+                                                class="size-6 rounded-full text-white flex items-center justify-center transition-colors {{ $stockOut ? 'bg-neutral-300 cursor-not-allowed dark:bg-zinc-600' : 'bg-amber-500 hover:bg-amber-600 active:scale-90' }}"
+                                            >
+                                                <span class="text-sm font-bold leading-none">+</span>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             @endforeach
                         </div>
                     @endif
                     @error('stock')
-                        <div class="mx-4 mb-3 flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl px-3 py-2 text-sm dark:bg-red-900/20 dark:border-red-700 dark:text-red-300">
+                        <div class="mt-3 flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl px-3 py-2 text-sm dark:bg-red-900/20 dark:border-red-700 dark:text-red-300">
                             <flux:icon.exclamation-triangle class="size-4 shrink-0" />
                             {{ $message }}
                         </div>
@@ -622,7 +579,6 @@
                     class="absolute inset-0 z-10 bg-white dark:bg-zinc-900 flex flex-col overflow-hidden"
                     style="display:none"
                 >
-                    {{-- Header do seletor --}}
                     <div class="shrink-0 px-4 py-3 flex items-center gap-3 border-b bg-amber-500 dark:border-zinc-700">
                         <button
                             @click="selectingProduct = null; pendingSelections = {}"
@@ -640,13 +596,11 @@
                         </div>
                     </div>
 
-                    {{-- Grupos de opções --}}
                     <div class="flex-1 overflow-y-auto px-4 py-4 space-y-5">
                         <template x-if="selectingProduct">
                             <div class="space-y-5">
                                 <template x-for="group in selectingProduct.groups" :key="group.id">
                                     <div>
-                                        {{-- Cabeçalho do grupo --}}
                                         <div class="flex items-center justify-between mb-3">
                                             <div class="flex items-center gap-2.5 min-w-0">
                                                 <template x-if="group.image_url">
@@ -669,7 +623,6 @@
                                             </span>
                                         </div>
 
-                                        {{-- Opções --}}
                                         <div class="space-y-1">
                                             <template x-for="option in group.options" :key="option.id">
                                                 <div class="flex items-center gap-3 p-2.5 rounded-xl border transition-colors"
@@ -728,7 +681,6 @@
                         </template>
                     </div>
 
-                    {{-- Footer: Adicionar ao carrinho --}}
                     <div class="shrink-0 border-t border-neutral-100 dark:border-zinc-700 px-4 py-3">
                         <button
                             @click="confirmOptions($wire)"
@@ -741,114 +693,530 @@
                     </div>
                 </div>
             </div>
+            {{-- fim coluna central --}}
 
-            {{-- Coluna direita: Carrinho --}}
-            <div class="w-80 flex flex-col bg-white dark:bg-zinc-900 shrink-0">
+            {{-- ── Coluna direita: Carrinho / Pagamento / Sucesso / PIX ── --}}
+            <div class="w-full lg:w-[22rem] xl:w-[24rem] h-80 lg:h-auto shrink-0 flex flex-col rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900 overflow-hidden">
 
-                <div class="px-4 py-3 border-b dark:border-zinc-700">
-                    <h2 class="font-bold text-neutral-800 dark:text-neutral-100">
-                        Carrinho
-                        @if ($this->cartCount > 0)
-                            <span class="ml-1 text-xs font-normal text-neutral-500">({{ $this->cartCount }} itens)</span>
-                        @endif
-                    </h2>
-                </div>
-
-                {{-- Itens do carrinho --}}
-                <div class="flex-1 overflow-y-auto divide-y dark:divide-zinc-700">
-                    @forelse ($cart as $cartKey => $item)
-                        @php
-                            $cartItemOptionsExtra = 0.0;
-                            foreach ($item['options'] ?? [] as $group) {
-                                foreach ($group['selections'] ?? [] as $sel) {
-                                    $cartItemOptionsExtra += ($sel['qty'] ?? 0) * ($sel['additional_price'] ?? 0);
-                                }
-                            }
-                            $cartItemUnitPrice = (float) $item['price'] + $cartItemOptionsExtra;
-                        @endphp
-                        <div class="px-4 py-3">
-                            <div class="flex items-start gap-3">
-                                <div class="flex-1 min-w-0">
-                                    <p class="text-sm font-medium text-neutral-800 dark:text-neutral-100 truncate">
-                                        {{ $item['name'] }}
-                                    </p>
-                                    @if (!empty($item['options']))
-                                        @foreach ($item['options'] as $group)
-                                            <p class="text-xs font-medium text-neutral-500 mt-0.5">{{ $group['group_name'] }}:</p>
-                                            @foreach ($group['selections'] as $sel)
-                                                <p class="text-xs text-neutral-400 leading-tight">
-                                                    {{ $sel['qty'] }}× {{ $sel['name'] }}@if (($sel['additional_price'] ?? 0) > 0) <span class="text-amber-500">(+R$ {{ number_format($sel['additional_price'], 2, ',', '.') }})</span>@endif
-                                                </p>
-                                            @endforeach
-                                        @endforeach
-                                    @else
-                                        <p class="text-xs text-neutral-500 dark:text-neutral-400">
-                                            R$ {{ number_format($cartItemUnitPrice, 2, ',', '.') }} cada
-                                        </p>
-                                    @endif
-                                </div>
-                                <div class="flex items-center gap-1 shrink-0">
-                                    <button
-                                        wire:click="updateCartQty('{{ $cartKey }}', {{ $item['qty'] - 1 }})"
-                                        class="size-6 rounded-full border flex items-center justify-center text-neutral-500 hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition-colors dark:border-zinc-600"
-                                    >
-                                        <span class="text-sm font-bold leading-none">−</span>
-                                    </button>
-                                    <span class="w-6 text-center text-sm font-semibold text-neutral-800 dark:text-neutral-100">
-                                        {{ $item['qty'] }}
-                                    </span>
-                                    <button
-                                        wire:click="updateCartQty('{{ $cartKey }}', {{ $item['qty'] + 1 }})"
-                                        class="size-6 rounded-full border flex items-center justify-center text-neutral-500 hover:bg-green-50 hover:text-green-600 hover:border-green-300 transition-colors dark:border-zinc-600"
-                                    >
-                                        <span class="text-sm font-bold leading-none">+</span>
-                                    </button>
-                                </div>
-                                <p class="w-16 text-right text-sm font-semibold text-neutral-800 dark:text-neutral-100 shrink-0">
-                                    R$ {{ number_format($cartItemUnitPrice * $item['qty'], 2, ',', '.') }}
+                {{-- ── Sucesso ── --}}
+                @if ($step === 'success')
+                    <div class="flex flex-col h-full overflow-hidden">
+                        <div class="px-4 py-3 border-b border-neutral-100 dark:border-zinc-800 shrink-0 flex items-center gap-2 bg-white dark:bg-zinc-900">
+                            <div class="size-7 rounded-full bg-green-100 flex items-center justify-center dark:bg-green-900/40 shrink-0">
+                                <flux:icon.check class="size-4 text-green-600 dark:text-green-400" />
+                            </div>
+                            <h2 class="font-bold text-neutral-800 dark:text-neutral-100">Pedido registrado!</h2>
+                        </div>
+                        <div class="flex-1 flex flex-col items-center justify-center p-5 space-y-4 overflow-y-auto">
+                            <p class="font-mono text-amber-500 dark:text-amber-400 font-semibold text-2xl">{{ $lastOrderNumber }}</p>
+                            @if ($lastOrderTotal)
+                                <p class="text-sm text-neutral-500 dark:text-neutral-400">
+                                    Total: <span class="font-semibold text-neutral-700 dark:text-neutral-200">R$ {{ number_format($lastOrderTotal, 2, ',', '.') }}</span>
                                 </p>
+                            @endif
+                            @if ($changeAmount > 0)
+                                <div class="w-full bg-amber-50 border border-amber-200 rounded-xl p-4 dark:bg-amber-900/20 dark:border-amber-700 text-center">
+                                    <p class="text-xs text-amber-700 dark:text-amber-300 mb-1">Troco para o cliente</p>
+                                    <p class="text-4xl font-bold text-amber-700 dark:text-amber-300">
+                                        R$ {{ number_format($changeAmount, 2, ',', '.') }}
+                                    </p>
+                                </div>
+                            @endif
+                            <div class="w-full flex gap-2">
+                                <flux:button wire:click="resetTerminal" variant="primary" size="base" class="flex-1">
+                                    Novo pedido
+                                </flux:button>
+                                @if ($lastOrderId)
+                                    <flux:button
+                                        x-data
+                                        x-on:click="window.open('{{ route('admin.orders.receipt', ['order' => $lastOrderId]) }}', '_blank')"
+                                        variant="outline"
+                                        size="base"
+                                        icon="printer"
+                                        title="Imprimir cupom"
+                                    />
+                                @endif
                             </div>
+                            @if ($lastOrderId)
+                                @if ($confirmingCancelOrder)
+                                    <div class="w-full border border-red-200 rounded-xl p-3 space-y-2 text-sm bg-red-50 dark:bg-red-900/20 dark:border-red-700">
+                                        <p class="text-red-700 dark:text-red-300 font-medium">Cancelar pedido {{ $lastOrderNumber }}?</p>
+                                        <p class="text-xs text-red-500">Estoque será restaurado. Sem reembolso automático.</p>
+                                        <div class="flex gap-2">
+                                            <flux:button wire:click="$set('confirmingCancelOrder', false)" variant="ghost" size="sm">Não</flux:button>
+                                            <flux:button wire:click="cancelLastOrder" variant="danger" size="sm" class="flex-1">Sim, cancelar</flux:button>
+                                        </div>
+                                    </div>
+                                    @error('cancel') <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
+                                @else
+                                    <flux:button wire:click="$set('confirmingCancelOrder', true)" variant="ghost" size="sm" class="w-full text-red-500 hover:text-red-700">
+                                        Cancelar este pedido
+                                    </flux:button>
+                                @endif
+                            @endif
                         </div>
-                    @empty
-                        <div class="flex-1 flex items-center justify-center py-12 text-neutral-400 dark:text-neutral-500">
-                            <div class="text-center">
-                                <flux:icon.shopping-cart class="size-10 mx-auto mb-2 opacity-40" />
-                                <p class="text-sm">Carrinho vazio</p>
-                            </div>
-                        </div>
-                    @endforelse
-                </div>
+                    </div>
 
-                {{-- Total e ações --}}
-                @if (!empty($cart))
-                    <div class="border-t px-4 py-4 space-y-3 dark:border-zinc-700">
-                        @if ($couponDiscount > 0)
-                            <div class="flex justify-between items-center text-xs text-neutral-400 dark:text-neutral-500">
-                                <span>Subtotal</span>
-                                <span>R$ {{ number_format($this->cartTotal, 2, ',', '.') }}</span>
+                {{-- ── PIX aguardando ── --}}
+                @elseif ($step === 'pix')
+                    <div
+                        class="flex flex-col h-full overflow-hidden"
+                        x-data="{
+                            pollCount: 0,
+                            maxPolls: 60,
+                            timedOut: false,
+                            timer: null,
+                            start() {
+                                this.timer = setInterval(() => {
+                                    if (this.timedOut) { clearInterval(this.timer); return; }
+                                    $wire.checkPixStatus();
+                                    this.pollCount++;
+                                    if (this.pollCount >= this.maxPolls) {
+                                        this.timedOut = true;
+                                        clearInterval(this.timer);
+                                    }
+                                }, 3000);
+                            }
+                        }"
+                        x-init="start()"
+                    >
+                        <div class="px-4 py-3 border-b border-neutral-100 dark:border-zinc-800 shrink-0 flex items-center gap-2 bg-white dark:bg-zinc-900">
+                            <div class="size-7 rounded-full bg-blue-100 flex items-center justify-center dark:bg-blue-900/40 shrink-0">
+                                <flux:icon.qr-code class="size-4 text-blue-600 dark:text-blue-400" />
                             </div>
-                            <div class="flex justify-between items-center text-xs text-green-600 dark:text-green-400">
-                                <span>Desconto ({{ $appliedCoupon['code'] }})</span>
-                                <span>− R$ {{ number_format($couponDiscount, 2, ',', '.') }}</span>
+                            <h2 class="font-bold text-neutral-800 dark:text-neutral-100">PIX gerado</h2>
+                        </div>
+                        <div class="flex-1 overflow-y-auto p-4 space-y-4 flex flex-col">
+                            <p class="text-sm text-neutral-500 dark:text-neutral-400 text-center">
+                                Pedido <span class="font-mono font-semibold text-amber-500">{{ $lastOrderNumber }}</span>
+                                @if ($lastOrderTotal)
+                                    · <span class="font-semibold text-neutral-700 dark:text-neutral-200">R$ {{ number_format($lastOrderTotal, 2, ',', '.') }}</span>
+                                @endif
+                            </p>
+                            <template x-if="timedOut">
+                                <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-700 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-300">
+                                    <p class="font-medium">Verificação automática encerrada.</p>
+                                    <p class="text-xs mt-0.5">Use o botão abaixo para verificar manualmente ou cancele o pedido.</p>
+                                </div>
+                            </template>
+                            <template x-if="!timedOut">
+                                <div class="flex items-center justify-center gap-2 text-sm text-blue-600 dark:text-blue-400">
+                                    <flux:icon.arrow-path class="size-4 animate-spin" />
+                                    <span>Aguardando... (<span x-text="maxPolls - pollCount"></span>)</span>
+                                </div>
+                            </template>
+                            @if ($pixCopyPaste)
+                                <div class="bg-neutral-50 border rounded-xl p-3 dark:bg-zinc-800 dark:border-zinc-600">
+                                    <p class="text-xs text-neutral-500 mb-1">Copia e cola</p>
+                                    <p class="font-mono text-xs break-all text-neutral-700 dark:text-neutral-300 select-all">{{ $pixCopyPaste }}</p>
+                                </div>
+                                <flux:button
+                                    x-data
+                                    x-on:click="navigator.clipboard.writeText('{{ $pixCopyPaste }}')"
+                                    variant="outline"
+                                    size="sm"
+                                    icon="clipboard"
+                                    class="w-full"
+                                >
+                                    Copiar código
+                                </flux:button>
+                            @endif
+                            <flux:button wire:click="checkPixStatus" variant="ghost" size="sm" class="w-full">
+                                Verificar pagamento
+                            </flux:button>
+                            <flux:button wire:click="resetTerminal" variant="ghost" size="sm" class="w-full text-neutral-400 hover:text-red-500">
+                                Cancelar e novo pedido
+                            </flux:button>
+                        </div>
+                    </div>
+
+                {{-- ── Carrinho ── --}}
+                @else
+                    <div class="flex flex-col h-full overflow-hidden">
+                        <div class="px-4 py-3 border-b border-neutral-100 dark:border-zinc-800 shrink-0 bg-white dark:bg-zinc-900">
+                            <div class="flex items-center justify-between gap-3">
+                                <div>
+                                    <p class="text-[11px] font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">Pedido atual</p>
+                                    <h2 class="font-bold text-neutral-900 dark:text-neutral-100">
+                                        Carrinho
+                                        @if ($this->cartCount > 0)
+                                            <span class="ml-1 text-xs font-normal text-neutral-500">({{ $this->cartCount }} itens)</span>
+                                        @endif
+                                    </h2>
+                                </div>
+                                @if ($this->cartCount > 0)
+                                    <span class="inline-flex size-9 items-center justify-center rounded-lg bg-amber-500 text-sm font-bold text-white shadow-sm shadow-amber-500/20 dark:bg-amber-400 dark:text-white">
+                                        {{ $this->cartCount }}
+                                    </span>
+                                @endif
+                            </div>
+                        </div>
+
+                        <div class="flex-1 overflow-y-auto divide-y divide-neutral-100 bg-white dark:divide-zinc-800 dark:bg-zinc-900">
+                            @forelse ($cart as $cartKey => $item)
+                                @php
+                                    $cartItemOptionsExtra = 0.0;
+                                    foreach ($item['options'] ?? [] as $group) {
+                                        foreach ($group['selections'] ?? [] as $sel) {
+                                            $cartItemOptionsExtra += ($sel['qty'] ?? 0) * ($sel['additional_price'] ?? 0);
+                                        }
+                                    }
+                                    $cartItemUnitPrice = (float) $item['price'] + $cartItemOptionsExtra;
+                                @endphp
+                                <div class="px-4 py-3 hover:bg-neutral-50 dark:hover:bg-zinc-800/60 transition-colors">
+                                    <div class="flex items-start gap-3">
+                                        <div class="flex-1 min-w-0">
+                                            <p class="text-sm font-medium text-neutral-800 dark:text-neutral-100 truncate">
+                                                {{ $item['name'] }}
+                                            </p>
+                                            @if (!empty($item['options']))
+                                                @foreach ($item['options'] as $group)
+                                                    <p class="text-xs font-medium text-neutral-500 mt-0.5">{{ $group['group_name'] }}:</p>
+                                                    @foreach ($group['selections'] as $sel)
+                                                        <p class="text-xs text-neutral-400 leading-tight">
+                                                            {{ $sel['qty'] }}× {{ $sel['name'] }}@if (($sel['additional_price'] ?? 0) > 0) <span class="text-amber-500">(+R$ {{ number_format($sel['additional_price'], 2, ',', '.') }})</span>@endif
+                                                        </p>
+                                                    @endforeach
+                                                @endforeach
+                                            @else
+                                                <p class="text-xs text-neutral-500 dark:text-neutral-400">
+                                                    R$ {{ number_format($cartItemUnitPrice, 2, ',', '.') }} cada
+                                                </p>
+                                            @endif
+                                        </div>
+                                        <div class="flex items-center gap-1 shrink-0">
+                                            <button
+                                                wire:click="updateCartQty('{{ $cartKey }}', {{ $item['qty'] - 1 }})"
+                                                class="size-6 rounded-full border flex items-center justify-center text-neutral-500 hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition-colors dark:border-zinc-600"
+                                            >
+                                                <span class="text-sm font-bold leading-none">−</span>
+                                            </button>
+                                            <span class="w-6 text-center text-sm font-semibold text-neutral-800 dark:text-neutral-100">
+                                                {{ $item['qty'] }}
+                                            </span>
+                                            <button
+                                                wire:click="updateCartQty('{{ $cartKey }}', {{ $item['qty'] + 1 }})"
+                                                class="size-6 rounded-full border flex items-center justify-center text-neutral-500 hover:bg-green-50 hover:text-green-600 hover:border-green-300 transition-colors dark:border-zinc-600"
+                                            >
+                                                <span class="text-sm font-bold leading-none">+</span>
+                                            </button>
+                                        </div>
+                                        <p class="w-16 text-right text-sm font-semibold text-neutral-800 dark:text-neutral-100 shrink-0">
+                                            R$ {{ number_format($cartItemUnitPrice * $item['qty'], 2, ',', '.') }}
+                                        </p>
+                                    </div>
+                                </div>
+                            @empty
+                                <div class="flex-1 flex items-center justify-center py-16 text-neutral-400 dark:text-neutral-500 bg-zinc-50 dark:bg-[#0f1926]/40">
+                                    <div class="text-center">
+                                        <flux:icon.shopping-cart class="size-10 mx-auto mb-2 opacity-40" />
+                                        <p class="text-sm">Carrinho vazio</p>
+                                        <p class="text-xs mt-1 text-neutral-300 dark:text-neutral-600">Clique em + para adicionar</p>
+                                    </div>
+                                </div>
+                            @endforelse
+                        </div>
+
+                        @if (!empty($cart))
+                            <div class="border-t border-neutral-100 px-4 py-4 space-y-3 bg-zinc-50 dark:border-zinc-800 dark:bg-[#0f1926]/70 shrink-0">
+                                @if ($couponDiscount > 0 || $manualDiscountAmount > 0)
+                                    <div class="flex justify-between items-center text-xs text-neutral-400 dark:text-neutral-500">
+                                        <span>Subtotal</span>
+                                        <span>R$ {{ number_format($this->cartTotal, 2, ',', '.') }}</span>
+                                    </div>
+                                    @if ($couponDiscount > 0)
+                                        <div class="flex justify-between items-center text-xs text-green-600 dark:text-green-400">
+                                            <span>Cupom ({{ $appliedCoupon['code'] }})</span>
+                                            <span>− R$ {{ number_format($couponDiscount, 2, ',', '.') }}</span>
+                                        </div>
+                                    @endif
+                                    @if ($manualDiscountAmount > 0)
+                                        <div class="flex justify-between items-center text-xs text-green-600 dark:text-green-400">
+                                            <span>Desc. manual</span>
+                                            <span>− R$ {{ number_format($manualDiscountAmount, 2, ',', '.') }}</span>
+                                        </div>
+                                    @endif
+                                @endif
+                                <div class="flex justify-between items-end rounded-xl bg-white border border-neutral-200 px-3 py-3 dark:bg-zinc-900 dark:border-zinc-800">
+                                    <span class="text-sm font-semibold text-neutral-500 dark:text-neutral-400">Total</span>
+                                    <span class="text-2xl font-black text-neutral-900 dark:text-neutral-100">
+                                        R$ {{ number_format($this->cartTotalAfterDiscount, 2, ',', '.') }}
+                                    </span>
+                                </div>
+                                <flux:button wire:click="proceedToPayment" variant="primary" size="base" class="w-full">
+                                    Ir para pagamento
+                                </flux:button>
+                                <flux:button wire:click="clearCart" variant="ghost" size="sm" class="w-full text-red-500 hover:text-red-700">
+                                    Limpar carrinho
+                                </flux:button>
                             </div>
                         @endif
-                        <div class="flex justify-between items-center">
-                            <span class="text-sm text-neutral-500 dark:text-neutral-400">Total</span>
-                            <span class="text-xl font-bold text-neutral-800 dark:text-neutral-100">
-                                R$ {{ number_format($this->cartTotalAfterDiscount, 2, ',', '.') }}
-                            </span>
-                        </div>
-                        <flux:button wire:click="proceedToPayment" variant="primary" size="base" class="w-full">
-                            Ir para pagamento
-                        </flux:button>
-                        <flux:button wire:click="clearCart" variant="ghost" size="sm" class="w-full text-red-500 hover:text-red-700">
-                            Limpar carrinho
-                        </flux:button>
                     </div>
                 @endif
+                {{-- fim painel direito --}}
+
             </div>
 
+            @if ($step === 'payment')
+                <div class="absolute inset-0 z-30 flex items-center justify-center bg-amber-950/45 p-3 lg:p-6">
+                    <div class="flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900">
+                        <div class="shrink-0 border-b border-neutral-100 px-4 py-3 dark:border-zinc-800">
+                            <div class="flex items-center justify-between gap-3">
+                                <div class="flex items-center gap-3 min-w-0">
+                                    <flux:button wire:click="backToCatalog" variant="ghost" icon="arrow-left" size="sm" />
+                                    <div class="min-w-0">
+                                        <p class="text-[11px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Checkout</p>
+                                        <h2 class="text-lg font-black text-neutral-900 dark:text-neutral-100">Finalizar pedido</h2>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-[11px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Total</p>
+                                    <p class="text-xl font-black text-neutral-900 dark:text-neutral-100">
+                                        R$ {{ number_format($this->cartTotalAfterDiscount, 2, ',', '.') }}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-[minmax(0,1fr)_22rem]">
+                            <div class="space-y-5 p-4 lg:p-5">
+                                <div class="grid gap-4 md:grid-cols-2">
+                                    <div class="space-y-1.5">
+                                        <flux:label class="text-xs font-semibold">Cupom (opcional)</flux:label>
+                                        @if ($appliedCoupon)
+                                            <div class="flex items-center justify-between px-3 py-2 bg-green-50 border border-green-200 rounded-xl dark:bg-green-900/20 dark:border-green-700">
+                                                <div>
+                                                    <span class="text-sm font-semibold text-green-700 dark:text-green-300">{{ $appliedCoupon['code'] }}</span>
+                                                    <span class="text-xs text-green-600 dark:text-green-400 ml-1">{{ $appliedCoupon['label'] }}</span>
+                                                </div>
+                                                <button wire:click="removeCoupon" class="text-xs text-red-500 hover:text-red-700 ml-2">Remover</button>
+                                            </div>
+                                        @else
+                                            <div class="flex gap-2">
+                                                <flux:input
+                                                    wire:model="couponInput"
+                                                    wire:keydown.enter="applyCoupon"
+                                                    placeholder="Código do cupom"
+                                                    class="flex-1 uppercase"
+                                                />
+                                                <flux:button wire:click="applyCoupon" variant="outline" size="sm">Aplicar</flux:button>
+                                            </div>
+                                            @if ($couponError)
+                                                <p class="text-xs text-red-600 dark:text-red-400">{{ $couponError }}</p>
+                                            @endif
+                                        @endif
+                                    </div>
+
+                                    <div class="space-y-1.5">
+                                        <flux:label class="text-xs font-semibold">Desconto manual (opcional)</flux:label>
+                                        @if ($manualDiscountAmount > 0)
+                                            <div class="flex items-center justify-between px-3 py-2 bg-green-50 border border-green-200 rounded-xl dark:bg-green-900/20 dark:border-green-700">
+                                                <span class="text-sm font-semibold text-green-700 dark:text-green-300">
+                                                    - R$ {{ number_format($manualDiscountAmount, 2, ',', '.') }}
+                                                </span>
+                                                <button wire:click="removeManualDiscount" class="text-xs text-red-500 hover:text-red-700 ml-2">Remover</button>
+                                            </div>
+                                        @else
+                                            <div class="flex gap-2">
+                                                <flux:select wire:model="manualDiscountType" class="w-16 shrink-0">
+                                                    <flux:select.option value="fixed">R$</flux:select.option>
+                                                    <flux:select.option value="percent">%</flux:select.option>
+                                                </flux:select>
+                                                <flux:input
+                                                    wire:model="manualDiscountInput"
+                                                    wire:keydown.enter="applyManualDiscount"
+                                                    placeholder="{{ $manualDiscountType === 'percent' ? '10' : '5,00' }}"
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    class="flex-1"
+                                                />
+                                                <flux:button wire:click="applyManualDiscount" variant="outline" size="sm">Aplicar</flux:button>
+                                            </div>
+                                            @error('manual_discount')
+                                                <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                                            @enderror
+                                        @endif
+                                    </div>
+                                </div>
+
+                                <div class="grid gap-4 md:grid-cols-2">
+                                    <div class="space-y-1.5">
+                                        <flux:label class="text-xs font-semibold">Cliente (opcional)</flux:label>
+                                        <div class="flex gap-2">
+                                            <flux:input
+                                                wire:model="customerQuery"
+                                                wire:keydown.enter="lookupCustomer"
+                                                placeholder="Nome, telefone ou CPF..."
+                                                class="flex-1"
+                                            />
+                                            <flux:button wire:click="lookupCustomer" variant="outline" icon="magnifying-glass" size="sm" />
+                                        </div>
+                                        @if ($customerFound)
+                                            <p class="text-xs text-green-600 dark:text-green-400">✓ {{ $customerName }}</p>
+                                        @elseif (!empty($customerResults))
+                                            <div class="border rounded-xl overflow-hidden dark:border-zinc-600 max-h-32 overflow-y-auto">
+                                                @foreach ($customerResults as $result)
+                                                    <button
+                                                        wire:click="selectCustomer({{ $result['id'] }})"
+                                                        class="w-full flex items-center justify-between px-3 py-2 text-left text-xs hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors border-b last:border-b-0 dark:border-zinc-600"
+                                                    >
+                                                        <span class="font-medium text-neutral-800 dark:text-neutral-100">{{ $result['name'] }}</span>
+                                                        <span class="text-neutral-400 dark:text-neutral-500 shrink-0 ml-2">{{ $result['phone'] }}</span>
+                                                    </button>
+                                                @endforeach
+                                            </div>
+                                        @elseif (filled($customerQuery) && !$customerFound)
+                                            @if ($showCreateCustomer)
+                                                <div class="space-y-2 border rounded-xl p-3 dark:border-zinc-600">
+                                                    <p class="text-[10px] font-semibold text-neutral-600 dark:text-neutral-300">Novo cliente</p>
+                                                    <flux:input wire:model="newCustomerName" placeholder="Nome completo" />
+                                                    <flux:input wire:model="newCustomerPhone" wire:keydown.enter="createCustomer" placeholder="Telefone (somente números)" />
+                                                    @if ($createCustomerError)
+                                                        <p class="text-xs text-red-600 dark:text-red-400">{{ $createCustomerError }}</p>
+                                                    @endif
+                                                    <div class="flex gap-2">
+                                                        <flux:button wire:click="cancelCreateCustomer" variant="ghost" size="sm">Cancelar</flux:button>
+                                                        <flux:button wire:click="createCustomer" variant="primary" size="sm" class="flex-1">Cadastrar</flux:button>
+                                                    </div>
+                                                </div>
+                                            @else
+                                                <div class="flex items-center justify-between gap-3">
+                                                    <p class="text-xs text-neutral-500 dark:text-neutral-400">Cliente não encontrado; pedido como balcão.</p>
+                                                    <flux:button wire:click="showCreateCustomerForm" variant="ghost" size="sm" icon="user-plus" class="shrink-0">
+                                                        Criar
+                                                    </flux:button>
+                                                </div>
+                                            @endif
+                                        @endif
+                                    </div>
+
+                                    <div class="space-y-1.5">
+                                        <flux:label class="text-xs font-semibold">Método de pagamento</flux:label>
+                                        <flux:radio.group wire:model.live="paymentMethod" variant="segmented" class="w-full">
+                                            <flux:radio value="cash" label="Dinheiro" />
+                                            <flux:radio value="pix" label="PIX" />
+                                            <flux:radio value="credit_card" label="Cartão" />
+                                        </flux:radio.group>
+
+                                        @if ($paymentMethod === 'cash')
+                                            <div class="pt-3 space-y-1.5">
+                                                <flux:label class="text-xs font-semibold">Valor recebido</flux:label>
+                                                <flux:input
+                                                    wire:model="cashReceivedInput"
+                                                    placeholder="Em branco = valor exato"
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="{{ $this->cartTotalAfterDiscount }}"
+                                                />
+                                                @if (filled($cashReceivedInput) && (float) str_replace(',', '.', $cashReceivedInput) >= $this->cartTotalAfterDiscount)
+                                                    @php $changePreview = max(0, (float) str_replace(',', '.', $cashReceivedInput) - $this->cartTotalAfterDiscount); @endphp
+                                                    <div class="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 dark:bg-amber-900/20 dark:border-amber-700">
+                                                        <p class="text-sm text-amber-700 dark:text-amber-300 font-semibold">
+                                                            Troco: R$ {{ number_format($changePreview, 2, ',', '.') }}
+                                                        </p>
+                                                    </div>
+                                                @endif
+                                            </div>
+                                        @endif
+                                    </div>
+                                </div>
+
+                                <div class="space-y-1.5">
+                                    <flux:label class="text-xs font-semibold">Observação (opcional)</flux:label>
+                                    <flux:textarea
+                                        wire:model="notes"
+                                        placeholder="Ex: sem cebola, embrulhar separado..."
+                                        rows="3"
+                                        class="resize-none"
+                                    />
+                                </div>
+
+                                @error('order')
+                                    <p class="text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
+                                @enderror
+                            </div>
+
+                            <div class="border-t border-neutral-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-[#0f1926]/70 lg:border-l lg:border-t-0">
+                                <div class="flex h-full flex-col gap-4">
+                                    <div>
+                                        <p class="text-[11px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Resumo do pedido</p>
+                                        <div class="mt-3 max-h-64 overflow-y-auto rounded-xl border border-neutral-200 bg-white divide-y divide-neutral-100 dark:border-zinc-800 dark:bg-zinc-900 dark:divide-zinc-800">
+                                            @foreach ($cart as $cartKey => $item)
+                                                @php
+                                                    $itemOptionsExtra = 0.0;
+                                                    foreach ($item['options'] ?? [] as $group) {
+                                                        foreach ($group['selections'] ?? [] as $sel) {
+                                                            $itemOptionsExtra += ($sel['qty'] ?? 0) * ($sel['additional_price'] ?? 0);
+                                                        }
+                                                    }
+                                                    $itemUnitPrice = (float) $item['price'] + $itemOptionsExtra;
+                                                @endphp
+                                                <div class="px-3 py-2">
+                                                    <div class="flex items-start justify-between gap-3 text-sm">
+                                                        <span class="font-medium text-neutral-800 dark:text-neutral-100">{{ $item['qty'] }}x {{ $item['name'] }}</span>
+                                                        <span class="shrink-0 font-semibold text-neutral-900 dark:text-neutral-100">R$ {{ number_format($itemUnitPrice * $item['qty'], 2, ',', '.') }}</span>
+                                                    </div>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    </div>
+
+                                    <div class="mt-auto space-y-3">
+                                        @if ($couponDiscount > 0 || $manualDiscountAmount > 0)
+                                            <div class="space-y-1 text-sm">
+                                                <div class="flex justify-between text-neutral-500 dark:text-neutral-400">
+                                                    <span>Subtotal</span>
+                                                    <span>R$ {{ number_format($this->cartTotal, 2, ',', '.') }}</span>
+                                                </div>
+                                                @if ($couponDiscount > 0)
+                                                    <div class="flex justify-between text-green-600 dark:text-green-400">
+                                                        <span>Cupom ({{ $appliedCoupon['code'] }})</span>
+                                                        <span>- R$ {{ number_format($couponDiscount, 2, ',', '.') }}</span>
+                                                    </div>
+                                                @endif
+                                                @if ($manualDiscountAmount > 0)
+                                                    <div class="flex justify-between text-green-600 dark:text-green-400">
+                                                        <span>Desconto manual</span>
+                                                        <span>- R$ {{ number_format($manualDiscountAmount, 2, ',', '.') }}</span>
+                                                    </div>
+                                                @endif
+                                            </div>
+                                        @endif
+
+                                        <div class="rounded-xl border border-neutral-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                                            <div class="flex items-end justify-between gap-3">
+                                                <span class="text-sm font-semibold text-neutral-500 dark:text-neutral-400">Total</span>
+                                                <span class="text-2xl font-black text-neutral-900 dark:text-neutral-100">
+                                                    R$ {{ number_format($this->cartTotalAfterDiscount, 2, ',', '.') }}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <flux:button wire:click="backToCatalog" variant="ghost" size="base">
+                                                Voltar
+                                            </flux:button>
+                                            <flux:button
+                                                wire:click="processOrder"
+                                                variant="primary"
+                                                size="base"
+                                                wire:loading.attr="disabled"
+                                            >
+                                                <span wire:loading.remove>Confirmar</span>
+                                                <span wire:loading>Processando...</span>
+                                            </flux:button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            @endif
+
         </div>
+        {{-- fim 3 colunas --}}
     @endif
 
 </div>

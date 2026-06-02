@@ -7,6 +7,7 @@ use App\Models\Branch;
 use App\Models\Coupon;
 use App\Models\Customer;
 use App\Models\Order;
+use App\Models\PdvAuditLog;
 use App\Models\PdvCashSession;
 use App\Models\Product;
 use App\Models\ProductCategory;
@@ -15,6 +16,7 @@ use App\Services\Order\OrderCancellationPolicy;
 use App\Services\Order\OrderService;
 use App\Services\Order\StockService;
 use App\Services\Payment\PaymentOrchestrator;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Computed;
@@ -23,7 +25,9 @@ use Livewire\Component;
 class Terminal extends Component
 {
     // ── Estado da interface ──────────────────────────────────────────────────
-    public string $step = 'catalog'; // open_cash | catalog | payment | success | close_cash
+    public string $step = 'catalog'; // open_cash | catalog | payment | pix | success | close_cash
+
+    public bool $showSessionHistory = false;
 
     // ── Filial ───────────────────────────────────────────────────────────────
     public ?int $selectedBranchId = null;
@@ -32,6 +36,9 @@ class Terminal extends Component
     public string $search = '';
 
     public ?int $activeCategoryId = null;
+
+    // ── Leitor de código de barras ────────────────────────────────────────────
+    public string $barcodeInput = '';
 
     // ── Carrinho: [cartKey => [product_id, name, price, qty, options?]] ──────
     public array $cart = [];
@@ -68,6 +75,13 @@ class Terminal extends Component
 
     public ?string $couponError = null;
 
+    // ── Desconto manual ───────────────────────────────────────────────────────
+    public string $manualDiscountType = 'fixed'; // 'fixed' | 'percent'
+
+    public string $manualDiscountInput = '';
+
+    public float $manualDiscountAmount = 0.0;
+
     // ── Observação ────────────────────────────────────────────────────────────
     public string $notes = '';
 
@@ -96,7 +110,23 @@ class Terminal extends Component
 
     public string $openingAmountInput = '';
 
+    public string $terminalName = '';
+
     public string $closingAmountInput = '';
+
+    public string $reconciliationNotes = '';
+
+    // ── Movimentação manual do caixa ─────────────────────────────────────────
+    public string $cashMovementType = 'supply'; // supply | withdrawal
+
+    public string $cashMovementAmountInput = '';
+
+    public string $cashMovementReason = '';
+
+    public bool $showCashMovementForm = false;
+
+    // ── Histórico de sessão ───────────────────────────────────────────────────
+    public ?int $confirmingCancelSessionOrderId = null;
 
     // ── Permissões ────────────────────────────────────────────────────────────
     public bool $canOperate = false;
@@ -137,6 +167,36 @@ class Terminal extends Component
     {
         $this->activeCategoryId = $categoryId;
         $this->search = '';
+    }
+
+    // ── Código de barras ─────────────────────────────────────────────────────
+
+    public function lookupByBarcode(): void
+    {
+        $barcode = trim($this->barcodeInput);
+        $this->barcodeInput = '';
+
+        if (blank($barcode) || ! $this->selectedBranchId) {
+            return;
+        }
+
+        $product = Product::withoutGlobalScopes()
+            ->whereHas('branches', fn ($q) => $q
+                ->where('branches.id', $this->selectedBranchId)
+                ->where('branch_product.available', true)
+            )
+            ->where('active', true)
+            ->where('barcode', $barcode)
+            ->first();
+
+        if (! $product) {
+            $this->addError('barcode', "Código '{$barcode}' não encontrado.");
+
+            return;
+        }
+
+        $this->resetValidation('barcode');
+        $this->addProduct($product->id);
     }
 
     // ── Carrinho ─────────────────────────────────────────────────────────────
@@ -283,6 +343,7 @@ class Terminal extends Component
     {
         $this->cart = [];
         $this->step = 'catalog';
+        $this->showSessionHistory = false;
         $this->resetPaymentState();
     }
 
@@ -415,6 +476,55 @@ class Terminal extends Component
         $this->newCustomerPhone = '';
     }
 
+    // ── Desconto manual ───────────────────────────────────────────────────────
+
+    public function applyManualDiscount(): void
+    {
+        $this->resetValidation('manual_discount');
+        $value = (float) str_replace(',', '.', $this->manualDiscountInput ?: '0');
+
+        if ($value <= 0) {
+            $this->addError('manual_discount', 'Informe um valor maior que zero.');
+
+            return;
+        }
+
+        $base = $this->cartTotal - $this->couponDiscount;
+
+        if ($this->manualDiscountType === 'percent') {
+            if ($value > 100) {
+                $this->addError('manual_discount', 'Percentual não pode exceder 100%.');
+
+                return;
+            }
+            $this->manualDiscountAmount = round($base * ($value / 100), 2);
+        } else {
+            if ($value > $base) {
+                $this->addError('manual_discount', 'Desconto não pode exceder o total restante.');
+
+                return;
+            }
+            $this->manualDiscountAmount = $value;
+        }
+
+        $this->audit('discount_applied', [
+            'amount' => $this->manualDiscountAmount,
+            'metadata' => [
+                'type' => $this->manualDiscountType,
+                'input' => $this->manualDiscountInput,
+                'cart_total' => $this->cartTotal,
+                'coupon_discount' => $this->couponDiscount,
+            ],
+        ]);
+    }
+
+    public function removeManualDiscount(): void
+    {
+        $this->manualDiscountAmount = 0.0;
+        $this->manualDiscountInput = '';
+        $this->resetValidation('manual_discount');
+    }
+
     // ── Pagamento ─────────────────────────────────────────────────────────────
 
     public function proceedToPayment(): void
@@ -514,7 +624,14 @@ class Terminal extends Component
                 orderType: 'pdv',
                 status: $isPaidOnCreate ? 'paid' : 'awaiting_payment',
                 coupon: $coupon,
+                extraDiscount: $this->manualDiscountAmount,
             );
+
+            // Link order to current cash session
+            if ($this->cashSessionId) {
+                $order->pdv_cash_session_id = $this->cashSessionId;
+                $order->save();
+            }
 
             if ($this->paymentMethod === 'cash') {
                 $cashReceived = (float) str_replace(',', '.', $this->cashReceivedInput ?: $order->total);
@@ -537,12 +654,32 @@ class Terminal extends Component
                 $this->lastOrderNumber = $order->order_number;
                 $this->lastOrderTotal = (float) $order->total;
                 $this->lastOrderId = $order->id;
+                $this->audit('order_created', [
+                    'order_id' => $order->id,
+                    'amount' => (float) $order->total,
+                    'metadata' => [
+                        'payment_method' => 'pix',
+                        'cart_count' => $this->cartCount,
+                        'coupon_discount' => $this->couponDiscount,
+                        'manual_discount' => $this->manualDiscountAmount,
+                    ],
+                ]);
 
                 return;
             }
 
             DB::commit();
             $this->lastOrderTotal = (float) $order->total;
+            $this->audit('order_created', [
+                'order_id' => $order->id,
+                'amount' => (float) $order->total,
+                'metadata' => [
+                    'payment_method' => $this->paymentMethod,
+                    'cart_count' => $this->cartCount,
+                    'coupon_discount' => $this->couponDiscount,
+                    'manual_discount' => $this->manualDiscountAmount,
+                ],
+            ]);
         } catch (\Throwable $e) {
             DB::rollBack();
             $this->addError('order', $e->getMessage());
@@ -570,21 +707,39 @@ class Terminal extends Component
         }
     }
 
+    // ── Cancelamento ─────────────────────────────────────────────────────────
+
     public function cancelLastOrder(): void
+    {
+        if ($this->lastOrderId) {
+            $this->cancelPdvOrder($this->lastOrderId);
+            $this->confirmingCancelOrder = false;
+        }
+    }
+
+    public function cancelPdvOrder(int $orderId): void
     {
         $company = app('current.company');
 
         $order = Order::withoutGlobalScopes()
             ->where('company_id', $company->id)
             ->where('order_type', 'pdv')
-            ->find($this->lastOrderId);
+            ->find($orderId);
 
-        if (! $order) {
+        if (! $order || in_array($order->status, ['cancelled', 'refunded'])) {
+            $this->addError('cancel', 'Pedido não encontrado ou já cancelado.');
+
             return;
         }
 
-        if ($order->created_at->diffInMinutes(now()) > 5) {
-            $this->addError('cancel', 'Cancelamento disponível apenas nos 5 minutos após criação.');
+        // Allow cancel for any order linked to current session, or fallback to branch + session time
+        $isSessionOrder = $this->cashSessionId && (
+            $order->pdv_cash_session_id === $this->cashSessionId
+            || ($order->branch_id === $this->selectedBranchId && $this->cashSession && $order->created_at >= $this->cashSession->created_at)
+        );
+
+        if (! $isSessionOrder) {
+            $this->addError('cancel', 'Pedido não pertence à sessão atual.');
 
             return;
         }
@@ -605,8 +760,20 @@ class Terminal extends Component
             'user_id' => auth()->id(),
         ]);
 
-        $this->confirmingCancelOrder = false;
-        $this->resetTerminal();
+        $this->audit('order_cancelled', [
+            'order_id' => $order->id,
+            'amount' => (float) $order->total,
+            'metadata' => [
+                'order_number' => $order->order_number,
+            ],
+        ]);
+
+        $this->confirmingCancelSessionOrderId = null;
+
+        if ($this->lastOrderId === $orderId) {
+            $this->confirmingCancelOrder = false;
+            $this->resetTerminal();
+        }
     }
 
     public function resetTerminal(): void
@@ -628,7 +795,22 @@ class Terminal extends Component
         $this->couponError = null;
         $this->couponInput = '';
         $this->step = 'catalog';
+        $this->showSessionHistory = false;
         $this->resetPaymentState();
+    }
+
+    // ── Histórico da sessão ───────────────────────────────────────────────────
+
+    public function showSessionHistory(): void
+    {
+        $this->showSessionHistory = true;
+        $this->confirmingCancelSessionOrderId = null;
+    }
+
+    public function backFromSessionHistory(): void
+    {
+        $this->showSessionHistory = false;
+        $this->confirmingCancelSessionOrderId = null;
     }
 
     // ── Caixa ─────────────────────────────────────────────────────────────────
@@ -637,23 +819,74 @@ class Terminal extends Component
     {
         $amount = (float) str_replace(',', '.', $this->openingAmountInput ?: '0');
         $company = app('current.company');
+        $terminalName = trim($this->terminalName) ?: null;
 
         $session = PdvCashSession::create([
             'company_id' => $company->id,
             'branch_id' => $this->selectedBranchId,
             'user_id' => auth()->id(),
+            'terminal_name' => $terminalName,
             'opening_amount' => $amount,
         ]);
 
         $this->cashSessionId = $session->id;
         $this->openingAmountInput = '';
         $this->step = 'catalog';
+
+        $this->audit('cash_opened', [
+            'amount' => $amount,
+            'reason' => $terminalName,
+        ]);
     }
 
     public function proceedToCloseCash(): void
     {
         $this->closingAmountInput = '';
+        $this->reconciliationNotes = '';
+        $this->showCashMovementForm = false;
         $this->step = 'close_cash';
+    }
+
+    public function toggleCashMovementForm(string $type = 'supply'): void
+    {
+        $this->showCashMovementForm = ! $this->showCashMovementForm || $this->cashMovementType !== $type;
+        $this->cashMovementType = in_array($type, ['supply', 'withdrawal'], true) ? $type : 'supply';
+        $this->cashMovementAmountInput = '';
+        $this->cashMovementReason = '';
+        $this->resetValidation(['cash_movement_amount', 'cash_movement_reason']);
+    }
+
+    public function registerCashMovement(): void
+    {
+        if (! $this->cashSessionId || ! $this->selectedBranchId) {
+            return;
+        }
+
+        $this->resetValidation(['cash_movement_amount', 'cash_movement_reason']);
+
+        $amount = (float) str_replace(',', '.', $this->cashMovementAmountInput ?: '0');
+        $reason = trim($this->cashMovementReason);
+
+        if ($amount <= 0) {
+            $this->addError('cash_movement_amount', 'Informe um valor maior que zero.');
+
+            return;
+        }
+
+        if (blank($reason)) {
+            $this->addError('cash_movement_reason', 'Informe o motivo da movimentação.');
+
+            return;
+        }
+
+        $this->audit($this->cashMovementType === 'withdrawal' ? 'cash_withdrawal' : 'cash_supply', [
+            'amount' => $amount,
+            'reason' => $reason,
+        ]);
+
+        $this->cashMovementAmountInput = '';
+        $this->cashMovementReason = '';
+        $this->showCashMovementForm = false;
     }
 
     public function closeCashSession(): void
@@ -673,17 +906,42 @@ class Terminal extends Component
             return;
         }
 
+        if (blank($this->closingAmountInput)) {
+            $this->addError('closingAmountInput', 'Informe o valor contado no caixa.');
+
+            return;
+        }
+
         $expected = $this->cashSessionExpected($session);
-        $closing = (float) str_replace(',', '.', $this->closingAmountInput ?: '0');
+        $closing = (float) str_replace(',', '.', $this->closingAmountInput);
+        $diff = round($closing - $expected, 2);
+
+        // Require reconciliation notes if discrepancy > R$5
+        if (abs($diff) > 5.0 && blank($this->reconciliationNotes)) {
+            $this->addError('reconciliation_notes', 'Diferença acima de R$5,00 — informe o motivo.');
+
+            return;
+        }
 
         $session->update([
             'closing_amount' => $closing,
             'expected_amount' => $expected,
+            'reconciliation_notes' => blank($this->reconciliationNotes) ? null : trim($this->reconciliationNotes),
             'closed_at' => now(),
+        ]);
+
+        $this->audit('cash_closed', [
+            'amount' => $closing,
+            'reason' => blank($this->reconciliationNotes) ? null : trim($this->reconciliationNotes),
+            'metadata' => [
+                'expected_amount' => $expected,
+                'difference' => $diff,
+            ],
         ]);
 
         $this->cashSessionId = null;
         $this->closingAmountInput = '';
+        $this->reconciliationNotes = '';
         $this->cart = [];
         $this->step = 'open_cash';
     }
@@ -713,7 +971,7 @@ class Terminal extends Component
     #[Computed]
     public function cartTotalAfterDiscount(): float
     {
-        return max(0.0, round($this->cartTotal - $this->couponDiscount, 2));
+        return max(0.0, round($this->cartTotal - $this->couponDiscount - $this->manualDiscountAmount, 2));
     }
 
     #[Computed]
@@ -807,6 +1065,50 @@ class Terminal extends Component
         }
 
         return PdvCashSession::find($this->cashSessionId);
+    }
+
+    #[Computed]
+    public function shiftStats(): array
+    {
+        if (! $this->cashSessionId) {
+            return ['duration' => '', 'orders' => 0, 'revenue' => 0.0, 'terminal' => '', 'operator' => ''];
+        }
+
+        $session = $this->cashSession;
+        if (! $session) {
+            return ['duration' => '', 'orders' => 0, 'revenue' => 0.0, 'terminal' => '', 'operator' => ''];
+        }
+
+        $duration = $session->created_at->diffForHumans(now(), true);
+
+        $stats = DB::table('orders')
+            ->where('pdv_cash_session_id', $this->cashSessionId)
+            ->whereNotIn('status', ['cancelled', 'refunded'])
+            ->selectRaw('COUNT(*) as total_orders, COALESCE(SUM(total), 0) as total_revenue')
+            ->first();
+
+        return [
+            'duration' => $duration,
+            'orders' => (int) ($stats->total_orders ?? 0),
+            'revenue' => (float) ($stats->total_revenue ?? 0.0),
+            'terminal' => $session->terminal_name ?? '',
+            'operator' => auth()->user()?->name ?? '',
+        ];
+    }
+
+    #[Computed]
+    public function sessionOrders(): Collection
+    {
+        if (! $this->cashSessionId) {
+            return collect();
+        }
+
+        return Order::withoutGlobalScopes()
+            ->where('pdv_cash_session_id', $this->cashSessionId)
+            ->with('customer')
+            ->latest()
+            ->limit(50)
+            ->get(['id', 'order_number', 'total', 'payment_method', 'status', 'created_at', 'customer_id', 'discount', 'manual_discount']);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -907,9 +1209,11 @@ class Terminal extends Component
             return;
         }
 
+        // Each user has their own session per branch (multi-terminal support)
         $session = PdvCashSession::withoutGlobalScopes()
             ->where('company_id', $company->id)
             ->where('branch_id', $this->selectedBranchId)
+            ->where('user_id', auth()->id())
             ->whereNull('closed_at')
             ->latest()
             ->first();
@@ -929,13 +1233,60 @@ class Terminal extends Component
     {
         $cashSales = DB::table('orders')
             ->join('payments', 'payments.order_id', '=', 'orders.id')
-            ->where('orders.branch_id', $session->branch_id)
+            ->where('orders.pdv_cash_session_id', $session->id)
             ->where('orders.payment_method', 'cash')
             ->where('payments.status', 'paid')
-            ->where('orders.created_at', '>=', $session->created_at)
             ->sum('payments.amount');
 
-        return round($session->opening_amount + (float) $cashSales, 2);
+        $manualMovements = DB::table('pdv_audit_logs')
+            ->where('pdv_cash_session_id', $session->id)
+            ->whereIn('action', ['cash_supply', 'cash_withdrawal'])
+            ->selectRaw("COALESCE(SUM(CASE WHEN action = 'cash_supply' THEN amount ELSE -amount END), 0) as total")
+            ->value('total');
+
+        return round($session->opening_amount + (float) $cashSales + (float) $manualMovements, 2);
+    }
+
+    public function cashSessionBreakdown(?PdvCashSession $session = null): array
+    {
+        $session ??= $this->cashSession;
+
+        if (! $session) {
+            return [
+                'opening' => 0.0,
+                'cash_sales' => 0.0,
+                'supplies' => 0.0,
+                'withdrawals' => 0.0,
+                'expected' => 0.0,
+            ];
+        }
+
+        $cashSales = (float) DB::table('orders')
+            ->join('payments', 'payments.order_id', '=', 'orders.id')
+            ->where('orders.pdv_cash_session_id', $session->id)
+            ->where('orders.payment_method', 'cash')
+            ->where('payments.status', 'paid')
+            ->sum('payments.amount');
+
+        $movements = DB::table('pdv_audit_logs')
+            ->where('pdv_cash_session_id', $session->id)
+            ->whereIn('action', ['cash_supply', 'cash_withdrawal'])
+            ->selectRaw("
+                COALESCE(SUM(CASE WHEN action = 'cash_supply' THEN amount ELSE 0 END), 0) as supplies,
+                COALESCE(SUM(CASE WHEN action = 'cash_withdrawal' THEN amount ELSE 0 END), 0) as withdrawals
+            ")
+            ->first();
+
+        $supplies = (float) ($movements->supplies ?? 0.0);
+        $withdrawals = (float) ($movements->withdrawals ?? 0.0);
+
+        return [
+            'opening' => (float) $session->opening_amount,
+            'cash_sales' => $cashSales,
+            'supplies' => $supplies,
+            'withdrawals' => $withdrawals,
+            'expected' => round((float) $session->opening_amount + $cashSales + $supplies - $withdrawals, 2),
+        ];
     }
 
     private function resolveCustomerId(\App\Models\Company $company): int
@@ -972,6 +1323,30 @@ class Terminal extends Component
         $this->couponDiscount = 0.0;
         $this->couponError = null;
         $this->couponInput = '';
+        $this->manualDiscountAmount = 0.0;
+        $this->manualDiscountInput = '';
+        $this->manualDiscountType = 'fixed';
+    }
+
+    private function audit(string $action, array $data = []): void
+    {
+        $company = app()->bound('current.company') ? app('current.company') : null;
+
+        if (! $company) {
+            return;
+        }
+
+        PdvAuditLog::withoutGlobalScopes()->create([
+            'company_id' => $company->id,
+            'branch_id' => $this->selectedBranchId,
+            'pdv_cash_session_id' => $this->cashSessionId,
+            'order_id' => $data['order_id'] ?? null,
+            'user_id' => auth()->id(),
+            'action' => $action,
+            'amount' => $data['amount'] ?? null,
+            'reason' => $data['reason'] ?? null,
+            'metadata' => $data['metadata'] ?? null,
+        ]);
     }
 
     public function render()

@@ -28,8 +28,8 @@
     </div>
 
     {{-- Cards de resumo --}}
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div class="bg-white border rounded-xl p-4 dark:bg-zinc-800 dark:border-zinc-700">
+    <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <div class="bg-white border rounded-xl p-4 dark:bg-zinc-800 dark:border-zinc-700 col-span-2 lg:col-span-1 xl:col-span-2">
             <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Total PDV</p>
             <p class="text-2xl font-bold text-neutral-800 dark:text-neutral-100 mt-1">
                 R$ {{ number_format($totalRevenue, 2, ',', '.') }}
@@ -53,6 +53,18 @@
                 R$ {{ number_format($cardTotal, 2, ',', '.') }}
             </p>
         </div>
+        <div class="bg-white border rounded-xl p-4 dark:bg-zinc-800 dark:border-zinc-700">
+            <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Descontos</p>
+            <p class="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">
+                R$ {{ number_format($totalDiscounts, 2, ',', '.') }}
+            </p>
+        </div>
+        <div class="bg-white border rounded-xl p-4 dark:bg-zinc-800 dark:border-zinc-700">
+            <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Cancelados</p>
+            <p class="text-2xl font-bold {{ $cancelledCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-neutral-400' }} mt-1">
+                {{ $cancelledCount }}
+            </p>
+        </div>
     </div>
 
     {{-- Tabela de sessões de caixa --}}
@@ -68,6 +80,7 @@
                     <thead>
                         <tr class="border-b text-xs text-neutral-500 dark:border-zinc-700 dark:text-neutral-400">
                             <th class="px-4 py-2 text-left">Filial</th>
+                            <th class="px-4 py-2 text-left">Terminal</th>
                             <th class="px-4 py-2 text-left">Operador</th>
                             <th class="px-4 py-2 text-left">Abertura</th>
                             <th class="px-4 py-2 text-right">Esperado</th>
@@ -82,11 +95,21 @@
                                 $diff = $session->closed_at
                                     ? round($session->closing_amount - $session->expected_amount, 2)
                                     : null;
+                                $diffSeverity = $diff === null ? null : (abs($diff) <= 0.01 ? 'ok' : (abs($diff) <= 5.0 ? 'warn' : 'alert'));
                             @endphp
                             <tr class="hover:bg-neutral-50 dark:hover:bg-zinc-700/50">
                                 <td class="px-4 py-3 text-neutral-800 dark:text-neutral-100">{{ $session->branch?->name ?? '—' }}</td>
+                                <td class="px-4 py-3 text-neutral-500 dark:text-neutral-400 text-xs">
+                                    {{ $session->terminal_name ?? '—' }}
+                                </td>
                                 <td class="px-4 py-3 text-neutral-600 dark:text-neutral-300">{{ $session->user?->name ?? '—' }}</td>
-                                <td class="px-4 py-3 text-neutral-500 dark:text-neutral-400 text-xs">{{ $session->created_at->format('d/m/Y H:i') }}</td>
+                                <td class="px-4 py-3 text-neutral-500 dark:text-neutral-400 text-xs">
+                                    {{ $session->created_at->format('d/m/Y H:i') }}
+                                    @if ($session->closed_at)
+                                        <span class="text-neutral-300 dark:text-neutral-600">→</span>
+                                        {{ $session->closed_at->format('H:i') }}
+                                    @endif
+                                </td>
                                 <td class="px-4 py-3 text-right font-medium text-neutral-700 dark:text-neutral-200">
                                     @if ($session->closed_at)
                                         R$ {{ number_format($session->expected_amount, 2, ',', '.') }}
@@ -103,9 +126,22 @@
                                 </td>
                                 <td class="px-4 py-3 text-right font-medium">
                                     @if ($diff !== null)
-                                        <span class="{{ $diff >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}">
-                                            {{ $diff >= 0 ? '+' : '' }}R$ {{ number_format(abs($diff), 2, ',', '.') }}
-                                        </span>
+                                        @if ($diffSeverity === 'ok')
+                                            <span class="text-green-600 dark:text-green-400">OK</span>
+                                        @elseif ($diffSeverity === 'warn')
+                                            <span class="text-amber-600 dark:text-amber-400">
+                                                {{ $diff >= 0 ? '+' : '' }}R$ {{ number_format(abs($diff), 2, ',', '.') }}
+                                            </span>
+                                        @else
+                                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                                                {{ $diff >= 0 ? '+' : '−' }}R$ {{ number_format(abs($diff), 2, ',', '.') }}
+                                            </span>
+                                        @endif
+                                        @if ($session->reconciliation_notes)
+                                            <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5 max-w-xs truncate" title="{{ $session->reconciliation_notes }}">
+                                                {{ $session->reconciliation_notes }}
+                                            </p>
+                                        @endif
                                     @else
                                         —
                                     @endif
@@ -148,11 +184,15 @@
                             <th class="px-4 py-2 text-left">Data</th>
                             <th class="px-4 py-2 text-left">Pagamento</th>
                             <th class="px-4 py-2 text-left">Status</th>
+                            <th class="px-4 py-2 text-right">Desconto</th>
                             <th class="px-4 py-2 text-right">Total</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y dark:divide-zinc-700">
                         @foreach ($orders as $order)
+                            @php
+                                $orderDiscount = ($order->discount ?? 0) + ($order->manual_discount ?? 0);
+                            @endphp
                             <tr class="hover:bg-neutral-50 dark:hover:bg-zinc-700/50">
                                 <td class="px-4 py-3 font-mono text-xs text-purple-600 dark:text-purple-400">{{ $order->order_number }}</td>
                                 <td class="px-4 py-3 text-neutral-700 dark:text-neutral-200">{{ $order->customer?->name ?? '—' }}</td>
@@ -176,6 +216,13 @@
                                         @else bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 @endif">
                                         {{ $order->status_label ?? $order->status }}
                                     </span>
+                                </td>
+                                <td class="px-4 py-3 text-right text-xs {{ $orderDiscount > 0 ? 'text-green-600 dark:text-green-400' : 'text-neutral-400' }}">
+                                    @if ($orderDiscount > 0)
+                                        − R$ {{ number_format($orderDiscount, 2, ',', '.') }}
+                                    @else
+                                        —
+                                    @endif
                                 </td>
                                 <td class="px-4 py-3 text-right font-semibold text-neutral-800 dark:text-neutral-100">
                                     R$ {{ number_format($order->total, 2, ',', '.') }}

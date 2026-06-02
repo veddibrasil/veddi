@@ -34,6 +34,7 @@ class OrderService implements OrderServiceInterface
         float $deliveryFee = 0.0,
         ?Coupon $coupon = null,
         ?Carbon $scheduledAt = null,
+        float $extraDiscount = 0.0,
     ): Order {
         $currentCompany = app()->bound('current.company') ? app('current.company') : null;
 
@@ -63,7 +64,7 @@ class OrderService implements OrderServiceInterface
 
         $customer = \App\Models\Customer::withoutGlobalScopes()->find($customerId);
 
-        $order = DB::transaction(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer) {
+        $order = DB::transaction(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer, $extraDiscount) {
             $subtotal = 0.0;
             $optionPricing = app(CartOptionPricing::class);
             foreach ($cart as $cartKey => $item) {
@@ -84,13 +85,14 @@ class OrderService implements OrderServiceInterface
                 }
             }
 
-            $total = max(0, $subtotal + $deliveryFee - $discount);
+            $safeExtraDiscount = max(0.0, (float) $extraDiscount);
+            $total = max(0, $subtotal + $deliveryFee - $discount - $safeExtraDiscount);
 
             // Calculate platform fee based on company plan (fee applies only to products, not shipping)
             $fee = 0.0;
             $netValue = $total;
             if ($currentCompany) {
-                $feeBase = max(0.0, $subtotal - $discount);
+                $feeBase = max(0.0, $subtotal - $discount - $safeExtraDiscount);
                 $fees = app(FeeCalculator::class)->calculate($currentCompany, $feeBase, $total);
                 $fee = $fees['fee'];
                 $netValue = $fees['net_value'];
@@ -102,6 +104,7 @@ class OrderService implements OrderServiceInterface
                 'subtotal' => $subtotal,
                 'delivery_fee' => $deliveryFee,
                 'discount' => $discount,
+                'manual_discount' => $safeExtraDiscount,
                 'total' => $total,
                 'fee' => $fee,
                 'net_value' => $netValue,
