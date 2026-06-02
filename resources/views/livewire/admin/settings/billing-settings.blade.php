@@ -488,8 +488,7 @@
                     </flux:modal.close>
                     <span :class="{ 'opacity-50 pointer-events-none cursor-not-allowed': !termsAccepted }">
                         <flux:button
-                            x-on:click="syncToWire()"
-                            wire:click="changePlan"
+                            x-on:click="syncToWire(); $wire.changePlan()"
                             variant="primary">
                             Continuar para pagamento
                         </flux:button>
@@ -532,8 +531,7 @@
                     </flux:modal.close>
                     <span :class="{ 'opacity-50 pointer-events-none cursor-not-allowed': !termsAccepted }">
                         <flux:button
-                            x-on:click="syncToWire()"
-                            wire:click="changePlan"
+                            x-on:click="syncToWire(); $wire.changePlan()"
                             variant="primary">
                             Continuar para pagamento
                         </flux:button>
@@ -574,8 +572,7 @@
                     </flux:modal.close>
                     <span :class="{ 'opacity-50 pointer-events-none cursor-not-allowed': !termsAccepted }">
                         <flux:button
-                            x-on:click="syncToWire()"
-                            wire:click="changePlan"
+                            x-on:click="syncToWire(); $wire.changePlan()"
                             variant="primary">
                             Continuar para pagamento
                         </flux:button>
