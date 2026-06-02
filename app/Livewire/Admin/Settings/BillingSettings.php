@@ -60,6 +60,8 @@ class BillingSettings extends Component
 
     public bool $acceptedTerms = false;
 
+    public ?string $planChangeError = null;
+
     public function mount(AsaasServiceInterface $asaasService): void
     {
         $company = app('current.company');
@@ -96,6 +98,7 @@ class BillingSettings extends Component
         $this->targetPlan = $plan;
         $this->paymentMethod = 'credit_card';
         $this->cardError = null;
+        $this->planChangeError = null;
         $this->cardSuccess = false;
         $this->acceptedTerms = false;
         $this->confirmingPlanChange = true;
@@ -152,10 +155,7 @@ class BillingSettings extends Component
         } else {
             // Upgrade or cross-grade to a paid plan (Essencial or PRO)
             if (! $company->asaas_customer_id) {
-                // Log::channel('discord')->critical('Esta empresa não possui cadastro no Asaas. Entre em contato com o suporte.');
-                session()->flash('error', 'Esta empresa não possui cadastro no Asaas. Entre em contato com o suporte.');
-                $this->confirmingPlanChange = false;
-                $this->targetPlan = '';
+                $this->planChangeError = 'Esta empresa não possui cadastro no Asaas. Entre em contato com o suporte.';
 
                 return;
             }
@@ -407,6 +407,7 @@ class BillingSettings extends Component
         $this->confirmingPlanChange = false;
         $this->targetPlan = '';
         $this->acceptedTerms = false;
+        $this->planChangeError = null;
     }
 
     public function render(): View

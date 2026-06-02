@@ -433,6 +433,11 @@
         <div class="space-y-5"
              x-data="{ method: 'credit_card', termsAccepted: false, syncToWire() { $wire.paymentMethod = this.method; $wire.acceptedTerms = this.termsAccepted; } }"
              x-init="$watch(() => $wire.confirmingPlanChange, val => { if (val) { method = 'credit_card'; termsAccepted = false; } })">
+            @if($planChangeError)
+                <div class="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400">
+                    {{ $planChangeError }}
+                </div>
+            @endif
             @if($targetPlan === 'free')
                 <div class="flex items-start gap-4">
                     <div class="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
