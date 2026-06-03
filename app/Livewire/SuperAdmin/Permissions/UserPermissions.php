@@ -48,7 +48,7 @@ class UserPermissions extends Component
             ->keyBy(fn ($up) => $up->permission->name);
 
         foreach ($userPerms as $permName => $up) {
-            $this->overrides[$permName] = $up->granted ? 'grant' : 'deny';
+            $this->overrides[str_replace('.', '__', $permName)] = $up->granted ? 'grant' : 'deny';
         }
     }
 
@@ -58,7 +58,8 @@ class UserPermissions extends Component
             return;
         }
 
-        foreach ($this->overrides as $permName => $value) {
+        foreach ($this->overrides as $permKey => $value) {
+            $permName = str_replace('__', '.', $permKey);
             $permission = Permission::where('name', $permName)->first();
             if (! $permission) {
                 continue;
@@ -80,6 +81,8 @@ class UserPermissions extends Component
                 );
             }
         }
+
+        User::clearPermissionCache($this->user->id, $this->companyId);
 
         session()->flash('status', 'Permissões do usuário atualizadas.');
     }

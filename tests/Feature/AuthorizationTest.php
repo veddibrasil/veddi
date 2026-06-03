@@ -1,8 +1,12 @@
 <?php
 
+use App\Livewire\SuperAdmin\Permissions\UserPermissions;
 use App\Models\Company;
+use App\Models\Permission;
 use App\Models\User;
+use App\Models\UserPermission;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
 
@@ -159,6 +163,35 @@ test('company_admin não acessa painel superadmin', function () {
     $this->actingAs($user)
         ->get(route('superadmin.companies.index'))
         ->assertForbidden();
+});
+
+test('super admin salva override de permissão com ponto e limpa cache', function () {
+    $company = makeCompany();
+    $user = User::factory()->create();
+    $user->companies()->attach($company->id, ['role' => 'viewer']);
+    $superAdmin = User::factory()->create(['is_super_admin' => true]);
+
+    Permission::firstOrCreate(
+        ['name' => 'orders.update'],
+        ['group' => 'orders', 'label' => 'Atualizar status de pedidos']
+    );
+
+    expect($user->hasPermission('orders.update', $company))->toBeFalse();
+
+    $this->actingAs($superAdmin);
+
+    Livewire::test(UserPermissions::class, ['user' => $user])
+        ->set('overrides.orders__update', 'grant')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect(UserPermission::where('user_id', $user->id)
+        ->where('company_id', $company->id)
+        ->whereHas('permission', fn ($q) => $q->where('name', 'orders.update'))
+        ->where('granted', true)
+        ->exists())->toBeTrue();
+
+    expect($user->hasPermission('orders.update', $company))->toBeTrue();
 });
 
 // ─── Isolamento entre empresas ────────────────────────────────────────────────

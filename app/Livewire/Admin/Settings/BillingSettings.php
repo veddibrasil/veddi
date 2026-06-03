@@ -9,7 +9,6 @@ use App\Enums\Plan;
 use App\Jobs\CreateAsaasSubscription;
 use App\Models\Subscription;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 use Livewire\Component;
 
