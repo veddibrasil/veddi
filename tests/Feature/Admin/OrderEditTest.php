@@ -1,5 +1,6 @@
 <?php
 
+use App\Livewire\Admin\Orders\Index as OrdersIndex;
 use App\Livewire\Admin\Orders\Show;
 use App\Models\Branch;
 use App\Models\Company;
@@ -167,6 +168,18 @@ test('order is not editable in terminal statuses', function (string $status) {
     $order->update(['status' => $status]);
     expect($order->isEditable())->toBeFalse();
 })->with(['delivered', 'cancelled', 'refunded']);
+
+test('kanban status update persists order status', function () {
+    ['admin' => $admin, 'order' => $order] = orderEditContext();
+
+    $this->actingAs($admin);
+
+    Livewire::test(OrdersIndex::class)
+        ->call('updateOrderStatus', $order->id, 'ready')
+        ->assertHasNoErrors();
+
+    expect($order->fresh()->status)->toBe('ready');
+});
 
 // ─── Admin can edit address ───────────────────────────────────────────────────
 
