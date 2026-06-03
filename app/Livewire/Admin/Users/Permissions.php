@@ -35,7 +35,7 @@ class Permissions extends Component
             ->keyBy(fn ($up) => $up->permission->name);
 
         foreach ($userPerms as $permName => $up) {
-            $this->overrides[$permName] = $up->granted ? 'grant' : 'deny';
+            $this->overrides[str_replace('.', '__', $permName)] = $up->granted ? 'grant' : 'deny';
         }
     }
 
@@ -43,7 +43,8 @@ class Permissions extends Component
     {
         $company = app('current.company');
 
-        foreach ($this->overrides as $permName => $value) {
+        foreach ($this->overrides as $permKey => $value) {
+            $permName = str_replace('__', '.', $permKey);
             $permission = Permission::where('name', $permName)->first();
             if (! $permission) {
                 continue;

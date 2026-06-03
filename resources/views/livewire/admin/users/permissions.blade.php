@@ -37,7 +37,7 @@
                     @foreach($groupPermissions as $permission)
                         @php
                             $isDefault = in_array($permission->name, $roleDefaults);
-                            $override  = $overrides[$permission->name] ?? 'default';
+                            $override  = $overrides[str_replace('.', '__', $permission->name)] ?? 'default';
                         @endphp
                         <tr class="hover:bg-neutral-50 dark:hover:bg-zinc-700/30">
                             <td class="py-2.5 text-neutral-700 dark:text-neutral-300">
@@ -51,7 +51,7 @@
                             </td>
                             <td class="py-2.5 text-center">
                                 <flux:select
-                                    wire:model="overrides.{{ $permission->name }}"
+                                    wire:model="overrides.{{ str_replace('.', '__', $permission->name) }}"
                                 >
                                     <flux:select.option value="default">Padrão</flux:select.option>
                                     <flux:select.option value="grant">Conceder</flux:select.option>
