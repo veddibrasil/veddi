@@ -61,9 +61,9 @@ class DatabaseSeeder extends Seeder
 
         $this->call([
             PermissionSeeder::class,
-            BranchSeeder::class,
-            ProductCategorySeeder::class,
-            ProductSeeder::class,
+            // BranchSeeder::class,
+            // ProductCategorySeeder::class,
+            // ProductSeeder::class,
         ]);
 
         // Atribui permissões explícitas ao gerente padrão (após PermissionSeeder criar os papéis)

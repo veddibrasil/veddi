@@ -195,6 +195,16 @@ class Order extends Model
         return $this->hasMany(PaymentRefund::class);
     }
 
+    public function fiscalNotes(): HasMany
+    {
+        return $this->hasMany(FiscalNote::class);
+    }
+
+    public function activeFiscalNote(): HasOne
+    {
+        return $this->hasOne(FiscalNote::class)->whereIn('status', ['pending', 'authorized'])->latestOfMany();
+    }
+
     public function isScheduled(): bool
     {
         return $this->scheduled_at !== null;

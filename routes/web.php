@@ -3,6 +3,7 @@
 use App\Helpers\Validation;
 use App\Http\Controllers\AsaasSimulatePaymentController;
 use App\Http\Controllers\AsaasWebhookController;
+use App\Http\Controllers\FiscalWebhookController;
 use App\Http\Controllers\RegisterCompanyController;
 use App\Http\Controllers\StarkSimulatePaymentController;
 use App\Http\Controllers\StarkWebhookController;
@@ -42,6 +43,11 @@ Route::post('/webhooks/asaas', AsaasWebhookController::class)
 Route::post('/webhooks/stark', StarkWebhookController::class)
     ->middleware('throttle:60,1')
     ->name('webhook.stark');
+
+// --- Webhook Focus NFe (sem auth, sem CSRF — coberto por webhooks/* em bootstrap/app.php) ---
+Route::post('/webhooks/fiscal', FiscalWebhookController::class)
+    ->middleware('throttle:60,1')
+    ->name('webhook.fiscal');
 
 // --- API pública ---
 Route::post('/api/validate-cpf', function (Request $request) {
@@ -94,6 +100,11 @@ Route::middleware(['auth', 'verified', 'company.active'])
             Route::get('/products', \App\Livewire\Admin\Products\Index::class)->name('products.index');
             Route::get('/products/create', \App\Livewire\Admin\Products\Form::class)->name('products.create');
             Route::get('/products/{product}/edit', \App\Livewire\Admin\Products\Form::class)->name('products.edit');
+        });
+
+        // Fiscal — company_admin + branch_manager (com permissão)
+        Route::middleware('company.role:company_admin,branch_manager')->group(function () {
+            Route::get('/fiscal/notas', \App\Livewire\Admin\Fiscal\Notes::class)->name('fiscal.notes');
         });
 
         // Gestão completa: só company_admin

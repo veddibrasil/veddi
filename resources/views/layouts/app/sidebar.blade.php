@@ -118,6 +118,14 @@
                         </flux:sidebar.group>
                     @endif
 
+                    @if($company?->canUseFiscalNotes() && ($can('fiscal.view') || $can('fiscal.issue')))
+                        <flux:sidebar.group heading="Fiscal" class="grid">
+                            <flux:sidebar.item icon="document-text" :href="route('admin.fiscal.notes')" :current="request()->routeIs('admin.fiscal.notes')" wire:navigate>
+                                Notas Fiscais
+                            </flux:sidebar.item>
+                        </flux:sidebar.group>
+                    @endif
+
                     @php
                         $showUsers = $can('users.view') || $can('users.manage');
                         $showRoles = $can('roles.manage');

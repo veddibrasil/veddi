@@ -57,6 +57,11 @@ class PermissionSeeder extends Seeder
 
             // PDV
             ['name' => 'pdv.operate', 'group' => 'pdv', 'label' => 'Operar terminal PDV'],
+
+            // Fiscal
+            ['name' => 'fiscal.view',     'group' => 'fiscal', 'label' => 'Visualizar notas fiscais'],
+            ['name' => 'fiscal.issue',    'group' => 'fiscal', 'label' => 'Emitir/cancelar notas fiscais'],
+            ['name' => 'fiscal.settings', 'group' => 'fiscal', 'label' => 'Configurações fiscais'],
         ];
 
         foreach ($permissions as $data) {
@@ -74,6 +79,7 @@ class PermissionSeeder extends Seeder
             'stock.view', 'stock.adjust', 'stock.toggle',
             'coupons.view', 'coupons.create', 'coupons.update', 'coupons.delete',
             'pdv.operate',
+            'fiscal.view', 'fiscal.issue', 'fiscal.settings',
         ];
 
         $branchManagerPermissions = [
@@ -82,6 +88,7 @@ class PermissionSeeder extends Seeder
             'categories.view', 'categories.create', 'categories.update', 'categories.delete',
             'branches.view',
             'stock.view', 'stock.adjust', 'stock.toggle',
+            'fiscal.view',
         ];
 
         $roles = [

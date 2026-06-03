@@ -27,6 +27,7 @@ class Product extends Model
         'active',
         'is_variant',
         'sort_order',
+        'fiscal_data',
     ];
 
     protected $casts = [
@@ -35,6 +36,7 @@ class Product extends Model
         'promo_price_value' => 'decimal:2',
         'active' => 'boolean',
         'is_variant' => 'boolean',
+        'fiscal_data' => 'array',
     ];
 
     public function getEffectivePriceAttribute(): float

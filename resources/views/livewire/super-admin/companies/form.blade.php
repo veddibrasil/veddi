@@ -109,6 +109,25 @@
         </div>
     </div>
 
+    {{-- Módulos / Add-ons --}}
+    <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
+        <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Módulos / Add-ons</h2>
+
+        <div class="flex items-start gap-4 rounded-lg border border-neutral-100 dark:border-zinc-700 bg-neutral-50 dark:bg-zinc-700/40 px-4 py-3">
+            <div class="pt-0.5">
+                <flux:checkbox wire:model="fiscal_notes_enabled" id="fiscal_notes_enabled" />
+            </div>
+            <div>
+                <label for="fiscal_notes_enabled" class="text-sm font-medium text-neutral-800 dark:text-neutral-100 cursor-pointer">
+                    Nota Fiscal Eletrônica
+                </label>
+                <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                    Libera acesso ao módulo de NF-e/NFS-e para esta empresa. A empresa precisará configurar os dados fiscais no painel admin.
+                </p>
+            </div>
+        </div>
+    </div>
+
     {{-- Cores --}}
     <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
         <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Cores da Marca</h2>

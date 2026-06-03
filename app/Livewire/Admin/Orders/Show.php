@@ -4,6 +4,7 @@ namespace App\Livewire\Admin\Orders;
 
 use App\Contracts\RefundServiceInterface;
 use App\Events\OrderStatusUpdated;
+use App\Jobs\IssueFiscalNote;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
@@ -82,6 +83,14 @@ class Show extends Component
 
     public int $swapQuantity = 1;
 
+    // ── Fiscal note ──────────────────────────────────────────────────────────
+
+    public bool $showFiscalModal = false;
+
+    public string $fiscalCustomerDocument = '';
+
+    public bool $canIssueFiscal = false;
+
     public function mount(): void
     {
         $user = auth()->user();
@@ -93,6 +102,7 @@ class Show extends Component
             // Any user with a role in this company can update orders.
             // Route middleware (company.role) already enforces they belong here.
             $this->canUpdate = $user->roleForCompany($company) !== null;
+            $this->canIssueFiscal = $user->hasPermission('fiscal.issue', $company);
         }
     }
 
@@ -862,8 +872,39 @@ class Show extends Component
         );
     }
 
+    // ── Fiscal note ──────────────────────────────────────────────────────────
+
+    public function openFiscalModal(): void
+    {
+        abort_unless($this->canIssueFiscal, 403);
+
+        $this->fiscalCustomerDocument = '';
+        $this->showFiscalModal = true;
+    }
+
+    public function closeFiscalModal(): void
+    {
+        $this->showFiscalModal = false;
+    }
+
+    public function issueFiscalNote(): void
+    {
+        abort_unless($this->canIssueFiscal, 403);
+
+        $this->validate([
+            'fiscalCustomerDocument' => ['nullable', 'string', 'max:20'],
+        ]);
+
+        IssueFiscalNote::dispatch($this->order->id, $this->fiscalCustomerDocument ?: null);
+
+        $this->showFiscalModal = false;
+        session()->flash('status', 'Emissão de NFC-e enfileirada.');
+    }
+
     public function render()
     {
+        $this->order->loadMissing('activeFiscalNote');
+
         return view('livewire.admin.orders.show')
             ->layout('layouts.app', ['title' => "Pedido {$this->order->order_number}"]);
     }

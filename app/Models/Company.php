@@ -58,6 +58,8 @@ class Company extends Model
         'pix_fee_absorbed_by_company',
         'card_fee_absorbed_by_company',
         'schedule_min_advance_minutes',
+        'fiscal_notes_enabled',
+        'fiscal_addon_asaas_id',
     ];
 
     protected $attributes = [
@@ -69,6 +71,7 @@ class Company extends Model
         'active' => 'boolean',
         'pix_fee_absorbed_by_company' => 'boolean',
         'card_fee_absorbed_by_company' => 'boolean',
+        'fiscal_notes_enabled' => 'boolean',
         'schedule_min_advance_minutes' => 'integer',
         'chat_highlights' => 'array',
         'plan' => Plan::class,
@@ -251,5 +254,20 @@ class Company extends Model
     public function isBlocked(): bool
     {
         return $this->status === 'BLOCKED';
+    }
+
+    public function canUseFiscalNotes(): bool
+    {
+        return (bool) $this->fiscal_notes_enabled;
+    }
+
+    public function fiscalConfig(): HasOne
+    {
+        return $this->hasOne(CompanyFiscalConfig::class);
+    }
+
+    public function fiscalNotes(): HasMany
+    {
+        return $this->hasMany(FiscalNote::class);
     }
 }

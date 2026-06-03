@@ -53,6 +53,8 @@ class Form extends Component
 
     public bool $active = true;
 
+    public bool $fiscal_notes_enabled = false;
+
     public string $plan = 'free';
 
     public string $status = 'ACTIVE';
@@ -88,6 +90,7 @@ class Form extends Component
             'accent_color' => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'order_prefix' => ['required', 'string', 'max:10', 'regex:/^[A-Z0-9]+$/', "unique:companies,order_prefix,{$ignoreId}"],
             'active' => ['boolean'],
+            'fiscal_notes_enabled' => ['boolean'],
             'plan' => ['required', 'in:free,essencial,pro'],
             'status' => ['required', 'in:ACTIVE,PENDING_PAYMENT,BLOCKED'],
             'logo' => ['nullable', 'image', 'max:2048'],
@@ -115,6 +118,7 @@ class Form extends Component
             $this->plan = $company->plan?->value ?? 'free';
             $this->originalPlan = $this->plan;
             $this->status = $company->status ?? 'ACTIVE';
+            $this->fiscal_notes_enabled = (bool) $company->fiscal_notes_enabled;
         }
     }
 

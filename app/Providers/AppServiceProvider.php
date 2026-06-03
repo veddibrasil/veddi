@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Contracts\AsaasServiceInterface;
+use App\Contracts\FiscalNoteProviderInterface;
 use App\Contracts\OrderServiceInterface;
 use App\Contracts\RefundServiceInterface;
 use App\Contracts\TransactionServiceInterface;
@@ -33,6 +34,7 @@ use App\Policies\RolePolicy;
 use App\Policies\UserPolicy;
 use App\Services\Finance\TransactionService;
 use App\Services\Finance\WalletService;
+use App\Services\Fiscal\FocusNfeService;
 use App\Services\Order\OrderService;
 use App\Services\Payment\AsaasService;
 use App\Services\Refund\RefundService;
@@ -63,6 +65,12 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->bind(AsaasServiceInterface::class, AsaasService::class);
         $this->app->bind(OrderServiceInterface::class, OrderService::class);
+        $this->app->bind(FiscalNoteProviderInterface::class, function () {
+            return new FocusNfeService(
+                token: config('fiscal.focus_nfe.token', ''),
+                baseUrl: config('fiscal.focus_nfe.base_url', 'https://homologacao.focusnfe.com.br'),
+            );
+        });
         $this->app->bind(WalletServiceInterface::class, WalletService::class);
         $this->app->bind(TransactionServiceInterface::class, TransactionService::class);
         $this->app->bind(RefundServiceInterface::class, RefundService::class);

@@ -48,9 +48,16 @@ class ProcessAsaasWebhook implements ShouldQueue
             return;
         }
 
-        // Check if this is an order payment first (has externalReference = order_id)
+        // Check if this is a fiscal add-on payment (externalReference = fiscal_addon:{company_id})
         $externalRef = $this->payload['payment']['externalReference'] ?? null;
 
+        if ($externalRef && str_starts_with((string) $externalRef, 'fiscal_addon:')) {
+            $this->handleFiscalAddonPayment($externalRef);
+
+            return;
+        }
+
+        // Check if this is an order payment first (has externalReference = order_id)
         if ($externalRef && is_numeric($externalRef)) {
             if (in_array($this->event, ['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED'])) {
                 $this->handleOrderPayment((int) $externalRef);
@@ -365,6 +372,42 @@ class ProcessAsaasWebhook implements ShouldQueue
             'transfer_id' => $transferId,
             'value' => $value,
             'payload' => $this->payload,
+        ]);
+    }
+
+    private function handleFiscalAddonPayment(string $externalRef): void
+    {
+        $companyId = (int) str_replace('fiscal_addon:', '', $externalRef);
+
+        if (! $companyId) {
+            Log::channel('webhook')->warning('Asaas webhook: fiscal_addon ref inválida', [
+                'event' => $this->event,
+                'ref' => $externalRef,
+            ]);
+
+            return;
+        }
+
+        $company = Company::find($companyId);
+
+        if (! $company) {
+            Log::channel('webhook')->warning('Asaas webhook: empresa do fiscal addon não encontrada', [
+                'company_id' => $companyId,
+            ]);
+
+            return;
+        }
+
+        match ($this->event) {
+            'PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED' => $company->update(['fiscal_notes_enabled' => true]),
+            'PAYMENT_OVERDUE', 'PAYMENT_DELETED' => $company->update(['fiscal_notes_enabled' => false]),
+            default => null,
+        };
+
+        Log::channel('payments')->info('Asaas webhook: fiscal addon processado', [
+            'event' => $this->event,
+            'company_id' => $companyId,
+            'fiscal_notes_enabled' => $company->fresh()->fiscal_notes_enabled,
         ]);
     }
 
