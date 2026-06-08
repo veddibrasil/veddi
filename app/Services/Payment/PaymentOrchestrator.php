@@ -2,6 +2,8 @@
 
 namespace App\Services\Payment;
 
+use App\DTOs\CreditCardDTO;
+use App\DTOs\CreditCardHolderDTO;
 use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Order;
@@ -12,7 +14,7 @@ use Illuminate\Support\Str;
 class PaymentOrchestrator
 {
     public function __construct(
-        private readonly StarkService $stark,
+        private readonly VindiService $vindi,
     ) {}
 
     // ─────────────────────────────────────────────────────────────
@@ -26,8 +28,8 @@ class PaymentOrchestrator
      * {
      *   "id":         "...",
      *   "status":     "pending",
-     *   "method":     "pix" | "credit_card" | "subscription",
-     *   "gateway":    "stark" | "asaas",
+     *   "method":     "pix" | "credit_card" | "cash",
+     *   "gateway":    "vindi" | "cash" | "card_machine",
      *   "qr_code":    "...",   // só PIX
      *   "copy_paste": "...",   // só PIX
      * }
@@ -36,94 +38,205 @@ class PaymentOrchestrator
         Order $order,
         Customer $customer,
         Company $company,
-        string $method
+        string $method,
+        array $cardData = [],
+        int $installments = 1,
     ): array {
         return match (strtoupper($method)) {
-            'CREDIT_CARD' => $this->processCreditCard($order, $customer, $company),
+            'CREDIT_CARD' => $this->processCreditCard($order, $customer, $company, $cardData, $installments),
             'CASH' => $this->processCash($order),
+            'CARD_MACHINE' => $this->processCardMachine($order),
             default => $this->processPix($order, $customer, $company),
         };
     }
 
     /**
-     * Processa PIX via Stark Bank e persiste o Payment.
+     * Processa PIX via Vindi Intermediador e persiste o Payment.
      */
     public function processPix(
         Order $order,
         Customer $customer,
         Company $company
     ): array {
-        $pixFee = (float) config('payments.stark_pix_fee', 0.50);
-        $pixFeeAbsorbed = $company->pix_fee_absorbed_by_company ?? false;
-        $chargeAmount = (float) $order->total + ($pixFeeAbsorbed ? 0 : $pixFee);
-        $companyName = $company->name ?? config('app.name');
+        $chargeAmount = (float) $order->total;
+        $affiliateToken = $company->vindi_affiliate_token;
 
-        Log::channel('payments')->info('Orchestrator: criando cobrança PIX via Stark Bank', [
+        // PIX split: Vindi keeps 0.85%, platform keeps 0.14% (total 0.99%), rest to company.
+        // Free plan adds extra 1% platform fee on top.
+        $pixTotalRate = (float) config('payments.vindi_pix_rate', 0.0085)
+                      + (float) config('payments.vindi_pix_platform_rate', 0.0014);
+        $planExtraRate = $company->plan?->feePercentage() ?? 0.0;
+        $affiliatePercentual = round(100.0 - ($pixTotalRate * 100) - ($planExtraRate * 100), 4);
+
+        Log::channel('payments')->info('Orchestrator: criando cobrança PIX via Vindi', [
             'order_id' => $order->id,
             'charge_amount' => $chargeAmount,
-            'pix_fee' => $pixFee,
-            'fee_absorbed' => $pixFeeAbsorbed,
+            'affiliate_percentual' => $affiliatePercentual,
+            'pix_total_rate_pct' => round(($pixTotalRate + $planExtraRate) * 100, 4).'%',
+            'has_affiliate' => (bool) $affiliateToken,
         ]);
 
-        $apiKey = config('services.stark.project_id');
+        $tokenAccount = config('payments.vindi_token_account');
 
-        if ($apiKey) {
-            $result = $this->stark->createPixCharge(
+        if ($tokenAccount) {
+            $result = $this->vindi->createPixCharge(
                 amount: $chargeAmount,
-                description: "Pedido #{$order->order_number} - {$companyName}",
                 externalRef: (string) $order->id,
                 customer: $customer,
+                affiliateToken: $affiliateToken,
+                affiliatePercentual: $affiliatePercentual,
             );
 
             $payment = Payment::create([
                 'order_id' => $order->id,
-                'stark_payment_id' => $result['id'],
-                'payment_gateway' => 'stark',
-                'pix_qr_code' => $result['qr_code_url'],
-                'pix_copy_paste' => $result['brcode'],
+                'vindi_transaction_token' => $result['transaction_token'],
+                'payment_gateway' => 'vindi',
+                'pix_qr_code' => $result['pix_qr_code'],
+                'pix_copy_paste' => $result['pix_copy_paste'],
                 'amount' => $chargeAmount,
-                'pix_fee' => $pixFee,
+                'pix_fee' => 0.0,
                 'status' => 'pending',
                 'expires_at' => now()->addMinutes(30),
                 'payment_token' => hash('sha256', $order->id.$customer->id.Str::random(32)),
             ]);
 
-            Log::channel('payments')->info('PIX Stark Bank criado', [
+            Log::channel('payments')->info('PIX Vindi criado', [
                 'order_id' => $order->id,
-                'stark_payment_id' => $result['id'],
+                'vindi_transaction_token' => $result['transaction_token'],
                 'charge_amount' => $chargeAmount,
             ]);
         } else {
-            // Modo simulação (sem credenciais Stark configuradas)
+            // Modo simulação (sem credenciais Vindi configuradas)
+            $companyName = $company->name ?? config('app.name');
             $payment = Payment::create([
                 'order_id' => $order->id,
-                'stark_payment_id' => 'sim_stark_'.uniqid(),
-                'payment_gateway' => 'stark',
+                'vindi_transaction_token' => 'sim_vindi_'.uniqid(),
+                'payment_gateway' => 'vindi',
                 'pix_qr_code' => null,
-                'pix_copy_paste' => '00020126580014br.gov.bcb.pix0136SIMULACAO-STARK-BANK52040000530398654'
+                'pix_copy_paste' => '00020126580014br.gov.bcb.pix0136SIMULACAO-VINDI52040000530398654'
                     .number_format($chargeAmount, 2, '', '')
                     .'5802BR5924'
                     .mb_substr(preg_replace('/[^A-Z0-9 ]/', '', strtoupper($companyName)), 0, 25)
                     .'6009SAO PAULO62070503***6304ABCD',
                 'amount' => $chargeAmount,
-                'pix_fee' => $pixFee,
+                'pix_fee' => 0.0,
                 'status' => 'pending',
                 'expires_at' => now()->addMinutes(30),
                 'payment_token' => hash('sha256', $order->id.$customer->id.Str::random(32)),
             ]);
 
-            Log::channel('payments')->info('PIX Stark simulado (sem credenciais)', [
+            Log::channel('payments')->info('PIX Vindi simulado (sem credenciais)', [
                 'order_id' => $order->id,
             ]);
         }
 
         return [
-            'id' => $payment->stark_payment_id,
+            'id' => $payment->vindi_transaction_token,
             'status' => 'pending',
             'method' => 'pix',
-            'gateway' => 'stark',
+            'gateway' => 'vindi',
             'qr_code' => $payment->pix_qr_code,
             'copy_paste' => $payment->pix_copy_paste,
+        ];
+    }
+
+    /**
+     * Processa cartão de crédito via Vindi Intermediador e persiste o Payment.
+     */
+    public function processCreditCard(
+        Order $order,
+        Customer $customer,
+        Company $company,
+        array $cardData,
+        int $installments = 1,
+    ): array {
+        $chargeAmount = (float) $order->total;
+        $affiliateToken = $company->vindi_affiliate_token;
+
+        // Card split: paid plans take 0% platform cut; free plan adds extra 1%.
+        $planExtraRate = $company->plan?->feePercentage() ?? 0.0;
+        $affiliatePercentual = round(100.0 - ($planExtraRate * 100), 4);
+
+        Log::channel('payments')->info('Orchestrator: criando cobrança cartão via Vindi', [
+            'order_id' => $order->id,
+            'charge_amount' => $chargeAmount,
+            'installments' => $installments,
+            'affiliate_percentual' => $affiliatePercentual,
+            'has_affiliate' => (bool) $affiliateToken,
+        ]);
+
+        $tokenAccount = config('payments.vindi_token_account');
+
+        if ($tokenAccount) {
+            $result = $this->vindi->createCreditCardCharge(
+                amount: $chargeAmount,
+                externalRef: (string) $order->id,
+                card: new CreditCardDTO(
+                    holderName: $cardData['holderName'],
+                    number: $cardData['number'],
+                    expiryMonth: $cardData['expiryMonth'],
+                    expiryYear: $cardData['expiryYear'],
+                    ccv: $cardData['ccv'],
+                ),
+                holder: new CreditCardHolderDTO(
+                    name: $customer->name,
+                    email: $customer->email,
+                    cpfCnpj: $cardData['cpfCnpj'] ?? $customer->tax_id ?? '',
+                    postalCode: $cardData['postalCode'] ?? '',
+                    addressNumber: $cardData['addressNumber'] ?? 'S/N',
+                    phone: $customer->phone ?? null,
+                ),
+                installments: $installments,
+                affiliateToken: $affiliateToken,
+                affiliatePercentual: $affiliatePercentual,
+            );
+
+            Payment::create([
+                'order_id' => $order->id,
+                'vindi_transaction_token' => $result['transaction_token'],
+                'payment_gateway' => 'vindi',
+                'amount' => $chargeAmount,
+                'original_amount' => $chargeAmount,
+                'card_fee' => 0.0,
+                'card_fee_rate' => 0.0,
+                'installments' => $installments,
+                'status' => 'pending',
+                'payment_token' => hash('sha256', $order->id.$customer->id.Str::random(32)),
+            ]);
+
+            Log::channel('payments')->info('Cartão Vindi criado', [
+                'order_id' => $order->id,
+                'vindi_transaction_token' => $result['transaction_token'],
+                'charge_amount' => $chargeAmount,
+                'installments' => $installments,
+            ]);
+        } else {
+            // Modo simulação
+            Payment::create([
+                'order_id' => $order->id,
+                'vindi_transaction_token' => 'sim_card_'.uniqid(),
+                'payment_gateway' => 'vindi',
+                'amount' => $chargeAmount,
+                'original_amount' => $chargeAmount,
+                'card_fee' => 0.0,
+                'card_fee_rate' => 0.0,
+                'installments' => $installments,
+                'status' => 'pending',
+                'payment_token' => hash('sha256', $order->id.$customer->id.Str::random(32)),
+            ]);
+
+            Log::channel('payments')->info('Cartão Vindi simulado (sem credenciais)', [
+                'order_id' => $order->id,
+                'charge_amount' => $chargeAmount,
+                'installments' => $installments,
+            ]);
+        }
+
+        return [
+            'id' => null,
+            'status' => 'pending',
+            'method' => 'credit_card',
+            'gateway' => 'vindi',
         ];
     }
 
@@ -138,7 +251,6 @@ class PaymentOrchestrator
 
         $payment = Payment::create([
             'order_id' => $order->id,
-            'stark_payment_id' => null,
             'payment_gateway' => 'cash',
             'amount' => (float) $order->total,
             'pix_fee' => 0.0,
@@ -170,7 +282,6 @@ class PaymentOrchestrator
     {
         $payment = Payment::create([
             'order_id' => $order->id,
-            'stark_payment_id' => null,
             'payment_gateway' => 'card_machine',
             'amount' => (float) $order->total,
             'pix_fee' => 0.0,
@@ -192,21 +303,6 @@ class PaymentOrchestrator
         ];
     }
 
-    /**
-     * Cartão de crédito permanece no Asaas.
-     * Este método não cria o Payment — apenas retorna o gateway correto.
-     * O ProcessOrder mantém a lógica completa de cartão internamente.
-     */
-    private function processCreditCard(Order $order, Customer $customer, Company $company): array
-    {
-        return [
-            'id' => null,
-            'status' => 'pending',
-            'method' => 'credit_card',
-            'gateway' => 'asaas',
-        ];
-    }
-
     // ─────────────────────────────────────────────────────────────
     // Cálculo de taxas
     // ─────────────────────────────────────────────────────────────
@@ -219,8 +315,11 @@ class PaymentOrchestrator
     public function calculateFees(float $amount, string $method, Company $company): array
     {
         $gatewayFee = match (strtolower($method)) {
-            'pix' => (float) config('payments.stark_pix_fee', 0.50),
-            'credit_card' => round($amount * 0.04, 2),
+            'pix' => max(
+                (float) config('payments.vindi_pix_fee_min', 1.60),
+                round($amount * (float) config('payments.vindi_pix_rate', 0.0085), 2)
+            ),
+            'credit_card' => round($amount * (float) config('payments.credit_card.rate_1x', 0.0310), 2),
             default => 0.0,
         };
 

@@ -60,6 +60,7 @@ class Company extends Model
         'schedule_min_advance_minutes',
         'fiscal_notes_enabled',
         'fiscal_addon_asaas_id',
+        'vindi_affiliate_token',
     ];
 
     protected $attributes = [

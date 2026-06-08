@@ -1,7 +1,7 @@
 <?php
 
 use App\Jobs\ProcessAsaasWebhook;
-use App\Jobs\ProcessStarkWebhook;
+use App\Jobs\ProcessVindiWebhook;
 use App\Models\Branch;
 use App\Models\Company;
 use App\Models\CompanyWalletEntry;
@@ -106,13 +106,13 @@ test('asaas: webhook credita apenas a empresa correta, não vaza para outra', fu
     expect(CompanyWalletEntry::where('company_id', $companyB->id)->count())->toBe(0);
 });
 
-test('stark: webhook credita apenas a empresa correta, não vaza para outra', function () {
+test('vindi: webhook credita apenas a empresa correta, não vaza para outra', function () {
     ['company' => $companyA, 'order' => $orderA] = makeTenantContext('empresa-c', 'CCC');
 
     $paymentA = Payment::create([
         'order_id' => $orderA->id,
-        'stark_payment_id' => 'inv_C_001',
-        'payment_gateway' => 'stark',
+        'vindi_transaction_token' => 'vindi_tok_C_001',
+        'payment_gateway' => 'vindi',
         'amount' => 40.00,
         'original_amount' => 40.00,
         'status' => 'pending',
@@ -123,8 +123,8 @@ test('stark: webhook credita apenas a empresa correta, não vaza para outra', fu
 
     Payment::create([
         'order_id' => $orderB->id,
-        'stark_payment_id' => 'inv_D_001',
-        'payment_gateway' => 'stark',
+        'vindi_transaction_token' => 'vindi_tok_D_001',
+        'payment_gateway' => 'vindi',
         'amount' => 40.00,
         'original_amount' => 40.00,
         'status' => 'pending',
@@ -134,12 +134,12 @@ test('stark: webhook credita apenas a empresa correta, não vaza para outra', fu
     // Jobs rodam sem current.company (fila não tem contexto HTTP)
     app()->forgetInstance('current.company');
 
-    // Dispara webhook apenas para empresa C (ordem A)
-    (new ProcessStarkWebhook('credited', [
-        'event' => [
-            'log' => [
-                'invoice' => ['id' => $paymentA->stark_payment_id],
-            ],
+    // Dispara webhook apenas para empresa C (pagamento A)
+    (new ProcessVindiWebhook('vindi_tok_C_001', 'Aprovada', [
+        'transaction' => [
+            'token' => $paymentA->vindi_transaction_token,
+            'status_name' => 'Aprovada',
+            'order_number' => (string) $orderA->id,
         ],
     ]))->handle();
 

@@ -59,7 +59,7 @@ it('recordSnapshot creates record with correct values', function () {
     $service = new YieldTrackingService($mockBacen);
     $snapshot = $service->recordSnapshot(10000.00, 500.00);
 
-    expect($snapshot->stark_balance)->toEqual('10000.00')
+    expect($snapshot->vindi_balance)->toEqual('10000.00')
         ->and($snapshot->asaas_balance)->toEqual('500.00')
         ->and($snapshot->total_float)->toEqual('10500.00')
         ->and((float) $snapshot->yield_amount)->toEqual(round(10500.00 * 0.000527, 2))
@@ -84,7 +84,7 @@ it('monthlyYield sums records correctly', function () {
 
     PlatformYieldSnapshot::create([
         'snapshot_date' => now()->startOfMonth()->toDateString(),
-        'stark_balance' => 10000,
+        'vindi_balance' => 10000,
         'asaas_balance' => 500,
         'total_float' => 10500,
         'cdi_rate_annual' => 13.75,
@@ -96,7 +96,7 @@ it('monthlyYield sums records correctly', function () {
 
     PlatformYieldSnapshot::create([
         'snapshot_date' => now()->startOfMonth()->addDay()->toDateString(),
-        'stark_balance' => 10000,
+        'vindi_balance' => 10000,
         'asaas_balance' => 500,
         'total_float' => 10500,
         'cdi_rate_annual' => 13.75,

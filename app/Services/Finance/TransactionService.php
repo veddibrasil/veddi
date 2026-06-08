@@ -38,7 +38,7 @@ class TransactionService implements TransactionServiceInterface
         } else {
             $value = (float) $payment->amount;
             $pixFee = ($type === 'pix' && ($company->pix_fee_absorbed_by_company ?? false))
-                ? (float) config('payments.pix_payment_fee', 0.50)
+                ? (float) $payment->pix_fee
                 : 0.0;
             $netValue = round(($value - $pixFee) * (1 - $feeRate), 2);
         }

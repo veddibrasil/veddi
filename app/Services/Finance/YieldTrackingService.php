@@ -13,7 +13,7 @@ class YieldTrackingService
         return pow(1 + $annualRate / 100, 1 / 252) - 1;
     }
 
-    public function recordSnapshot(float $starkBalance, float $asaasBalance): PlatformYieldSnapshot
+    public function recordSnapshot(float $vindiBalance, float $asaasBalance): PlatformYieldSnapshot
     {
         $today = now()->toDateString();
 
@@ -24,7 +24,7 @@ class YieldTrackingService
 
         $dailyRate = $this->bacen->getDailyCdiRate();
         $annualRate = (pow(1 + $dailyRate, 252) - 1) * 100;
-        $totalFloat = round($starkBalance + $asaasBalance, 2);
+        $totalFloat = round($vindiBalance + $asaasBalance, 2);
         $yieldAmount = round($totalFloat * $dailyRate, 2);
 
         $year = now()->year;
@@ -35,7 +35,7 @@ class YieldTrackingService
 
         return PlatformYieldSnapshot::create([
             'snapshot_date' => $today,
-            'stark_balance' => round($starkBalance, 2),
+            'vindi_balance' => round($vindiBalance, 2),
             'asaas_balance' => round($asaasBalance, 2),
             'total_float' => $totalFloat,
             'cdi_rate_annual' => round($annualRate, 4),

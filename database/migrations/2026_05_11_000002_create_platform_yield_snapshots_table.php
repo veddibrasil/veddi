@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('platform_yield_snapshots', function (Blueprint $table) {
             $table->id();
             $table->date('snapshot_date')->unique();
-            $table->decimal('stark_balance', 14, 2);
+            $table->decimal('vindi_balance', 14, 2);
             $table->decimal('asaas_balance', 14, 2);
             $table->decimal('total_float', 14, 2);
             $table->decimal('cdi_rate_annual', 8, 4);

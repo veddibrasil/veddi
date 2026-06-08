@@ -9,7 +9,7 @@ class PlatformYieldSnapshot extends Model
 {
     protected $fillable = [
         'snapshot_date',
-        'stark_balance',
+        'vindi_balance',
         'asaas_balance',
         'total_float',
         'cdi_rate_annual',
@@ -22,7 +22,7 @@ class PlatformYieldSnapshot extends Model
 
     protected $casts = [
         'snapshot_date' => 'date',
-        'stark_balance' => 'decimal:2',
+        'vindi_balance' => 'decimal:2',
         'asaas_balance' => 'decimal:2',
         'total_float' => 'decimal:2',
         'cdi_rate_annual' => 'decimal:4',

@@ -12,7 +12,6 @@ use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\User;
 use App\Services\Payment\PaymentOrchestrator;
-use App\Services\Payment\StarkService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
@@ -210,15 +209,6 @@ test('pedido PDV com pagamento em dinheiro cria order e payment', function () {
 
 test('pedido PDV com PIX cria order e avança para tela pix', function () {
     ['admin' => $admin, 'product' => $product] = pdvContext();
-
-    $mockStark = Mockery::mock(StarkService::class);
-    $mockStark->shouldReceive('createPixCharge')->andReturn([
-        'id' => 'test_pix_123',
-        'brcode' => '00020126580014br.gov.bcb.pix0136test52040000530398654000080005802BR5924TEST62070503***6304ABCD',
-        'qr_code_url' => null,
-        'amount' => 8.0,
-    ]);
-    app()->instance(StarkService::class, $mockStark);
 
     $this->actingAs($admin);
 
@@ -502,15 +492,6 @@ test('pedido em status terminal não pode ser cancelado no PDV', function () {
 test('checkPixStatus mantém step pix quando pagamento não confirmado', function () {
     ['admin' => $admin, 'product' => $product] = pdvContext();
 
-    $mockStark = Mockery::mock(\App\Services\Payment\StarkService::class);
-    $mockStark->shouldReceive('createPixCharge')->andReturn([
-        'id' => 'pix_abc',
-        'brcode' => '00020126',
-        'qr_code_url' => null,
-        'amount' => 8.0,
-    ]);
-    app()->instance(\App\Services\Payment\StarkService::class, $mockStark);
-
     $this->actingAs($admin);
 
     Livewire::test(Terminal::class)
@@ -525,15 +506,6 @@ test('checkPixStatus mantém step pix quando pagamento não confirmado', functio
 
 test('checkPixStatus avança para success quando pagamento confirmado', function () {
     ['admin' => $admin, 'product' => $product] = pdvContext();
-
-    $mockStark = Mockery::mock(\App\Services\Payment\StarkService::class);
-    $mockStark->shouldReceive('createPixCharge')->andReturn([
-        'id' => 'pix_xyz',
-        'brcode' => '00020126',
-        'qr_code_url' => null,
-        'amount' => 8.0,
-    ]);
-    app()->instance(\App\Services\Payment\StarkService::class, $mockStark);
 
     $this->actingAs($admin);
 

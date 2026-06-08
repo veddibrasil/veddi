@@ -24,12 +24,6 @@ Schedule::job(new \App\Jobs\UpdateCompanyBalancesJob)
     ->withoutOverlapping(expiresAt: 5)
     ->onOneServer();
 
-Schedule::job(new \App\Jobs\TransferAsaasBalanceToStark)
-    ->name('transfer-asaas-to-stark')
-    ->dailyAt('6:00')
-    ->withoutOverlapping()
-    ->onOneServer();
-
 Schedule::job(new \App\Jobs\RecordPlatformYieldSnapshot)
     ->name('record-platform-yield')
     ->dailyAt('6:00')

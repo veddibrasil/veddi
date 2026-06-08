@@ -4,7 +4,7 @@ namespace App\Jobs;
 
 use App\Contracts\AsaasServiceInterface;
 use App\Services\Finance\YieldTrackingService;
-use App\Services\Payment\StarkService;
+use App\Services\Payment\VindiService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -17,20 +17,12 @@ class RecordPlatformYieldSnapshot implements ShouldQueue
 
     public array $backoff = [300, 600];
 
-    public function handle(StarkService $stark, AsaasServiceInterface $asaas, YieldTrackingService $yield): void
+    public function handle(VindiService $vindi, AsaasServiceInterface $asaas, YieldTrackingService $yield): void
     {
-        // if (! app()->environment('production') && ! config('services.asaas.allow_transfers_in_non_production', false)) {
-        //     Log::channel('payments')->info('RecordPlatformYieldSnapshot: ignorado fora de production', [
-        //         'env' => app()->environment(),
-        //     ]);
-
-        //     return;
-        // }
-
-        $starkBalance = $stark->getBalance();
+        $vindiBalance = $vindi->getBalance();
         $asaasBalance = (float) $asaas->getBalance()['balance'];
 
-        $snapshot = $yield->recordSnapshot($starkBalance, $asaasBalance);
+        $snapshot = $yield->recordSnapshot($vindiBalance, $asaasBalance);
 
         Log::channel('payments')->info('RecordPlatformYieldSnapshot: snapshot registrado', [
             'date' => $snapshot->snapshot_date,

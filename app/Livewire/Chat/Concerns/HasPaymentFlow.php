@@ -2,11 +2,9 @@
 
 namespace App\Livewire\Chat\Concerns;
 
-use App\Contracts\AsaasServiceInterface;
 use App\Contracts\OrderServiceInterface;
 use App\Contracts\TransactionServiceInterface;
 use App\Contracts\WalletServiceInterface;
-use App\DTOs\AsaasCustomerDTO;
 use App\DTOs\CreditCardDTO;
 use App\DTOs\CreditCardHolderDTO;
 use App\Events\OrderStatusUpdated;
@@ -18,6 +16,7 @@ use App\Services\Order\OrderCancellationPolicy;
 use App\Services\Order\StockService;
 use App\Services\Payment\PaymentCalculatorService;
 use App\Services\Payment\PaymentService;
+use App\Services\Payment\VindiService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -186,7 +185,7 @@ trait HasPaymentFlow
             return;
         }
 
-        $phase = $this->step === 'PAYMENT_PIX' ? 'pay' : 'delivery';
+        $phase = in_array($this->step, ['PAYMENT_PIX', 'PAYMENT_CARD_AWAITING'], true) ? 'pay' : 'delivery';
         $rateLimitKey = "status-check:{$phase}:{$this->orderId}";
         $maxAttempts = $phase === 'pay' ? 30 : 10;
 
@@ -331,28 +330,19 @@ trait HasPaymentFlow
         $expiryYear = strlen($expYear) === 2 ? '20'.$expYear : $expYear;
 
         try {
-            $asaas = app(AsaasServiceInterface::class);
+            $vindi = app(VindiService::class);
 
-            $asaasCustomerId = $asaas->findOrCreateCustomer(new AsaasCustomerDTO(
-                name: $customer->name,
-                email: $customer->email,
-                cpfCnpj: $customer->tax_id ?? '',
-                phone: $customer->phone ?? null,
-            ));
-
-            $charge = $asaas->createCreditCardCharge(
-                customerId: $asaasCustomerId,
+            $charge = $vindi->createCreditCardCharge(
                 amount: $chargeAmount,
-                description: "Pedido #{$order->order_number}".($company ? " - {$company->name}" : ''),
-                externalReference: (string) $order->id,
-                creditCard: new CreditCardDTO(
+                externalRef: (string) $order->id,
+                card: new CreditCardDTO(
                     holderName: $this->cardHolderName,
                     number: $this->cardNumber,
                     expiryMonth: $expMonth,
                     expiryYear: $expiryYear,
                     ccv: $this->cardCvv,
                 ),
-                holderInfo: new CreditCardHolderDTO(
+                holder: new CreditCardHolderDTO(
                     name: $customer->name,
                     email: $customer->email ?? '',
                     cpfCnpj: $customer->tax_id ?? '',
@@ -361,64 +351,63 @@ trait HasPaymentFlow
                     phone: $customer->phone ?? null,
                 ),
                 installments: 1,
+                affiliateToken: $company?->vindi_affiliate_token ?: null,
             );
 
-            $status = $charge['status'] ?? null;
+            $transactionToken = $charge['transaction_token'];
+            $approved = ($charge['status_name'] ?? '') === 'Aprovada';
 
-            if ($status === 'CONFIRMED' || $status === 'RECEIVED') {
-                DB::transaction(function () use ($order, $customer, $charge, $chargeAmount, $cardFee, $breakdown, $anticipationDays) {
-                    $newPayment = Payment::create([
-                        'order_id' => $order->id,
-                        'asaas_payment_id' => $charge['id'],
-                        'payment_gateway' => 'asaas',
-                        'amount' => $chargeAmount,
-                        'original_amount' => $breakdown['original_amount'],
-                        'card_fee' => $cardFee,
-                        'card_fee_rate' => $breakdown['total_rate'],
-                        'installments' => 1,
-                        'anticipation_days' => $anticipationDays,
-                        'status' => 'paid',
-                        'paid_at' => now(),
-                        'payment_token' => hash('sha256', $order->id.$customer->id.uniqid()),
-                    ]);
+            $paymentToken = hash('sha256', $order->id.$customer->id.uniqid());
 
-                    $order->update(['status' => 'paid']);
-
-                    app(WalletServiceInterface::class)->creditForOrder($order->fresh(), $newPayment);
-                    app(TransactionServiceInterface::class)->createForPayment($order->fresh(), $newPayment);
-                });
-
-                OrderStatusUpdated::dispatch($order->fresh());
-
-                Log::channel('payments')->info('Cartão aprovado no chat', [
+            DB::transaction(function () use ($order, $transactionToken, $chargeAmount, $cardFee, $breakdown, $anticipationDays, $paymentToken, $approved) {
+                $newPayment = Payment::create([
                     'order_id' => $order->id,
-                    'customer_id' => $customer->id,
-                    'asaas_payment_id' => $charge['id'],
+                    'vindi_transaction_token' => $transactionToken,
+                    'payment_gateway' => 'vindi',
+                    'amount' => $chargeAmount,
                     'original_amount' => $breakdown['original_amount'],
-                    'final_amount' => $chargeAmount,
                     'card_fee' => $cardFee,
-                    'card_fee_absorbed' => $cardFeeAbsorbed,
+                    'card_fee_rate' => $breakdown['total_rate'],
+                    'installments' => 1,
+                    'anticipation_days' => $anticipationDays,
+                    'status' => $approved ? 'paid' : 'pending',
+                    'paid_at' => $approved ? now() : null,
+                    'payment_token' => $paymentToken,
                 ]);
 
-                $this->cardNumber = '';
-                $this->cardExpiry = '';
-                $this->cardCvv = '';
-                $this->cardHolderName = '';
-                $this->cardPostalCode = '';
-                $this->cardAddressNumber = '';
-                $this->cardFeeBreakdown = [];
+                if ($approved) {
+                    $order->update(['status' => 'paid']);
+                    app(WalletServiceInterface::class)->creditForOrder($order->fresh(), $newPayment);
+                    app(TransactionServiceInterface::class)->createForPayment($order->fresh(), $newPayment);
+                }
+            });
 
+            Log::channel('payments')->info('Cartão Vindi submetido no chat', [
+                'order_id' => $order->id,
+                'customer_id' => $customer->id,
+                'transaction_token' => $transactionToken,
+                'approved' => $approved,
+                'original_amount' => $breakdown['original_amount'],
+                'final_amount' => $chargeAmount,
+                'card_fee' => $cardFee,
+                'card_fee_absorbed' => $cardFeeAbsorbed,
+            ]);
+
+            $this->cardNumber = '';
+            $this->cardExpiry = '';
+            $this->cardCvv = '';
+            $this->cardHolderName = '';
+            $this->cardPostalCode = '';
+            $this->cardAddressNumber = '';
+            $this->cardFeeBreakdown = [];
+
+            if ($approved) {
+                OrderStatusUpdated::dispatch($order->fresh());
                 $this->addMessage('bot', 'Pagamento aprovado! Seu pedido está confirmado.');
                 $this->transitionTo('ORDER_CONFIRMED');
             } else {
-                $declineReason = $charge['creditCard']['declineReason'] ?? $charge['declineReason'] ?? null;
-                Log::channel('payments')->warning('Cartão recusado no chat', [
-                    'order_id' => $this->orderId,
-                    'customer_id' => $this->customerId,
-                    'decline_reason' => $declineReason,
-                ]);
-                $this->cardError = $this->friendlyDeclineMessage($declineReason);
-                $this->submitting = false;
+                $this->addMessage('bot', 'Pagamento em análise. Você será notificado assim que confirmado.');
+                $this->transitionTo('PAYMENT_CARD_AWAITING');
             }
         } catch (\Throwable $e) {
             Log::channel('discord')->error('Erro ao processar cartão no chat', [

@@ -40,14 +40,6 @@ interface AsaasServiceInterface
 
     public function findOrCreateCustomer(AsaasCustomerDTO $customer): string;
 
-    public function createOrderCharge(
-        string $customerId,
-        float $amount,
-        string $description,
-        string $externalReference,
-        float $feePercentage = 0.0
-    ): array;
-
     public function getPaymentPixQrCode(string $paymentId): array;
 
     public function createTransfer(array $data): array;

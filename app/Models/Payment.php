@@ -11,7 +11,7 @@ class Payment extends Model
     protected $fillable = [
         'order_id',
         'asaas_payment_id',
-        'stark_payment_id',
+        'vindi_transaction_token',
         'payment_gateway',
         'pix_qr_code',
         'pix_copy_paste',
@@ -43,13 +43,10 @@ class Payment extends Model
         'anticipation_days' => 'integer',
     ];
 
-    /**
-     * Retorna o ID externo do gateway, independente de qual gateway processou.
-     * Stark → stark_payment_id; Asaas → asaas_payment_id.
-     */
     public function getExternalIdAttribute(): ?string
     {
-        return $this->stark_payment_id ?? $this->asaas_payment_id;
+        return $this->vindi_transaction_token
+            ?? $this->asaas_payment_id;
     }
 
     public function order(): BelongsTo

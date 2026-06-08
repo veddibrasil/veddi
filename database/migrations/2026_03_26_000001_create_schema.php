@@ -225,7 +225,6 @@ return new class extends Migration
             $table->id();
             $table->foreignId('order_id')->constrained()->cascadeOnDelete();
             $table->string('asaas_payment_id')->nullable()->index();
-            $table->string('stark_payment_id')->nullable()->index();
             $table->string('payment_gateway')->default('asaas');
             $table->text('pix_qr_code')->nullable();
             $table->text('pix_copy_paste')->nullable();
@@ -404,8 +403,8 @@ return new class extends Migration
             $table->string('bank_owner_name')->nullable();
             $table->string('asaas_transfer_id')->nullable();
             $table->json('asaas_response')->nullable();
-            $table->string('stark_transfer_id')->nullable();
-            $table->json('stark_response')->nullable();
+            $table->string('vindi_transfer_id')->nullable();
+            $table->json('vindi_response')->nullable();
             $table->timestamp('processed_at')->nullable();
             $table->timestamps();
         });

@@ -41,13 +41,6 @@ class ProcessAsaasWebhook implements ShouldQueue
             return;
         }
 
-        // Transfer events (Asaas→Stark daily transfers)
-        if (in_array($this->event, ['TRANSFER_DONE', 'TRANSFER_FAILED'])) {
-            $this->handleTransferEvent();
-
-            return;
-        }
-
         // Check if this is a fiscal add-on payment (externalReference = fiscal_addon:{company_id})
         $externalRef = $this->payload['payment']['externalReference'] ?? null;
 
@@ -349,30 +342,6 @@ class ProcessAsaasWebhook implements ShouldQueue
         }
 
         Queue::later(10, new ProcessRefund($refund->fresh()));
-    }
-
-    private function handleTransferEvent(): void
-    {
-        $transfer = $this->payload['transfer'] ?? [];
-        $transferId = $transfer['id'] ?? null;
-        $value = $transfer['value'] ?? null;
-
-        if ($this->event === 'TRANSFER_DONE') {
-            Log::channel('payments')->info('Asaas webhook: transferência concluída', [
-                'transfer_id' => $transferId,
-                'value' => $value,
-            ]);
-
-            return;
-        }
-
-        // TRANSFER_FAILED
-        Log::channel('discord')->error('Asaas webhook: transferência falhou', [
-            'type' => 'payments',
-            'transfer_id' => $transferId,
-            'value' => $value,
-            'payload' => $this->payload,
-        ]);
     }
 
     private function handleFiscalAddonPayment(string $externalRef): void

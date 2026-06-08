@@ -111,17 +111,18 @@ class RefundService implements RefundServiceInterface
 
     public function resolveGateway(Payment $payment): string
     {
-        if ($payment->stark_payment_id) {
-            return 'stark';
+        if ($payment->vindi_transaction_token) {
+            return 'vindi';
         }
 
-        return 'asaas';
+        return 'asaas'; // legado
     }
 
     public function getGatewayDriver(string $gateway): PaymentRefundGatewayInterface
     {
         return match ($gateway) {
-            'stark' => app(StarkRefundGateway::class),
+            'vindi' => app(VindiRefundGateway::class),
+            'stark' => app(StarkRefundGateway::class), // legado: pagamentos Stark anteriores à migração Vindi
             default => app(AsaasRefundGateway::class),
         };
     }

@@ -78,8 +78,7 @@ class ProcessRefund implements ShouldQueue
         }
 
         // Simulated payments (dev environment)
-        if (str_starts_with((string) ($payment->asaas_payment_id ?? ''), 'sim_') ||
-            str_starts_with((string) ($payment->stark_payment_id ?? ''), 'sim_')) {
+        if (str_starts_with((string) ($payment->asaas_payment_id ?? ''), 'sim_')) {
             $refundService->markSucceeded($this->refund, [
                 'external_refund_id' => 'sim_refund_'.$this->refund->id,
                 'external_status' => 'REFUNDED',

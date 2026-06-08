@@ -47,7 +47,7 @@ class WalletService implements WalletServiceInterface
         $cardFeeAbsorbed = $company->card_fee_absorbed_by_company ?? false;
 
         $pixFee = (! $isCardPayment && $pixFeeAbsorbed)
-            ? (float) config('payments.pix_payment_fee', 0.50)
+            ? (float) $payment->pix_fee
             : 0.0;
         $cardFee = ($isCardPayment && $cardFeeAbsorbed && $payment->card_fee)
             ? (float) $payment->card_fee
@@ -175,7 +175,7 @@ class WalletService implements WalletServiceInterface
         $cardFeeAbsorbed = $company->card_fee_absorbed_by_company ?? false;
 
         $pixFee = (! $isCardPayment && $pixFeeAbsorbed)
-            ? (float) config('payments.pix_payment_fee', 0.50)
+            ? (float) $payment->pix_fee
             : 0.0;
         $cardFee = ($isCardPayment && $cardFeeAbsorbed && $payment->card_fee)
             ? (float) $payment->card_fee

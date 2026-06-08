@@ -5,7 +5,7 @@ namespace App\Jobs;
 use App\Models\CompanyTransaction;
 use App\Models\CompanyWalletEntry;
 use App\Models\CompanyWithdrawal;
-use App\Services\Payment\StarkService;
+use App\Services\Payment\VindiService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
@@ -28,7 +28,7 @@ class ProcessWithdrawal implements ShouldQueue
         $this->onQueue('default');
     }
 
-    public function handle(StarkService $stark): void
+    public function handle(VindiService $vindi): void
     {
         // Idempotency guard: atomic check-and-set prevents concurrent or retried runs
         // from processing the same withdrawal twice (double debit).
@@ -54,7 +54,7 @@ class ProcessWithdrawal implements ShouldQueue
 
         $withdrawal = CompanyWithdrawal::findOrFail($this->withdrawalId);
 
-        Log::channel('payments')->info('Processando saque via Stark Bank', [
+        Log::channel('payments')->info('Processando saque via Vindi', [
             'withdrawal_id' => $withdrawal->id,
             'company_id' => $withdrawal->company_id,
             'amount' => $withdrawal->amount,
@@ -62,8 +62,8 @@ class ProcessWithdrawal implements ShouldQueue
         ]);
 
         try {
-            $transferData = $this->buildStarkTransferData($withdrawal);
-            $transfer = $stark->createTransfer($transferData);
+            $transferData = $this->buildVindiTransferData($withdrawal);
+            $transfer = $vindi->createTransfer($transferData);
 
             DB::transaction(function () use ($withdrawal, $transfer) {
                 CompanyTransaction::withoutGlobalScopes()
@@ -78,12 +78,11 @@ class ProcessWithdrawal implements ShouldQueue
 
                 $withdrawal->update([
                     'status' => 'done',
-                    'stark_transfer_id' => $transfer['id'] ?? null,
-                    'stark_response' => $transfer,
+                    'vindi_transfer_id' => $transfer['id'] ?? null,
+                    'vindi_response' => $transfer,
                     'processed_at' => now(),
                 ]);
 
-                // O lançamento definitivo só acontece depois da confirmação do repasse.
                 // Guardas de idempotência: nunca criar dois lançamentos para o mesmo saque.
                 $withdrawalDescription = 'Saque #'.$withdrawal->id;
                 $feeDescription = 'Taxa PIX - Saque #'.$withdrawal->id;
@@ -106,7 +105,7 @@ class ProcessWithdrawal implements ShouldQueue
                     $transferAmount = max(0.0, round($transferAmount - $pixFee, 2));
                 }
 
-                $starkReference = $transfer['id'] ?? (string) $withdrawal->id;
+                $vindiReference = $transfer['id'] ?? (string) $withdrawal->id;
 
                 if (! $alreadyWithdrawalEntry) {
                     CompanyWalletEntry::create([
@@ -115,13 +114,13 @@ class ProcessWithdrawal implements ShouldQueue
                         'type' => 'withdrawal',
                         'amount' => $transferAmount,
                         'description' => $withdrawalDescription,
-                        'reference' => $starkReference,
+                        'reference' => $vindiReference,
                     ]);
                 } elseif ($transfer['id'] ?? null) {
                     CompanyWalletEntry::where('company_id', $withdrawal->company_id)
                         ->where('type', 'withdrawal')
                         ->where('description', $withdrawalDescription)
-                        ->update(['reference' => $starkReference]);
+                        ->update(['reference' => $vindiReference]);
                 }
 
                 if ($pixFee > 0 && ! $alreadyPixFeeEntry) {
@@ -131,19 +130,19 @@ class ProcessWithdrawal implements ShouldQueue
                         'type' => 'pix_fee',
                         'amount' => $pixFee,
                         'description' => $feeDescription,
-                        'reference' => $starkReference,
+                        'reference' => $vindiReference,
                     ]);
                 } elseif ($pixFee > 0 && ($transfer['id'] ?? null)) {
                     CompanyWalletEntry::where('company_id', $withdrawal->company_id)
                         ->where('type', 'pix_fee')
                         ->where('description', $feeDescription)
-                        ->update(['reference' => $starkReference]);
+                        ->update(['reference' => $vindiReference]);
                 }
             });
 
-            Log::channel('payments')->info('Saque processado com sucesso via Stark Bank', [
+            Log::channel('payments')->info('Saque processado com sucesso via Vindi', [
                 'withdrawal_id' => $withdrawal->id,
-                'stark_transfer_id' => $transfer['id'] ?? null,
+                'vindi_transfer_id' => $transfer['id'] ?? null,
                 'amount' => $withdrawal->amount,
             ]);
         } catch (\Throwable $e) {
@@ -159,7 +158,7 @@ class ProcessWithdrawal implements ShouldQueue
                 $withdrawal->update(['status' => 'failed']);
             });
 
-            Log::channel('discord')->error('Falha ao processar saque via Stark Bank', [
+            Log::channel('discord')->error('Falha ao processar saque via Vindi', [
                 'type' => 'payments',
                 'withdrawal_id' => $withdrawal->id,
                 'error' => $e->getMessage(),
@@ -169,9 +168,13 @@ class ProcessWithdrawal implements ShouldQueue
         }
     }
 
-    private function buildStarkTransferData(CompanyWithdrawal $withdrawal): array
+    private function buildVindiTransferData(CompanyWithdrawal $withdrawal): array
     {
         $company = $withdrawal->company;
+
+        if (empty($company->vindi_affiliate_token)) {
+            throw new \RuntimeException("Empresa #{$company->id} não possui vindi_affiliate_token configurado.");
+        }
 
         $pixFee = $withdrawal->payout_type === 'PIX' ? (float) $withdrawal->pix_fee : 0.0;
         $transferAmount = (float) $withdrawal->amount;
@@ -180,6 +183,7 @@ class ProcessWithdrawal implements ShouldQueue
         }
 
         $base = [
+            'affiliate_token' => $company->vindi_affiliate_token,
             'amount' => $transferAmount,
             'owner_name' => $withdrawal->bank_owner_name ?? $company->default_bank_owner_name ?? $company->name,
             'owner_cpf_cnpj' => $withdrawal->bank_owner_cpf_cnpj ?? $company->default_bank_owner_cpf_cnpj ?? $company->owner_cpf_cnpj ?? '',
@@ -193,7 +197,6 @@ class ProcessWithdrawal implements ShouldQueue
             ]);
         }
 
-        // TED / transferência bancária
         return array_merge($base, [
             'bank_code' => $withdrawal->bank_code,
             'bank_agency' => $withdrawal->bank_agency,

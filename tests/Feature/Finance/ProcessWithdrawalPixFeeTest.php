@@ -5,7 +5,7 @@ use App\Models\Company;
 use App\Models\CompanyTransaction;
 use App\Models\CompanyWalletEntry;
 use App\Models\CompanyWithdrawal;
-use App\Services\Payment\StarkService;
+use App\Services\Payment\VindiService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -15,6 +15,7 @@ it('debits pix fee from wallet and transfers net amount', function () {
         'name' => 'Test Company',
         'slug' => 'test-company',
         'active' => true,
+        'vindi_affiliate_token' => 'affiliate_tok_test',
     ]);
 
     CompanyWalletEntry::create([
@@ -52,15 +53,15 @@ it('debits pix fee from wallet and transfers net amount', function () {
         'metadata' => [],
     ]);
 
-    $stark = Mockery::mock(StarkService::class);
-    $stark->shouldReceive('createTransfer')
+    $vindi = Mockery::mock(VindiService::class);
+    $vindi->shouldReceive('createTransfer')
         ->once()
         ->with(Mockery::on(function (array $payload) {
             return isset($payload['amount']) && (float) $payload['amount'] === 99.50;
         }))
         ->andReturn(['id' => 'transfer-1']);
 
-    (new ProcessWithdrawal($withdrawal->id))->handle($stark);
+    (new ProcessWithdrawal($withdrawal->id))->handle($vindi);
 
     $withdrawalEntry = CompanyWalletEntry::where('company_id', $company->id)
         ->where('type', 'withdrawal')
