@@ -34,8 +34,9 @@ class ProcessVindiWebhook implements ShouldQueue
     {
         match ($this->status) {
             'Aprovada' => $this->handlePaymentApproved(),
-            'Cancelada', 'Não Aprovada' => $this->handlePaymentFailed(),
+            'Cancelada', 'Não Aprovada', 'Reprovada' => $this->handlePaymentFailed(),
             'Estornada' => $this->handleRefundConfirmed(),
+            'Em Contestação' => $this->handleChargeback(),
             default => $this->logIgnored(),
         };
     }
@@ -88,9 +89,42 @@ class ProcessVindiWebhook implements ShouldQueue
                     return;
                 }
 
+                // Reconcilia o valor real pago pela Vindi contra o valor cobrado localmente.
+                // Divergência indica erro de arredondamento, cancelamento parcial ou problema no gateway.
+                $realAmountPaid = isset($this->payload['transaction']['price_payment'])
+                    ? (float) $this->payload['transaction']['price_payment']
+                    : null;
+
+                if ($realAmountPaid !== null && abs($realAmountPaid - (float) $payment->amount) > 0.01) {
+                    Log::channel('discord')->critical('Vindi webhook: divergência de valor entre cobrança local e pagamento real', [
+                        'type' => 'payments',
+                        'order_id' => $order->id,
+                        'transaction_token' => $this->transactionToken,
+                        'expected_amount' => $payment->amount,
+                        'real_amount_paid' => $realAmountPaid,
+                        'diff' => round($realAmountPaid - (float) $payment->amount, 2),
+                    ]);
+
+                    // Atualiza o payment com o valor real para que wallet e transaction usem o correto.
+                    $payment->amount = $realAmountPaid;
+                }
+
+                // Alerta se empresa não tem affiliate token — dinheiro foi 100% para conta plataforma.
+                $company = $order->company;
+                if ($company && empty($company->vindi_affiliate_token)) {
+                    Log::channel('discord')->critical('Vindi webhook: pagamento aprovado de empresa sem vindi_affiliate_token — sem split de afiliado aplicado', [
+                        'type' => 'payments',
+                        'company_id' => $company->id,
+                        'order_id' => $order->id,
+                        'transaction_token' => $this->transactionToken,
+                        'amount' => $payment->amount,
+                    ]);
+                }
+
                 $payment->update([
                     'status' => 'paid',
                     'paid_at' => now(),
+                    'amount' => $payment->amount,
                     'webhook_payload' => $this->payload,
                     'idempotency_key' => $idempotencyKey,
                 ]);
@@ -101,6 +135,7 @@ class ProcessVindiWebhook implements ShouldQueue
                     'order_id' => $order->id,
                     'transaction_token' => $this->transactionToken,
                     'amount' => $payment->amount,
+                    'real_amount_paid' => $realAmountPaid,
                 ]);
 
                 app(WalletServiceInterface::class)->creditForOrder($order, $payment);
@@ -179,6 +214,66 @@ class ProcessVindiWebhook implements ShouldQueue
             'external_status' => 'Estornada',
             'raw' => $this->payload,
         ]);
+    }
+
+    private function handleChargeback(): void
+    {
+        $payment = Payment::where('vindi_transaction_token', $this->transactionToken)->first();
+
+        if (! $payment) {
+            Log::channel('webhook')->warning('Vindi webhook: Payment não encontrado para chargeback', [
+                'transaction_token' => $this->transactionToken,
+            ]);
+
+            return;
+        }
+
+        $order = Order::find($payment->order_id);
+        if (! $order) {
+            return;
+        }
+
+        DB::transaction(function () use ($payment, $order) {
+            // Só processa se ainda não está em chargeback para evitar débito duplo.
+            $alreadyChargeback = \App\Models\CompanyTransaction::withoutGlobalScopes()
+                ->where('order_id', $order->id)
+                ->where('status', 'chargeback')
+                ->lockForUpdate()
+                ->exists();
+
+            if ($alreadyChargeback) {
+                return;
+            }
+
+            $payment->update([
+                'status' => 'failed',
+                'webhook_payload' => $this->payload,
+            ]);
+
+            $order->update(['status' => 'cancelled']);
+
+            // Debita carteira da empresa (mesmo mecanismo do estorno).
+            app(WalletServiceInterface::class)->debitForRefund($order, $payment);
+
+            // Atualiza CompanyTransaction para chargeback.
+            \App\Models\CompanyTransaction::withoutGlobalScopes()
+                ->where('order_id', $order->id)
+                ->whereIn('status', ['confirmed', 'released'])
+                ->update([
+                    'status' => 'chargeback',
+                    'updated_at' => now(),
+                ]);
+
+            Log::channel('discord')->critical('Chargeback recebido via Vindi', [
+                'type' => 'payments',
+                'order_id' => $order->id,
+                'transaction_token' => $this->transactionToken,
+                'amount' => $payment->amount,
+                'company_id' => $order->company_id,
+            ]);
+
+            OrderStatusUpdated::dispatch($order->fresh());
+        });
     }
 
     private function logIgnored(): void

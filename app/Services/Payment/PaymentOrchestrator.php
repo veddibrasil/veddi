@@ -61,6 +61,15 @@ class PaymentOrchestrator
         $chargeAmount = (float) $order->total;
         $affiliateToken = $company->vindi_affiliate_token;
 
+        if (! $affiliateToken && config('app.env') === 'production') {
+            Log::channel('discord')->critical('Empresa sem vindi_affiliate_token em produção — pagamento PIX sem split de afiliado', [
+                'type' => 'payments',
+                'company_id' => $company->id,
+                'order_id' => $order->id,
+                'amount' => $chargeAmount,
+            ]);
+        }
+
         // PIX split: Vindi keeps 0.85%, platform keeps 0.14% (total 0.99%), rest to company.
         // Free plan adds extra 1% platform fee on top.
         $pixTotalRate = (float) config('payments.vindi_pix_rate', 0.0085)
@@ -152,6 +161,15 @@ class PaymentOrchestrator
     ): array {
         $chargeAmount = (float) $order->total;
         $affiliateToken = $company->vindi_affiliate_token;
+
+        if (! $affiliateToken && config('app.env') === 'production') {
+            Log::channel('discord')->critical('Empresa sem vindi_affiliate_token em produção — pagamento cartão sem split de afiliado', [
+                'type' => 'payments',
+                'company_id' => $company->id,
+                'order_id' => $order->id,
+                'amount' => $chargeAmount,
+            ]);
+        }
 
         // Card split: paid plans take 0% platform cut; free plan adds extra 1%.
         $planExtraRate = $company->plan?->feePercentage() ?? 0.0;

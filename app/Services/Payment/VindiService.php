@@ -189,6 +189,60 @@ class VindiService
         return (float) ($response->json('balance') ?? 0.0);
     }
 
+    /**
+     * Consulta o saldo real da subconta afiliada de uma empresa na Yapay.
+     * Permite reconciliar o saldo interno com o que a Yapay efetivamente retém.
+     *
+     * Retorna null se o endpoint falhar (não bloquear fluxo do sistema).
+     */
+    public function getAffiliateBalance(string $affiliateToken): ?float
+    {
+        $response = Http::get("{$this->baseUrl}/accounts/balance", [
+            'token_account' => $affiliateToken,
+            'reseller_token' => config('payments.vindi_reseller_token'),
+        ]);
+
+        if ($response->failed()) {
+            Log::channel('payments')->warning('Vindi saldo afiliado indisponível', [
+                'affiliate_token' => substr($affiliateToken, 0, 8).'...',
+                'status' => $response->status(),
+            ]);
+
+            return null;
+        }
+
+        return (float) ($response->json('balance') ?? 0.0);
+    }
+
+    /**
+     * Lista transações da conta principal por período.
+     * Usado pelo VindiReconciliationJob para comparar com CompanyTransactions locais.
+     *
+     * Retorna array de transações ou [] em caso de falha.
+     */
+    public function listTransactions(string $startDate, string $endDate, int $page = 1): array
+    {
+        $response = Http::get("{$this->baseUrl}/sales", [
+            'token_account' => config('payments.vindi_token_account'),
+            'reseller_token' => config('payments.vindi_reseller_token'),
+            'date_from' => $startDate,
+            'date_to' => $endDate,
+            'page' => $page,
+        ]);
+
+        if ($response->failed()) {
+            Log::channel('payments')->warning('Vindi listagem de transações falhou', [
+                'status' => $response->status(),
+                'start_date' => $startDate,
+                'end_date' => $endDate,
+            ]);
+
+            return [];
+        }
+
+        return $response->json('transactions') ?? $response->json() ?? [];
+    }
+
     public function getTransactionStatus(string $transactionToken): string
     {
         $response = Http::get("{$this->baseUrl}/transactions/{$transactionToken}", [

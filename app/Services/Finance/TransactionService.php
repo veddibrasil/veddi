@@ -20,7 +20,7 @@ class TransactionService implements TransactionServiceInterface
     public function createForPayment(Order $order, Payment $payment): CompanyTransaction
     {
         $company = Company::find($order->company_id);
-        $type = $this->resolvePaymentType($order, $payment);
+        $type = $this->resolvePaymentType($order);
         $paymentDate = now()->toDateString();
         $releaseDate = $this->resolveReleaseDate($type, $paymentDate, $payment->anticipation_days);
 
@@ -56,7 +56,9 @@ class TransactionService implements TransactionServiceInterface
                 'release_date' => $releaseDate,
                 'description' => "Pedido #{$order->order_number}",
                 'metadata' => [
+                    'vindi_transaction_token' => $payment->vindi_transaction_token,
                     'asaas_payment_id' => $payment->asaas_payment_id,
+                    'payment_gateway' => $payment->payment_gateway,
                     'payment_method' => $order->payment_method,
                     'installments' => $payment->installments,
                     'anticipation_days' => $payment->anticipation_days,
@@ -84,7 +86,7 @@ class TransactionService implements TransactionServiceInterface
      * Determina o tipo de pagamento: 'pix' | 'cartao' | 'boleto'
      * com base no payment_method do pedido.
      */
-    private function resolvePaymentType(Order $order, Payment $payment): string
+    private function resolvePaymentType(Order $order): string
     {
         $method = strtolower($order->payment_method ?? '');
 
