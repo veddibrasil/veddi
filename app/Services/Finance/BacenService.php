@@ -36,7 +36,7 @@ class BacenService
                 ]);
             }
 
-            return (float) config('services.stark.cdi_rate_fallback_daily', 0.000527);
+            return (float) config('services.bacen.cdi_rate_fallback_daily', 0.000527);
         });
     }
 }

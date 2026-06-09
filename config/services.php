@@ -32,13 +32,8 @@ return [
         'token' => env('MAPBOX_TOKEN'),
     ],
 
-    'stark' => [
-        'project_id' => env('STARK_PROJECT_ID'),
-        'private_key' => env('STARK_PRIVATE_KEY'),
-        'sandbox' => env('STARK_SANDBOX', true),
-        'webhook_token' => env('STARK_WEBHOOK_TOKEN'),
-        'environment' => env('STARK_SANDBOX', true) ? 'sandbox' : 'production',
-        'cdi_rate_fallback_daily' => (float) env('STARK_CDI_FALLBACK_DAILY', 0.000527),
+    'bacen' => [
+        'cdi_rate_fallback_daily' => (float) env('BACEN_CDI_FALLBACK_DAILY', 0.000527),
     ],
 
     'zapi' => [
@@ -60,15 +55,9 @@ return [
 
         'reserve_ratio' => (float) env('ASAAS_RESERVE_RATIO', 0.05),
 
-        // Chave PIX da conta Stark Bank (destino das transferências Asaas → Stark)
-        'platform_stark_pix_key' => env('PLATFORM_STARK_PIX_KEY'),
-        'platform_stark_pix_key_type' => env('PLATFORM_STARK_PIX_KEY_TYPE', 'CNPJ'),
-
-        // Chave PIX da conta Asaas (destino das transferências Stark → Asaas, cobertura de estornos)
         'platform_asaas_pix_key' => env('PLATFORM_ASAAS_PIX_KEY'),
         'platform_asaas_pix_key_type' => env('PLATFORM_ASAAS_PIX_KEY_TYPE', 'CNPJ'),
 
-        // Dados do titular da plataforma (usados em transferências Stark → Asaas)
         'platform_company_name' => env('PLATFORM_COMPANY_NAME'),
         'platform_company_cnpj' => env('PLATFORM_COMPANY_CNPJ'),
     ],

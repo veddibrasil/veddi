@@ -48,7 +48,7 @@ Todos os planos pagos têm taxa de ativação de R$99.
 - **Frontend:** Livewire 4, Flux 2, Tailwind CSS 4, Vite 7
 - **Banco de dados:** MySQL (SQLite em testes)
 - **Tempo real:** Laravel Reverb (WebSockets)
-- **Pagamentos:** Asaas (cartão, boleto, assinaturas) + Stark Bank (PIX)
+- **Pagamentos:** Asaas (assinaturas) + Vindi (PIX, cartão, boleto)
 - **WhatsApp:** Z-API
 - **Testes:** Pest 3
 

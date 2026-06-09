@@ -21,7 +21,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Taxa PIX legada (Asaas / Stark) — mantida para dados históricos
+    | Taxa PIX legada (Asaas / Vindi) — mantida para dados históricos
     |--------------------------------------------------------------------------
     | Usada apenas quando pix_fee_absorbed_by_company = true e o pagamento
     | não possui pix_fee salvo no modelo (registros anteriores à migração Vindi).

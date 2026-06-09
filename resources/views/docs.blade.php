@@ -1162,7 +1162,7 @@
                             </ul>
                         </div>
                         <div class="info-box">
-                            <p class="sub-title">Stark Bank — pagamentos dos pedidos</p>
+                            <p class="sub-title">Vindi — pagamentos dos pedidos</p>
                             <ul class="list">
                                 <li>Gera o QR Code e código copia e cola do PIX para cada pedido</li>
                                 <li>Gerencia a carteira, saldo e transações de cada empresa</li>
@@ -1189,7 +1189,7 @@
                             </div>
                             <div class="flex gap-3 items-start">
                                 <span class="step-num bg-emerald-600 text-white text-xs">4</span>
-                                <p class="text-sm text-zinc-600">Para PIX: QR Code é gerado pelo Stark Bank e exibido ao cliente. Para cartão: dados são enviados para o Asaas</p>
+                                <p class="text-sm text-zinc-600">Para PIX: QR Code é gerado pelo Vindi e exibido ao cliente. Para cartão: dados são enviados para o Vindi</p>
                             </div>
                             <div class="flex gap-3 items-start">
                                 <span class="step-num bg-emerald-600 text-white text-xs">5</span>

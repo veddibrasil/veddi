@@ -14,7 +14,7 @@ O sistema cobre quatro frentes principais:
 Tambem ha integracoes de pagamento e webhook:
 
 - Asaas para onboarding, taxa de ativacao e cobrancas recorrentes;
-- Stark Bank para PIX e parte do fluxo financeiro;
+- Vindi para PIX e parte do fluxo financeiro;
 - carteira, saque, antecipacao e conciliacao interna por empresa.
 
 ## Stack principal

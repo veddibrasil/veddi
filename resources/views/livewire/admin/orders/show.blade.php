@@ -807,7 +807,7 @@
                         <input type="radio" wire:model.live="manualRefundType" value="gateway" class="mt-0.5">
                         <div>
                             <p class="font-medium text-sm text-neutral-800 dark:text-neutral-100">Via gateway</p>
-                            <p class="text-xs text-neutral-500 dark:text-neutral-400">Solicita o estorno diretamente ao gateway de pagamento (Asaas/Stark).</p>
+                            <p class="text-xs text-neutral-500 dark:text-neutral-400">Solicita o estorno diretamente ao gateway de pagamento (Asaas/Vindi).</p>
                         </div>
                     </label>
                     <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer {{ $manualRefundType === 'offline' ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20' : 'dark:border-zinc-600' }}">

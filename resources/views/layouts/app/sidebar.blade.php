@@ -31,9 +31,7 @@
                         <flux:sidebar.item icon="building-storefront" :href="route('superadmin.card.index')" :current="request()->routeIs('superadmin.card.*')" wire:navigate>
                             Taxa de cartões
                         </flux:sidebar.item>
-                         <flux:sidebar.item icon="building-storefront" :href="route('superadmin.finance.rendimentos')" :current="request()->routeIs('superadmin.earnings.*')" wire:navigate>
-                            Rendimentos
-                        </flux:sidebar.item>
+
                     </flux:sidebar.group>
                 @else
                     @php

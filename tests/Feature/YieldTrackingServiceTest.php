@@ -29,7 +29,7 @@ it('BacenService returns fallback when BACEN unavailable', function () {
     ]);
 
     Cache::flush();
-    config()->set('services.stark.cdi_rate_fallback_daily', 0.000527);
+    config()->set('services.bacen.cdi_rate_fallback_daily', 0.000527);
 
     $rate = app(BacenService::class)->getDailyCdiRate();
 

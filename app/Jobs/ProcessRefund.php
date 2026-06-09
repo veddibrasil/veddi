@@ -109,7 +109,7 @@ class ProcessRefund implements ShouldQueue
             ]);
 
             if ($result['status'] === 'in_progress') {
-                // Gateway accepted — will confirm via webhook (Asaas) or manual (Stark)
+                // Gateway accepted — will confirm via webhook (Asaas)
                 Log::channel('payments')->info('Estorno aceito pelo gateway, aguardando confirmação', [
                     'refund_id' => $this->refund->id,
                     'gateway' => $this->refund->gateway,

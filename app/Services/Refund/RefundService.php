@@ -122,7 +122,6 @@ class RefundService implements RefundServiceInterface
     {
         return match ($gateway) {
             'vindi' => app(VindiRefundGateway::class),
-            'stark' => app(StarkRefundGateway::class), // legado: pagamentos Stark anteriores à migração Vindi
             default => app(AsaasRefundGateway::class),
         };
     }
