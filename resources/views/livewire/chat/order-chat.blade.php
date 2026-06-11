@@ -206,7 +206,7 @@
     </div>
 
     {{-- ════════════════════════════ INPUT AREA ══════════════════════════════ --}}
-    <div class="border-t border-gray-100 bg-white px-4 py-3 shrink-0">
+    <div class="border-t border-gray-100 bg-white px-4 py-3 shrink-0 overflow-y-auto max-h-[60vh] mc-scrollbar">
 
         {{-- ── IDENTIFY_PHONE ── --}}
         @if ($step === 'IDENTIFY_PHONE')
