@@ -341,6 +341,7 @@ trait HasPaymentFlow
                     expiryMonth: $expMonth,
                     expiryYear: $expiryYear,
                     ccv: $this->cardCvv,
+                    token: $this->cardToken ?: null,
                 ),
                 holder: new CreditCardHolderDTO(
                     name: $customer->name,
@@ -405,6 +406,7 @@ trait HasPaymentFlow
             $this->cardHolderName = '';
             $this->cardPostalCode = '';
             $this->cardAddressNumber = '';
+            $this->cardToken = null;
             $this->cardFeeBreakdown = [];
 
             if ($approved) {
@@ -510,6 +512,7 @@ trait HasPaymentFlow
         $this->cardHolderName = '';
         $this->cardPostalCode = '';
         $this->cardAddressNumber = '';
+        $this->cardToken = null;
         $this->cardFeeBreakdown = [];
 
         $this->addMessage('bot', 'Escolha uma nova forma de pagamento:');

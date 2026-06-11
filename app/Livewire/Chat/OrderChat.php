@@ -123,6 +123,8 @@ class OrderChat extends Component
 
     public ?string $cardError = null;
 
+    public ?string $cardToken = null;
+
     // --- Coupon ---
     public string $couponInput = '';
 

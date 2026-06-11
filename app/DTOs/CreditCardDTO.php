@@ -10,5 +10,6 @@ readonly class CreditCardDTO
         public string $expiryMonth,
         public string $expiryYear,
         public string $ccv,
+        public ?string $token = null,
     ) {}
 }

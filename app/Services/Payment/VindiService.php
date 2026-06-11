@@ -170,30 +170,31 @@ class VindiService
         $payload = $this->buildBasePayload($externalRef);
         $payload['customer'] = $this->buildHolderPayload($holder);
 
+        $basePayment = [
+            'payment_method_id' => $this->cardBrandToMethodId($card->number),
+            'card_number' => preg_replace('/\D/', '', $card->number),
+            'card_name' => $card->holderName,
+            'card_expdate_month' => $card->expiryMonth,
+            'card_expdate_year' => $card->expiryYear,
+            'card_cvv' => $card->ccv,
+        ];
+
         if ($affiliateEmail) {
-            $cardToken = $this->tokenizeCard($card);
             $commissionAmount = round($amount * $affiliatePercentual / 100, 2);
             $payload['affiliates'] = $this->buildAffiliate($affiliateEmail, $commissionAmount);
-            $payload['payment'] = [
-                'payment_method_id' => $this->cardBrandToMethodId($card->number),
-                'card_token' => $cardToken,
-                'card_cvv' => $card->ccv,
-                'name_customer' => $card->holderName,
-                'split' => '1',
-            ];
+            $payload['payment'] = array_merge($basePayment, ['split' => '1']);
             $payload['transaction']['available_payment_methods'] = '3,4,5,6,16,20,25,27';
             $payload['transaction']['max_split_transaction'] = '1';
         } else {
-            $payload['payment'] = [
-                'payment_method_id' => $this->cardBrandToMethodId($card->number),
-                'card_number' => preg_replace('/\D/', '', $card->number),
-                'card_expdate_month' => $card->expiryMonth,
-                'card_expdate_year' => $card->expiryYear,
-                'card_cvv' => $card->ccv,
-                'name_customer' => $card->holderName,
-                'installments' => $installments,
-            ];
+            $payload['payment'] = array_merge($basePayment, ['split' => (string) $installments]);
+            $payload['transaction']['available_payment_methods'] = '3,4,5,6,16,20,25,27';
+            $payload['transaction']['max_split_transaction'] = (string) $installments;
         }
+
+        $payload['transaction']['price_additional'] = null;
+        $payload['transaction']['price_discount'] = null;
+        $payload['transaction']['shipping_price'] = null;
+        $payload['transaction']['shipping_type'] = 'Frete';
         $payload['transaction_product'] = [
             [
                 'description' => 'Pedido #'.$externalRef,
@@ -203,7 +204,7 @@ class VindiService
         ];
 
         Log::channel('payments')->debug('Vindi payload cartão', [
-            'payload' => $payload
+            'payload' => $payload,
         ]);
 
         $result = $this->createTransaction($payload);
@@ -456,6 +457,12 @@ class VindiService
 
         $data = $response->json();
 
+        Log::channel('payments')->debug('Vindi createTransaction resposta', [
+            'status' => $response->status(),
+            'response' => $data,
+            'payload' => $payload,
+        ]);
+
         // Yapay sometimes returns HTTP 4xx with validation warnings but still creates the transaction.
         // Check additional_data for a valid token before deciding to fail.
         $fallbackToken = $data['additional_data']['token_transaction'] ?? null;
@@ -517,10 +524,16 @@ class VindiService
 
     private function buildCustomerPayload(Customer $customer, array $address = []): array
     {
+        $taxId = preg_replace('/\D/', '', $customer->tax_id ?? '');
+        $isCnpj = strlen($taxId) === 14;
+
         $data = [
             'name' => $customer->name,
-            'cpf' => preg_replace('/\D/', '', $customer->tax_id ?? ''),
             'email' => $customer->email,
+            'cpf' => $isCnpj ? null : $taxId,
+            'cnpj' => $isCnpj ? $taxId : null,
+            'company_name' => null,
+            'trade_name' => null,
         ];
 
         $phone = preg_replace('/\D/', '', $customer->phone ?? '');
@@ -533,11 +546,17 @@ class VindiService
             ];
         }
 
-        $postalCode = preg_replace('/\D/', '', $address['postal_code'] ?? $customer->cep ?? '');
-        $state = strtoupper(trim((string) ($address['state'] ?? $customer->state ?? '')));
-        if ($state === '') {
-            $state = $this->inferStateFromPostalCode($postalCode);
+        $rawPostal = $address['postal_code'] ?? $customer->cep ?? '';
+        $digits = preg_replace('/\D/', '', $rawPostal);
+        $postalCode = strlen($digits) === 8
+            ? substr($digits, 0, 5).'-'.substr($digits, 5)
+            : $rawPostal;
+
+        $stateRaw = strtoupper(trim((string) ($address['state'] ?? $customer->state ?? '')));
+        if ($stateRaw === '') {
+            $stateRaw = $this->inferStateFromPostalCode($digits);
         }
+        $state = $this->stateFullName($stateRaw);
 
         $data['addresses'] = [
             [
@@ -557,10 +576,16 @@ class VindiService
 
     private function buildHolderPayload(CreditCardHolderDTO $holder): array
     {
+        $cpfCnpj = preg_replace('/\D/', '', $holder->cpfCnpj);
+        $isCnpj = strlen($cpfCnpj) === 14;
+
         $data = [
             'name' => $holder->name,
-            'cpf' => preg_replace('/\D/', '', $holder->cpfCnpj),
             'email' => $holder->email,
+            'cpf' => $isCnpj ? null : $cpfCnpj,
+            'cnpj' => $isCnpj ? $cpfCnpj : null,
+            'company_name' => null,
+            'trade_name' => null,
         ];
 
         $phone = preg_replace('/\D/', '', $holder->mobilePhone ?? $holder->phone ?? '');
@@ -573,11 +598,16 @@ class VindiService
             ];
         }
 
-        $postalCode = preg_replace('/\D/', '', $holder->postalCode ?? '');
-        $state = strtoupper(trim((string) ($holder->state ?? '')));
-        if ($state === '') {
-            $state = $this->inferStateFromPostalCode($postalCode);
+        $digits = preg_replace('/\D/', '', $holder->postalCode ?? '');
+        $postalCode = strlen($digits) === 8
+            ? substr($digits, 0, 5).'-'.substr($digits, 5)
+            : ($holder->postalCode ?? '');
+
+        $stateRaw = strtoupper(trim((string) ($holder->state ?? '')));
+        if ($stateRaw === '') {
+            $stateRaw = $this->inferStateFromPostalCode($digits);
         }
+        $state = $this->stateFullName($stateRaw);
 
         $data['addresses'] = [
             [
@@ -597,7 +627,8 @@ class VindiService
 
     private function tokenizeCard(CreditCardDTO $card): string
     {
-        $response = Http::asJson()->post("{$this->baseUrl}/transactions/token_card", [
+        $tokenUrl = str_replace('/api/v3', '/api/v1', $this->baseUrl);
+        $response = Http::asForm()->post("{$tokenUrl}/transactions/token_card", [
             'token_account' => config('payments.vindi_token_account'),
             'card_number' => preg_replace('/\D/', '', $card->number),
             'card_name' => $card->holderName,
@@ -669,6 +700,40 @@ class VindiService
     private function refreshTokenCacheKey(): string
     {
         return 'vindi_refresh_token_'.md5(config('payments.vindi_consumer_key') ?? '');
+    }
+
+    private function stateFullName(string $abbr): string
+    {
+        return match (strtoupper($abbr)) {
+            'AC' => 'Acre',
+            'AL' => 'Alagoas',
+            'AP' => 'Amapá',
+            'AM' => 'Amazonas',
+            'BA' => 'Bahia',
+            'CE' => 'Ceará',
+            'DF' => 'Distrito Federal',
+            'ES' => 'Espírito Santo',
+            'GO' => 'Goiás',
+            'MA' => 'Maranhão',
+            'MT' => 'Mato Grosso',
+            'MS' => 'Mato Grosso do Sul',
+            'MG' => 'Minas Gerais',
+            'PA' => 'Pará',
+            'PB' => 'Paraíba',
+            'PR' => 'Paraná',
+            'PE' => 'Pernambuco',
+            'PI' => 'Piauí',
+            'RJ' => 'Rio de Janeiro',
+            'RN' => 'Rio Grande do Norte',
+            'RS' => 'Rio Grande do Sul',
+            'RO' => 'Rondônia',
+            'RR' => 'Roraima',
+            'SC' => 'Santa Catarina',
+            'SP' => 'São Paulo',
+            'SE' => 'Sergipe',
+            'TO' => 'Tocantins',
+            default => $abbr,
+        };
     }
 
     private function inferStateFromPostalCode(string $postalCode): string
