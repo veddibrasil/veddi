@@ -60,7 +60,7 @@
 
                 @if($company->asaas_setup_pix_qr_code)
                     <img
-                        src="data:image/png;base64,{{ $company->asaas_setup_pix_qr_code }}"
+                        src="{{ $company->asaas_setup_pix_qr_code }}"
                         alt="QR Code PIX"
                         class="w-52 h-52 rounded-xl border border-zinc-100"
                     />

@@ -12,5 +12,10 @@ readonly class CreditCardHolderDTO
         public string $addressNumber,
         public ?string $phone = null,
         public ?string $mobilePhone = null,
+        public ?string $street = null,
+        public ?string $complement = null,
+        public ?string $neighborhood = null,
+        public ?string $city = null,
+        public ?string $state = null,
     ) {}
 }

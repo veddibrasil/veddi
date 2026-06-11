@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\CompanyTransaction;
 use App\Models\CompanyWalletEntry;
 use App\Models\PaymentSettings;
+use App\Services\Payment\VindiService;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -13,6 +14,8 @@ use Illuminate\Support\Facades\Log;
 
 class AnticipationService
 {
+    public function __construct(private VindiService $vindi) {}
+
     /**
      * Retorna todas as transações elegíveis para antecipação com os dados de taxa calculados.
      * Não persiste nada — use para montar a lista no modal.
@@ -30,6 +33,24 @@ class AnticipationService
      *   net_after_fee: float,
      * }>
      */
+    /**
+     * Consulta o saldo disponível para antecipação diretamente na Yapay.
+     * Retorna null se a empresa não tem affiliate_token ou o endpoint falhar.
+     *
+     * Campos esperados na resposta (a confirmar com a Yapay):
+     *   amount_to_anticipate, fee, net_amount, fee_percentage
+     */
+    public function getGatewayAnticipationInfo(Company $company): ?array
+    {
+        $token = $company->vindi_affiliate_token;
+
+        if (empty($token)) {
+            return null;
+        }
+
+        return $this->vindi->getAnticipationBalance($token);
+    }
+
     /**
      * Retorna as faixas de taxa de antecipação configuradas para a empresa.
      * Útil para exibir a tabela de taxas no modal antes de selecionar transações.
@@ -122,6 +143,22 @@ class AnticipationService
 
         $today = now()->toDateString();
         $settings = $company->loadMissing('paymentSettings')->paymentSettings ?? null;
+
+        // Calcula montante bruto para solicitar à Yapay antes de atualizar registros locais.
+        // Sem affiliate_token (empresas sem integração Yapay ou ambiente de teste), pula chamada.
+        if (! empty($company->vindi_affiliate_token)) {
+            $grossAmount = CompanyTransaction::withoutGlobalScopes()
+                ->where('company_id', $company->id)
+                ->whereIn('id', $transactionIds)
+                ->where('status', 'confirmed')
+                ->where('withdrawn', false)
+                ->where('release_date', '>', $today)
+                ->sum('net_value');
+
+            if ($grossAmount > 0) {
+                $this->vindi->requestAnticipation($company->vindi_affiliate_token, (float) $grossAmount);
+            }
+        }
 
         return DB::transaction(function () use ($company, $transactionIds, $today, $settings) {
             $transactions = CompanyTransaction::withoutGlobalScopes()

@@ -349,9 +349,15 @@ trait HasPaymentFlow
                     postalCode: $this->cardPostalCode ?: ($customer->cep ?? ''),
                     addressNumber: $this->cardAddressNumber ?: 'S/N',
                     phone: $customer->phone ?? null,
+                    street: $customer->address,
+                    complement: $customer->complement,
+                    neighborhood: $customer->neighborhood,
+                    city: $customer->city,
+                    state: $customer->state,
                 ),
                 installments: 1,
-                affiliateToken: $company?->vindi_affiliate_token ?: null,
+                affiliateEmail: $company?->email ?: null,
+                affiliatePercentual: round(100.0 - (($company?->plan?->feePercentage() ?? 0.0) * 100), 4),
             );
 
             $transactionToken = $charge['transaction_token'];

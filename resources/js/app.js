@@ -1,3 +1,6 @@
+import QRCode from 'qrcode';
+window.QRCode = QRCode;
+
 import './admin/order-show.js';
 import './admin/pdv-app.js';
 import './admin/orders-kanban.js';

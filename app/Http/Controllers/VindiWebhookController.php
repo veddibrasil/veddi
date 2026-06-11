@@ -13,17 +13,30 @@ class VindiWebhookController extends Controller
     {
         // Payload chega como form-data POST
         $data = $request->all();
+        Log::channel('webhook')->debug('Vindi webhook recebido', ['payload' => $data]);
 
-        $tokenAccount = $data['token_account'] ?? '';
-        if (! hash_equals((string) config('payments.vindi_token_account'), $tokenAccount)) {
+        // Yapay sends account token as transaction.seller_token (not root token_account)
+        $sellerToken = $data['transaction']['seller_token']
+            ?? $data['transaction']['company']['token']
+            ?? $data['token_account']
+            ?? '';
+
+        if (! hash_equals((string) config('payments.vindi_token_account'), $sellerToken)) {
             Log::channel('webhook')->warning('Vindi webhook: token_account inválido', [
                 'ip' => $request->ip(),
+                'received_prefix' => $sellerToken !== '' ? substr($sellerToken, 0, 8).'…' : '(vazio)',
+                'expected_prefix' => substr((string) config('payments.vindi_token_account'), 0, 8).'…',
+                'content_type' => $request->header('Content-Type'),
+                'keys_recebidos' => array_keys($data),
             ]);
 
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
-        $transactionToken = $data['transaction']['token'] ?? null;
+        // Yapay sends token as transaction.transaction_token (also mirrored at root token_transaction)
+        $transactionToken = $data['transaction']['transaction_token']
+            ?? $data['token_transaction']
+            ?? null;
         $status = $data['transaction']['status_name'] ?? null;
 
         if (! $transactionToken || ! $status) {

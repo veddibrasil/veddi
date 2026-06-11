@@ -59,10 +59,10 @@ class PaymentOrchestrator
         Company $company
     ): array {
         $chargeAmount = (float) $order->total;
-        $affiliateToken = $company->vindi_affiliate_token;
+        $affiliateEmail = $company->email;
 
-        if (! $affiliateToken && config('app.env') === 'production') {
-            Log::channel('discord')->critical('Empresa sem vindi_affiliate_token em produção — pagamento PIX sem split de afiliado', [
+        if (! $affiliateEmail && config('app.env') === 'production') {
+            Log::channel('discord')->critical('Empresa sem email em produção — pagamento PIX sem split de afiliado', [
                 'type' => 'payments',
                 'company_id' => $company->id,
                 'order_id' => $order->id,
@@ -82,7 +82,7 @@ class PaymentOrchestrator
             'charge_amount' => $chargeAmount,
             'affiliate_percentual' => $affiliatePercentual,
             'pix_total_rate_pct' => round(($pixTotalRate + $planExtraRate) * 100, 4).'%',
-            'has_affiliate' => (bool) $affiliateToken,
+            'has_affiliate' => (bool) $affiliateEmail,
         ]);
 
         $tokenAccount = config('payments.vindi_token_account');
@@ -92,8 +92,9 @@ class PaymentOrchestrator
                 amount: $chargeAmount,
                 externalRef: (string) $order->id,
                 customer: $customer,
-                affiliateToken: $affiliateToken,
+                affiliateEmail: $affiliateEmail,
                 affiliatePercentual: $affiliatePercentual,
+                address: $this->vindiAddressFromOrder($order, $customer),
             );
 
             $payment = Payment::create([
@@ -160,10 +161,10 @@ class PaymentOrchestrator
         int $installments = 1,
     ): array {
         $chargeAmount = (float) $order->total;
-        $affiliateToken = $company->vindi_affiliate_token;
+        $affiliateEmail = $company->email;
 
-        if (! $affiliateToken && config('app.env') === 'production') {
-            Log::channel('discord')->critical('Empresa sem vindi_affiliate_token em produção — pagamento cartão sem split de afiliado', [
+        if (! $affiliateEmail && config('app.env') === 'production') {
+            Log::channel('discord')->critical('Empresa sem email em produção — pagamento cartão sem split de afiliado', [
                 'type' => 'payments',
                 'company_id' => $company->id,
                 'order_id' => $order->id,
@@ -180,12 +181,14 @@ class PaymentOrchestrator
             'charge_amount' => $chargeAmount,
             'installments' => $installments,
             'affiliate_percentual' => $affiliatePercentual,
-            'has_affiliate' => (bool) $affiliateToken,
+            'has_affiliate' => (bool) $affiliateEmail,
         ]);
 
         $tokenAccount = config('payments.vindi_token_account');
 
         if ($tokenAccount) {
+            $vindiAddress = $this->vindiAddressFromOrder($order, $customer);
+
             $result = $this->vindi->createCreditCardCharge(
                 amount: $chargeAmount,
                 externalRef: (string) $order->id,
@@ -200,12 +203,17 @@ class PaymentOrchestrator
                     name: $customer->name,
                     email: $customer->email,
                     cpfCnpj: $cardData['cpfCnpj'] ?? $customer->tax_id ?? '',
-                    postalCode: $cardData['postalCode'] ?? '',
-                    addressNumber: $cardData['addressNumber'] ?? 'S/N',
+                    postalCode: $cardData['postalCode'] ?? $vindiAddress['postal_code'] ?? '',
+                    addressNumber: $cardData['addressNumber'] ?? $vindiAddress['number'] ?? 'S/N',
                     phone: $customer->phone ?? null,
+                    street: $vindiAddress['street'],
+                    complement: $vindiAddress['complement'],
+                    neighborhood: $vindiAddress['neighborhood'],
+                    city: $vindiAddress['city'],
+                    state: $vindiAddress['state'],
                 ),
                 installments: $installments,
-                affiliateToken: $affiliateToken,
+                affiliateEmail: $affiliateEmail,
                 affiliatePercentual: $affiliatePercentual,
             );
 
@@ -290,6 +298,21 @@ class PaymentOrchestrator
             'method' => 'cash',
             'gateway' => 'cash',
             'change' => $change,
+        ];
+    }
+
+    private function vindiAddressFromOrder(Order $order, Customer $customer): array
+    {
+        $branch = $order->branch;
+
+        return [
+            'street' => $order->delivery_address ?? $customer->address ?? $branch?->address,
+            'number' => $order->delivery_number ?? $customer->number ?? $branch?->number,
+            'complement' => $order->delivery_complement ?? $customer->complement ?? $branch?->complement,
+            'neighborhood' => $order->delivery_neighborhood ?? $customer->neighborhood ?? $branch?->neighborhood,
+            'city' => $order->delivery_city ?? $customer->city ?? $branch?->city,
+            'state' => $customer->state ?? $branch?->state,
+            'postal_code' => $order->delivery_cep ?? $customer->cep ?? $branch?->cep,
         ];
     }
 

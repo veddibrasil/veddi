@@ -31,6 +31,8 @@ class CompanyWallet extends Component
 
     public array $anticipationRates = [];   // faixas de taxa da empresa
 
+    public ?array $gatewayAnticipationInfo = null;   // saldo disponível retornado pela Yapay
+
     // Withdrawal modal
     public bool $showWithdrawalModal = false;
 
@@ -87,6 +89,7 @@ class CompanyWallet extends Component
 
         $this->eligibleTransactions = $anticipationService->getEligibleTransactions($company)->all();
         $this->anticipationRates = $anticipationService->getRates($company);
+        $this->gatewayAnticipationInfo = $anticipationService->getGatewayAnticipationInfo($company);
         $this->selectedTransactionIds = collect($this->eligibleTransactions)->pluck('id')->map(fn ($id) => (string) $id)->all();
         $this->showAnticipationModal = true;
     }
@@ -97,6 +100,7 @@ class CompanyWallet extends Component
         $this->eligibleTransactions = [];
         $this->selectedTransactionIds = [];
         $this->anticipationRates = [];
+        $this->gatewayAnticipationInfo = null;
     }
 
     public function toggleAll(): void
@@ -153,6 +157,7 @@ class CompanyWallet extends Component
         $this->eligibleTransactions = [];
         $this->selectedTransactionIds = [];
         $this->anticipationRates = [];
+        $this->gatewayAnticipationInfo = null;
 
         // Atualiza o saldo no dashboard (mesmo componente de roteamento)
         $this->dispatch('balance-updated');

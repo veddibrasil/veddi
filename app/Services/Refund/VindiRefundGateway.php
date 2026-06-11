@@ -27,11 +27,13 @@ class VindiRefundGateway implements PaymentRefundGatewayInterface
             'token_account' => config('payments.vindi_token_account'),
             'reseller_token' => config('payments.vindi_reseller_token'),
             'transaction_token' => $token,
+            'amount' => number_format($amount, 2, '.', ''),
         ]);
 
         $data = $response->json();
+        $statusName = $data['data_response']['transaction']['status_name'] ?? null;
 
-        if ($response->failed()) {
+        if ($response->failed() && ! $statusName) {
             Log::channel('payments')->error('Vindi estorno falhou', [
                 'vindi_transaction_token' => $token,
                 'amount' => $amount,
@@ -42,14 +44,20 @@ class VindiRefundGateway implements PaymentRefundGatewayInterface
             return ['external_refund_id' => null, 'status' => 'failed', 'raw' => $data ?? []];
         }
 
+        // Vindi confirma sincronamente para PIX e alguns cartões
+        $succeeded = in_array($statusName, ['Cancelada', 'Estornada']);
+
         Log::channel('payments')->info('Vindi estorno solicitado', [
             'vindi_transaction_token' => $token,
             'amount' => $amount,
+            'vindi_status' => $statusName,
+            'immediate' => $succeeded,
         ]);
 
         return [
             'external_refund_id' => $token,
-            'status' => 'in_progress',
+            'status' => $succeeded ? 'succeeded' : 'in_progress',
+            'external_status' => $statusName,
             'raw' => $data,
         ];
     }

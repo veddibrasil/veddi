@@ -39,6 +39,12 @@ function vindiSplitContext(bool $withAffiliateToken = true): array
         'phone' => '11666660001',
         'email' => 'split@teste.com',
         'tax_id' => '111.222.333-44',
+        'address' => 'Rua S',
+        'number' => '5',
+        'neighborhood' => 'Centro',
+        'city' => 'São Paulo',
+        'state' => 'SP',
+        'cep' => '01310-100',
     ]);
 
     $order = Order::withoutGlobalScopes()->create([
@@ -54,6 +60,11 @@ function vindiSplitContext(bool $withAffiliateToken = true): array
         'status' => 'pending',
         'payment_method' => 'pix',
         'order_type' => 'delivery',
+        'delivery_address' => 'Rua S',
+        'delivery_number' => '5',
+        'delivery_neighborhood' => 'Centro',
+        'delivery_city' => 'São Paulo',
+        'delivery_cep' => '01310-100',
         'order_number' => 'VSP-2026-00001',
     ]);
 
@@ -71,11 +82,17 @@ test('VindiService inclui affiliates no payload quando affiliate_token fornecido
             $capturedPayload = $request->data();
 
             return Http::response([
-                'transaction' => [
-                    'token' => 'split_tok_001',
-                    'status_name' => 'Aguardando Pagamento',
-                    'pix_copy_paste' => '00020126abc',
+                'data_response' => [
+                    'transaction' => [
+                        'token_transaction' => 'split_tok_001',
+                        'status_name' => 'Aguardando Pagamento',
+                        'payment' => [
+                            'qrcode_original_path' => '00020126abc',
+                            'qrcode_path' => null,
+                        ],
+                    ],
                 ],
+                'message_response' => ['message' => 'success'],
             ], 200);
         },
     ]);
@@ -87,15 +104,17 @@ test('VindiService inclui affiliates no payload quando affiliate_token fornecido
         amount: 60.00,
         externalRef: (string) $ctx['order']->id,
         customer: $ctx['customer'],
-        affiliateToken: 'affiliate_tok_xyz',
+        affiliateEmail: 'empresa@split.com',
         affiliatePercentual: 99.01,
     );
 
     expect($capturedPayload)->not->toBeNull();
     assert(is_array($capturedPayload));
     expect(isset($capturedPayload['affiliates']))->toBeTrue()
-        ->and($capturedPayload['affiliates'][0]['token_account'])->toBe('affiliate_tok_xyz')
-        ->and($capturedPayload['affiliates'][0]['percentual'])->toBe('99.01');
+        ->and($capturedPayload['affiliates'][0]['account_email'])->toBe('empresa@split.com')
+        ->and($capturedPayload['affiliates'][0]['commission_amount'])->toBe('59.41')
+        ->and($capturedPayload['customer']['contacts'][0]['number_contact'])->toBe('11666660001')
+        ->and($capturedPayload['customer'])->toHaveKey('addresses');
 });
 
 test('VindiService não inclui affiliates quando sem affiliate_token', function () {
@@ -109,11 +128,17 @@ test('VindiService não inclui affiliates quando sem affiliate_token', function 
             $capturedPayload = $request->data();
 
             return Http::response([
-                'transaction' => [
-                    'token' => 'nosplit_tok_002',
-                    'status_name' => 'Aguardando Pagamento',
-                    'pix_copy_paste' => '00020126def',
+                'data_response' => [
+                    'transaction' => [
+                        'token_transaction' => 'nosplit_tok_002',
+                        'status_name' => 'Aguardando Pagamento',
+                        'payment' => [
+                            'qrcode_original_path' => '00020126def',
+                            'qrcode_path' => null,
+                        ],
+                    ],
                 ],
+                'message_response' => ['message' => 'success'],
             ], 200);
         },
     ]);
@@ -125,7 +150,7 @@ test('VindiService não inclui affiliates quando sem affiliate_token', function 
         amount: 60.00,
         externalRef: (string) $ctx['order']->id,
         customer: $ctx['customer'],
-        affiliateToken: null,
+        affiliateEmail: null,
     );
 
     expect($capturedPayload)->not->toBeNull();

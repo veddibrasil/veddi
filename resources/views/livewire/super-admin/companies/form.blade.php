@@ -152,6 +152,65 @@
         </div>
     </div>
 
+    {{-- Vindi — integração de pagamentos --}}
+    <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
+        <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Vindi — Integração de Pagamentos</h2>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+                <flux:input
+                    wire:model="vindi_affiliate_token"
+                    label="Token Afiliado (Yapay Intermediador)"
+                    placeholder="token_account da subconta"
+                    class="font-mono text-sm"
+                />
+                <p class="text-xs text-neutral-400 mt-1 dark:text-neutral-500">Usado para saques e consultas de saldo.</p>
+                @error('vindi_affiliate_token') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            </div>
+
+            <div>
+                <flux:input
+                    wire:model="email"
+                    label="E-mail Afiliado (Yapay Intermediador)"
+                    type="email"
+                    placeholder="empresa@exemplo.com"
+                />
+                <p class="text-xs text-neutral-400 mt-1 dark:text-neutral-500">Usado para split de pagamento em PIX e cartão.</p>
+                @error('email') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-neutral-700 mb-1 dark:text-neutral-300">ID Conta Parceira (Vindi Recorrência)</label>
+                <div class="flex items-center gap-2">
+                    <flux:input
+                        wire:model="vindi_partner_id"
+                        placeholder="—"
+                        class="font-mono text-sm"
+                        readonly
+                    />
+                    @if($isEditing)
+                    <flux:button
+                        wire:click="provisionVindiAccount"
+                        wire:confirm="Isso vai despachar o job de criação de conta parceira Vindi para esta empresa. Continuar?"
+                        size="sm"
+                        variant="ghost"
+                        title="Criar conta parceira Vindi Recorrência"
+                    >
+                        Provisionar
+                    </flux:button>
+                    @endif
+                </div>
+                <p class="text-xs text-neutral-400 mt-1 dark:text-neutral-500">Preenchido automaticamente após provisionamento.</p>
+            </div>
+        </div>
+
+        @if(session('error'))
+        <p class="text-red-500 text-sm">{{ session('error') }}</p>
+        @endif
+    </div>
+
     {{-- Gerente (apenas na criação) --}}
     @if(! $isEditing)
     <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">

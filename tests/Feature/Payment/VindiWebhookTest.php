@@ -76,10 +76,12 @@ test('webhook Vindi enfileira ProcessVindiWebhook', function () {
     config()->set('payments.vindi_token_account', 'tok_test');
 
     $response = $this->postJson('/webhooks/vindi', [
-        'token_account' => 'tok_test',
+        'token_transaction' => 'vindi_tok_wh_001',
         'transaction' => [
-            'token' => 'vindi_tok_wh_001',
+            'seller_token' => 'tok_test',
+            'transaction_token' => 'vindi_tok_wh_001',
             'status_name' => 'Aprovada',
+            'order_number' => '1',
         ],
     ]);
 

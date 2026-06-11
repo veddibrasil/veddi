@@ -5,6 +5,7 @@ namespace App\Livewire\SuperAdmin\Companies;
 use App\Contracts\AsaasServiceInterface;
 use App\Enums\Plan;
 use App\Jobs\CreateAsaasSubscription;
+use App\Jobs\CreateVindiPartnerAccount;
 use App\Mail\WelcomeUser;
 use App\Models\Company;
 use App\Models\Subscription;
@@ -61,6 +62,14 @@ class Form extends Component
 
     public $logo = null;
 
+    // Vindi Intermediador — split de pagamento
+    public ?string $vindi_affiliate_token = null;
+
+    public ?string $email = null;
+
+    // Vindi Recorrência — conta parceira
+    public ?string $vindi_partner_id = null;
+
     // Controle de alteração de plano
     public string $originalPlan = 'free';
 
@@ -94,6 +103,8 @@ class Form extends Component
             'plan' => ['required', 'in:free,essencial,pro'],
             'status' => ['required', 'in:ACTIVE,PENDING_PAYMENT,BLOCKED'],
             'logo' => ['nullable', 'image', 'max:2048'],
+            'vindi_affiliate_token' => ['nullable', 'string', 'max:255'],
+            'email' => ['nullable', 'email', 'max:255'],
         ];
 
         if (! $this->isEditing && $this->create_manager) {
@@ -119,7 +130,23 @@ class Form extends Component
             $this->originalPlan = $this->plan;
             $this->status = $company->status ?? 'ACTIVE';
             $this->fiscal_notes_enabled = (bool) $company->fiscal_notes_enabled;
+            $this->vindi_affiliate_token = $company->vindi_affiliate_token;
+            $this->email = $company->email;
+            $this->vindi_partner_id = $company->vindi_partner_id;
         }
+    }
+
+    public function provisionVindiAccount(): void
+    {
+        if (! $this->isEditing || ! $this->company?->exists) {
+            session()->flash('error', 'Salve a empresa antes de provisionar a conta Vindi.');
+
+            return;
+        }
+
+        CreateVindiPartnerAccount::dispatch($this->company->fresh());
+
+        session()->flash('status', 'Job de provisionamento Vindi Recorrência despachado para a fila.');
     }
 
     public function save(): void

@@ -78,10 +78,13 @@ class ProcessRefund implements ShouldQueue
         }
 
         // Simulated payments (dev environment)
-        if (str_starts_with((string) ($payment->asaas_payment_id ?? ''), 'sim_')) {
+        $isSimulated = str_starts_with((string) ($payment->asaas_payment_id ?? ''), 'sim_')
+            || str_starts_with((string) ($payment->vindi_transaction_token ?? ''), 'sim_vindi_');
+
+        if ($isSimulated) {
             $refundService->markSucceeded($this->refund, [
                 'external_refund_id' => 'sim_refund_'.$this->refund->id,
-                'external_status' => 'REFUNDED',
+                'external_status' => 'Cancelada',
                 'raw' => ['simulated' => true],
             ]);
 
@@ -108,8 +111,13 @@ class ProcessRefund implements ShouldQueue
                 'external_refund_id' => $result['external_refund_id'] ?? null,
             ]);
 
-            if ($result['status'] === 'in_progress') {
-                // Gateway accepted — will confirm via webhook (Asaas)
+            if ($result['status'] === 'succeeded') {
+                $refundService->markSucceeded($this->refund, [
+                    'external_refund_id' => $result['external_refund_id'] ?? null,
+                    'external_status' => $result['external_status'] ?? null,
+                    'raw' => $result['raw'] ?? null,
+                ]);
+            } elseif ($result['status'] === 'in_progress') {
                 Log::channel('payments')->info('Estorno aceito pelo gateway, aguardando confirmação', [
                     'refund_id' => $this->refund->id,
                     'gateway' => $this->refund->gateway,

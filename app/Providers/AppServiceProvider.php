@@ -11,6 +11,7 @@ use App\Contracts\WalletServiceInterface;
 use App\Events\CompanyActivated;
 use App\Events\NewOrderPlaced;
 use App\Events\OrderStatusUpdated;
+use App\Listeners\CreateVindiPartnerAccountOnActivation;
 use App\Listeners\SendOrderConfirmationEmail;
 use App\Listeners\SendOrderDeliveredEmail;
 use App\Listeners\SendWelcomeSubscriptionEmail;
@@ -90,6 +91,7 @@ class AppServiceProvider extends ServiceProvider
     protected function configureEvents(): void
     {
         Event::listen(CompanyActivated::class, SendWelcomeSubscriptionEmail::class);
+        Event::listen(CompanyActivated::class, CreateVindiPartnerAccountOnActivation::class);
         Event::listen(NewOrderPlaced::class, SendWhatsAppOrderNotification::class);
         Event::listen(NewOrderPlaced::class, SendOrderConfirmationEmail::class);
         Event::listen(OrderStatusUpdated::class, SendWhatsAppStatusNotification::class);

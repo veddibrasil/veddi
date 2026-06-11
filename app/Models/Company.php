@@ -61,6 +61,8 @@ class Company extends Model
         'fiscal_notes_enabled',
         'fiscal_addon_asaas_id',
         'vindi_affiliate_token',
+        'vindi_partner_id',
+        'email',
     ];
 
     protected $attributes = [

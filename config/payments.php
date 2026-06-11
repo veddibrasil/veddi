@@ -18,6 +18,11 @@ return [
     'vindi_boleto_fee' => (float) env('VINDI_BOLETO_FEE', 2.79),
     'vindi_token_account' => env('VINDI_TOKEN_ACCOUNT'),
     'vindi_reseller_token' => env('VINDI_RESELLER_TOKEN'),
+    'vindi_consumer_key' => env('VINDI_CONSUMER_KEY'),
+    'vindi_consumer_secret' => env('VINDI_CONSUMER_SECRET'),
+    'vindi_access_token' => env('VINDI_ACCESS_TOKEN'),
+    'vindi_authorization_code' => env('VINDI_AUTHORIZATION_CODE'),
+    'vindi_refresh_token' => env('VINDI_REFRESH_TOKEN'),
 
     /*
     |--------------------------------------------------------------------------

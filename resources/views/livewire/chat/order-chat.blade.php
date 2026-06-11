@@ -1103,10 +1103,19 @@
                 @endif
 
                 {{-- QR Code --}}
-                @if ($pixQrCode)
-                    <div class="flex justify-center">
-                        <div class="mc-qr-frame">
-                            <img src="data:image/png;base64,{{ $pixQrCode }}" class="w-40 h-40 rounded-lg" />
+                @if ($pixCopyPaste)
+                    <div class="flex justify-center" wire:ignore>
+                        <div class="mc-qr-frame"
+                            x-data
+                            x-init="
+                                QRCode.toCanvas($el.querySelector('canvas'), {{ json_encode($pixCopyPaste) }}, {
+                                    width: 160,
+                                    margin: 1,
+                                    color: { dark: '#000000', light: '#ffffff' }
+                                });
+                            "
+                        >
+                            <canvas class="rounded-lg"></canvas>
                         </div>
                     </div>
                 @endif
