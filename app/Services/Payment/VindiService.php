@@ -259,28 +259,39 @@ class VindiService
         if (isset($data['pix_key'])) {
             $payload['pix_key'] = $data['pix_key'];
             $payload['pix_key_type'] = $data['pix_key_type'];
-            $endpoint = "{$this->baseUrl}/affiliates/withdrawals/pix";
+            $defaultPixEndpoint = "{$this->baseUrl}/affiliates/withdrawals/pix";
+            $endpoint = config('payments.vindi_withdrawal_pix_endpoint', $defaultPixEndpoint);
         } else {
             $payload['bank_code'] = $data['bank_code'];
             $payload['bank_agency'] = $data['bank_agency'];
             $payload['bank_account'] = $data['bank_account'];
             $payload['bank_account_digit'] = $data['account_digit'];
             $payload['bank_account_type'] = $data['account_type'] ?? 'checking';
-            $endpoint = "{$this->baseUrl}/affiliates/withdrawals/ted";
+            $defaultTedEndpoint = "{$this->baseUrl}/affiliates/withdrawals/ted";
+            $endpoint = config('payments.vindi_withdrawal_ted_endpoint', $defaultTedEndpoint);
         }
 
         $response = Http::asForm()->post($endpoint, $payload);
 
         if ($response->failed()) {
+            $isHtml = str_contains($response->header('Content-Type') ?? '', 'text/html')
+                || str_starts_with(ltrim($response->body()), '<');
+
+            $errorMsg = $isHtml
+                ? "Vindi withdrawal error {$response->status()}: endpoint '{$endpoint}' retornou HTML — URL do saque não confirmada com Yapay. Consulte o suporte Yapay para o endpoint correto de saque de afiliado."
+                : "Vindi withdrawal error {$response->status()}: {$response->body()}";
+
             Log::channel('payments')->error('Vindi saque falhou', [
                 'external_id' => $data['external_id'],
-                'affiliate_token' => $data['affiliate_token'],
+                'affiliate_token' => substr($data['affiliate_token'], 0, 8).'...',
                 'amount' => $data['amount'],
+                'endpoint' => $endpoint,
                 'status' => $response->status(),
-                'body' => $response->body(),
+                'is_html_response' => $isHtml,
+                'body' => $isHtml ? '[HTML — endpoint provavelmente errado]' : $response->body(),
             ]);
 
-            throw new \RuntimeException("Vindi withdrawal error {$response->status()}: {$response->body()}");
+            throw new \RuntimeException($errorMsg);
         }
 
         $result = $response->json();

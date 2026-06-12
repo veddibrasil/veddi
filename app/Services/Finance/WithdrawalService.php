@@ -34,9 +34,12 @@ class WithdrawalService
 
         if ($payoutType === 'PIX') {
             $fee = $this->pixWithdrawalFee();
-            if ($amount <= $fee) {
-                $feeFormatted = number_format($fee, 2, ',', '.');
-                throw new RuntimeException("O valor do saque via PIX deve ser maior que R\$ {$feeFormatted} (taxa de processamento).");
+            $netAmount = round($amount - $fee, 2);
+            $minTransfer = (float) config('payments.pix_withdrawal_min_net', 10.00);
+
+            if ($netAmount < $minTransfer) {
+                $minFormatted = number_format($minTransfer + $fee, 2, ',', '.');
+                throw new RuntimeException("O valor mínimo para saque via PIX é R\$ {$minFormatted} (inclui taxa de R\$ ".number_format($fee, 2, ',', '.').').');
             }
         }
 
@@ -220,6 +223,9 @@ class WithdrawalService
      * Taxa por transação: value × 2% × (dias_restantes / 30)
      * A taxa é descontada automaticamente do net_value.
      * A transação é liberada imediatamente (release_date = hoje, status = released).
+     *
+     * ATENÇÃO: usa taxa fixa de 2% prorated, diferente de AnticipationService que usa
+     * faixas configuráveis (d2/d7/d15/d30). Manter em sincronia se as taxas mudarem.
      *
      * @param  int[]  $transactionIds
      * @return CompanyTransaction[]

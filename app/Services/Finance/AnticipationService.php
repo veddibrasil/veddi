@@ -144,7 +144,8 @@ class AnticipationService
         $today = now()->toDateString();
         $settings = $company->loadMissing('paymentSettings')->paymentSettings ?? null;
 
-        // Calcula montante bruto para solicitar à Yapay antes de atualizar registros locais.
+        // Solicita antecipação na Yapay antes de atualizar registros locais para garantir que a
+        // operação financeira externa é aceita antes de qualquer mutação no banco.
         // Sem affiliate_token (empresas sem integração Yapay ou ambiente de teste), pula chamada.
         if (! empty($company->vindi_affiliate_token)) {
             $grossAmount = CompanyTransaction::withoutGlobalScopes()
@@ -156,7 +157,15 @@ class AnticipationService
                 ->sum('net_value');
 
             if ($grossAmount > 0) {
-                $this->vindi->requestAnticipation($company->vindi_affiliate_token, (float) $grossAmount);
+                try {
+                    $this->vindi->requestAnticipation($company->vindi_affiliate_token, (float) $grossAmount);
+                } catch (\RuntimeException $e) {
+                    $msg = $e->getMessage();
+                    if (str_contains($msg, 'access_token') || str_contains($msg, 'authorization_code') || str_contains($msg, 'OAuth')) {
+                        throw new \RuntimeException('Antecipação indisponível: credenciais OAuth da Vindi não configuradas. Configure VINDI_AUTHORIZATION_CODE ou VINDI_ACCESS_TOKEN.');
+                    }
+                    throw $e;
+                }
             }
         }
 
@@ -215,7 +224,8 @@ class AnticipationService
 
     /**
      * Taxa de antecipação com base nos dias restantes até a release_date.
-     * Mesma lógica do PaymentCalculatorService.
+     * Usa faixas configuráveis por empresa (PaymentSettings) com fallback em config().
+     * WithdrawalService::requestAnticipation() usa fórmula distinta (2% flat prorated) — manter em sincronia.
      */
     private function anticipationRate(int $days, ?PaymentSettings $settings): float
     {

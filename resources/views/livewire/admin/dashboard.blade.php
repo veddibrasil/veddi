@@ -205,7 +205,7 @@
         </a>
     @endif
 
-    @if($companyId !== 0)
+    {{-- @if($companyId !== 0)
         <a href="{{ route('admin.wallet') }}"
            class="flex items-center justify-between bg-white border rounded-xl p-4 shadow-sm hover:border-purple-300 transition-colors dark:bg-zinc-800 dark:border-zinc-700 dark:hover:border-purple-700">
             <div>
@@ -218,7 +218,7 @@
                 💰
             </div>
         </a>
-    @endif
+    @endif --}}
 
     @if($canViewOrders)
         <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">

@@ -28,9 +28,9 @@ class WalletService implements WalletServiceInterface
             return;
         }
 
-        $reference = $payment->external_id;
+        $reference = $payment->external_id ?? $payment->vindi_transaction_token ?? null;
         if (! $reference) {
-            Log::channel('payments')->warning('Pagamento sem external_id — evitando crédito duplicado/indeterminado na carteira', [
+            Log::channel('payments')->warning('Pagamento sem external_id nem vindi_transaction_token — evitando crédito indeterminado na carteira', [
                 'order_id' => $order->id,
                 'payment_id' => $payment->id,
             ]);
@@ -157,9 +157,9 @@ class WalletService implements WalletServiceInterface
             return;
         }
 
-        $reference = $payment->external_id;
+        $reference = $payment->external_id ?? $payment->vindi_transaction_token ?? null;
         if (! $reference) {
-            Log::channel('payments')->warning('Pagamento sem external_id — evitando débito/estorno indeterminado na carteira', [
+            Log::channel('payments')->warning('Pagamento sem external_id nem vindi_transaction_token — evitando débito/estorno indeterminado na carteira', [
                 'order_id' => $order->id,
                 'payment_id' => $payment->id,
             ]);

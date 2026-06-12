@@ -5,6 +5,10 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+// Ledger de movimentações da carteira por empresa.
+// Tipos: credit (+), fee/withdrawal/refund/anticipation_fee/pix_fee/card_fee (−).
+// NÃO é a fonte de verdade para saldo operacional — use BalanceService::calculateBalance().
+// Esta tabela serve para exibir o histórico no painel e para auditoria/reconciliação.
 class CompanyWalletEntry extends Model
 {
     protected $fillable = [
@@ -13,6 +17,8 @@ class CompanyWalletEntry extends Model
         'type',
         'amount',
         'description',
+        // Rastreia external_id ou vindi_transaction_token do pagamento, ou withdrawal_id para saques.
+        // Usado como chave de idempotência em WalletService para evitar double-credit em retentativas.
         'reference',
     ];
 
@@ -31,8 +37,9 @@ class CompanyWalletEntry extends Model
     }
 
     /**
-     * Calculate the available balance for a company.
-     * Balance = SUM(credit) - SUM(fee) - SUM(withdrawal)
+     * Ledger balance for a company — for audit and testing only.
+     * Operational balance (UI/withdrawals) must use BalanceService::calculateBalance(),
+     * which reads from CompanyTransaction (the canonical source of truth).
      */
     public static function balanceFor(int $companyId): float
     {

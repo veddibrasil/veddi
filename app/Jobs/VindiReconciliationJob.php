@@ -4,6 +4,8 @@ namespace App\Jobs;
 
 use App\Models\Company;
 use App\Models\CompanyTransaction;
+use App\Models\CompanyWalletEntry;
+use App\Models\CompanyWithdrawal;
 use App\Models\Payment;
 use App\Services\Finance\BalanceService;
 use App\Services\Payment\VindiService;
@@ -36,15 +38,16 @@ class VindiReconciliationJob implements ShouldQueue
 
     public function handle(VindiService $vindi, BalanceService $balanceService): void
     {
-        Log::channel('payments')->info('Reconciliação Vindi iniciada');
-
-        $startDate = now()->subDays(7)->toDateString();
-        $endDate = now()->toDateString();
-
-        $this->reconcileTransactions($vindi, $startDate, $endDate);
-        $this->reconcileAffiliateBalances($vindi, $balanceService);
-
-        Log::channel('payments')->info('Reconciliação Vindi concluída');
+        // Comentado: reconciliação depende de endpoints Yapay (listagem de transações e saldo afiliado)
+        // não confirmados. Reabilitar quando endpoints forem validados com suporte Yapay.
+        //
+        // Log::channel('payments')->info('Reconciliação Vindi iniciada');
+        // $startDate = now()->subDays(7)->toDateString();
+        // $endDate = now()->toDateString();
+        // $this->reconcileTransactions($vindi, $startDate, $endDate);
+        // $this->reconcileAffiliateBalances($vindi, $balanceService);
+        // $this->reconcileWalletEntries($startDate, $endDate);
+        // Log::channel('payments')->info('Reconciliação Vindi concluída');
     }
 
     /**
@@ -176,6 +179,75 @@ class VindiReconciliationJob implements ShouldQueue
 
         Log::channel('payments')->info('Reconciliação de saldos afiliados concluída', [
             'divergences' => $divergences,
+        ]);
+    }
+
+    /**
+     * Detecta pagamentos Vindi pagos sem entrada de crédito na CompanyWalletEntry
+     * e saques concluídos sem entrada de débito — sintomas do bug de external_id nulo.
+     */
+    private function reconcileWalletEntries(string $startDate, string $endDate): void
+    {
+        $missingCredits = 0;
+        $missingWithdrawals = 0;
+
+        // Pagamentos Vindi confirmados sem entrada de crédito na carteira
+        Payment::whereNotNull('vindi_transaction_token')
+            ->where('status', 'paid')
+            ->whereBetween('paid_at', [$startDate.' 00:00:00', $endDate.' 23:59:59'])
+            ->each(function (Payment $payment) use (&$missingCredits) {
+                $reference = $payment->external_id ?? $payment->vindi_transaction_token;
+                if (! $reference) {
+                    return;
+                }
+
+                $hasCreditEntry = CompanyWalletEntry::where('reference', $reference)
+                    ->where('type', 'credit')
+                    ->exists();
+
+                if (! $hasCreditEntry) {
+                    $missingCredits++;
+                    Log::channel('discord')->critical('Reconciliação carteira: Payment pago sem entrada de crédito na CompanyWalletEntry', [
+                        'type' => 'reconciliation',
+                        'payment_id' => $payment->id,
+                        'order_id' => $payment->order_id,
+                        'vindi_token' => $payment->vindi_transaction_token,
+                        'external_id' => $payment->external_id,
+                        'amount' => $payment->amount,
+                        'action_needed' => 'Verificar se external_id estava nulo quando pagamento foi confirmado e recriar entrada manualmente',
+                    ]);
+                }
+            });
+
+        // Saques concluídos sem entrada de débito na carteira
+        CompanyWithdrawal::withoutGlobalScopes()
+            ->where('status', 'done')
+            ->whereBetween('processed_at', [$startDate.' 00:00:00', $endDate.' 23:59:59'])
+            ->each(function (CompanyWithdrawal $withdrawal) use (&$missingWithdrawals) {
+                $description = 'Saque #'.$withdrawal->id;
+
+                $hasWithdrawalEntry = CompanyWalletEntry::where('company_id', $withdrawal->company_id)
+                    ->where('type', 'withdrawal')
+                    ->where('description', $description)
+                    ->exists();
+
+                if (! $hasWithdrawalEntry) {
+                    $missingWithdrawals++;
+                    Log::channel('discord')->critical('Reconciliação carteira: Saque concluído sem entrada de débito na CompanyWalletEntry', [
+                        'type' => 'reconciliation',
+                        'withdrawal_id' => $withdrawal->id,
+                        'company_id' => $withdrawal->company_id,
+                        'amount' => $withdrawal->amount,
+                        'vindi_transfer_id' => $withdrawal->vindi_transfer_id,
+                        'action_needed' => 'Verificar se job ProcessWithdrawal criou entradas corretamente',
+                    ]);
+                }
+            });
+
+        Log::channel('payments')->info('Reconciliação de entradas de carteira concluída', [
+            'missing_credits' => $missingCredits,
+            'missing_withdrawal_entries' => $missingWithdrawals,
+            'period' => "{$startDate} → {$endDate}",
         ]);
     }
 

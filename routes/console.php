@@ -18,17 +18,20 @@ Schedule::job(new \App\Jobs\ReleaseCompanyTransactionsJob)
     ->onOneServer();
 
 // Atualiza snapshots de saldo de todas as empresas (após liberação das transações)
-Schedule::job(new \App\Jobs\UpdateCompanyBalancesJob)
-    ->name('update-company-balances')
-    ->everyMinute()
-    ->withoutOverlapping(expiresAt: 5)
-    ->onOneServer();
+// Comentado: saldo exibido agora é calculado on-demand via BalanceService::calculateBalance().
+// Reabilitar se snapshots periódicos voltarem a ser necessários.
+// Schedule::job(new \App\Jobs\UpdateCompanyBalancesJob)
+//     ->name('update-company-balances')
+//     ->everyMinute()
+//     ->withoutOverlapping(expiresAt: 5)
+//     ->onOneServer();
 
-Schedule::job(new \App\Jobs\RecordPlatformYieldSnapshot)
-    ->name('record-platform-yield')
-    ->dailyAt('6:00')
-    ->withoutOverlapping()
-    ->onOneServer();
+// Comentado: snapshot de rendimento depende de saldo Vindi/Asaas — endpoints não confirmados.
+// Schedule::job(new \App\Jobs\RecordPlatformYieldSnapshot)
+//     ->name('record-platform-yield')
+//     ->dailyAt('6:00')
+//     ->withoutOverlapping()
+//     ->onOneServer();
 
 // Resolve pagamentos Vindi presos em pending após expiração (webhook perdido)
 Schedule::job(new \App\Jobs\ResolveExpiredVindiPaymentsJob)
@@ -37,12 +40,12 @@ Schedule::job(new \App\Jobs\ResolveExpiredVindiPaymentsJob)
     ->withoutOverlapping(expiresAt: 10)
     ->onOneServer();
 
-// Reconciliação semanal: Yapay vs CompanyTransactions locais + saldo afiliado
-Schedule::job(new \App\Jobs\VindiReconciliationJob)
-    ->name('vindi-reconciliation')
-    ->weeklyOn(1, '03:00')
-    ->withoutOverlapping()
-    ->onOneServer();
+// Comentado: reconciliação depende de endpoints Yapay de saldo/listagem — não confirmados.
+// Schedule::job(new \App\Jobs\VindiReconciliationJob)
+//     ->name('vindi-reconciliation')
+//     ->weeklyOn(1, '03:00')
+//     ->withoutOverlapping()
+//     ->onOneServer();
 
 // Probe de recovery automático do Asaas — executa apenas se o circuit não estiver fechado
 Schedule::call(function () {

@@ -20,11 +20,12 @@ class UpdateCompanyBalancesJob implements ShouldQueue
 
     public function handle(BalanceService $balanceService): void
     {
-        Log::channel('payments')->info('Iniciando atualização de snapshots de saldo');
-
-        $balanceService->updateAllSnapshots();
-
-        Log::channel('payments')->info('Snapshots de saldo atualizados');
+        // Comentado: carteira simplificada — saldo calculado on-demand via BalanceService::calculateBalance().
+        // Snapshots periódicos desabilitados enquanto saque é gerenciado direto no painel Yapay.
+        //
+        // Log::channel('payments')->info('Iniciando atualização de snapshots de saldo');
+        // $balanceService->updateAllSnapshots();
+        // Log::channel('payments')->info('Snapshots de saldo atualizados');
     }
 
     public function failed(\Throwable $exception): void

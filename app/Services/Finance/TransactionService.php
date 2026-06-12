@@ -26,8 +26,10 @@ class TransactionService implements TransactionServiceInterface
 
         $feeRate = $company->plan?->feePercentage() ?? 0.0;
 
-        // Para cartão: value = valor cobrado do cliente; net_value = valor original (o que o lojista recebe)
-        // Para PIX: value = amount normal; PIX fee é deduzida se absorvida pela empresa
+        // Cartão: value = amount cobrado do cliente (com taxa de cartão embutida);
+        //         net_value = original_amount deduzido da card_fee se empresa absorve + taxa plataforma.
+        // PIX: value = amount; net_value = amount − pix_fee (se absorvida) − taxa plataforma.
+        // Estes net_values são a fonte de verdade para BalanceService::calculateBalance().
         if ($type === 'cartao' && $payment->original_amount !== null) {
             $value = (float) $payment->amount;
             $cardFeeAbsorbed = $company->card_fee_absorbed_by_company ?? false;

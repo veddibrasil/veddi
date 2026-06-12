@@ -24,6 +24,15 @@ return [
     'vindi_authorization_code' => env('VINDI_AUTHORIZATION_CODE'),
     'vindi_refresh_token' => env('VINDI_REFRESH_TOKEN'),
 
+    // Endpoints de saque de afiliado — confirmar com suporte Yapay antes de ativar em produção.
+    // Definir via env para trocar sem deploy quando Yapay fornecer URL correta.
+    // null = usa o padrão hardcoded em VindiService::createTransfer()
+    'vindi_withdrawal_pix_endpoint' => env('VINDI_WITHDRAWAL_PIX_ENDPOINT'),
+    'vindi_withdrawal_ted_endpoint' => env('VINDI_WITHDRAWAL_TED_ENDPOINT'),
+
+    // Portal web Yapay — usado na carteira para redirecionar empresa ao painel próprio.
+    'vindi_portal_url' => env('VINDI_PORTAL_URL', 'https://intermediador.yapay.com.br'),
+
     /*
     |--------------------------------------------------------------------------
     | Taxa PIX legada (Asaas / Vindi) — mantida para dados históricos
@@ -40,6 +49,10 @@ return [
     | Valor fixo descontado quando a empresa solicita saque via PIX.
     */
     'pix_withdrawal_fee' => (float) env('PIX_WITHDRAWAL_FEE', 0.50),
+
+    // Valor líquido mínimo transferido após desconto da taxa PIX.
+    // Se Yapay exigir mínimo diferente, ajustar via env sem redeploy.
+    'pix_withdrawal_min_net' => (float) env('PIX_WITHDRAWAL_MIN_NET', 10.00),
 
     /*
     |--------------------------------------------------------------------------

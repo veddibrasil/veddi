@@ -3,7 +3,6 @@
 namespace App\Jobs;
 
 use App\Models\CompanyTransaction;
-use App\Models\CompanyWalletEntry;
 use App\Models\CompanyWithdrawal;
 use App\Services\Payment\VindiService;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -52,122 +51,22 @@ class ProcessWithdrawal implements ShouldQueue
             return;
         }
 
-        $withdrawal = CompanyWithdrawal::findOrFail($this->withdrawalId);
-
-        Log::channel('payments')->info('Processando saque via Vindi', [
-            'withdrawal_id' => $withdrawal->id,
-            'company_id' => $withdrawal->company_id,
-            'amount' => $withdrawal->amount,
-            'payout_type' => $withdrawal->payout_type,
-        ]);
-
-        try {
-            $transferData = $this->buildVindiTransferData($withdrawal);
-            $transfer = $vindi->createTransfer($transferData);
-
-            DB::transaction(function () use ($withdrawal, $transfer) {
-                CompanyTransaction::withoutGlobalScopes()
-                    ->where('withdrawal_id', $withdrawal->id)
-                    ->lockForUpdate()
-                    ->update([
-                        'withdrawn' => true,
-                        'withdrawn_at' => now(),
-                        'status' => 'withdrawn',
-                        'updated_at' => now(),
-                    ]);
-
-                $withdrawal->update([
-                    'status' => 'done',
-                    'vindi_transfer_id' => $transfer['id'] ?? null,
-                    'vindi_response' => $transfer,
-                    'processed_at' => now(),
-                ]);
-
-                // Guardas de idempotência: nunca criar dois lançamentos para o mesmo saque.
-                $withdrawalDescription = 'Saque #'.$withdrawal->id;
-                $feeDescription = 'Taxa PIX - Saque #'.$withdrawal->id;
-
-                $alreadyWithdrawalEntry = CompanyWalletEntry::where('company_id', $withdrawal->company_id)
-                    ->where('type', 'withdrawal')
-                    ->where('description', $withdrawalDescription)
-                    ->lockForUpdate()
-                    ->exists();
-
-                $alreadyPixFeeEntry = CompanyWalletEntry::where('company_id', $withdrawal->company_id)
-                    ->where('type', 'pix_fee')
-                    ->where('description', $feeDescription)
-                    ->lockForUpdate()
-                    ->exists();
-
-                $pixFee = $withdrawal->payout_type === 'PIX' ? (float) $withdrawal->pix_fee : 0.0;
-                $transferAmount = (float) $withdrawal->amount;
-                if ($withdrawal->payout_type === 'PIX') {
-                    $transferAmount = max(0.0, round($transferAmount - $pixFee, 2));
-                }
-
-                $vindiReference = $transfer['id'] ?? (string) $withdrawal->id;
-
-                if (! $alreadyWithdrawalEntry) {
-                    CompanyWalletEntry::create([
-                        'company_id' => $withdrawal->company_id,
-                        'order_id' => null,
-                        'type' => 'withdrawal',
-                        'amount' => $transferAmount,
-                        'description' => $withdrawalDescription,
-                        'reference' => $vindiReference,
-                    ]);
-                } elseif ($transfer['id'] ?? null) {
-                    CompanyWalletEntry::where('company_id', $withdrawal->company_id)
-                        ->where('type', 'withdrawal')
-                        ->where('description', $withdrawalDescription)
-                        ->update(['reference' => $vindiReference]);
-                }
-
-                if ($pixFee > 0 && ! $alreadyPixFeeEntry) {
-                    CompanyWalletEntry::create([
-                        'company_id' => $withdrawal->company_id,
-                        'order_id' => null,
-                        'type' => 'pix_fee',
-                        'amount' => $pixFee,
-                        'description' => $feeDescription,
-                        'reference' => $vindiReference,
-                    ]);
-                } elseif ($pixFee > 0 && ($transfer['id'] ?? null)) {
-                    CompanyWalletEntry::where('company_id', $withdrawal->company_id)
-                        ->where('type', 'pix_fee')
-                        ->where('description', $feeDescription)
-                        ->update(['reference' => $vindiReference]);
-                }
-            });
-
-            Log::channel('payments')->info('Saque processado com sucesso via Vindi', [
-                'withdrawal_id' => $withdrawal->id,
-                'vindi_transfer_id' => $transfer['id'] ?? null,
-                'amount' => $withdrawal->amount,
-            ]);
-        } catch (\Throwable $e) {
-            DB::transaction(function () use ($withdrawal) {
-                CompanyTransaction::withoutGlobalScopes()
-                    ->where('withdrawal_id', $withdrawal->id)
-                    ->lockForUpdate()
-                    ->update([
-                        'withdrawal_id' => null,
-                        'updated_at' => now(),
-                    ]);
-
-                $withdrawal->update(['status' => 'failed']);
-            });
-
-            Log::channel('discord')->error('Falha ao processar saque via Vindi', [
-                'type' => 'payments',
-                'withdrawal_id' => $withdrawal->id,
-                'error' => $e->getMessage(),
-            ]);
-
-            throw $e;
-        }
+        // Comentado: saque via API Yapay desabilitado — endpoint não confirmado.
+        // Saques são feitos diretamente no painel Yapay pelo operador.
+        // Reabilitar e validar buildVindiTransferData() quando endpoint for confirmado.
+        //
+        // $withdrawal = CompanyWithdrawal::findOrFail($this->withdrawalId);
+        // Log::channel('payments')->info('Processando saque via Vindi', [...]);
+        // try {
+        //     $transferData = $this->buildVindiTransferData($withdrawal);
+        //     $transfer = $vindi->createTransfer($transferData);
+        //     DB::transaction(function () use ($withdrawal, $transfer) { ... });
+        //     Log::channel('payments')->info('Saque processado com sucesso via Vindi', [...]);
+        // } catch (\Throwable $e) { ... throw $e; }
     }
 
+    // Monta payload para a API Yapay de transferência. Mantido para quando o endpoint for confirmado.
+    // Não é chamado enquanto o saque é feito manualmente no painel Yapay.
     private function buildVindiTransferData(CompanyWithdrawal $withdrawal): array
     {
         $company = $withdrawal->company;
@@ -178,6 +77,8 @@ class ProcessWithdrawal implements ShouldQueue
 
         $pixFee = $withdrawal->payout_type === 'PIX' ? (float) $withdrawal->pix_fee : 0.0;
         $transferAmount = (float) $withdrawal->amount;
+        // Para PIX, subtrai a taxa fixa antes de enviar à Yapay — a taxa já foi debitada na carteira
+        // pela WithdrawalService, mas o valor enviado ao gateway deve ser o líquido.
         if ($withdrawal->payout_type === 'PIX') {
             $transferAmount = max(0.0, round($transferAmount - $pixFee, 2));
         }
