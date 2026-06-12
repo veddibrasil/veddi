@@ -305,7 +305,6 @@ test('PaymentOrchestrator.processPix cria Payment com vindi_transaction_token', 
 test('PIX simulado criado quando sem credenciais Vindi', function () {
     config()->set('payments.vindi_token_account', null);
     config()->set('payments.vindi_pix_rate', 0.0085);
-    config()->set('payments.vindi_pix_fee_min', 1.60);
 
     $ctx = vindiPixContext();
 

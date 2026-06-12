@@ -172,10 +172,16 @@ class Index extends Component
                 ->when($this->isSuperAdmin && $this->companyFilter, fn ($q) => $q->where('company_id', $this->companyFilter));
 
             $perPage = self::KANBAN_PER_PAGE;
+
+            $totals = (clone $baseQuery)
+                ->whereIn('status', self::KANBAN_STATUSES)
+                ->selectRaw('status, COUNT(*) as total')
+                ->groupBy('status')
+                ->pluck('total', 'status');
+
             $kanbanColumns = collect(self::KANBAN_STATUSES)
-                ->mapWithKeys(function ($status) use ($baseQuery, $perPage) {
+                ->mapWithKeys(function ($status) use ($baseQuery, $perPage, $totals) {
                     $limit = $this->kanbanPages[$status] * $perPage;
-                    $total = (clone $baseQuery)->where('status', $status)->count();
                     $fetched = (clone $baseQuery)->where('status', $status)->latest()->limit($limit + 1)->get();
                     $hasMore = $fetched->count() > $limit;
 
@@ -183,7 +189,7 @@ class Index extends Component
                         $status => [
                             'orders' => $fetched->take($limit),
                             'hasMore' => $hasMore,
-                            'total' => $total,
+                            'total' => $totals->get($status, 0),
                         ],
                     ];
                 });

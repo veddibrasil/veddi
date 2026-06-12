@@ -11,19 +11,32 @@ use App\Models\Order;
 use App\Models\Payment;
 use App\Models\PaymentRefund;
 use App\Services\Company\CompanyService;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 
-class ProcessAsaasWebhook implements ShouldQueue
+class ProcessAsaasWebhook implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
     public int $tries = 3;
 
     public array $backoff = [10, 60, 300];
+
+    public int $uniqueFor = 300;
+
+    public function uniqueId(): string
+    {
+        $paymentId = $this->payload['payment']['id']
+            ?? $this->payload['subscription']['id']
+            ?? $this->payload['anticipation']['id']
+            ?? null;
+
+        return hash('sha256', $this->event.':'.($paymentId ?? md5(json_encode($this->payload))));
+    }
 
     public function __construct(
         public string $event,

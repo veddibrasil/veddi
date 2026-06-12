@@ -59,6 +59,7 @@ class GeocodingService
                 'User-Agent' => 'MisterCoxinha/1.0 guilhermeieski@gmail.com',
             ])
                 ->timeout(5)
+                ->retry(2, 500, throw: false)
                 ->get('https://nominatim.openstreetmap.org/search', [
                     'q' => $query,
                     'format' => 'json',

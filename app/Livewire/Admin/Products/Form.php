@@ -578,6 +578,8 @@ class Form extends Component
                 ];
 
                 Cache::forget("menu:branch:{$branchId}:company:{$this->company_id}");
+                Cache::forget("pdv:products:branch:{$branchId}");
+                Cache::forget("pdv:categories:branch:{$branchId}");
             }
         } else {
             foreach ($this->selectedBranches as $branchId) {
@@ -589,6 +591,8 @@ class Form extends Component
                 ];
 
                 Cache::forget("menu:branch:{$branchId}:company:{$this->company_id}");
+                Cache::forget("pdv:products:branch:{$branchId}");
+                Cache::forget("pdv:categories:branch:{$branchId}");
             }
         }
         $product->branches()->sync($branchSync);

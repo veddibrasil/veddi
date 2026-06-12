@@ -17,6 +17,7 @@ use App\Services\Order\OrderService;
 use App\Services\Order\StockService;
 use App\Services\Payment\PaymentOrchestrator;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Computed;
@@ -1002,16 +1003,22 @@ class Terminal extends Component
             return new \Illuminate\Database\Eloquent\Collection;
         }
 
-        return ProductCategory::withoutGlobalScopes()
-            ->whereHas('products', fn ($q) => $q
-                ->where('active', true)
-                ->whereHas('branches', fn ($bq) => $bq
-                    ->where('branches.id', $this->selectedBranchId)
-                    ->where('branch_product.available', true)
+        $branchId = $this->selectedBranchId;
+
+        return Cache::remember(
+            "pdv:categories:branch:{$branchId}",
+            now()->addMinutes(5),
+            fn () => ProductCategory::withoutGlobalScopes()
+                ->whereHas('products', fn ($q) => $q
+                    ->where('active', true)
+                    ->whereHas('branches', fn ($bq) => $bq
+                        ->where('branches.id', $branchId)
+                        ->where('branch_product.available', true)
+                    )
                 )
-            )
-            ->orderBy('name')
-            ->get();
+                ->orderBy('name')
+                ->get()
+        );
     }
 
     #[Computed]
@@ -1021,26 +1028,30 @@ class Terminal extends Component
             return new \Illuminate\Database\Eloquent\Collection;
         }
 
-        $query = Product::withoutGlobalScopes()
-            ->whereHas('branches', fn ($q) => $q
-                ->where('branches.id', $this->selectedBranchId)
-                ->where('branch_product.available', true)
-            )
-            ->where('active', true)
-            ->with([
-                'optionGroups.options' => fn ($q) => $q->where('active', true),
-                'optionGroups.inactiveOptions',
-            ]);
+        $branchId = $this->selectedBranchId;
 
-        if ($this->activeCategoryId) {
-            $query->where('product_category_id', $this->activeCategoryId);
-        }
+        $all = Cache::remember(
+            "pdv:products:branch:{$branchId}",
+            now()->addMinutes(5),
+            fn () => Product::withoutGlobalScopes()
+                ->whereHas('branches', fn ($q) => $q
+                    ->where('branches.id', $branchId)
+                    ->where('branch_product.available', true)
+                )
+                ->where('active', true)
+                ->with([
+                    'optionGroups.options' => fn ($q) => $q->where('active', true),
+                    'optionGroups.inactiveOptions',
+                ])
+                ->orderBy('sort_order')
+                ->orderBy('name')
+                ->get()
+        );
 
-        if (filled($this->search)) {
-            $query->where('name', 'like', '%'.$this->search.'%');
-        }
-
-        return $query->orderBy('sort_order')->orderBy('name')->get();
+        return $all
+            ->when($this->activeCategoryId, fn ($c) => $c->where('product_category_id', $this->activeCategoryId))
+            ->when(filled($this->search), fn ($c) => $c->filter(fn ($p) => str_contains(mb_strtolower($p->name), mb_strtolower($this->search))))
+            ->values();
     }
 
     #[Computed]

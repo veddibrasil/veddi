@@ -129,7 +129,8 @@ class DeliverySettings extends Component
 
         $companyId = $this->branch->company_id;
 
-        DB::transaction(function () use ($companyId) {
+        $settings = null;
+        DB::transaction(function () use ($companyId, &$settings) {
             $settings = DeliverySetting::updateOrCreate(
                 ['branch_id' => $this->branch->id],
                 [
@@ -164,6 +165,10 @@ class DeliverySettings extends Component
         });
 
         Cache::forget("branches:company:{$this->branch->company_id}");
+        if ($settings) {
+            Cache::forget("delivery:neighborhoods:settings:{$settings->id}");
+            Cache::forget("delivery:distance_tiers:settings:{$settings->id}");
+        }
 
         session()->flash('status', 'Configurações de entrega salvas.');
         $this->redirect(route('admin.branches.delivery', $this->branch));

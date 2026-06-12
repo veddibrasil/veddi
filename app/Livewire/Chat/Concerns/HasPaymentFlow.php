@@ -423,6 +423,7 @@ trait HasPaymentFlow
                 'order_id' => $this->orderId,
                 'error' => $e->getMessage(),
             ]);
+            $this->cardCvv = '';
             $this->cardError = 'Não foi possível processar o pagamento. Tente novamente.';
             $this->submitting = false;
         }

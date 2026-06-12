@@ -6,15 +6,23 @@ use App\Contracts\AsaasServiceInterface;
 use App\Exceptions\AsaasCircuitOpenException;
 use App\Models\Company;
 use App\Models\Subscription;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
 
-class CreateAsaasSubscription implements ShouldQueue
+class CreateAsaasSubscription implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
     public array $backoff = [60, 300, 900];
+
+    public int $uniqueFor = 3600;
+
+    public function uniqueId(): string
+    {
+        return (string) $this->company->id;
+    }
 
     public function retryUntil(): \DateTimeInterface
     {

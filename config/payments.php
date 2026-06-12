@@ -6,15 +6,13 @@ return [
     | Vindi Intermediador (Yapay) — credenciais e taxas de pedido
     |--------------------------------------------------------------------------
     | vindi_pix_rate   : percentual cobrado por transação PIX (0,85%)
-    | vindi_pix_fee_min: taxa mínima por transação PIX em R$ (R$1,60)
     | vindi_boleto_fee : taxa fixa por boleto pago em R$ (R$2,79)
     |
-    | PIX: taxa = max(vindi_pix_fee_min, amount * vindi_pix_rate)
+    | PIX: taxa = amount * vindi_pix_rate
     | Liquidação PIX: 2×/dia (10h e 15h), D+1 útil no pior caso.
     */
     'vindi_pix_rate' => (float) env('VINDI_PIX_RATE', 0.0085),         // Vindi gateway fee
     'vindi_pix_platform_rate' => (float) env('VINDI_PIX_PLATFORM_RATE', 0.0014), // platform margin (total = 0.99%)
-    'vindi_pix_fee_min' => (float) env('VINDI_PIX_FEE_MIN', 1.60),
     'vindi_boleto_fee' => (float) env('VINDI_BOLETO_FEE', 2.79),
     'vindi_token_account' => env('VINDI_TOKEN_ACCOUNT'),
     'vindi_reseller_token' => env('VINDI_RESELLER_TOKEN'),

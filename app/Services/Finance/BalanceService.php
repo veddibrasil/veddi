@@ -94,8 +94,10 @@ class BalanceService
      */
     public function updateAllSnapshots(): void
     {
-        Company::where('active', true)->each(function (Company $company) {
-            $this->updateSnapshot($company);
+        Company::where('active', true)->chunkById(100, function ($companies) {
+            foreach ($companies as $company) {
+                $this->updateSnapshot($company);
+            }
         });
     }
 

@@ -6,15 +6,23 @@ use App\Exceptions\AsaasCircuitOpenException;
 use App\Models\PaymentRefund;
 use App\Services\Finance\RefundCoverageService;
 use App\Services\Refund\RefundService;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
 
-class ProcessRefund implements ShouldQueue
+class ProcessRefund implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
     public array $backoff = [60, 300, 900];
+
+    public int $uniqueFor = 3600;
+
+    public function uniqueId(): string
+    {
+        return (string) $this->refund->id;
+    }
 
     public function retryUntil(): \DateTimeInterface
     {

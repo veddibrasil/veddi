@@ -7,15 +7,23 @@ use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Services\Payment\PaymentOrchestrator;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
 
-class ProcessOrder implements ShouldQueue
+class ProcessOrder implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
     public array $backoff = [30, 120, 600];
+
+    public int $uniqueFor = 3600;
+
+    public function uniqueId(): string
+    {
+        return (string) $this->order->id;
+    }
 
     public function retryUntil(): \DateTimeInterface
     {

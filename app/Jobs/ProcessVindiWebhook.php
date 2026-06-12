@@ -9,18 +9,26 @@ use App\Events\OrderStatusUpdated;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\PaymentRefund;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
-class ProcessVindiWebhook implements ShouldQueue
+class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
     public int $tries = 3;
 
     public array $backoff = [10, 60, 300];
+
+    public int $uniqueFor = 300;
+
+    public function uniqueId(): string
+    {
+        return hash('sha256', $this->transactionToken.':'.$this->status);
+    }
 
     public function __construct(
         public string $transactionToken,

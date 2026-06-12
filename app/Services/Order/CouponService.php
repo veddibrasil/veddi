@@ -118,11 +118,17 @@ class CouponService
             array_values($cart),
             array_keys($cart)
         )));
-        $products = Product::withoutGlobalScope(CompanyScope::class)
-            ->whereIn('id', $productIds)
-            ->with('optionGroups')
-            ->get()
-            ->keyBy('id');
+        $sortedIds = $productIds;
+        sort($sortedIds);
+        $products = Cache::remember(
+            'products:scope:'.md5(implode(',', $sortedIds)),
+            now()->addMinutes(5),
+            fn () => Product::withoutGlobalScope(CompanyScope::class)
+                ->whereIn('id', $productIds)
+                ->with('optionGroups')
+                ->get()
+                ->keyBy('id')
+        );
 
         $base = 0.0;
         $optionPricing = app(CartOptionPricing::class);

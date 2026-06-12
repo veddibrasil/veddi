@@ -4,6 +4,7 @@ namespace App\Services\Order;
 
 use App\Exceptions\DeliveryException;
 use App\Models\DeliverySetting;
+use Illuminate\Support\Facades\Cache;
 
 class DeliveryService
 {
@@ -94,10 +95,15 @@ class DeliveryService
 
     private function feeByNeighborhood(DeliverySetting $settings, string $neighborhood): float
     {
-        $match = $settings->neighborhoods()
-            ->where('active', true)
-            ->get()
-            ->first(fn ($n) => mb_strtolower(trim($n->neighborhood)) === mb_strtolower(trim($neighborhood)));
+        $neighborhoods = Cache::remember(
+            "delivery:neighborhoods:settings:{$settings->id}",
+            now()->addMinutes(10),
+            fn () => $settings->neighborhoods()->where('active', true)->get()
+        );
+
+        $match = $neighborhoods->first(
+            fn ($n) => mb_strtolower(trim($n->neighborhood)) === mb_strtolower(trim($neighborhood))
+        );
 
         if (! $match) {
             throw new DeliveryException('Seu bairro não está na área de cobertura desta filial.');
@@ -116,14 +122,18 @@ class DeliveryService
             throw new DeliveryException('Não foi possível calcular a distância de entrega. Entre em contato com a loja.');
         }
 
-        $tier = $settings->distanceTiers()
-            ->get()
-            ->first(function ($t) use ($distanceKm) {
-                $aboveMin = $distanceKm >= $t->min_km;
-                $belowMax = $t->max_km === null || $distanceKm <= $t->max_km;
+        $tiers = Cache::remember(
+            "delivery:distance_tiers:settings:{$settings->id}",
+            now()->addMinutes(10),
+            fn () => $settings->distanceTiers()->get()
+        );
 
-                return $aboveMin && $belowMax;
-            });
+        $tier = $tiers->first(function ($t) use ($distanceKm) {
+            $aboveMin = $distanceKm >= $t->min_km;
+            $belowMax = $t->max_km === null || $distanceKm <= $t->max_km;
+
+            return $aboveMin && $belowMax;
+        });
 
         if (! $tier) {
             $km = number_format($distanceKm, 1, ',', '.');

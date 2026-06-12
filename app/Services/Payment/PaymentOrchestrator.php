@@ -8,6 +8,7 @@ use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Payment;
+use App\Models\PaymentSettings;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -172,15 +173,20 @@ class PaymentOrchestrator
             ]);
         }
 
-        // Card split: paid plans take 0% platform cut; free plan adds extra 1%.
+        // Card split: gateway rate + 0.14% platform + optional 1% free plan = deducted, rest to affiliate.
+        $settings = $company->paymentSettings;
+        $cardGatewayRate = $this->cardRateForInstallments($installments, $settings);
+        $platformRate = (float) config('payments.vindi_pix_platform_rate', 0.0014);
         $planExtraRate = $company->plan?->feePercentage() ?? 0.0;
-        $affiliatePercentual = round(100.0 - ($planExtraRate * 100), 4);
+        $affiliatePercentual = round(100.0 - ($cardGatewayRate * 100) - ($platformRate * 100) - ($planExtraRate * 100), 4);
 
         Log::channel('payments')->info('Orchestrator: criando cobrança cartão via Vindi', [
             'order_id' => $order->id,
             'charge_amount' => $chargeAmount,
             'installments' => $installments,
             'affiliate_percentual' => $affiliatePercentual,
+            'card_gateway_rate_pct' => round($cardGatewayRate * 100, 4).'%',
+            'platform_rate_pct' => round(($platformRate + $planExtraRate) * 100, 4).'%',
             'has_affiliate' => (bool) $affiliateEmail,
         ]);
 
@@ -344,6 +350,19 @@ class PaymentOrchestrator
         ];
     }
 
+    private function cardRateForInstallments(int $installments, ?PaymentSettings $settings): float
+    {
+        if ($installments <= 1) {
+            return (float) ($settings?->card_rate_1x ?? config('payments.credit_card.rate_1x', 0.0310));
+        }
+
+        if ($installments <= 6) {
+            return (float) config('payments.credit_card.rate_2_6x', 0.0371);
+        }
+
+        return (float) config('payments.credit_card.rate_7_12x', 0.0407);
+    }
+
     // ─────────────────────────────────────────────────────────────
     // Cálculo de taxas
     // ─────────────────────────────────────────────────────────────
@@ -356,10 +375,7 @@ class PaymentOrchestrator
     public function calculateFees(float $amount, string $method, Company $company): array
     {
         $gatewayFee = match (strtolower($method)) {
-            'pix' => max(
-                (float) config('payments.vindi_pix_fee_min', 1.60),
-                round($amount * (float) config('payments.vindi_pix_rate', 0.0085), 2)
-            ),
+            'pix' => round($amount * (float) config('payments.vindi_pix_rate', 0.0085), 2),
             'credit_card' => round($amount * (float) config('payments.credit_card.rate_1x', 0.0310), 2),
             default => 0.0,
         };
