@@ -112,6 +112,7 @@ class PaymentOrchestrator
             $payment = Payment::create([
                 'order_id' => $order->id,
                 'vindi_transaction_token' => $result['transaction_token'],
+                'vindi_transaction_id' => $result['transaction_id'] ?? null,
                 'payment_gateway' => 'vindi',
                 'pix_qr_code' => $result['pix_qr_code'],
                 'pix_copy_paste' => $result['pix_copy_paste'],
@@ -260,10 +261,13 @@ class PaymentOrchestrator
             $approved = ($result['status_name'] ?? '') === 'Aprovada';
             $paymentToken = hash('sha256', $order->id.$customer->id.Str::random(32));
 
-            DB::transaction(function () use ($order, $transactionToken, $chargeAmount, $cardFee, $cardRate, $installments, $paymentToken, $approved) {
+            $transactionId = $result['transaction_id'] ?? null;
+
+            DB::transaction(function () use ($order, $transactionToken, $transactionId, $chargeAmount, $cardFee, $cardRate, $installments, $paymentToken, $approved) {
                 $payment = Payment::create([
                     'order_id' => $order->id,
                     'vindi_transaction_token' => $transactionToken,
+                    'vindi_transaction_id' => $transactionId,
                     'payment_gateway' => 'vindi',
                     'amount' => $chargeAmount,
                     'original_amount' => (float) $order->total,
@@ -299,26 +303,6 @@ class PaymentOrchestrator
                 'gateway' => 'vindi',
             ];
         }
-
-        // Modo simulação (sem credenciais Vindi)
-        Payment::create([
-            'order_id' => $order->id,
-            'vindi_transaction_token' => 'sim_card_'.uniqid(),
-            'payment_gateway' => 'vindi',
-            'amount' => $chargeAmount,
-            'original_amount' => (float) $order->total,
-            'card_fee_rate' => $cardRate,
-            'card_fee' => $cardFee,
-            'installments' => $installments,
-            'status' => 'pending',
-            'payment_token' => hash('sha256', $order->id.$customer->id.Str::random(32)),
-        ]);
-
-        Log::channel('payments')->info('Cartão Vindi simulado (sem credenciais)', [
-            'order_id' => $order->id,
-            'charge_amount' => $chargeAmount,
-            'installments' => $installments,
-        ]);
 
         return [
             'id' => null,

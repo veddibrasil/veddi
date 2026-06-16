@@ -69,6 +69,7 @@ class VindiService
 
         return [
             'transaction_token' => $result['transaction_token'],
+            'transaction_id' => $result['transaction_id'] ?? null,
             'status' => 'pending',
             'pix_qr_code' => $result['pix_qr_code'] ?? null,
             'pix_copy_paste' => $result['pix_copy_paste'] ?? null,
@@ -144,6 +145,7 @@ class VindiService
 
         return [
             'transaction_token' => $result['transaction_token'],
+            'transaction_id' => $result['transaction_id'] ?? null,
             'status' => 'pending',
             'status_name' => $result['status_name'] ?? 'pending',
         ];
@@ -206,6 +208,7 @@ class VindiService
 
         $result = [
             'transaction_token' => $tokenTransaction,
+            'transaction_id' => $transaction['transaction_id'] ?? null,
             'status_name' => $transaction['status_name'] ?? $fallbackStatus ?? 'pending',
         ];
 

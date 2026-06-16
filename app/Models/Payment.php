@@ -12,6 +12,7 @@ class Payment extends Model
         'order_id',
         'asaas_payment_id',
         'vindi_transaction_token',
+        'vindi_transaction_id',
         'payment_gateway',
         'pix_qr_code',
         'pix_copy_paste',
@@ -39,6 +40,7 @@ class Payment extends Model
         'original_amount' => 'decimal:2',
         'card_fee' => 'decimal:2',
         'card_fee_rate' => 'float',
+        'vindi_transaction_id' => 'integer',
         'installments' => 'integer',
         'anticipation_days' => 'integer',
     ];

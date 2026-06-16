@@ -4,6 +4,7 @@ namespace App\Services\Refund;
 
 use App\Contracts\PaymentRefundGatewayInterface;
 use App\Models\Payment;
+use App\Services\Payment\VindiAuthService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -11,7 +12,7 @@ class VindiRefundGateway implements PaymentRefundGatewayInterface
 {
     private string $baseUrl;
 
-    public function __construct()
+    public function __construct(private VindiAuthService $authService)
     {
         $sandbox = config('app.env') !== 'production';
         $this->baseUrl = $sandbox
@@ -21,13 +22,38 @@ class VindiRefundGateway implements PaymentRefundGatewayInterface
 
     public function requestRefund(Payment $payment, float $amount, ?string $reason = null): array
     {
+        $transactionId = $payment->vindi_transaction_id;
         $token = $payment->vindi_transaction_token;
 
-        $response = Http::asForm()->post("{$this->baseUrl}/transactions/cancel", [
-            'token_account' => config('payments.vindi_token_account'),
-            'reseller_token' => config('payments.vindi_reseller_token'),
-            'transaction_token' => $token,
-            'amount' => number_format($amount, 2, '.', ''),
+        if (! $transactionId) {
+            Log::channel('payments')->error('Vindi estorno falhou: vindi_transaction_id ausente', [
+                'payment_id' => $payment->id,
+                'vindi_transaction_token' => $token,
+            ]);
+
+            return ['external_refund_id' => null, 'status' => 'failed', 'raw' => []];
+        }
+
+        $accessToken = $this->authService->getAccessToken();
+
+        Log::channel('payments')->info('Solicitando estorno Vindi', [
+            'vindi_transaction_id' => $transactionId,
+            'vindi_transaction_token' => $token,
+            'amount' => $amount,
+        ]);
+
+        $response = Http::patch("{$this->baseUrl}/transactions/cancel", [
+            'access_token' => $accessToken,
+            'transaction_id' => $transactionId,
+            'refund_amount' => number_format($amount, 2, '.', ''),
+        ]);
+
+        Log::channel('payments')->info('Resposta do estorno Vindi', [
+            'vindi_transaction_id' => $transactionId,
+            'vindi_transaction_token' => $token,
+            'amount' => $amount,
+            'status' => $response->status(),
+            'body' => $response->body(),
         ]);
 
         $data = $response->json();
@@ -35,6 +61,7 @@ class VindiRefundGateway implements PaymentRefundGatewayInterface
 
         if ($response->failed() && ! $statusName) {
             Log::channel('payments')->error('Vindi estorno falhou', [
+                'vindi_transaction_id' => $transactionId,
                 'vindi_transaction_token' => $token,
                 'amount' => $amount,
                 'status' => $response->status(),
@@ -44,10 +71,10 @@ class VindiRefundGateway implements PaymentRefundGatewayInterface
             return ['external_refund_id' => null, 'status' => 'failed', 'raw' => $data ?? []];
         }
 
-        // Vindi confirma sincronamente para PIX e alguns cartões
         $succeeded = in_array($statusName, ['Cancelada', 'Estornada']);
 
         Log::channel('payments')->info('Vindi estorno solicitado', [
+            'vindi_transaction_id' => $transactionId,
             'vindi_transaction_token' => $token,
             'amount' => $amount,
             'vindi_status' => $statusName,
