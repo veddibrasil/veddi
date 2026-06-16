@@ -8,7 +8,6 @@ use App\Models\Payment;
 use App\Services\Payment\PaymentOrchestrator;
 use App\Services\Payment\VindiService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
 uses(RefreshDatabase::class);
@@ -162,7 +161,7 @@ test('VindiService envia contato móvel e person_addresses para PIX', function (
         'type_address' => 'D',
         'street' => 'Rua A',
         'city' => 'São Paulo',
-        'state' => 'SP',
+        'state' => 'São Paulo',
     ]);
 
     expect($capturedPayload)->toHaveKey('transaction_product');
@@ -226,44 +225,6 @@ test('VindiService envia telefone fixo como tipo H e person_addresses no PIX', f
     expect($capturedPayload['customer']['addresses'][0]['type_address'])->toBe('D');
 });
 
-test('VindiService.getAccessToken usa fluxo documentado da Vindi', function () {
-    config()->set('payments.vindi_consumer_key', 'consumer_key_test');
-    config()->set('payments.vindi_consumer_secret', 'consumer_secret_test');
-    config()->set('payments.vindi_authorization_code', 'code_test');
-    config()->set('payments.vindi_access_token', null);
-    config()->set('payments.vindi_refresh_token', null);
-    Cache::forget('vindi_access_token_'.md5('consumer_key_test'));
-    Cache::forget('vindi_refresh_token_'.md5('consumer_key_test'));
-
-    $capturedPayload = null;
-
-    Http::fake([
-        'https://api.intermediador.sandbox.yapay.com.br/api/authorizations/access_token' => function ($request) use (&$capturedPayload) {
-            $capturedPayload = $request->data();
-
-            return Http::response([
-                'message_response' => ['message' => 'success'],
-                'data_response' => [
-                    'authorization' => [
-                        'access_token' => 'access_token_test',
-                        'access_token_expiration' => '2026-01-03T16:56:36.484-03:00',
-                    ],
-                ],
-            ], 200);
-        },
-    ]);
-
-    $token = app(VindiService::class)->getAccessToken();
-
-    expect($token)->toBe('access_token_test')
-        ->and($capturedPayload)->toMatchArray([
-            'consumer_key' => 'consumer_key_test',
-            'consumer_secret' => 'consumer_secret_test',
-            'code' => 'code_test',
-            'type_response' => 'J',
-        ]);
-});
-
 test('PaymentOrchestrator.processPix cria Payment com vindi_transaction_token', function () {
     config()->set('payments.vindi_token_account', 'tok_test');
     config()->set('payments.vindi_reseller_token', 'res_test');
@@ -300,6 +261,99 @@ test('PaymentOrchestrator.processPix cria Payment com vindi_transaction_token', 
         ->and($payment->status)->toBe('pending')
         ->and((float) $payment->amount)->toBe(50.0)  // order->total sem acréscimo de taxa
         ->and((float) $payment->pix_fee)->toBe(0.0); // taxa absorvida no split percentual
+});
+
+test('PaymentOrchestrator.processPix envia somente afiliado da empresa com taxa da plataforma descontada em plano pago', function () {
+    config()->set('payments.vindi_token_account', 'tok_test');
+    config()->set('payments.vindi_reseller_token', 'res_test');
+    config()->set('payments.vindi_pix_platform_rate', 0.0014);
+
+    $capturedPayload = null;
+
+    Http::fake([
+        '*/transactions/payment' => function ($request) use (&$capturedPayload) {
+            $capturedPayload = $request->data();
+
+            return Http::response([
+                'data_response' => [
+                    'transaction' => [
+                        'token_transaction' => 'vindi_pix_paid_plan_token',
+                        'status_name' => 'Aguardando Pagamento',
+                        'payment' => [
+                            'qrcode_original_path' => '00020126abc',
+                            'qrcode_path' => null,
+                        ],
+                    ],
+                ],
+                'message_response' => ['message' => 'success'],
+            ], 200);
+        },
+    ]);
+
+    $ctx = vindiPixContext();
+    $ctx['company']->update([
+        'email' => 'empresa@test.com',
+        'plan' => 'pro',
+    ]);
+
+    app(PaymentOrchestrator::class)->processPix(
+        $ctx['order'],
+        $ctx['customer'],
+        $ctx['company']->fresh(),
+    );
+
+    assert(is_array($capturedPayload));
+    expect($capturedPayload['affiliates'])->toHaveCount(1);
+
+    expect($capturedPayload['affiliates'][0]['account_email'])->toBe('empresa@test.com')
+        ->and($capturedPayload['affiliates'][0]['commission_amount'])->toBe('49.51');
+});
+
+test('PaymentOrchestrator.processPix adiciona 1 por cento para conta master quando plano free', function () {
+    config()->set('payments.vindi_token_account', 'tok_test');
+    config()->set('payments.vindi_reseller_token', 'res_test');
+    config()->set('payments.vindi_pix_rate', 0.0085);
+    config()->set('payments.vindi_pix_platform_rate', 0.0014);
+
+    $capturedPayload = null;
+
+    Http::fake([
+        '*/transactions/payment' => function ($request) use (&$capturedPayload) {
+            $capturedPayload = $request->data();
+
+            return Http::response([
+                'data_response' => [
+                    'transaction' => [
+                        'token_transaction' => 'vindi_pix_free_plan_token',
+                        'status_name' => 'Aguardando Pagamento',
+                        'payment' => [
+                            'qrcode_original_path' => '00020126abc',
+                            'qrcode_path' => null,
+                        ],
+                    ],
+                ],
+                'message_response' => ['message' => 'success'],
+            ], 200);
+        },
+    ]);
+
+    $ctx = vindiPixContext();
+    $ctx['company']->update([
+        'email' => 'empresa-free@test.com',
+        'plan' => 'free',
+    ]);
+
+    app(PaymentOrchestrator::class)->processPix(
+        $ctx['order'],
+        $ctx['customer'],
+        $ctx['company']->fresh(),
+    );
+
+    assert(is_array($capturedPayload));
+    expect($capturedPayload['affiliates'])->toHaveCount(1);
+
+    expect($capturedPayload['affiliates'][0]['account_email'])->toBe('empresa-free@test.com')
+        ->and($capturedPayload['affiliates'][0]['commission_amount'])->toBe('49.01');
 });
 
 test('PIX simulado criado quando sem credenciais Vindi', function () {

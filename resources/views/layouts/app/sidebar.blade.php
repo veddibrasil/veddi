@@ -28,9 +28,6 @@
                         <flux:sidebar.item icon="building-storefront" :href="route('admin.branches.index')" :current="request()->routeIs('admin.branches.*')" wire:navigate>
                             Filiais
                         </flux:sidebar.item>
-                        <flux:sidebar.item icon="building-storefront" :href="route('superadmin.card.index')" :current="request()->routeIs('superadmin.card.*')" wire:navigate>
-                            Taxa de cartões
-                        </flux:sidebar.item>
 
                     </flux:sidebar.group>
                 @else

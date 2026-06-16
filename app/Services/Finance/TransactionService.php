@@ -24,20 +24,20 @@ class TransactionService implements TransactionServiceInterface
         $paymentDate = now()->toDateString();
         $releaseDate = $this->resolveReleaseDate($type, $paymentDate, $payment->anticipation_days);
 
-        $feeRate = $company->plan?->feePercentage() ?? 0.0;
-
-        // Cartão: value = amount cobrado do cliente (com taxa de cartão embutida);
-        //         net_value = original_amount deduzido da card_fee se empresa absorve + taxa plataforma.
-        // PIX: value = amount; net_value = amount − pix_fee (se absorvida) − taxa plataforma.
-        // Estes net_values são a fonte de verdade para BalanceService::calculateBalance().
+        // Card: 100% goes to affiliate via Yapay split — net_value = full order amount, no fee.
+        // PIX: platform retains vindi_pix_platform_rate + plan fee.
         if ($type === 'cartao' && $payment->original_amount !== null) {
             $value = (float) $payment->amount;
             $cardFeeAbsorbed = $company->card_fee_absorbed_by_company ?? false;
-            $effectiveAmount = ($cardFeeAbsorbed && $payment->card_fee)
-                ? (float) $payment->original_amount - (float) $payment->card_fee
+            $netValue = ($cardFeeAbsorbed && $payment->card_fee)
+                ? round((float) $payment->original_amount - (float) $payment->card_fee, 2)
                 : (float) $payment->original_amount;
-            $netValue = round($effectiveAmount * (1 - $feeRate), 2);
         } else {
+            $planFeeRate = $company->plan?->feePercentage() ?? 0.0;
+            $platformFeeRate = $payment->payment_gateway === 'vindi'
+                ? (float) config('payments.vindi_pix_platform_rate', 0.0014)
+                : 0.0;
+            $feeRate = $planFeeRate + $platformFeeRate;
             $value = (float) $payment->amount;
             $pixFee = ($type === 'pix' && ($company->pix_fee_absorbed_by_company ?? false))
                 ? (float) $payment->pix_fee

@@ -162,11 +162,6 @@ class Company extends Model
         return $this->hasOne(CompanyBalance::class);
     }
 
-    public function paymentSettings(): HasOne
-    {
-        return $this->hasOne(PaymentSettings::class);
-    }
-
     public function whatsappSetting(): HasOne
     {
         return $this->hasOne(WhatsAppSetting::class);
@@ -224,6 +219,37 @@ class Company extends Model
             ->whereYear('created_at', now()->year)
             ->whereNotIn('status', ['cancelled'])
             ->count() < $max;
+    }
+
+    public function feePercentageForOrder(?Order $order = null): float
+    {
+        $rate = $this->plan instanceof Plan ? $this->plan->feePercentage() : 0.0;
+
+        if (! $this->isFree()) {
+            return $rate;
+        }
+
+        $max = $this->plan?->maxOrdersPerMonth();
+
+        if ($max === null) {
+            return $rate;
+        }
+
+        $reference = $order?->created_at ?? now();
+
+        // Count only confirmed (paid/delivered) orders to avoid abandoned pending checkouts
+        // inflating the monthly total and triggering the over-limit rate prematurely.
+        $monthlyOrderCount = $this->orders()
+            ->whereMonth('created_at', $reference->month)
+            ->whereYear('created_at', $reference->year)
+            ->whereIn('status', ['paid', 'scheduled', 'preparing', 'ready', 'delivered'])
+            ->count();
+
+        if ($monthlyOrderCount < $max) {
+            return $rate;
+        }
+
+        return max($rate, (float) config('plans.free.fee_percentage_over_limit', 0.03));
     }
 
     /**

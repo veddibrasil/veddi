@@ -38,11 +38,20 @@ class WalletService implements WalletServiceInterface
             return;
         }
 
-        // Para cartão: usar o valor original do pedido (antes das taxas de cartão).
-        // As taxas de cartão já foram cobradas do cliente e vão direto ao Asaas.
         $baseAmount = (float) ($payment->original_amount ?? $payment->amount);
-        $feeRate = $company->plan?->feePercentage() ?? 0.0;
         $isCardPayment = $payment->original_amount !== null;
+
+        // Card: 100% goes to affiliate via Yapay split — no platform or plan fee deducted internally.
+        // PIX: platform retains vindi_pix_platform_rate + plan fee from wallet.
+        if ($isCardPayment) {
+            $feeRate = 0.0;
+        } else {
+            $planFeeRate = $company->plan?->feePercentage() ?? 0.0;
+            $platformFeeRate = $payment->payment_gateway === 'vindi'
+                ? (float) config('payments.vindi_pix_platform_rate', 0.0014)
+                : 0.0;
+            $feeRate = $planFeeRate + $platformFeeRate;
+        }
         $pixFeeAbsorbed = $company->pix_fee_absorbed_by_company ?? false;
         $cardFeeAbsorbed = $company->card_fee_absorbed_by_company ?? false;
 
@@ -169,8 +178,17 @@ class WalletService implements WalletServiceInterface
 
         // Reproduce the same amounts used in creditForOrder
         $baseAmount = (float) ($payment->original_amount ?? $payment->amount);
-        $feeRate = $company->plan?->feePercentage() ?? 0.0;
         $isCardPayment = $payment->original_amount !== null;
+
+        if ($isCardPayment) {
+            $feeRate = 0.0;
+        } else {
+            $planFeeRate = $company->plan?->feePercentage() ?? 0.0;
+            $platformFeeRate = $payment->payment_gateway === 'vindi'
+                ? (float) config('payments.vindi_pix_platform_rate', 0.0014)
+                : 0.0;
+            $feeRate = $planFeeRate + $platformFeeRate;
+        }
         $pixFeeAbsorbed = $company->pix_fee_absorbed_by_company ?? false;
         $cardFeeAbsorbed = $company->card_fee_absorbed_by_company ?? false;
 

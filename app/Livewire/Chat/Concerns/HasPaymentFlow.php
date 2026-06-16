@@ -3,22 +3,16 @@
 namespace App\Livewire\Chat\Concerns;
 
 use App\Contracts\OrderServiceInterface;
-use App\Contracts\TransactionServiceInterface;
-use App\Contracts\WalletServiceInterface;
-use App\DTOs\CreditCardDTO;
-use App\DTOs\CreditCardHolderDTO;
 use App\Events\OrderStatusUpdated;
 use App\Models\Coupon;
 use App\Models\Customer;
 use App\Models\Order;
-use App\Models\Payment;
 use App\Services\Order\OrderCancellationPolicy;
 use App\Services\Order\StockService;
 use App\Services\Payment\PaymentCalculatorService;
+use App\Services\Payment\PaymentOrchestrator;
 use App\Services\Payment\PaymentService;
-use App\Services\Payment\VindiService;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use RuntimeException;
@@ -77,7 +71,6 @@ trait HasPaymentFlow
             return;
         }
 
-        $settings = $company?->paymentSettings;
         $total = (float) $this->getOrderTotalProperty();
 
         if ($total <= 0) {
@@ -86,12 +79,13 @@ trait HasPaymentFlow
             return;
         }
 
-        $anticipationDays = $settings?->default_anticipation_days ?? 15;
+        $cardRate = (float) config('payments.credit_card.default_rate', 0.028);
+        $platformFeeRate = $company->feePercentageForOrder();
 
         $this->cardFeeBreakdown = app(PaymentCalculatorService::class)->calculate(
             $total,
-            $anticipationDays,
-            $settings
+            $cardRate,
+            $platformFeeRate,
         );
     }
 
@@ -312,93 +306,25 @@ trait HasPaymentFlow
             return;
         }
 
-        $settings = $company?->paymentSettings;
-        $anticipationDays = $settings?->default_anticipation_days ?? 15;
-        $breakdown = app(PaymentCalculatorService::class)->calculate(
-            (float) $order->total,
-            $anticipationDays,
-            $settings
-        );
-
-        $cardFeeAbsorbed = $company?->card_fee_absorbed_by_company ?? false;
-        $chargeAmount = $cardFeeAbsorbed ? (float) $order->total : $breakdown['final_amount'];
-        $cardFee = $cardFeeAbsorbed
-            ? round((float) $order->total * $breakdown['total_rate'], 2)
-            : $breakdown['fee_amount'];
-
         [$expMonth, $expYear] = explode('/', $this->cardExpiry);
         $expiryYear = strlen($expYear) === 2 ? '20'.$expYear : $expYear;
 
+        $cardData = [
+            'holderName' => $this->cardHolderName,
+            'number' => $this->cardNumber,
+            'expiryMonth' => $expMonth,
+            'expiryYear' => $expiryYear,
+            'ccv' => $this->cardCvv,
+            'cpfCnpj' => $customer->tax_id ?? '',
+            'postalCode' => $this->cardPostalCode ?: ($customer->cep ?? ''),
+            'addressNumber' => $this->cardAddressNumber ?: 'S/N',
+            'token' => $this->cardToken ?: null,
+        ];
+
         try {
-            $vindi = app(VindiService::class);
-
-            $charge = $vindi->createCreditCardCharge(
-                amount: $chargeAmount,
-                externalRef: (string) $order->id,
-                card: new CreditCardDTO(
-                    holderName: $this->cardHolderName,
-                    number: $this->cardNumber,
-                    expiryMonth: $expMonth,
-                    expiryYear: $expiryYear,
-                    ccv: $this->cardCvv,
-                    token: $this->cardToken ?: null,
-                ),
-                holder: new CreditCardHolderDTO(
-                    name: $customer->name,
-                    email: $customer->email ?? '',
-                    cpfCnpj: $customer->tax_id ?? '',
-                    postalCode: $this->cardPostalCode ?: ($customer->cep ?? ''),
-                    addressNumber: $this->cardAddressNumber ?: 'S/N',
-                    phone: $customer->phone ?? null,
-                    street: $customer->address,
-                    complement: $customer->complement,
-                    neighborhood: $customer->neighborhood,
-                    city: $customer->city,
-                    state: $customer->state,
-                ),
-                installments: 1,
-                affiliateEmail: $company?->email ?: null,
-                affiliatePercentual: round(100.0 - (($company?->plan?->feePercentage() ?? 0.0) * 100), 4),
+            $result = app(PaymentOrchestrator::class)->processCreditCard(
+                $order, $customer, $company, $cardData, 1
             );
-
-            $transactionToken = $charge['transaction_token'];
-            $approved = ($charge['status_name'] ?? '') === 'Aprovada';
-
-            $paymentToken = hash('sha256', $order->id.$customer->id.uniqid());
-
-            DB::transaction(function () use ($order, $transactionToken, $chargeAmount, $cardFee, $breakdown, $anticipationDays, $paymentToken, $approved) {
-                $newPayment = Payment::create([
-                    'order_id' => $order->id,
-                    'vindi_transaction_token' => $transactionToken,
-                    'payment_gateway' => 'vindi',
-                    'amount' => $chargeAmount,
-                    'original_amount' => $breakdown['original_amount'],
-                    'card_fee' => $cardFee,
-                    'card_fee_rate' => $breakdown['total_rate'],
-                    'installments' => 1,
-                    'anticipation_days' => $anticipationDays,
-                    'status' => $approved ? 'paid' : 'pending',
-                    'paid_at' => $approved ? now() : null,
-                    'payment_token' => $paymentToken,
-                ]);
-
-                if ($approved) {
-                    $order->update(['status' => 'paid']);
-                    app(WalletServiceInterface::class)->creditForOrder($order->fresh(), $newPayment);
-                    app(TransactionServiceInterface::class)->createForPayment($order->fresh(), $newPayment);
-                }
-            });
-
-            Log::channel('payments')->info('Cartão Vindi submetido no chat', [
-                'order_id' => $order->id,
-                'customer_id' => $customer->id,
-                'transaction_token' => $transactionToken,
-                'approved' => $approved,
-                'original_amount' => $breakdown['original_amount'],
-                'final_amount' => $chargeAmount,
-                'card_fee' => $cardFee,
-                'card_fee_absorbed' => $cardFeeAbsorbed,
-            ]);
 
             $this->cardNumber = '';
             $this->cardExpiry = '';
@@ -409,7 +335,7 @@ trait HasPaymentFlow
             $this->cardToken = null;
             $this->cardFeeBreakdown = [];
 
-            if ($approved) {
+            if ($result['approved']) {
                 OrderStatusUpdated::dispatch($order->fresh());
                 $this->addMessage('bot', 'Pagamento aprovado! Seu pedido está confirmado.');
                 $this->transitionTo('ORDER_CONFIRMED');

@@ -18,6 +18,9 @@ return [
         // Per-order fee deducted from the order total (1% = 0.01).
         'fee_percentage' => 0.01,
 
+        // Per-order fee after exceeding the monthly order limit.
+        'fee_percentage_over_limit' => 0.03,
+
         // One-time setup fee charged on activation (0 = sem cobrança para o plano free).
         'setup_fee' => 0.00,
 

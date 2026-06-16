@@ -4,8 +4,9 @@ namespace App\Services\Payment;
 
 use App\DTOs\CreditCardDTO;
 use App\DTOs\CreditCardHolderDTO;
+use App\Enums\CardBrand;
+use App\Models\Company;
 use App\Models\Customer;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -21,100 +22,6 @@ class VindiService
             : 'https://api.intermediador.yapay.com.br/api/v3';
     }
 
-    /**
-     * Obtém access_token somente quando o fluxo opcional de autorização foi configurado.
-     * Para criar/consultar transações Vindi Pagamentos, a API usa apenas token_account.
-     */
-    public function getAccessToken(): string
-    {
-        $cacheKey = 'vindi_access_token_'.md5(config('payments.vindi_consumer_key') ?? '');
-
-        if ($token = Cache::get($cacheKey)) {
-            return $token;
-        }
-
-        if (config('payments.vindi_access_token') && config('payments.vindi_refresh_token')) {
-            return $this->refreshAccessToken(config('payments.vindi_access_token'));
-        }
-
-        if (! config('payments.vindi_authorization_code')) {
-            throw new \RuntimeException(
-                'Vindi access_token não configurado. Criação de transações usa apenas VINDI_TOKEN_ACCOUNT; endpoints protegidos exigem authorization code ou refresh token.'
-            );
-        }
-
-        $response = Http::post($this->authorizationUrl('/api/authorizations/access_token'), [
-            'consumer_key' => config('payments.vindi_consumer_key'),
-            'consumer_secret' => config('payments.vindi_consumer_secret'),
-            'code' => config('payments.vindi_authorization_code'),
-            'type_response' => 'J',
-        ]);
-
-        if ($response->failed()) {
-            Log::channel('payments')->error('Vindi access_token falhou', [
-                'status' => $response->status(),
-                'body' => $response->body(),
-            ]);
-
-            throw new \RuntimeException("Vindi OAuth error {$response->status()}: {$response->body()}");
-        }
-
-        $token = $response->json('data_response.authorization.access_token');
-
-        if (empty($token)) {
-            Log::channel('payments')->error('Vindi access_token resposta sem token', ['body' => $response->json()]);
-            throw new \RuntimeException('Vindi: resposta sem access_token');
-        }
-
-        Cache::put($cacheKey, $token, now()->addHours(23));
-
-        if ($refreshToken = $response->json('data_response.authorization.refresh_token')) {
-            Cache::put($this->refreshTokenCacheKey(), $refreshToken, now()->addMonths(11));
-        }
-
-        Log::channel('payments')->info('Vindi access_token obtido', [
-            'expires_at' => $response->json('data_response.authorization.access_token_expiration'),
-        ]);
-
-        return $token;
-    }
-
-    public function refreshAccessToken(?string $accessToken = null): string
-    {
-        $cacheKey = 'vindi_access_token_'.md5(config('payments.vindi_consumer_key') ?? '');
-        $refreshToken = Cache::get($this->refreshTokenCacheKey()) ?? config('payments.vindi_refresh_token');
-
-        $response = Http::post($this->authorizationUrl('/api/v1/authorizations/refresh'), [
-            'access_token' => $accessToken ?? Cache::get($cacheKey) ?? config('payments.vindi_access_token'),
-            'refresh_token' => $refreshToken,
-            'type_response' => 'J',
-        ]);
-
-        if ($response->failed()) {
-            Log::channel('payments')->error('Vindi refresh_token falhou', [
-                'status' => $response->status(),
-                'body' => $response->body(),
-            ]);
-
-            throw new \RuntimeException("Vindi OAuth refresh error {$response->status()}: {$response->body()}");
-        }
-
-        $token = $response->json('data_response.authorization.access_token');
-
-        if (empty($token)) {
-            Log::channel('payments')->error('Vindi refresh_token resposta sem token', ['body' => $response->json()]);
-            throw new \RuntimeException('Vindi: resposta sem access_token no refresh');
-        }
-
-        Cache::put($cacheKey, $token, now()->addHours(23));
-
-        if ($newRefreshToken = $response->json('data_response.authorization.refresh_token')) {
-            Cache::put($this->refreshTokenCacheKey(), $newRefreshToken, now()->addMonths(11));
-        }
-
-        return $token;
-    }
-
     public function createPixCharge(
         float $amount,
         string $externalRef,
@@ -127,9 +34,14 @@ class VindiService
         $payload['customer'] = $this->buildCustomerPayload($customer, $address);
         $payload['payment'] = ['payment_method_id' => '27'];
 
+        $affiliates = [];
         if ($affiliateEmail) {
             $commissionAmount = round($amount * $affiliatePercentual / 100, 2);
-            $payload['affiliates'] = $this->buildAffiliate($affiliateEmail, $commissionAmount);
+            $affiliates[] = $this->buildAffiliate($affiliateEmail, $commissionAmount);
+        }
+
+        if ($affiliates !== []) {
+            $payload['affiliates'] = $affiliates;
             $payload['payment']['split'] = '1';
         }
 
@@ -166,12 +78,13 @@ class VindiService
         int $installments = 1,
         ?string $affiliateEmail = null,
         float $affiliatePercentual = 100.0,
+        ?Company $company = null,
     ): array {
         $payload = $this->buildBasePayload($externalRef);
         $payload['customer'] = $this->buildHolderPayload($holder);
 
         $basePayment = [
-            'payment_method_id' => $this->cardBrandToMethodId($card->number),
+            'payment_method_id' => CardBrand::fromNumber($card->number)->methodId(),
             'card_number' => preg_replace('/\D/', '', $card->number),
             'card_name' => $card->holderName,
             'card_expdate_month' => $card->expiryMonth,
@@ -179,9 +92,14 @@ class VindiService
             'card_cvv' => $card->ccv,
         ];
 
+        $affiliates = [];
         if ($affiliateEmail) {
             $commissionAmount = round($amount * $affiliatePercentual / 100, 2);
-            $payload['affiliates'] = $this->buildAffiliate($affiliateEmail, $commissionAmount);
+            $affiliates[] = $this->buildAffiliate($affiliateEmail, $commissionAmount);
+        }
+
+        if ($affiliates !== []) {
+            $payload['affiliates'] = $affiliates;
             $payload['payment'] = array_merge($basePayment, ['split' => '1']);
             $payload['transaction']['available_payment_methods'] = '3,4,5,6,16,20,25,27';
             $payload['transaction']['max_split_transaction'] = '1';
@@ -221,233 +139,6 @@ class VindiService
             'status' => 'pending',
             'status_name' => $result['status_name'] ?? 'pending',
         ];
-    }
-
-    /**
-     * Solicita saque da subconta afiliada da empresa para a conta bancária/PIX informada.
-     *
-     * Yapay autentica com o token da empresa (affiliate_token) + reseller_token da plataforma.
-     * O saldo debitado é o da subconta da empresa, não da plataforma.
-     *
-     * $data esperado:
-     *   affiliate_token   string  vindi_affiliate_token da empresa
-     *   amount            float   valor bruto (sem taxa PIX já descontada)
-     *   external_id       string  'withdrawal-{id}'
-     *   owner_name        string
-     *   owner_cpf_cnpj    string
-     *   -- PIX --
-     *   pix_key           string
-     *   pix_key_type      string  cpf|cnpj|email|phone|random
-     *   -- TED --
-     *   bank_code         string
-     *   bank_agency       string
-     *   bank_account      string
-     *   account_digit     string
-     *   account_type      string  checking|savings
-     */
-    public function createTransfer(array $data): array
-    {
-        $payload = [
-            'token_account' => $data['affiliate_token'],
-            'reseller_token' => config('payments.vindi_reseller_token'),
-            'amount' => number_format($data['amount'], 2, '.', ''),
-            'order_number' => $data['external_id'],
-            'owner_name' => $data['owner_name'],
-            'owner_document' => preg_replace('/\D/', '', $data['owner_cpf_cnpj']),
-        ];
-
-        if (isset($data['pix_key'])) {
-            $payload['pix_key'] = $data['pix_key'];
-            $payload['pix_key_type'] = $data['pix_key_type'];
-            $defaultPixEndpoint = "{$this->baseUrl}/affiliates/withdrawals/pix";
-            $endpoint = config('payments.vindi_withdrawal_pix_endpoint', $defaultPixEndpoint);
-        } else {
-            $payload['bank_code'] = $data['bank_code'];
-            $payload['bank_agency'] = $data['bank_agency'];
-            $payload['bank_account'] = $data['bank_account'];
-            $payload['bank_account_digit'] = $data['account_digit'];
-            $payload['bank_account_type'] = $data['account_type'] ?? 'checking';
-            $defaultTedEndpoint = "{$this->baseUrl}/affiliates/withdrawals/ted";
-            $endpoint = config('payments.vindi_withdrawal_ted_endpoint', $defaultTedEndpoint);
-        }
-
-        $response = Http::asForm()->post($endpoint, $payload);
-
-        if ($response->failed()) {
-            $isHtml = str_contains($response->header('Content-Type') ?? '', 'text/html')
-                || str_starts_with(ltrim($response->body()), '<');
-
-            $errorMsg = $isHtml
-                ? "Vindi withdrawal error {$response->status()}: endpoint '{$endpoint}' retornou HTML — URL do saque não confirmada com Yapay. Consulte o suporte Yapay para o endpoint correto de saque de afiliado."
-                : "Vindi withdrawal error {$response->status()}: {$response->body()}";
-
-            Log::channel('payments')->error('Vindi saque falhou', [
-                'external_id' => $data['external_id'],
-                'affiliate_token' => substr($data['affiliate_token'], 0, 8).'...',
-                'amount' => $data['amount'],
-                'endpoint' => $endpoint,
-                'status' => $response->status(),
-                'is_html_response' => $isHtml,
-                'body' => $isHtml ? '[HTML — endpoint provavelmente errado]' : $response->body(),
-            ]);
-
-            throw new \RuntimeException($errorMsg);
-        }
-
-        $result = $response->json();
-
-        Log::channel('payments')->info('Vindi saque solicitado', [
-            'external_id' => $data['external_id'],
-            'affiliate_token' => $data['affiliate_token'],
-            'amount' => $data['amount'],
-            'id' => $result['id'] ?? $result['withdrawal_id'] ?? null,
-        ]);
-
-        return $result;
-    }
-
-    /**
-     * Consulta o saldo disponível para antecipação na subconta afiliada da empresa.
-     * Retorna o payload completo da Yapay ou null em falha (não bloqueia fluxo).
-     */
-    public function getAnticipationBalance(string $affiliateToken): ?array
-    {
-        try {
-            $token = $this->getAccessToken();
-        } catch (\RuntimeException) {
-            return null;
-        }
-
-        $response = Http::withToken($token)
-            ->get("{$this->baseUrl}/affiliates/anticipations/calculate", [
-                'token_account' => $affiliateToken,
-            ]);
-
-        if ($response->failed()) {
-            Log::channel('payments')->warning('Vindi antecipação balance indisponível', [
-                'affiliate_token' => substr($affiliateToken, 0, 8).'...',
-                'status' => $response->status(),
-                'body' => $response->body(),
-            ]);
-
-            return null;
-        }
-
-        Log::channel('payments')->debug('Vindi antecipação balance', [
-            'affiliate_token' => substr($affiliateToken, 0, 8).'...',
-            'response' => $response->json(),
-        ]);
-
-        return $response->json();
-    }
-
-    /**
-     * Solicita antecipação de recebíveis na subconta afiliada da empresa na Yapay.
-     * Lança RuntimeException em falha — o chamador deve abortar a operação local.
-     */
-    public function requestAnticipation(string $affiliateToken, float $amount): array
-    {
-        $token = $this->getAccessToken();
-
-        $response = Http::withToken($token)
-            ->asForm()
-            ->post("{$this->baseUrl}/affiliates/anticipations", [
-                'token_account' => $affiliateToken,
-                'amount' => number_format($amount, 2, '.', ''),
-            ]);
-
-        if ($response->failed()) {
-            Log::channel('payments')->error('Vindi antecipação falhou', [
-                'affiliate_token' => substr($affiliateToken, 0, 8).'...',
-                'amount' => $amount,
-                'status' => $response->status(),
-                'body' => $response->body(),
-            ]);
-
-            throw new \RuntimeException("Vindi anticipation error {$response->status()}: {$response->body()}");
-        }
-
-        $result = $response->json();
-
-        Log::channel('payments')->info('Vindi antecipação solicitada', [
-            'affiliate_token' => substr($affiliateToken, 0, 8).'...',
-            'amount' => $amount,
-            'response' => $result,
-        ]);
-
-        return $result;
-    }
-
-    public function getBalance(): float
-    {
-        $response = Http::get("{$this->baseUrl}/accounts/balance", [
-            'token_account' => config('payments.vindi_token_account'),
-            'reseller_token' => config('payments.vindi_reseller_token'),
-        ]);
-
-        if ($response->failed()) {
-            Log::channel('payments')->warning('Vindi saldo indisponível', [
-                'status' => $response->status(),
-            ]);
-
-            return 0.0;
-        }
-
-        return (float) ($response->json('balance') ?? 0.0);
-    }
-
-    /**
-     * Consulta o saldo real da subconta afiliada de uma empresa na Yapay.
-     * Permite reconciliar o saldo interno com o que a Yapay efetivamente retém.
-     *
-     * Retorna null se o endpoint falhar (não bloquear fluxo do sistema).
-     */
-    public function getAffiliateBalance(string $affiliateToken): ?float
-    {
-        $response = Http::get("{$this->baseUrl}/accounts/balance", [
-            'token_account' => $affiliateToken,
-            'reseller_token' => config('payments.vindi_reseller_token'),
-        ]);
-
-        if ($response->failed()) {
-            Log::channel('payments')->warning('Vindi saldo afiliado indisponível', [
-                'affiliate_token' => substr($affiliateToken, 0, 8).'...',
-                'status' => $response->status(),
-            ]);
-
-            return null;
-        }
-
-        return (float) ($response->json('balance') ?? 0.0);
-    }
-
-    /**
-     * Lista transações da conta principal por período.
-     * Usado pelo VindiReconciliationJob para comparar com CompanyTransactions locais.
-     *
-     * Retorna array de transações ou [] em caso de falha.
-     */
-    public function listTransactions(string $startDate, string $endDate, int $page = 1): array
-    {
-        $response = Http::get("{$this->baseUrl}/sales", [
-            'token_account' => config('payments.vindi_token_account'),
-            'reseller_token' => config('payments.vindi_reseller_token'),
-            'date_from' => $startDate,
-            'date_to' => $endDate,
-            'page' => $page,
-        ]);
-
-        if ($response->failed()) {
-            Log::channel('payments')->warning('Vindi listagem de transações falhou', [
-                'status' => $response->status(),
-                'start_date' => $startDate,
-                'end_date' => $endDate,
-            ]);
-
-            return [];
-        }
-
-        return $response->json('transactions') ?? $response->json() ?? [];
     }
 
     public function getTransactionStatus(string $transactionToken): string
@@ -636,81 +327,12 @@ class VindiService
         return $data;
     }
 
-    private function tokenizeCard(CreditCardDTO $card): string
-    {
-        $tokenUrl = str_replace('/api/v3', '/api/v1', $this->baseUrl);
-        $response = Http::asForm()->post("{$tokenUrl}/transactions/token_card", [
-            'token_account' => config('payments.vindi_token_account'),
-            'card_number' => preg_replace('/\D/', '', $card->number),
-            'card_name' => $card->holderName,
-            'card_expdate_month' => $card->expiryMonth,
-            'card_expdate_year' => $card->expiryYear,
-            'card_cvv' => $card->ccv,
-        ]);
-
-        if ($response->failed()) {
-            Log::channel('payments')->error('Vindi tokenização de cartão falhou', [
-                'status' => $response->status(),
-                'body' => $response->body(),
-            ]);
-            throw new \RuntimeException("Vindi card tokenization error {$response->status()}: {$response->body()}");
-        }
-
-        $token = $response->json('data_response.token')
-            ?? $response->json('data_response.card.token')
-            ?? $response->json('token')
-            ?? null;
-
-        if (empty($token)) {
-            Log::channel('payments')->error('Vindi tokenização sem token', ['body' => $response->json()]);
-            throw new \RuntimeException('Vindi: tokenização sem token');
-        }
-
-        return $token;
-    }
-
     private function buildAffiliate(string $affiliateEmail, float $commissionAmount): array
     {
         return [
-            [
-                'account_email' => $affiliateEmail,
-                'commission_amount' => number_format($commissionAmount, 2, '.', ''),
-            ],
+            'account_email' => $affiliateEmail,
+            'commission_amount' => number_format($commissionAmount, 2, '.', ''),
         ];
-    }
-
-    private function cardBrandToMethodId(string $number): string
-    {
-        $n = preg_replace('/\D/', '', $number);
-
-        if (preg_match('/^4/', $n)) {
-            return '3';
-        }
-        if (preg_match('/^5[1-5]|^2[2-7]/', $n)) {
-            return '4';
-        }
-        if (preg_match('/^3[47]/', $n)) {
-            return '5';
-        }
-        if (preg_match('/^(4011|4312|4389|4514|4576|5041|5066|5067|509|6277|6362|6504|6505|6516|6550)/', $n)) {
-            return '16';
-        }
-
-        return '4';
-    }
-
-    private function authorizationUrl(string $path): string
-    {
-        $host = config('app.env') !== 'production'
-            ? 'https://api.intermediador.sandbox.yapay.com.br'
-            : 'https://api.intermediador.yapay.com.br';
-
-        return $host.$path;
-    }
-
-    private function refreshTokenCacheKey(): string
-    {
-        return 'vindi_refresh_token_'.md5(config('payments.vindi_consumer_key') ?? '');
     }
 
     private function stateFullName(string $abbr): string

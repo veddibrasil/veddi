@@ -5,8 +5,6 @@ namespace App\Services\Finance;
 use App\Models\Company;
 use App\Models\CompanyTransaction;
 use App\Models\CompanyWalletEntry;
-use App\Models\PaymentSettings;
-use App\Services\Payment\VindiService;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -14,7 +12,7 @@ use Illuminate\Support\Facades\Log;
 
 class AnticipationService
 {
-    public function __construct(private VindiService $vindi) {}
+    public function __construct() {}
 
     /**
      * Retorna todas as transações elegíveis para antecipação com os dados de taxa calculados.
@@ -34,24 +32,6 @@ class AnticipationService
      * }>
      */
     /**
-     * Consulta o saldo disponível para antecipação diretamente na Yapay.
-     * Retorna null se a empresa não tem affiliate_token ou o endpoint falhar.
-     *
-     * Campos esperados na resposta (a confirmar com a Yapay):
-     *   amount_to_anticipate, fee, net_amount, fee_percentage
-     */
-    public function getGatewayAnticipationInfo(Company $company): ?array
-    {
-        $token = $company->vindi_affiliate_token;
-
-        if (empty($token)) {
-            return null;
-        }
-
-        return $this->vindi->getAnticipationBalance($token);
-    }
-
-    /**
      * Retorna as faixas de taxa de antecipação configuradas para a empresa.
      * Útil para exibir a tabela de taxas no modal antes de selecionar transações.
      *
@@ -59,20 +39,17 @@ class AnticipationService
      */
     public function getRates(Company $company): array
     {
-        $settings = $company->loadMissing('paymentSettings')->paymentSettings ?? null;
-
         return [
-            'd2' => round($this->anticipationRate(2, $settings) * 100, 2),
-            'd7' => round($this->anticipationRate(7, $settings) * 100, 2),
-            'd15' => round($this->anticipationRate(15, $settings) * 100, 2),
-            'd30' => round($this->anticipationRate(30, $settings) * 100, 2),
+            'd2' => round($this->anticipationRate(2) * 100, 2),
+            'd7' => round($this->anticipationRate(7) * 100, 2),
+            'd15' => round($this->anticipationRate(15) * 100, 2),
+            'd30' => round($this->anticipationRate(30) * 100, 2),
         ];
     }
 
     public function getEligibleTransactions(Company $company): Collection
     {
         $today = now()->toDateString();
-        $settings = $company->loadMissing('paymentSettings')->paymentSettings ?? null;
 
         return CompanyTransaction::withoutGlobalScopes()
             ->where('company_id', $company->id)
@@ -81,10 +58,10 @@ class AnticipationService
             ->where('release_date', '>', $today)
             ->orderBy('release_date')
             ->get()
-            ->map(function ($tx) use ($settings) {
+            ->map(function ($tx) {
                 $netValue = (float) $tx->net_value;
                 $daysRemaining = (int) Carbon::today()->diffInDays(Carbon::parse($tx->release_date), false);
-                $rate = $this->anticipationRate($daysRemaining, $settings);
+                $rate = $this->anticipationRate($daysRemaining);
                 $fee = round($netValue * $rate, 2);
 
                 return [
@@ -142,34 +119,8 @@ class AnticipationService
         }
 
         $today = now()->toDateString();
-        $settings = $company->loadMissing('paymentSettings')->paymentSettings ?? null;
 
-        // Solicita antecipação na Yapay antes de atualizar registros locais para garantir que a
-        // operação financeira externa é aceita antes de qualquer mutação no banco.
-        // Sem affiliate_token (empresas sem integração Yapay ou ambiente de teste), pula chamada.
-        if (! empty($company->vindi_affiliate_token)) {
-            $grossAmount = CompanyTransaction::withoutGlobalScopes()
-                ->where('company_id', $company->id)
-                ->whereIn('id', $transactionIds)
-                ->where('status', 'confirmed')
-                ->where('withdrawn', false)
-                ->where('release_date', '>', $today)
-                ->sum('net_value');
-
-            if ($grossAmount > 0) {
-                try {
-                    $this->vindi->requestAnticipation($company->vindi_affiliate_token, (float) $grossAmount);
-                } catch (\RuntimeException $e) {
-                    $msg = $e->getMessage();
-                    if (str_contains($msg, 'access_token') || str_contains($msg, 'authorization_code') || str_contains($msg, 'OAuth')) {
-                        throw new \RuntimeException('Antecipação indisponível: credenciais OAuth da Vindi não configuradas. Configure VINDI_AUTHORIZATION_CODE ou VINDI_ACCESS_TOKEN.');
-                    }
-                    throw $e;
-                }
-            }
-        }
-
-        return DB::transaction(function () use ($company, $transactionIds, $today, $settings) {
+        return DB::transaction(function () use ($company, $transactionIds, $today) {
             $transactions = CompanyTransaction::withoutGlobalScopes()
                 ->where('company_id', $company->id)
                 ->whereIn('id', $transactionIds)
@@ -187,7 +138,7 @@ class AnticipationService
             foreach ($transactions as $tx) {
                 $netValue = (float) $tx->net_value;
                 $daysRemaining = (int) Carbon::today()->diffInDays(Carbon::parse($tx->release_date), false);
-                $rate = $this->anticipationRate($daysRemaining, $settings);
+                $rate = $this->anticipationRate($daysRemaining);
                 $fee = round($netValue * $rate, 2);
 
                 $tx->update([
@@ -224,16 +175,15 @@ class AnticipationService
 
     /**
      * Taxa de antecipação com base nos dias restantes até a release_date.
-     * Usa faixas configuráveis por empresa (PaymentSettings) com fallback em config().
      * WithdrawalService::requestAnticipation() usa fórmula distinta (2% flat prorated) — manter em sincronia.
      */
-    private function anticipationRate(int $days, ?PaymentSettings $settings): float
+    private function anticipationRate(int $days): float
     {
         return match (true) {
-            $days <= 2 => (float) ($settings?->anticipation_rate_d2 ?? config('payments.credit_card.anticipation_d2')),
-            $days <= 7 => (float) ($settings?->anticipation_rate_d7 ?? config('payments.credit_card.anticipation_d7')),
-            $days <= 15 => (float) ($settings?->anticipation_rate_d15 ?? config('payments.credit_card.anticipation_d15')),
-            default => (float) ($settings?->anticipation_rate_d30 ?? config('payments.credit_card.anticipation_d30')),
+            $days <= 2 => (float) config('payments.credit_card.anticipation_d2'),
+            $days <= 7 => (float) config('payments.credit_card.anticipation_d7'),
+            $days <= 15 => (float) config('payments.credit_card.anticipation_d15'),
+            default => (float) config('payments.credit_card.anticipation_d30'),
         };
     }
 }

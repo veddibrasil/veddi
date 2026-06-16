@@ -1,0 +1,14 @@
+{
+    "order_id": 176,
+    "original_amount": "120.00",
+    "charge_amount": 120.0,
+    "installments": 1,
+    "card_brand": "visa",
+    "card_rate_pct": "3.1%",
+    "card_fee_absorbed": true,
+    "plan_fee_pct": "3%",
+    "affiliate_percentual": 93.9917,
+    "has_affiliate": true
+}
+
+{"order_id":177,"original_amount":"120.00","charge_amount":120.0,"installments":1,"card_brand":"visa","card_rate_pct":"2.8%","card_fee_absorbed":true,"plan_fee_pct":"3%","affiliate_percentual":94.2833,"has_affiliate":true} 

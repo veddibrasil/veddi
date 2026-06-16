@@ -2,13 +2,16 @@
 
 namespace App\Services\Payment;
 
+use App\Contracts\TransactionServiceInterface;
+use App\Contracts\WalletServiceInterface;
 use App\DTOs\CreditCardDTO;
 use App\DTOs\CreditCardHolderDTO;
+use App\Enums\CardBrand;
 use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Payment;
-use App\Models\PaymentSettings;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -71,18 +74,16 @@ class PaymentOrchestrator
             ]);
         }
 
-        // PIX split: Vindi keeps 0.85%, platform keeps 0.14% (total 0.99%), rest to company.
-        // Free plan adds extra 1% platform fee on top.
-        $pixTotalRate = (float) config('payments.vindi_pix_rate', 0.0085)
-                      + (float) config('payments.vindi_pix_platform_rate', 0.0014);
-        $planExtraRate = $company->plan?->feePercentage() ?? 0.0;
-        $affiliatePercentual = round(100.0 - ($pixTotalRate * 100) - ($planExtraRate * 100), 4);
+        $gatewayRate = (float) config('payments.vindi_pix_rate', 0.0085);
+        $platformRate = (float) config('payments.vindi_pix_platform_rate', 0.0014);
+        $planExtraRate = $company->feePercentageForOrder($order);
+        $affiliatePercentual = round(100.0 - (($gatewayRate + $platformRate + $planExtraRate) * 100), 4);
 
         Log::channel('payments')->info('Orchestrator: criando cobrança PIX via Vindi', [
             'order_id' => $order->id,
             'charge_amount' => $chargeAmount,
             'affiliate_percentual' => $affiliatePercentual,
-            'pix_total_rate_pct' => round(($pixTotalRate + $planExtraRate) * 100, 4).'%',
+            'main_account_rate_pct' => round(($gatewayRate + $platformRate + $planExtraRate) * 100, 4).'%',
             'has_affiliate' => (bool) $affiliateEmail,
         ]);
 
@@ -152,7 +153,10 @@ class PaymentOrchestrator
     }
 
     /**
-     * Processa cartão de crédito via Vindi Intermediador e persiste o Payment.
+     * Processa cartão de crédito via Vindi Intermediador, persiste Payment e, se aprovado,
+     * credita carteira e registra transação.
+     *
+     * @return array{id: string|null, approved: bool, status: string, method: string, gateway: string}
      */
     public function processCreditCard(
         Order $order,
@@ -161,7 +165,6 @@ class PaymentOrchestrator
         array $cardData,
         int $installments = 1,
     ): array {
-        $chargeAmount = (float) $order->total;
         $affiliateEmail = $company->email;
 
         if (! $affiliateEmail && config('app.env') === 'production') {
@@ -169,24 +172,43 @@ class PaymentOrchestrator
                 'type' => 'payments',
                 'company_id' => $company->id,
                 'order_id' => $order->id,
-                'amount' => $chargeAmount,
+                'amount' => (float) $order->total,
             ]);
         }
 
-        // Card split: gateway rate + 0.14% platform + optional 1% free plan = deducted, rest to affiliate.
-        $settings = $company->paymentSettings;
-        $cardGatewayRate = $this->cardRateForInstallments($installments, $settings);
-        $platformRate = (float) config('payments.vindi_pix_platform_rate', 0.0014);
-        $planExtraRate = $company->plan?->feePercentage() ?? 0.0;
-        $affiliatePercentual = round(100.0 - ($cardGatewayRate * 100) - ($platformRate * 100) - ($planExtraRate * 100), 4);
+        $brand = CardBrand::fromNumber($cardData['number'] ?? '');
+        $cardRate = $brand->rate();
+        $cardFeeAbsorbed = (bool) ($company->card_fee_absorbed_by_company ?? false);
+
+        // Fee not absorbed: inflate charge so customer pays the card fee
+        // Fee absorbed: company takes the hit from their net
+        $chargeAmount = (! $cardFeeAbsorbed && $cardRate < 1.0)
+            ? round((float) $order->total / (1.0 - $cardRate), 2)
+            : (float) $order->total;
+
+        $cardFee = round($chargeAmount * $cardRate, 2);
+        $planFeeRate = $company->feePercentageForOrder($order);
+
+        // Platform fee is applied to the net after the card fee, not the raw order total.
+        // When fee is not absorbed: netAfterCard ≈ orderTotal (customer covers the card cost).
+        // When fee is absorbed by company: netAfterCard < orderTotal, so commission is lower.
+        $netAfterCard = round($chargeAmount - $cardFee, 2);
+        $platformFeeAmount = round($netAfterCard * $planFeeRate, 2);
+        $targetCompanyNet = round($netAfterCard - $platformFeeAmount, 2);
+        $affiliatePercentual = $chargeAmount > 0
+            ? round($targetCompanyNet / $chargeAmount * 100, 4)
+            : round((1.0 - $planFeeRate) * 100, 4);
 
         Log::channel('payments')->info('Orchestrator: criando cobrança cartão via Vindi', [
             'order_id' => $order->id,
+            'original_amount' => $order->total,
             'charge_amount' => $chargeAmount,
             'installments' => $installments,
+            'card_brand' => $brand->value,
+            'card_rate_pct' => round($cardRate * 100, 2).'%',
+            'card_fee_absorbed' => $cardFeeAbsorbed,
+            'plan_fee_pct' => round($planFeeRate * 100, 2).'%',
             'affiliate_percentual' => $affiliatePercentual,
-            'card_gateway_rate_pct' => round($cardGatewayRate * 100, 4).'%',
-            'platform_rate_pct' => round(($platformRate + $planExtraRate) * 100, 4).'%',
             'has_affiliate' => (bool) $affiliateEmail,
         ]);
 
@@ -204,10 +226,11 @@ class PaymentOrchestrator
                     expiryMonth: $cardData['expiryMonth'],
                     expiryYear: $cardData['expiryYear'],
                     ccv: $cardData['ccv'],
+                    token: $cardData['token'] ?? null,
                 ),
                 holder: new CreditCardHolderDTO(
                     name: $customer->name,
-                    email: $customer->email,
+                    email: $customer->email ?? '',
                     cpfCnpj: $cardData['cpfCnpj'] ?? $customer->tax_id ?? '',
                     postalCode: $cardData['postalCode'] ?? $vindiAddress['postal_code'] ?? '',
                     addressNumber: $cardData['addressNumber'] ?? $vindiAddress['number'] ?? 'S/N',
@@ -221,51 +244,76 @@ class PaymentOrchestrator
                 installments: $installments,
                 affiliateEmail: $affiliateEmail,
                 affiliatePercentual: $affiliatePercentual,
+                company: $company,
             );
 
-            Payment::create([
-                'order_id' => $order->id,
-                'vindi_transaction_token' => $result['transaction_token'],
-                'payment_gateway' => 'vindi',
-                'amount' => $chargeAmount,
-                'original_amount' => $chargeAmount,
-                'card_fee' => 0.0,
-                'card_fee_rate' => 0.0,
-                'installments' => $installments,
-                'status' => 'pending',
-                'payment_token' => hash('sha256', $order->id.$customer->id.Str::random(32)),
-            ]);
+            $transactionToken = $result['transaction_token'];
+            $approved = ($result['status_name'] ?? '') === 'Aprovada';
+            $paymentToken = hash('sha256', $order->id.$customer->id.Str::random(32));
+
+            DB::transaction(function () use ($order, $transactionToken, $chargeAmount, $cardFee, $cardRate, $installments, $paymentToken, $approved) {
+                $payment = Payment::create([
+                    'order_id' => $order->id,
+                    'vindi_transaction_token' => $transactionToken,
+                    'payment_gateway' => 'vindi',
+                    'amount' => $chargeAmount,
+                    'original_amount' => (float) $order->total,
+                    'card_fee' => $cardFee,
+                    'card_fee_rate' => $cardRate,
+                    'installments' => $installments,
+                    'status' => $approved ? 'paid' : 'pending',
+                    'paid_at' => $approved ? now() : null,
+                    'payment_token' => $paymentToken,
+                ]);
+
+                if ($approved) {
+                    $order->update(['status' => 'paid']);
+                    $fresh = $order->fresh();
+                    app(WalletServiceInterface::class)->creditForOrder($fresh, $payment);
+                    app(TransactionServiceInterface::class)->createForPayment($fresh, $payment);
+                }
+            });
 
             Log::channel('payments')->info('Cartão Vindi criado', [
                 'order_id' => $order->id,
-                'vindi_transaction_token' => $result['transaction_token'],
+                'vindi_transaction_token' => $transactionToken,
                 'charge_amount' => $chargeAmount,
                 'installments' => $installments,
-            ]);
-        } else {
-            // Modo simulação
-            Payment::create([
-                'order_id' => $order->id,
-                'vindi_transaction_token' => 'sim_card_'.uniqid(),
-                'payment_gateway' => 'vindi',
-                'amount' => $chargeAmount,
-                'original_amount' => $chargeAmount,
-                'card_fee' => 0.0,
-                'card_fee_rate' => 0.0,
-                'installments' => $installments,
-                'status' => 'pending',
-                'payment_token' => hash('sha256', $order->id.$customer->id.Str::random(32)),
+                'approved' => $approved,
             ]);
 
-            Log::channel('payments')->info('Cartão Vindi simulado (sem credenciais)', [
-                'order_id' => $order->id,
-                'charge_amount' => $chargeAmount,
-                'installments' => $installments,
-            ]);
+            return [
+                'id' => $transactionToken,
+                'approved' => $approved,
+                'status' => $approved ? 'paid' : 'pending',
+                'method' => 'credit_card',
+                'gateway' => 'vindi',
+            ];
         }
+
+        // Modo simulação (sem credenciais Vindi)
+        Payment::create([
+            'order_id' => $order->id,
+            'vindi_transaction_token' => 'sim_card_'.uniqid(),
+            'payment_gateway' => 'vindi',
+            'amount' => $chargeAmount,
+            'original_amount' => (float) $order->total,
+            'card_fee_rate' => $cardRate,
+            'card_fee' => $cardFee,
+            'installments' => $installments,
+            'status' => 'pending',
+            'payment_token' => hash('sha256', $order->id.$customer->id.Str::random(32)),
+        ]);
+
+        Log::channel('payments')->info('Cartão Vindi simulado (sem credenciais)', [
+            'order_id' => $order->id,
+            'charge_amount' => $chargeAmount,
+            'installments' => $installments,
+        ]);
 
         return [
             'id' => null,
+            'approved' => false,
             'status' => 'pending',
             'method' => 'credit_card',
             'gateway' => 'vindi',
@@ -350,19 +398,6 @@ class PaymentOrchestrator
         ];
     }
 
-    private function cardRateForInstallments(int $installments, ?PaymentSettings $settings): float
-    {
-        if ($installments <= 1) {
-            return (float) ($settings?->card_rate_1x ?? config('payments.credit_card.rate_1x', 0.0310));
-        }
-
-        if ($installments <= 6) {
-            return (float) config('payments.credit_card.rate_2_6x', 0.0371);
-        }
-
-        return (float) config('payments.credit_card.rate_7_12x', 0.0407);
-    }
-
     // ─────────────────────────────────────────────────────────────
     // Cálculo de taxas
     // ─────────────────────────────────────────────────────────────
@@ -372,20 +407,25 @@ class PaymentOrchestrator
      *
      * @return array{gateway_fee: float, platform_fee: float, net_amount: float}
      */
-    public function calculateFees(float $amount, string $method, Company $company): array
+    public function calculateFees(float $amount, string $method, Company $company, int $installments = 1, string $cardNumber = ''): array
     {
         $gatewayFee = match (strtolower($method)) {
             'pix' => round($amount * (float) config('payments.vindi_pix_rate', 0.0085), 2),
-            'credit_card' => round($amount * (float) config('payments.credit_card.rate_1x', 0.0310), 2),
+            'credit_card' => round($amount * $this->resolveCardRate($cardNumber), 2),
             default => 0.0,
         };
 
-        $platformFee = round($amount * ($company->plan?->feePercentage() ?? 0.0), 2);
+        $platformFee = round($amount * $company->feePercentageForOrder(), 2);
 
         return [
             'gateway_fee' => $gatewayFee,
             'platform_fee' => $platformFee,
             'net_amount' => round($amount - $gatewayFee - $platformFee, 2),
         ];
+    }
+
+    private function resolveCardRate(string $cardNumber): float
+    {
+        return CardBrand::fromNumber($cardNumber)->rate();
     }
 }

@@ -13,7 +13,6 @@ uses(RefreshDatabase::class);
 
 test('WalletService debitForRefund desfaz o crédito líquido do pedido', function () {
     config()->set('plans.free.fee_percentage', 0.02);
-    config()->set('payments.pix_payment_fee', 0.50);
 
     $company = Company::create([
         'name' => 'Empresa Wallet',

@@ -137,8 +137,6 @@ Route::middleware(['auth', 'verified', 'super.admin'])
         Route::get('/users/{user}/permissions', \App\Livewire\SuperAdmin\Permissions\UserPermissions::class)->name('users.permissions');
         Route::get('/permissions', \App\Livewire\SuperAdmin\Permissions\Index::class)->name('permissions.index');
 
-        Route::get('/card-taxas', \App\Livewire\SuperAdmin\Card\index::class)->name('card.index');
-
         Route::post('/simulate/asaas-payment', AsaasSimulatePaymentController::class)->name('simulate.asaas-payment');
         Route::post('/simulate/vindi-payment', VindiSimulatePaymentController::class)->name('simulate.vindi-payment');
     });

@@ -953,9 +953,15 @@
 
                     @if ($paymentMethod === 'CARD' && !empty($cardFeeBreakdown))
                         <div class="flex justify-between text-sm text-gray-600">
-                            <span>Taxa do cartão ({{ round($cardFeeBreakdown['total_rate'] * 100, 2) }}%)</span>
+                            <span>Taxa do cartão ({{ round($cardFeeBreakdown['card_rate'] * 100, 2) }}%)</span>
                             <span>+ R$ {{ number_format($cardFeeBreakdown['fee_amount'], 2, ',', '.') }}</span>
                         </div>
+                        @if (($cardFeeBreakdown['platform_fee_amount'] ?? 0) > 0)
+                            <div class="flex justify-between text-sm text-gray-600">
+                                <span>Taxa da plataforma ({{ round($cardFeeBreakdown['platform_rate'] * 100, 2) }}%)</span>
+                                <span>− R$ {{ number_format($cardFeeBreakdown['platform_fee_amount'], 2, ',', '.') }}</span>
+                            </div>
+                        @endif
                     @endif
 
                     <div class="flex justify-between items-center pt-1.5 border-t border-gray-200">
@@ -1233,9 +1239,15 @@
                             <span>R$ {{ number_format($cardFeeBreakdown['original_amount'], 2, ',', '.') }}</span>
                         </div>
                         <div class="flex justify-between text-xs text-neutral-500">
-                            <span>Taxa do cartão ({{ round($cardFeeBreakdown['total_rate'] * 100, 2) }}%)</span>
+                            <span>Taxa do cartão ({{ round($cardFeeBreakdown['card_rate'] * 100, 2) }}%)</span>
                             <span>+ R$ {{ number_format($cardFeeBreakdown['fee_amount'], 2, ',', '.') }}</span>
                         </div>
+                        @if (($cardFeeBreakdown['platform_fee_amount'] ?? 0) > 0)
+                            <div class="flex justify-between text-xs text-neutral-500">
+                                <span>Taxa da plataforma ({{ round($cardFeeBreakdown['platform_rate'] * 100, 2) }}%)</span>
+                                <span>− R$ {{ number_format($cardFeeBreakdown['platform_fee_amount'], 2, ',', '.') }}</span>
+                            </div>
+                        @endif
                         <div class="flex justify-between text-sm font-semibold text-neutral-800 dark:text-neutral-100 border-t border-neutral-200 dark:border-neutral-700 pt-1 mt-1">
                             <span>Total cobrado</span>
                             <span>R$ {{ number_format($cardFeeBreakdown['final_amount'], 2, ',', '.') }}</span>
