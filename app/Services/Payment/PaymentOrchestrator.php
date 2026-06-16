@@ -77,13 +77,22 @@ class PaymentOrchestrator
         $gatewayRate = (float) config('payments.vindi_pix_rate', 0.0085);
         $platformRate = (float) config('payments.vindi_pix_platform_rate', 0.0014);
         $planExtraRate = $company->feePercentageForOrder($order);
-        $affiliatePercentual = round(100.0 - (($gatewayRate + $platformRate + $planExtraRate) * 100), 4);
+
+        // Commission on subtotal only — delivery fee must not be subject to platform commission.
+        // Avoid rounding the gateway portion before subtraction to preserve Vindi split precision.
+        $commissionAmount = round((float) $order->subtotal * $planExtraRate, 2);
+        $affiliateAmount = $chargeAmount * (1.0 - $gatewayRate - $platformRate) - $commissionAmount;
+        $affiliatePercentual = $chargeAmount > 0
+            ? round($affiliateAmount / $chargeAmount * 100, 4)
+            : round((1.0 - $gatewayRate - $platformRate - $planExtraRate) * 100, 4);
 
         Log::channel('payments')->info('Orchestrator: criando cobrança PIX via Vindi', [
             'order_id' => $order->id,
+            'subtotal' => $order->subtotal,
+            'delivery_fee' => $order->delivery_fee,
             'charge_amount' => $chargeAmount,
+            'commission_amount' => $commissionAmount,
             'affiliate_percentual' => $affiliatePercentual,
-            'main_account_rate_pct' => round(($gatewayRate + $platformRate + $planExtraRate) * 100, 4).'%',
             'has_affiliate' => (bool) $affiliateEmail,
         ]);
 
@@ -97,6 +106,7 @@ class PaymentOrchestrator
                 affiliateEmail: $affiliateEmail,
                 affiliatePercentual: $affiliatePercentual,
                 address: $this->vindiAddressFromOrder($order, $customer),
+                deliveryFee: (float) ($order->delivery_fee ?? 0),
             );
 
             $payment = Payment::create([
@@ -189,11 +199,9 @@ class PaymentOrchestrator
         $cardFee = round($chargeAmount * $cardRate, 2);
         $planFeeRate = $company->feePercentageForOrder($order);
 
-        // Platform fee is applied to the net after the card fee, not the raw order total.
-        // When fee is not absorbed: netAfterCard ≈ orderTotal (customer covers the card cost).
-        // When fee is absorbed by company: netAfterCard < orderTotal, so commission is lower.
+        // Commission on subtotal only — delivery fee must not be subject to platform commission.
         $netAfterCard = round($chargeAmount - $cardFee, 2);
-        $platformFeeAmount = round($netAfterCard * $planFeeRate, 2);
+        $platformFeeAmount = round((float) $order->subtotal * $planFeeRate, 2);
         $targetCompanyNet = round($netAfterCard - $platformFeeAmount, 2);
         $affiliatePercentual = $chargeAmount > 0
             ? round($targetCompanyNet / $chargeAmount * 100, 4)
@@ -245,6 +253,7 @@ class PaymentOrchestrator
                 affiliateEmail: $affiliateEmail,
                 affiliatePercentual: $affiliatePercentual,
                 company: $company,
+                deliveryFee: (float) ($order->delivery_fee ?? 0),
             );
 
             $transactionToken = $result['transaction_token'];

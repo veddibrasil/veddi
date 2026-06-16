@@ -372,3 +372,50 @@ test('PIX simulado criado quando sem credenciais Vindi', function () {
         ->and($payment->vindi_transaction_token)->toStartWith('sim_vindi_')
         ->and($payment->status)->toBe('pending');
 });
+
+test('PIX com frete: shipping_price enviado separado e comissao sobre subtotal', function () {
+    config()->set('payments.vindi_token_account', 'tok_test');
+    config()->set('payments.vindi_reseller_token', 'res_test');
+    config()->set('payments.vindi_pix_rate', 0.0085);
+    config()->set('payments.vindi_pix_platform_rate', 0.0014);
+
+    $capturedPayload = null;
+
+    Http::fake([
+        '*/transactions/payment' => function ($request) use (&$capturedPayload) {
+            $capturedPayload = $request->data();
+
+            return Http::response([
+                'data_response' => [
+                    'transaction' => [
+                        'token_transaction' => 'vindi_pix_frete_token',
+                        'status_name' => 'Aguardando Pagamento',
+                        'payment' => ['qrcode_original_path' => '00020126abc', 'qrcode_path' => null],
+                    ],
+                ],
+                'message_response' => ['message' => 'success'],
+            ], 200);
+        },
+    ]);
+
+    $ctx = vindiPixContext();
+    $ctx['company']->update(['email' => 'empresa-frete@test.com', 'plan' => 'free']);
+
+    $order = $ctx['order'];
+    $order->update(['subtotal' => 40.00, 'delivery_fee' => 10.00, 'total' => 50.00]);
+
+    app(PaymentOrchestrator::class)->processPix($order->fresh(), $ctx['customer'], $ctx['company']->fresh());
+
+    assert(is_array($capturedPayload));
+
+    // Frete separado: shipping_price=10, product=40 (nao o total 50)
+    expect($capturedPayload['transaction']['shipping_price'])->toBe('10.00')
+        ->and($capturedPayload['transaction']['shipping_type'])->toBe('Entrega')
+        ->and($capturedPayload['transaction_product'][0]['price_unit'])->toBe('40.00');
+
+    // Comissao sobre subtotal=40 (nao total=50): commissionAmount=0.40
+    // affiliateAmount = 50*(1-0.0099) - 0.40 = 49.505 - 0.40 = 49.105
+    // affiliatePercentual = 98.21 → Vindi commission_amount = 49.11
+    expect($capturedPayload['affiliates'])->toHaveCount(1)
+        ->and($capturedPayload['affiliates'][0]['commission_amount'])->toBe('49.11');
+});

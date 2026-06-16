@@ -29,6 +29,7 @@ class VindiService
         ?string $affiliateEmail = null,
         float $affiliatePercentual = 100.0,
         array $address = [],
+        float $deliveryFee = 0.0,
     ): array {
         $payload = $this->buildBasePayload($externalRef);
         $payload['customer'] = $this->buildCustomerPayload($customer, $address);
@@ -45,12 +46,16 @@ class VindiService
             $payload['payment']['split'] = '1';
         }
 
+        $productAmount = round($amount - $deliveryFee, 2);
+
         $payload['transaction']['amount'] = number_format($amount, 2, '.', '');
+        $payload['transaction']['shipping_price'] = $deliveryFee > 0.0 ? number_format($deliveryFee, 2, '.', '') : null;
+        $payload['transaction']['shipping_type'] = $deliveryFee > 0.0 ? 'Entrega' : null;
         $payload['transaction_product'] = [
             [
                 'description' => 'Pedido #'.$externalRef,
                 'quantity' => '1',
-                'price_unit' => number_format($amount, 2, '.', ''),
+                'price_unit' => number_format($productAmount, 2, '.', ''),
             ],
         ];
 
@@ -79,6 +84,7 @@ class VindiService
         ?string $affiliateEmail = null,
         float $affiliatePercentual = 100.0,
         ?Company $company = null,
+        float $deliveryFee = 0.0,
     ): array {
         $payload = $this->buildBasePayload($externalRef);
         $payload['customer'] = $this->buildHolderPayload($holder);
@@ -109,15 +115,17 @@ class VindiService
             $payload['transaction']['max_split_transaction'] = (string) $installments;
         }
 
+        $productAmount = round($amount - $deliveryFee, 2);
+
         $payload['transaction']['price_additional'] = null;
         $payload['transaction']['price_discount'] = null;
-        $payload['transaction']['shipping_price'] = null;
-        $payload['transaction']['shipping_type'] = 'Frete';
+        $payload['transaction']['shipping_price'] = $deliveryFee > 0.0 ? number_format($deliveryFee, 2, '.', '') : null;
+        $payload['transaction']['shipping_type'] = $deliveryFee > 0.0 ? 'Entrega' : null;
         $payload['transaction_product'] = [
             [
                 'description' => 'Pedido #'.$externalRef,
                 'quantity' => '1',
-                'price_unit' => number_format($amount, 2, '.', ''),
+                'price_unit' => number_format($productAmount, 2, '.', ''),
             ],
         ];
 

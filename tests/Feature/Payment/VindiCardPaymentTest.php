@@ -436,12 +436,13 @@ test('free plan com taxa absorvida pela empresa: commission_amount usa líquido 
     );
 
     // cardFee = round(120 * 0.01, 2) = 1.20; netAfterCard = 118.80
-    // platformFee = round(118.80 * 0.01, 2) = 1.19; commission = 117.61
-    // affiliatePercentual = round(117.61 / 120 * 100, 4) = 98.0083
-    // Vindi commission_amount = round(120 * 98.0083 / 100, 2) = 117.61
+    // platformFee = round(120 * 0.01, 2) = 1.20 (commission on subtotal, not netAfterCard)
+    // targetCompanyNet = 118.80 - 1.20 = 117.60
+    // affiliatePercentual = round(117.60 / 120 * 100, 4) = 98.0000
+    // Vindi commission_amount = round(120 * 98.0000 / 100, 2) = 117.60
     expect($capturedPayload['affiliates'])->toHaveCount(1)
         ->and($capturedPayload['affiliates'][0]['account_email'])->toBe('empresa-absorbed@test.com')
-        ->and($capturedPayload['affiliates'][0]['commission_amount'])->toBe('117.61');
+        ->and($capturedPayload['affiliates'][0]['commission_amount'])->toBe('117.60');
 });
 
 test('free plan com taxa absorvida pela empresa: commission_amount usa líquido após taxa do cartão (acima do limite → 3%)', function () {
@@ -520,12 +521,13 @@ test('free plan com taxa absorvida pela empresa: commission_amount usa líquido 
     );
 
     // cardFee = round(120 * 0.01, 2) = 1.20; netAfterCard = 118.80
-    // platformFee = round(118.80 * 0.03, 2) = 3.56; commission = 115.24
-    // affiliatePercentual = round(115.24 / 120 * 100, 4) = 96.0333
-    // Vindi commission_amount = round(120 * 96.0333 / 100, 2) = 115.24
+    // platformFee = round(120 * 0.03, 2) = 3.60 (commission on subtotal, not netAfterCard)
+    // targetCompanyNet = 118.80 - 3.60 = 115.20
+    // affiliatePercentual = round(115.20 / 120 * 100, 4) = 96.0000
+    // Vindi commission_amount = round(120 * 96.0000 / 100, 2) = 115.20
     expect($capturedPayload['affiliates'])->toHaveCount(1)
         ->and($capturedPayload['affiliates'][0]['account_email'])->toBe('empresa-absorbed-over@test.com')
-        ->and($capturedPayload['affiliates'][0]['commission_amount'])->toBe('115.24');
+        ->and($capturedPayload['affiliates'][0]['commission_amount'])->toBe('115.20');
 });
 
 test('feePercentageForOrder sem $order retorna 3% quando empresa tem ≥50 pedidos confirmados no mês', function () {
