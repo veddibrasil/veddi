@@ -250,8 +250,9 @@ test('PaymentOrchestrator.processCreditCard aplica taxa de 1% no split para plan
 
     assert(is_array($capturedPayload));
 
-    // Visa D+30 = 3.10%; fee not absorbed → charge = round(100/0.969, 2) = 103.20
-    // free plan 1% → affiliate nets 99.00 (Veddi retém R$1 de R$100)
+    // Visa = 1%; fee not absorbed → chargeAmount = round(100/0.99, 3) = 101.01
+    // cardFee = 1.01; netAfterCard = 100.00; platformFeeBase = netAfterCard - delivery(0) = 100.00
+    // free plan 1% → platformFee = 1.00 → targetCompanyNet = 99.00 → commission_amount = 99.00
     expect($capturedPayload['affiliates'])->toHaveCount(1)
         ->and($capturedPayload['affiliates'][0]['account_email'])->toBe('empresa-card-free@test.com')
         ->and($capturedPayload['affiliates'][0]['commission_amount'])->toBe('99.00');
@@ -362,10 +363,11 @@ test('free plan acima do limite (≥50 pedidos): commission_amount reflete 3% �
     $order = $ctx['order'];
     $order->update(['total' => 120.00, 'subtotal' => 120.00]);
 
-    // Mastercard D+30 = 3.10%; fee not absorbed
-    // chargeAmount = round(120 / 0.969, 2) = 123.84
-    // cardFee = round(123.84 * 0.031, 2) = 3.84; netAfterCard = 120.00
-    // planFeeRate = 3% (≥50 pedidos) → platformFee = 120 * 0.03 = 3.60 → commission = 116.40
+    // Mastercard = 2.8%; fee not absorbed
+    // chargeAmount = round(120 / 0.972, 3) = 123.457
+    // cardFee = round(123.457 * 0.028, 3) = 3.457; netAfterCard = 120.00
+    // platformFeeBase = netAfterCard - delivery(0) = 120.00; planFeeRate = 3% (≥50 pedidos) → platformFee = 3.60
+    // targetCompanyNet = 120.00 - 3.60 = 116.40 → commission = 116.40
     $cardData = [
         'holderName' => 'Guilherme h jeske',
         'number' => '5448280000000007',
@@ -388,8 +390,9 @@ test('free plan acima do limite (≥50 pedidos): commission_amount reflete 3% �
 
 test('free plan com taxa absorvida pela empresa: commission_amount usa líquido após taxa do cartão (abaixo do limite → 1%)', function () {
     // Visa = 1%; fee absorbed → chargeAmount = 120
-    // cardFee = round(120 * 0.01, 2) = 1.20; netAfterCard = 118.80
-    // platformFee = round(118.80 * 0.01, 2) = 1.19; commission = 117.61
+    // cardFee = round(120 * 0.01, 3) = 1.20; netAfterCard = 118.80
+    // platformFeeBase = netAfterCard - delivery(0) = 118.80; platformFee = round(118.80 * 0.01, 3) = 1.188
+    // targetCompanyNet = 118.80 - 1.188 = 117.612 → commission = 117.61
     config()->set('payments.vindi_token_account', 'tok_test');
     config()->set('payments.vindi_reseller_token', 'res_test');
 
@@ -435,20 +438,16 @@ test('free plan com taxa absorvida pela empresa: commission_amount usa líquido 
         ], 1
     );
 
-    // cardFee = round(120 * 0.01, 2) = 1.20; netAfterCard = 118.80
-    // platformFee = round(120 * 0.01, 2) = 1.20 (commission on subtotal, not netAfterCard)
-    // targetCompanyNet = 118.80 - 1.20 = 117.60
-    // affiliatePercentual = round(117.60 / 120 * 100, 4) = 98.0000
-    // Vindi commission_amount = round(120 * 98.0000 / 100, 2) = 117.60
     expect($capturedPayload['affiliates'])->toHaveCount(1)
         ->and($capturedPayload['affiliates'][0]['account_email'])->toBe('empresa-absorbed@test.com')
-        ->and($capturedPayload['affiliates'][0]['commission_amount'])->toBe('117.60');
+        ->and($capturedPayload['affiliates'][0]['commission_amount'])->toBe('117.61');
 });
 
 test('free plan com taxa absorvida pela empresa: commission_amount usa líquido após taxa do cartão (acima do limite → 3%)', function () {
     // Visa = 1%; fee absorbed → chargeAmount = 120, free plan ≥ 50 pedidos → planFeeRate = 3%
-    // cardFee = round(120 * 0.01, 2) = 1.20; netAfterCard = 118.80
-    // platformFee = round(116.28 * 0.03, 2) = 3.49; commission = 112.79
+    // cardFee = round(120 * 0.01, 3) = 1.20; netAfterCard = 118.80
+    // platformFeeBase = netAfterCard - delivery(0) = 118.80; platformFee = round(118.80 * 0.03, 3) = 3.564
+    // targetCompanyNet = 118.80 - 3.564 = 115.236 → commission = 115.24
     config()->set('payments.vindi_token_account', 'tok_test');
     config()->set('payments.vindi_reseller_token', 'res_test');
 
@@ -520,14 +519,9 @@ test('free plan com taxa absorvida pela empresa: commission_amount usa líquido 
         ], 1
     );
 
-    // cardFee = round(120 * 0.01, 2) = 1.20; netAfterCard = 118.80
-    // platformFee = round(120 * 0.03, 2) = 3.60 (commission on subtotal, not netAfterCard)
-    // targetCompanyNet = 118.80 - 3.60 = 115.20
-    // affiliatePercentual = round(115.20 / 120 * 100, 4) = 96.0000
-    // Vindi commission_amount = round(120 * 96.0000 / 100, 2) = 115.20
     expect($capturedPayload['affiliates'])->toHaveCount(1)
         ->and($capturedPayload['affiliates'][0]['account_email'])->toBe('empresa-absorbed-over@test.com')
-        ->and($capturedPayload['affiliates'][0]['commission_amount'])->toBe('115.20');
+        ->and($capturedPayload['affiliates'][0]['commission_amount'])->toBe('115.24');
 });
 
 test('feePercentageForOrder sem $order retorna 3% quando empresa tem ≥50 pedidos confirmados no mês', function () {

@@ -11,11 +11,11 @@ Artisan::command('inspire', function () {
 // Bloqueia empresas inadimplentes após 3 dias úteis do vencimento
 Schedule::command('companies:block-overdue')->dailyAt('08:00');
 
-Schedule::job(new \App\Jobs\ReleaseCompanyTransactionsJob)
-    ->name('release-company-transactions')
-    ->everyMinute()
-    ->withoutOverlapping(expiresAt: 5)
-    ->onOneServer();
+// Schedule::job(new \App\Jobs\ReleaseCompanyTransactionsJob)
+//     ->name('release-company-transactions')
+//     ->everyMinute()
+//     ->withoutOverlapping(expiresAt: 5)
+//     ->onOneServer();
 
 // Atualiza snapshots de saldo de todas as empresas (após liberação das transações)
 // Comentado: saldo exibido agora é calculado on-demand via BalanceService::calculateBalance().

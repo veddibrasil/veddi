@@ -194,16 +194,19 @@ class PaymentOrchestrator
         // Fee not absorbed: inflate charge so customer pays the card fee
         // Fee absorbed: company takes the hit from their net
         $chargeAmount = (! $cardFeeAbsorbed && $cardRate < 1.0)
-            ? round((float) $order->total / (1.0 - $cardRate), 2)
+            ? round((float) $order->total / (1.0 - $cardRate), 3)
             : (float) $order->total;
 
-        $cardFee = round($chargeAmount * $cardRate, 2);
+        $cardFee = round($chargeAmount * $cardRate, 3);
         $planFeeRate = $company->feePercentageForOrder($order);
 
-        // Commission on subtotal only — delivery fee must not be subject to platform commission.
-        $netAfterCard = round($chargeAmount - $cardFee, 2);
-        $platformFeeAmount = round((float) $order->subtotal * $planFeeRate, 2);
-        $targetCompanyNet = round($netAfterCard - $platformFeeAmount, 2);
+        // Platform commission (1%/3%) is applied straight to the actual amount received
+        // after the card fee — not inflated by it — with delivery fee carved out first.
+        $netAfterCard = round($chargeAmount - $cardFee, 3);
+        $deliveryFee = (float) ($order->delivery_fee ?? 0);
+        $platformFeeBase = round($netAfterCard - $deliveryFee, 3);
+        $platformFeeAmount = round($platformFeeBase * $planFeeRate, 3);
+        $targetCompanyNet = round($netAfterCard - $platformFeeAmount, 3);
         $affiliatePercentual = $chargeAmount > 0
             ? round($targetCompanyNet / $chargeAmount * 100, 4)
             : round((1.0 - $planFeeRate) * 100, 4);
@@ -214,9 +217,10 @@ class PaymentOrchestrator
             'charge_amount' => $chargeAmount,
             'installments' => $installments,
             'card_brand' => $brand->value,
-            'card_rate_pct' => round($cardRate * 100, 2).'%',
+            'card_rate_pct' => round($cardRate * 100, 3).'%',
             'card_fee_absorbed' => $cardFeeAbsorbed,
-            'plan_fee_pct' => round($planFeeRate * 100, 2).'%',
+            'plan_fee_pct' => round($planFeeRate * 100, 3).'%',
+            'platform_fee_base' => $platformFeeBase,
             'affiliate_percentual' => $affiliatePercentual,
             'has_affiliate' => (bool) $affiliateEmail,
         ]);
