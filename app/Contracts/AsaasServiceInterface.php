@@ -20,7 +20,11 @@ interface AsaasServiceInterface
         ?CreditCardDTO $creditCard = null,
         ?CreditCardHolderDTO $holderInfo = null,
         ?string $nextDueDate = null,
+        float $extraAmount = 0.0,
+        string $extraDescription = '',
     ): array;
+
+    public function updateSubscriptionValue(string $subscriptionId, float $value, string $description): array;
 
     public function getSubscriptionPayments(string $subscriptionId): array;
 

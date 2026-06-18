@@ -53,7 +53,6 @@
                     <flux:select.option value="free">Grátis</flux:select.option>
                     <flux:select.option value="essencial">Essencial</flux:select.option>
                     <flux:select.option value="pro">PRO</flux:select.option>
-                    <flux:select.option value="pdv">PDV</flux:select.option>
                 </flux:select>
                 @error('plan') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
@@ -123,6 +122,20 @@
                 </label>
                 <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
                     Libera acesso ao módulo de NF-e/NFS-e para esta empresa. A empresa precisará configurar os dados fiscais no painel admin.
+                </p>
+            </div>
+        </div>
+
+        <div class="flex items-start gap-4 rounded-lg border border-neutral-100 dark:border-zinc-700 bg-neutral-50 dark:bg-zinc-700/40 px-4 py-3">
+            <div class="pt-0.5">
+                <flux:checkbox wire:model="pdv_module_enabled" id="pdv_module_enabled" />
+            </div>
+            <div>
+                <label for="pdv_module_enabled" class="text-sm font-medium text-neutral-800 dark:text-neutral-100 cursor-pointer">
+                    Módulo PDV
+                </label>
+                <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                    Libera acesso ao terminal PDV para esta empresa, independente do plano. Ativação manual aqui não gera cobrança — use isso para overrides; o fluxo normal é a empresa ativar via Configurações &gt; Assinatura.
                 </p>
             </div>
         </div>

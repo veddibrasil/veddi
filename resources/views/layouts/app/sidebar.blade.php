@@ -62,7 +62,7 @@
 
                      @if( $can('pdv.operate'))
                         <flux:sidebar.group heading="PDV" class="grid">
-                            @if($can('pdv.operate') && $company?->plan?->hasPdv())
+                            @if($can('pdv.operate') && $company?->pdv_module_enabled)
                                 <flux:sidebar.item icon="computer-desktop" :href="route('admin.pdv')" :current="request()->routeIs('admin.pdv')" wire:navigate>
                                     Terminal PDV
                                 </flux:sidebar.item>

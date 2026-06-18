@@ -18,7 +18,8 @@ function pdvReportContext(): array
         'slug' => 'pdv-report-'.uniqid(),
         'order_prefix' => 'RPT',
         'active' => true,
-        'plan' => 'pdv',
+        'plan' => 'pro',
+        'pdv_module_enabled' => true,
     ]);
 
     app()->instance('current.company', $company);

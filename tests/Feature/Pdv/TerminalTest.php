@@ -27,7 +27,8 @@ function pdvContext(): array
         'slug' => 'pdv-teste-'.uniqid(),
         'order_prefix' => 'PDV',
         'active' => true,
-        'plan' => 'pdv',
+        'plan' => 'pro',
+        'pdv_module_enabled' => true,
     ]);
 
     app()->instance('current.company', $company);
@@ -288,7 +289,8 @@ test('pedido PDV é associado à empresa correta', function () {
         'slug' => 'outra-'.uniqid(),
         'order_prefix' => 'OUT',
         'active' => true,
-        'plan' => 'pdv',
+        'plan' => 'pro',
+        'pdv_module_enabled' => true,
     ]);
 
     $this->actingAs($admin);

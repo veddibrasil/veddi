@@ -56,6 +56,8 @@ class Form extends Component
 
     public bool $fiscal_notes_enabled = false;
 
+    public bool $pdv_module_enabled = false;
+
     public string $plan = 'free';
 
     public string $status = 'ACTIVE';
@@ -100,6 +102,7 @@ class Form extends Component
             'order_prefix' => ['required', 'string', 'max:10', 'regex:/^[A-Z0-9]+$/', "unique:companies,order_prefix,{$ignoreId}"],
             'active' => ['boolean'],
             'fiscal_notes_enabled' => ['boolean'],
+            'pdv_module_enabled' => ['boolean'],
             'plan' => ['required', 'in:free,essencial,pro'],
             'status' => ['required', 'in:ACTIVE,PENDING_PAYMENT,BLOCKED'],
             'logo' => ['nullable', 'image', 'max:2048'],
@@ -130,6 +133,7 @@ class Form extends Component
             $this->originalPlan = $this->plan;
             $this->status = $company->status ?? 'ACTIVE';
             $this->fiscal_notes_enabled = (bool) $company->fiscal_notes_enabled;
+            $this->pdv_module_enabled = (bool) $company->pdv_module_enabled;
             $this->vindi_affiliate_token = $company->vindi_affiliate_token;
             $this->email = $company->email;
             $this->vindi_partner_id = $company->vindi_partner_id;
@@ -167,12 +171,19 @@ class Form extends Component
 
         if ($this->isEditing) {
             $planChanged = $this->plan !== $this->originalPlan;
+            $pdvModuleChanged = $this->pdv_module_enabled !== (bool) $this->company->pdv_module_enabled;
 
             if ($planChanged) {
                 $this->handlePlanChange($companyData);
             } else {
                 $companyData['active'] = $this->status === 'ACTIVE';
                 $this->company->update($companyData);
+            }
+
+            if ($pdvModuleChanged) {
+                $this->pdv_module_enabled
+                    ? UserPermissionService::grantPdvPermissions($this->company->fresh())
+                    : UserPermissionService::revokePdvPermissions($this->company->fresh());
             }
 
             session()->flash('status', 'Empresa atualizada.');
@@ -240,10 +251,6 @@ class Form extends Component
                 $baseData['status'] = 'ACTIVE';
                 $baseData['asaas_subscription_id'] = null;
                 $company->update($baseData);
-
-                if ($targetPlan === Plan::Pdv) {
-                    UserPermissionService::grantPdvPermissions($company->fresh());
-                }
             } else {
                 // Normal flow: await payment via Asaas
                 $baseData['active'] = false;

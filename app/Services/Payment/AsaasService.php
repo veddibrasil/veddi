@@ -183,6 +183,9 @@ class AsaasService implements AsaasServiceInterface
     /**
      * Create a monthly subscription in Asaas for the given plan.
      *
+     * $extraAmount/$extraDescription let callers bundle a paid module (e.g. PDV) into the
+     * same subscription/invoice as the plan, instead of creating a second Asaas subscription.
+     *
      * @param  array|null  $creditCard  Card data (holderName, number, expiryMonth, expiryYear, ccv)
      * @param  array|null  $holderInfo  Holder info (name, email, cpfCnpj, postalCode, addressNumber, phone)
      * @param  string|null  $nextDueDate  ISO date string; defaults to tomorrow
@@ -195,8 +198,13 @@ class AsaasService implements AsaasServiceInterface
         ?CreditCardDTO $creditCard = null,
         ?CreditCardHolderDTO $holderInfo = null,
         ?string $nextDueDate = null,
+        float $extraAmount = 0.0,
+        string $extraDescription = '',
     ): array {
-        $amount = $plan->monthlyPrice();
+        $amount = $plan->monthlyPrice() + $extraAmount;
+        $description = $extraDescription !== ''
+            ? "{$plan->asaasDescription()} + {$extraDescription}"
+            : $plan->asaasDescription();
 
         Log::channel('payments')->info('Criando assinatura no Asaas', [
             'customer_id' => $customerId,
@@ -211,7 +219,7 @@ class AsaasService implements AsaasServiceInterface
             'value' => $amount,
             'nextDueDate' => $nextDueDate ?? now()->addDay()->toDateString(),
             'cycle' => 'MONTHLY',
-            'description' => $plan->asaasDescription(),
+            'description' => $description,
         ];
 
         if ($creditCard !== null) {
@@ -257,6 +265,47 @@ class AsaasService implements AsaasServiceInterface
             'status' => $data['status'],
             'nextDueDate' => $data['nextDueDate'] ?? now()->addDay()->toDateString(),
             'value' => $data['value'] ?? $amount,
+        ];
+    }
+
+    /**
+     * Update the recurring value/description of an existing subscription in place.
+     * Used to add/remove a paid module (e.g. PDV) from a company's plan subscription
+     * without cancelling it — no card data needed, since the subscription already
+     * has its payment method configured on Asaas. Applies from the next due date on.
+     *
+     * @return array{id: string, status: string, value: float}
+     */
+    public function updateSubscriptionValue(string $subscriptionId, float $value, string $description): array
+    {
+        Log::channel('payments')->info('Atualizando valor da assinatura no Asaas', [
+            'subscription_id' => $subscriptionId,
+            'value' => $value,
+        ]);
+
+        $response = $this->request('put', "subscriptions/{$subscriptionId}", [
+            'value' => $value,
+            'description' => $description,
+        ]);
+
+        if ($response->failed()) {
+            Log::channel('discord')->error('Erro ao atualizar assinatura no Asaas', [
+                'type' => 'payments',
+                'subscription_id' => $subscriptionId,
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+            throw new RuntimeException('Asaas subscription update error: '.$response->body(), $response->status());
+        }
+
+        $data = $response->json();
+
+        Log::channel('payments')->info('Assinatura atualizada no Asaas', ['subscription_id' => $subscriptionId]);
+
+        return [
+            'id' => $data['id'],
+            'status' => $data['status'],
+            'value' => $data['value'] ?? $value,
         ];
     }
 

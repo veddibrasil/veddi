@@ -369,43 +369,6 @@
                     </div>
                 </label>
 
-                {{-- PDV --}}
-                <label class="relative flex flex-col cursor-pointer rounded-2xl border-2 p-5 transition-all duration-200 select-none
-                    {{ $plan === 'pdv'
-                        ? 'border-[#7A00A3] shadow-md shadow-purple-100'
-                        : 'border-zinc-200 bg-white hover:border-zinc-300 hover:shadow-sm' }}">
-                    <input type="radio" wire:model.live="plan" value="pdv" class="sr-only" />
-
-                    <div class="absolute top-3.5 right-3.5 h-5 w-5 rounded-full border-2 transition-all
-                        {{ $plan === 'pdv' ? 'border-[#7A00A3] bg-[#7A00A3]' : 'border-zinc-300 bg-white' }}
-                        flex items-center justify-center">
-                        @if($plan === 'pdv')
-                            <svg class="h-2.5 w-2.5 text-white" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3"/></svg>
-                        @endif
-                    </div>
-
-                    <span class="text-2xl mb-3">🖥️</span>
-                    <p class="font-bold text-zinc-900 text-base">PDV</p>
-                    <p class="mt-0.5 text-2xl font-extrabold text-zinc-900" style="font-family: 'Montserrat', sans-serif;">
-                        R$ 199<span class="text-sm font-normal text-zinc-400">/mês</span>
-                    </p>
-                    <p class="mt-1 text-xs text-zinc-400">+ R$ 99 taxa de ativação</p>
-                    <div class="mt-4 space-y-2 text-sm text-zinc-600">
-                        <div class="flex items-center gap-2">
-                            <svg class="h-4 w-4 text-green-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
-                            Pedidos ilimitados
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <svg class="h-4 w-4 text-green-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
-                            <span class="font-semibold text-green-700">Terminal PDV</span>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <svg class="h-4 w-4 text-green-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
-                            Até 5 filiais
-                        </div>
-                    </div>
-                </label>
-
             </div>
 
             @error('plan')

@@ -68,4 +68,33 @@ class UserPermissionService
                 User::clearPermissionCache($user->id, $company->id);
             });
     }
+
+    /**
+     * Revoke pdv.operate from every company_admin of the given company.
+     * Safe to call multiple times (updateOrCreate is idempotent).
+     */
+    public static function revokePdvPermissions(Company $company): void
+    {
+        $permission = Permission::where('name', 'pdv.operate')->first();
+
+        if (! $permission) {
+            return;
+        }
+
+        $company->users()
+            ->wherePivot('role', 'company_admin')
+            ->get()
+            ->each(function (User $user) use ($company, $permission) {
+                UserPermission::updateOrCreate(
+                    [
+                        'user_id' => $user->id,
+                        'company_id' => $company->id,
+                        'permission_id' => $permission->id,
+                    ],
+                    ['granted' => false]
+                );
+
+                User::clearPermissionCache($user->id, $company->id);
+            });
+    }
 }

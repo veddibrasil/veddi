@@ -78,7 +78,6 @@ class PaymentOrchestrator
         $platformRate = (float) config('payments.vindi_pix_platform_rate', 0.0014);
         $planExtraRate = $company->feePercentageForOrder($order);
 
-
         // Same rule as card: platform commission (1%/3%) applies to the actual
         // net received after gateway fees — not the inflated charge — with
         // delivery fee carved out first.

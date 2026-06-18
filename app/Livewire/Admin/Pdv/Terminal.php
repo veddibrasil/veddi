@@ -138,7 +138,7 @@ class Terminal extends Component
         $user = auth()->user();
 
         abort_unless($company, 403);
-        abort_unless($company->plan?->hasPdv(), 403, 'Seu plano não inclui acesso ao PDV.');
+        abort_unless($company->pdv_module_enabled, 403, 'Módulo PDV não está habilitado para esta empresa.');
         abort_unless($user?->hasPermission('pdv.operate', $company), 403);
 
         $this->canOperate = true;
