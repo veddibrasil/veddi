@@ -78,10 +78,15 @@ class PaymentOrchestrator
         $platformRate = (float) config('payments.vindi_pix_platform_rate', 0.0014);
         $planExtraRate = $company->feePercentageForOrder($order);
 
-        // Commission on subtotal only — delivery fee must not be subject to platform commission.
-        // Avoid rounding the gateway portion before subtraction to preserve Vindi split precision.
-        $commissionAmount = round((float) $order->subtotal * $planExtraRate, 2);
-        $affiliateAmount = $chargeAmount * (1.0 - $gatewayRate - $platformRate) - $commissionAmount;
+
+        // Same rule as card: platform commission (1%/3%) applies to the actual
+        // net received after gateway fees — not the inflated charge — with
+        // delivery fee carved out first.
+        $netAfterGateway = round($chargeAmount * (1.0 - $gatewayRate - $platformRate), 3);
+        $deliveryFee = (float) ($order->delivery_fee ?? 0);
+        $platformFeeBase = round($netAfterGateway - $deliveryFee, 3);
+        $commissionAmount = round($platformFeeBase * $planExtraRate, 3);
+        $affiliateAmount = round($netAfterGateway - $commissionAmount, 3);
         $affiliatePercentual = $chargeAmount > 0
             ? round($affiliateAmount / $chargeAmount * 100, 4)
             : round((1.0 - $gatewayRate - $platformRate - $planExtraRate) * 100, 4);
@@ -92,8 +97,12 @@ class PaymentOrchestrator
             'delivery_fee' => $order->delivery_fee,
             'charge_amount' => $chargeAmount,
             'commission_amount' => $commissionAmount,
+            'platform_fee_base' => $platformFeeBase,
             'affiliate_percentual' => $affiliatePercentual,
             'has_affiliate' => (bool) $affiliateEmail,
+            'gateway_rate_pct' => round($gatewayRate * 100, 3).'%',
+            'platform_rate_pct' => round($platformRate * 100, 3).'%',
+            'plan_extra_rate_pct' => round($planExtraRate * 100, 3).'%',
         ]);
 
         $tokenAccount = config('payments.vindi_token_account');

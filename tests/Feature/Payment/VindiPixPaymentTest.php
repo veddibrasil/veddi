@@ -413,9 +413,10 @@ test('PIX com frete: shipping_price enviado separado e comissao sobre subtotal',
         ->and($capturedPayload['transaction']['shipping_type'])->toBe('Entrega')
         ->and($capturedPayload['transaction_product'][0]['price_unit'])->toBe('40.00');
 
-    // Comissao sobre subtotal=40 (nao total=50): commissionAmount=0.40
-    // affiliateAmount = 50*(1-0.0099) - 0.40 = 49.505 - 0.40 = 49.105
-    // affiliatePercentual = 98.21 → Vindi commission_amount = 49.11
+    // netAfterGateway = round(50*(1-0.0085-0.0014), 3) = 49.505
+    // platformFeeBase = netAfterGateway - delivery(10) = 39.505 (frete carve-out, not subtotal)
+    // commissionAmount = round(39.505*0.01, 3) = 0.395 → affiliateAmount = 49.110
+    // affiliatePercentual = 98.22 → Vindi commission_amount = 49.11
     expect($capturedPayload['affiliates'])->toHaveCount(1)
         ->and($capturedPayload['affiliates'][0]['commission_amount'])->toBe('49.11');
 });
