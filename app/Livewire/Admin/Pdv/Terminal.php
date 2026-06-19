@@ -60,13 +60,6 @@ class Terminal extends Component
 
     public string $cashReceivedInput = '';
 
-    // ── PIX ───────────────────────────────────────────────────────────────────
-    public ?string $pixCopyPaste = null;
-
-    public ?string $pixQrCode = null;
-
-    public ?int $pixOrderId = null;
-
     // ── Desconto manual ───────────────────────────────────────────────────────
     public string $manualDiscountType = 'fixed'; // 'fixed' | 'percent'
 
@@ -146,6 +139,10 @@ class Terminal extends Component
 
     public string $tableLabel = '';
 
+    public bool $showBulkTabsForm = false;
+
+    public string $bulkTableLabels = '';
+
     public ?int $openTabOrderId = null;
 
     public ?int $closingTabOrderId = null;
@@ -215,6 +212,7 @@ class Terminal extends Component
                 ->where('branch_product.available', true)
             )
             ->where('active', true)
+            ->where('available_in_pdv', true)
             ->where('barcode', $barcode)
             ->first();
 
@@ -242,6 +240,7 @@ class Terminal extends Component
                 ->where('branch_product.available', true)
             )
             ->where('active', true)
+            ->where('available_in_pdv', true)
             ->find($productId);
 
         if (! $product) {
@@ -281,6 +280,7 @@ class Terminal extends Component
                 ->where('branch_product.available', true)
             )
             ->where('active', true)
+            ->where('available_in_pdv', true)
             ->find($productId);
 
         if (! $product) {
@@ -637,12 +637,98 @@ class Terminal extends Component
         $this->cart = [];
         $this->tableLabel = '';
         $this->openTabOrderId = null;
+        $this->showBulkTabsForm = false;
+        $this->bulkTableLabels = '';
     }
 
     public function selectOpenTab(int $orderId): void
     {
         $this->openTabOrderId = $orderId;
         $this->cart = [];
+    }
+
+    public function deselectOpenTab(): void
+    {
+        $this->openTabOrderId = null;
+        $this->cart = [];
+        $this->tableLabel = '';
+    }
+
+    public function toggleBulkTabsForm(): void
+    {
+        $this->showBulkTabsForm = ! $this->showBulkTabsForm;
+        $this->bulkTableLabels = '';
+        $this->resetValidation('bulk_table_labels');
+    }
+
+    public function openMultipleTabs(): void
+    {
+        $this->resetValidation('bulk_table_labels');
+
+        if (! $this->selectedBranchId) {
+            return;
+        }
+
+        $labels = collect(preg_split('/[,\n]/', $this->bulkTableLabels))
+            ->map(fn ($label) => trim($label))
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($labels->isEmpty()) {
+            $this->addError('bulk_table_labels', 'Informe ao menos uma identificação de comanda.');
+
+            return;
+        }
+
+        $duplicate = $labels->first(fn ($label) => $this->isTableLabelOpen($label));
+
+        if ($duplicate) {
+            $this->addError('bulk_table_labels', "Já existe uma comanda aberta com o nome \"{$duplicate}\".");
+
+            return;
+        }
+
+        $company = app('current.company');
+        $customerId = $this->resolveCustomerId($company);
+
+        foreach ($labels as $label) {
+            DB::beginTransaction();
+            try {
+                $order = app(OrderService::class)->createOrder(
+                    customerId: $customerId,
+                    branchId: $this->selectedBranchId,
+                    cart: [],
+                    notes: '',
+                    paymentMethod: '',
+                    orderType: 'pdv',
+                    status: 'pending',
+                );
+
+                $order->update([
+                    'pdv_cash_session_id' => $this->cashSessionId,
+                    'is_open_tab' => true,
+                    'table_label' => $label,
+                ]);
+
+                DB::commit();
+            } catch (\Throwable $e) {
+                DB::rollBack();
+                $this->addError('bulk_table_labels', "Erro ao abrir comanda \"{$label}\": {$e->getMessage()}");
+
+                return;
+            }
+
+            $this->audit('tab_opened', [
+                'order_id' => $order->id,
+                'amount' => 0.0,
+                'reason' => $label,
+            ]);
+        }
+
+        $this->bulkTableLabels = '';
+        $this->showBulkTabsForm = false;
+        unset($this->openTabs);
     }
 
     public function openTab(): void
@@ -656,6 +742,12 @@ class Terminal extends Component
 
         if (blank($label)) {
             $this->addError('table_label', 'Informe a identificação da comanda.');
+
+            return;
+        }
+
+        if ($this->isTableLabelOpen($label)) {
+            $this->addError('table_label', "Já existe uma comanda aberta com o nome \"{$label}\".");
 
             return;
         }
@@ -753,11 +845,9 @@ class Terminal extends Component
             return;
         }
 
-        $company = app('current.company');
-
         DB::beginTransaction();
         try {
-            $isPaidOnCreate = in_array($this->paymentMethod, ['cash', 'credit_card']);
+            $isPaidOnCreate = in_array($this->paymentMethod, ['cash', 'credit_card', 'pix']);
 
             app(OrderService::class)->applyManualDiscountToOrder($order, $this->manualDiscountAmount);
 
@@ -779,25 +869,7 @@ class Terminal extends Component
             } elseif ($this->paymentMethod === 'credit_card') {
                 app(PaymentOrchestrator::class)->processCardMachine($order);
             } elseif ($this->paymentMethod === 'pix') {
-                $customer = Customer::withoutGlobalScopes()->find($order->customer_id);
-                $result = app(PaymentOrchestrator::class)->processPix($order, $customer, $company);
-                $this->pixCopyPaste = $result['copy_paste'] ?? null;
-                $this->pixQrCode = $result['qr_code'] ?? null;
-                $this->pixOrderId = $order->id;
-                DB::commit();
-                $this->step = 'pix';
-                $this->lastOrderNumber = $order->order_number;
-                $this->lastOrderTotal = (float) $order->total;
-                $this->lastOrderId = $order->id;
-                $this->audit('tab_closed', [
-                    'order_id' => $order->id,
-                    'amount' => (float) $order->total,
-                    'metadata' => ['payment_method' => 'pix'],
-                ]);
-                $this->openTabOrderId = null;
-                $this->closingTabOrderId = null;
-
-                return;
+                app(PaymentOrchestrator::class)->processPixManual($order);
             }
 
             DB::commit();
@@ -866,7 +938,7 @@ class Terminal extends Component
 
         DB::beginTransaction();
         try {
-            $isPaidOnCreate = in_array($this->paymentMethod, ['cash', 'credit_card']);
+            $isPaidOnCreate = in_array($this->paymentMethod, ['cash', 'credit_card', 'pix']);
 
             $order = app(OrderService::class)->createOrder(
                 customerId: $customerId,
@@ -907,27 +979,7 @@ class Terminal extends Component
             } elseif ($this->paymentMethod === 'credit_card') {
                 app(PaymentOrchestrator::class)->processCardMachine($order);
             } elseif ($this->paymentMethod === 'pix') {
-                $customer = Customer::withoutGlobalScopes()->find($customerId);
-                $result = app(PaymentOrchestrator::class)->processPix($order, $customer, $company);
-                $this->pixCopyPaste = $result['copy_paste'] ?? null;
-                $this->pixQrCode = $result['qr_code'] ?? null;
-                $this->pixOrderId = $order->id;
-                DB::commit();
-                $this->step = 'pix';
-                $this->lastOrderNumber = $order->order_number;
-                $this->lastOrderTotal = (float) $order->total;
-                $this->lastOrderId = $order->id;
-                $this->audit('order_created', [
-                    'order_id' => $order->id,
-                    'amount' => (float) $order->total,
-                    'metadata' => [
-                        'payment_method' => 'pix',
-                        'cart_count' => $this->cartCount,
-                        'manual_discount' => $this->manualDiscountAmount,
-                    ],
-                ]);
-
-                return;
+                app(PaymentOrchestrator::class)->processPixManual($order);
             }
 
             DB::commit();
@@ -951,21 +1003,6 @@ class Terminal extends Component
         $this->lastOrderNumber = $order->order_number;
         $this->lastOrderId = $order->id;
         $this->step = 'success';
-    }
-
-    public function checkPixStatus(): void
-    {
-        if (! $this->pixOrderId) {
-            return;
-        }
-
-        $payment = \App\Models\Payment::where('order_id', $this->pixOrderId)
-            ->where('status', 'paid')
-            ->first();
-
-        if ($payment) {
-            $this->step = 'success';
-        }
     }
 
     // ── Cancelamento ─────────────────────────────────────────────────────────
@@ -1055,6 +1092,8 @@ class Terminal extends Component
         $this->showSessionHistory = false;
         $this->orderMode = 'impressao';
         $this->tableLabel = '';
+        $this->showBulkTabsForm = false;
+        $this->bulkTableLabels = '';
         $this->openTabOrderId = null;
         $this->closingTabOrderId = null;
         $this->resetPaymentState();
@@ -1303,6 +1342,7 @@ class Terminal extends Component
             fn () => ProductCategory::withoutGlobalScopes()
                 ->whereHas('products', fn ($q) => $q
                     ->where('active', true)
+                    ->where('available_in_pdv', true)
                     ->whereHas('branches', fn ($bq) => $bq
                         ->where('branches.id', $branchId)
                         ->where('branch_product.available', true)
@@ -1331,6 +1371,7 @@ class Terminal extends Component
                     ->where('branch_product.available', true)
                 )
                 ->where('active', true)
+                ->where('available_in_pdv', true)
                 ->with([
                     'optionGroups.options' => fn ($q) => $q->where('active', true),
                     'optionGroups.inactiveOptions',
@@ -1668,6 +1709,13 @@ class Terminal extends Component
         ];
     }
 
+    private function isTableLabelOpen(string $label): bool
+    {
+        return $this->openTabs->contains(
+            fn ($tab) => mb_strtolower((string) $tab->table_label) === mb_strtolower($label)
+        );
+    }
+
     private function resolveCustomerId(\App\Models\Company $company): int
     {
         if ($this->customerId) {
@@ -1695,9 +1743,6 @@ class Terminal extends Component
     {
         $this->paymentMethod = 'cash';
         $this->cashReceivedInput = '';
-        $this->pixCopyPaste = null;
-        $this->pixQrCode = null;
-        $this->pixOrderId = null;
         $this->manualDiscountAmount = 0.0;
         $this->manualDiscountInput = '';
         $this->manualDiscountType = 'fixed';

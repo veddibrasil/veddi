@@ -25,6 +25,8 @@ class Product extends Model
         'promo_price_value',
         'image_path',
         'active',
+        'available_in_pdv',
+        'available_in_delivery',
         'is_variant',
         'sort_order',
         'fiscal_data',
@@ -35,6 +37,8 @@ class Product extends Model
         'promo_price_enabled' => 'boolean',
         'promo_price_value' => 'decimal:2',
         'active' => 'boolean',
+        'available_in_pdv' => 'boolean',
+        'available_in_delivery' => 'boolean',
         'is_variant' => 'boolean',
         'fiscal_data' => 'array',
     ];

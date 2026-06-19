@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Contracts\AsaasServiceInterface;
 use App\Contracts\FiscalNoteProviderInterface;
 use App\Contracts\OrderServiceInterface;
+use App\Contracts\PrinterServiceInterface;
 use App\Contracts\RefundServiceInterface;
 use App\Contracts\TransactionServiceInterface;
 use App\Contracts\WalletServiceInterface;
@@ -38,6 +39,7 @@ use App\Services\Finance\WalletService;
 use App\Services\Fiscal\FocusNfeService;
 use App\Services\Order\OrderService;
 use App\Services\Payment\AsaasService;
+use App\Services\Printer\EscPosPrinterService;
 use App\Services\Refund\RefundService;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Notifications\ResetPassword;
@@ -75,6 +77,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(WalletServiceInterface::class, WalletService::class);
         $this->app->bind(TransactionServiceInterface::class, TransactionService::class);
         $this->app->bind(RefundServiceInterface::class, RefundService::class);
+        $this->app->bind(PrinterServiceInterface::class, EscPosPrinterService::class);
     }
 
     /**

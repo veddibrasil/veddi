@@ -39,7 +39,7 @@ class OrderService implements OrderServiceInterface
     ): Order {
         $currentCompany = app()->bound('current.company') ? app('current.company') : null;
 
-        $products = $this->resolveProducts($cart, $branchId);
+        $products = $this->resolveProducts($cart, $branchId, $orderType === 'pdv' ? 'available_in_pdv' : 'available_in_delivery');
 
         $customer = \App\Models\Customer::withoutGlobalScopes()->find($customerId);
 
@@ -188,7 +188,7 @@ class OrderService implements OrderServiceInterface
      */
     public function addItemsToOrder(Order $order, array $cart): Order
     {
-        $products = $this->resolveProducts($cart, $order->branch_id);
+        $products = $this->resolveProducts($cart, $order->branch_id, 'available_in_pdv');
 
         return DB::transaction(function () use ($order, $cart, $products) {
             $optionPricing = app(CartOptionPricing::class);
@@ -267,7 +267,7 @@ class OrderService implements OrderServiceInterface
         ]);
     }
 
-    private function resolveProducts(array $cart, int $branchId): Collection
+    private function resolveProducts(array $cart, int $branchId, string $channelColumn): Collection
     {
         $productIds = array_unique(array_values(array_map(
             fn ($item, $key) => (int) ($item['product_id'] ?? explode('_', (string) $key)[0]),
@@ -282,6 +282,7 @@ class OrderService implements OrderServiceInterface
                 ->where('branch_product.available', true)
             )
             ->where('active', true)
+            ->where($channelColumn, true)
             ->with('optionGroups')
             ->get()
             ->keyBy('id');

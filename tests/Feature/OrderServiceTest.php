@@ -146,6 +146,46 @@ test('createOrder lança exceção para produto não disponível na filial', fun
     ))->toThrow(\RuntimeException::class);
 });
 
+test('createOrder bloqueia produto fora do canal: available_in_delivery false não vende no delivery, available_in_pdv false não vende no PDV', function () {
+    ['customer' => $customer, 'branch' => $branch, 'product' => $product] = setupOrderContext();
+
+    $service = app(OrderService::class);
+
+    $product->update(['available_in_delivery' => false]);
+
+    expect(fn () => $service->createOrder(
+        customerId: $customer->id,
+        branchId: $branch->id,
+        cart: [$product->id => ['qty' => 1, 'name' => $product->name, 'price' => (float) $product->price]],
+        notes: '',
+        paymentMethod: 'PIX',
+        orderType: 'delivery',
+    ))->toThrow(\RuntimeException::class);
+
+    // Mas continua vendável no PDV, pois available_in_pdv segue true
+    $order = $service->createOrder(
+        customerId: $customer->id,
+        branchId: $branch->id,
+        cart: [$product->id => ['qty' => 1, 'name' => $product->name, 'price' => (float) $product->price]],
+        notes: '',
+        paymentMethod: '',
+        orderType: 'pdv',
+    );
+
+    expect($order->items)->toHaveCount(1);
+
+    $product->update(['available_in_delivery' => true, 'available_in_pdv' => false]);
+
+    expect(fn () => $service->createOrder(
+        customerId: $customer->id,
+        branchId: $branch->id,
+        cart: [$product->id => ['qty' => 1, 'name' => $product->name, 'price' => (float) $product->price]],
+        notes: '',
+        paymentMethod: '',
+        orderType: 'pdv',
+    ))->toThrow(\RuntimeException::class);
+});
+
 test('cancelOrder altera status para cancelled', function () {
     ['customer' => $customer, 'branch' => $branch, 'product' => $product] = setupOrderContext();
 

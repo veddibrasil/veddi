@@ -61,6 +61,7 @@ function vindiRefundContext(string $paymentStatus = 'paid'): array
 
     $payment = Payment::create([
         'order_id' => $order->id,
+        'vindi_transaction_id' => 555001,
         'vindi_transaction_token' => 'vindi_tok_refund_001',
         'payment_gateway' => 'vindi',
         'amount' => 80.00,
@@ -81,6 +82,9 @@ test('VindiRefundGateway retorna succeeded quando Vindi confirma Cancelada sincr
     config()->set('payments.vindi_reseller_token', 'res_test');
 
     Http::fake([
+        '*/authorizations/access_token' => Http::response([
+            'data_response' => ['authorization' => ['access_token' => 'test_access_token']],
+        ], 200),
         '*/transactions/cancel' => Http::response([
             'message_response' => ['message' => 'success'],
             'data_response' => [
@@ -108,6 +112,9 @@ test('VindiRefundGateway retorna succeeded quando Vindi confirma Estornada sincr
     config()->set('payments.vindi_reseller_token', 'res_test');
 
     Http::fake([
+        '*/authorizations/access_token' => Http::response([
+            'data_response' => ['authorization' => ['access_token' => 'test_access_token']],
+        ], 200),
         '*/transactions/cancel' => Http::response([
             'message_response' => ['message' => 'success'],
             'data_response' => [
@@ -134,6 +141,9 @@ test('VindiRefundGateway retorna in_progress quando Vindi processa de forma assi
     config()->set('payments.vindi_reseller_token', 'res_test');
 
     Http::fake([
+        '*/authorizations/access_token' => Http::response([
+            'data_response' => ['authorization' => ['access_token' => 'test_access_token']],
+        ], 200),
         '*/transactions/cancel' => Http::response([
             'message_response' => ['message' => 'success'],
             'data_response' => [
@@ -160,6 +170,9 @@ test('VindiRefundGateway retorna failed quando Vindi rejeita a requisicao', func
     config()->set('payments.vindi_reseller_token', 'res_test');
 
     Http::fake([
+        '*/authorizations/access_token' => Http::response([
+            'data_response' => ['authorization' => ['access_token' => 'test_access_token']],
+        ], 200),
         '*/transactions/cancel' => Http::response([
             'message_response' => ['message' => 'error'],
             'error_response' => ['general_errors' => [['code' => '001', 'message' => 'Token inválido']]],
@@ -180,6 +193,9 @@ test('VindiRefundGateway envia amount para suportar estorno parcial', function (
     config()->set('payments.vindi_reseller_token', 'res_test');
 
     Http::fake([
+        '*/authorizations/access_token' => Http::response([
+            'data_response' => ['authorization' => ['access_token' => 'test_access_token']],
+        ], 200),
         '*/transactions/cancel' => Http::response([
             'message_response' => ['message' => 'success'],
             'data_response' => ['transaction' => ['status_name' => 'Cancelada', 'transaction_token' => 'tok']],
@@ -192,7 +208,7 @@ test('VindiRefundGateway envia amount para suportar estorno parcial', function (
 
     Http::assertSent(function ($request) {
         return str_contains($request->url(), '/transactions/cancel')
-            && $request->data()['amount'] === '40.00';
+            && $request->data()['refund_amount'] === '40.00';
     });
 });
 
@@ -221,6 +237,9 @@ test('ProcessRefund chama markSucceeded imediatamente quando gateway retorna suc
     config()->set('payments.vindi_reseller_token', 'res_test');
 
     Http::fake([
+        '*/authorizations/access_token' => Http::response([
+            'data_response' => ['authorization' => ['access_token' => 'test_access_token']],
+        ], 200),
         '*/transactions/cancel' => Http::response([
             'message_response' => ['message' => 'success'],
             'data_response' => [
@@ -263,6 +282,9 @@ test('ProcessRefund aguarda webhook quando gateway retorna in_progress', functio
     config()->set('payments.vindi_reseller_token', 'res_test');
 
     Http::fake([
+        '*/authorizations/access_token' => Http::response([
+            'data_response' => ['authorization' => ['access_token' => 'test_access_token']],
+        ], 200),
         '*/transactions/cancel' => Http::response([
             'message_response' => ['message' => 'success'],
             'data_response' => [

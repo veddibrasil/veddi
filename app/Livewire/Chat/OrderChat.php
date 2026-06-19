@@ -482,6 +482,7 @@ class OrderChat extends Component
                             ->where('bp.branch_id', $branchId);
                     })
                         ->where('products.active', true)
+                        ->where('products.available_in_delivery', true)
                         ->select('products.*', 'bp.available', 'bp.track_stock', 'bp.quantity')
                         ->orderBy('products.sort_order')
                         ->with([

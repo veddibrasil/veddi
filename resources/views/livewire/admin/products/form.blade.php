@@ -152,9 +152,18 @@
                 </div>
 
                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
-                  
+
                     <div class="pb-1">
                         <flux:checkbox wire:model="active" label="Produto ativo" />
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+                    <div class="pb-1">
+                        <flux:checkbox wire:model="available_in_pdv" label="Disponível no PDV" />
+                    </div>
+                    <div class="pb-1">
+                        <flux:checkbox wire:model="available_in_delivery" label="Disponível no Delivery" />
                     </div>
                 </div>
             </div>

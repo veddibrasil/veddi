@@ -31,5 +31,11 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="VINDI_TOKEN_ACCOUNT" value=""/>
+        <env name="VINDI_CONSUMER_KEY" value=""/>
+        <env name="VINDI_CONSUMER_SECRET" value=""/>
+        <env name="VINDI_AUTHORIZATION_CODE" value=""/>
+        <env name="VINDI_PIX_RATE" value="0.0085"/>
+        <env name="VINDI_PIX_PLATFORM_RATE" value="0.0014"/>
     </php>
 </phpunit>

@@ -174,6 +174,19 @@ test('decrementar a 0 remove item do carrinho', function () {
         ->assertSet('cart', []);
 });
 
+test('produto com available_in_pdv false não aparece nem pode ser adicionado no PDV', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $product->update(['available_in_pdv' => false]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->assertDontSee($product->name)
+        ->call('addProduct', $product->id)
+        ->assertSet('cart', []);
+});
+
 // ─── Pedido com dinheiro ──────────────────────────────────────────────────────
 
 test('pedido PDV com pagamento em dinheiro cria order e payment', function () {
@@ -208,7 +221,7 @@ test('pedido PDV com pagamento em dinheiro cria order e payment', function () {
 
 // ─── Pedido com PIX ───────────────────────────────────────────────────────────
 
-test('pedido PDV com PIX cria order e avança para tela pix', function () {
+test('pedido PDV com PIX é apenas informativo: marca como pago direto sem gerar cobrança', function () {
     ['admin' => $admin, 'product' => $product] = pdvContext();
 
     $this->actingAs($admin);
@@ -218,13 +231,20 @@ test('pedido PDV com PIX cria order e avança para tela pix', function () {
         ->call('proceedToPayment')
         ->set('paymentMethod', 'pix')
         ->call('processOrder')
-        ->assertSet('step', 'pix');
+        ->assertSet('step', 'success')
+        ->assertHasNoErrors();
 
     expect(Order::withoutGlobalScopes()->count())->toBe(1);
 
     $order = Order::withoutGlobalScopes()->first();
     expect($order->order_type)->toBe('pdv');
     expect($order->payment_method)->toBe('pix');
+    expect($order->status)->toBe('paid');
+
+    $payment = Payment::where('order_id', $order->id)->first();
+    expect($payment)->not->toBeNull();
+    expect($payment->status)->toBe('paid');
+    expect($payment->payment_gateway)->toBe('pix_manual');
 });
 
 // ─── Cliente anônimo ──────────────────────────────────────────────────────────
@@ -497,41 +517,6 @@ test('pedido em status terminal não pode ser cancelado no PDV', function () {
     expect($order->status)->toBe('delivered');
 });
 
-// ─── checkPixStatus ───────────────────────────────────────────────────────────
-
-test('checkPixStatus mantém step pix quando pagamento não confirmado', function () {
-    ['admin' => $admin, 'product' => $product] = pdvContext();
-
-    $this->actingAs($admin);
-
-    Livewire::test(Terminal::class)
-        ->call('addProduct', $product->id)
-        ->call('proceedToPayment')
-        ->set('paymentMethod', 'pix')
-        ->call('processOrder')
-        ->assertSet('step', 'pix')
-        ->call('checkPixStatus')
-        ->assertSet('step', 'pix');
-});
-
-test('checkPixStatus avança para success quando pagamento confirmado', function () {
-    ['admin' => $admin, 'product' => $product] = pdvContext();
-
-    $this->actingAs($admin);
-
-    $component = Livewire::test(Terminal::class)
-        ->call('addProduct', $product->id)
-        ->call('proceedToPayment')
-        ->set('paymentMethod', 'pix')
-        ->call('processOrder')
-        ->assertSet('step', 'pix');
-
-    $orderId = $component->get('pixOrderId');
-    Payment::where('order_id', $orderId)->update(['status' => 'paid']);
-
-    $component->call('checkPixStatus')->assertSet('step', 'success');
-});
-
 // ─── processCash direto ───────────────────────────────────────────────────────
 
 test('processCash cria payment com status paid sem gateway', function () {
@@ -688,6 +673,66 @@ test('abrir comanda cria pedido pendente sem pagamento e deduz estoque', functio
 
     $stock = DB::table('branch_product')->where('product_id', $product->id)->first();
     expect((int) $stock->quantity)->toBe(9);
+});
+
+test('abrir comanda rejeita nome já usado por comanda aberta', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->set('orderMode', 'mesa')
+        ->call('addProduct', $product->id)
+        ->set('tableLabel', 'Mesa 5')
+        ->call('openTab')
+        ->assertHasNoErrors()
+        ->call('deselectOpenTab')
+        ->call('addProduct', $product->id)
+        ->set('tableLabel', 'mesa 5')
+        ->call('openTab')
+        ->assertHasErrors('table_label');
+
+    expect(Order::withoutGlobalScopes()->count())->toBe(1);
+});
+
+test('abrir várias comandas de uma vez cria um pedido pendente por identificação', function () {
+    ['admin' => $admin] = pdvContext();
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->set('orderMode', 'mesa')
+        ->set('bulkTableLabels', "Mesa 1, Mesa 2\nMesa 3")
+        ->call('openMultipleTabs')
+        ->assertHasNoErrors()
+        ->assertSet('bulkTableLabels', '')
+        ->assertSet('showBulkTabsForm', false);
+
+    $orders = Order::withoutGlobalScopes()->orderBy('table_label')->get();
+
+    expect($orders)->toHaveCount(3);
+    expect($orders->pluck('table_label')->all())->toBe(['Mesa 1', 'Mesa 2', 'Mesa 3']);
+    $orders->each(function ($order) {
+        expect($order->is_open_tab)->toBeTrue();
+        expect($order->status)->toBe('pending');
+        expect((float) $order->total)->toBe(0.0);
+    });
+});
+
+test('abrir várias comandas rejeita nome duplicado com comanda já aberta', function () {
+    ['admin' => $admin] = pdvContext();
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->set('orderMode', 'mesa')
+        ->set('bulkTableLabels', 'Mesa 1')
+        ->call('openMultipleTabs')
+        ->set('bulkTableLabels', 'Mesa 2, Mesa 1')
+        ->call('openMultipleTabs')
+        ->assertHasErrors('bulk_table_labels');
+
+    expect(Order::withoutGlobalScopes()->count())->toBe(1);
 });
 
 test('somar rodada de itens na comanda soma total e deduz estoque de novo', function () {

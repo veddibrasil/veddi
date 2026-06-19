@@ -150,6 +150,16 @@
                                     <p>{{ $closedSession->reconciliation_notes }}</p>
                                 </div>
                             @endif
+
+                            <flux:button
+                                href="{{ route('admin.pdv.cash-session.print', $closedSession) }}"
+                                target="_blank"
+                                variant="ghost"
+                                icon="printer"
+                                class="w-full"
+                            >
+                                Imprimir fechamento
+                            </flux:button>
                         </div>
                     @endif
                 @else
@@ -907,79 +917,6 @@
                         </div>
                     </div>
 
-                {{-- ── PIX aguardando ── --}}
-                @elseif ($step === 'pix')
-                    <div
-                        class="flex flex-col h-full overflow-hidden"
-                        x-data="{
-                            pollCount: 0,
-                            maxPolls: 60,
-                            timedOut: false,
-                            timer: null,
-                            start() {
-                                this.timer = setInterval(() => {
-                                    if (this.timedOut) { clearInterval(this.timer); return; }
-                                    $wire.checkPixStatus();
-                                    this.pollCount++;
-                                    if (this.pollCount >= this.maxPolls) {
-                                        this.timedOut = true;
-                                        clearInterval(this.timer);
-                                    }
-                                }, 3000);
-                            }
-                        }"
-                        x-init="start()"
-                    >
-                        <div class="px-4 py-3 border-b border-neutral-100 dark:border-zinc-800 shrink-0 flex items-center gap-2 bg-white dark:bg-zinc-900">
-                            <div class="size-7 rounded-full bg-blue-100 flex items-center justify-center dark:bg-blue-900/40 shrink-0">
-                                <flux:icon.qr-code class="size-4 text-blue-600 dark:text-blue-400" />
-                            </div>
-                            <h2 class="font-bold text-neutral-800 dark:text-neutral-100">PIX gerado</h2>
-                        </div>
-                        <div class="flex-1 overflow-y-auto p-4 space-y-4 flex flex-col">
-                            <p class="text-sm text-neutral-500 dark:text-neutral-400 text-center">
-                                Pedido <span class="font-mono font-semibold text-amber-500">{{ $lastOrderNumber }}</span>
-                                @if ($lastOrderTotal)
-                                    · <span class="font-semibold text-neutral-700 dark:text-neutral-200">R$ {{ number_format($lastOrderTotal, 2, ',', '.') }}</span>
-                                @endif
-                            </p>
-                            <template x-if="timedOut">
-                                <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-700 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-300">
-                                    <p class="font-medium">Verificação automática encerrada.</p>
-                                    <p class="text-xs mt-0.5">Use o botão abaixo para verificar manualmente ou cancele o pedido.</p>
-                                </div>
-                            </template>
-                            <template x-if="!timedOut">
-                                <div class="flex items-center justify-center gap-2 text-sm text-blue-600 dark:text-blue-400">
-                                    <flux:icon.arrow-path class="size-4 animate-spin" />
-                                    <span>Aguardando... (<span x-text="maxPolls - pollCount"></span>)</span>
-                                </div>
-                            </template>
-                            @if ($pixCopyPaste)
-                                <div class="bg-neutral-50 border rounded-xl p-3 dark:bg-zinc-800 dark:border-zinc-600">
-                                    <p class="text-xs text-neutral-500 mb-1">Copia e cola</p>
-                                    <p class="font-mono text-xs break-all text-neutral-700 dark:text-neutral-300 select-all">{{ $pixCopyPaste }}</p>
-                                </div>
-                                <flux:button
-                                    x-data
-                                    x-on:click="navigator.clipboard.writeText('{{ $pixCopyPaste }}')"
-                                    variant="outline"
-                                    size="sm"
-                                    icon="clipboard"
-                                    class="w-full"
-                                >
-                                    Copiar código
-                                </flux:button>
-                            @endif
-                            <flux:button wire:click="checkPixStatus" variant="ghost" size="sm" class="w-full">
-                                Verificar pagamento
-                            </flux:button>
-                            <flux:button wire:click="resetTerminal" variant="ghost" size="sm" class="w-full text-neutral-400 hover:text-red-500">
-                                Cancelar e novo pedido
-                            </flux:button>
-                        </div>
-                    </div>
-
                 {{-- ── Carrinho ── --}}
                 @else
                     <div class="flex flex-col h-full overflow-hidden">
@@ -1011,15 +948,45 @@
                                             <p class="text-xs font-bold text-amber-800 dark:text-amber-300 truncate">Comanda: {{ $activeTab?->table_label }}</p>
                                             <p class="text-xs text-amber-700 dark:text-amber-400">Total atual: R$ {{ number_format($activeTab?->total ?? 0, 2, ',', '.') }}</p>
                                         </div>
-                                        <flux:button wire:click="proceedToCloseTab({{ $openTabOrderId }})" variant="outline" size="sm" class="shrink-0">
-                                            Fechar
-                                        </flux:button>
+                                        <div class="flex gap-1 shrink-0">
+                                            <flux:button wire:click="deselectOpenTab" variant="ghost" size="sm">
+                                                Nova comanda
+                                            </flux:button>
+                                            <flux:button wire:click="proceedToCloseTab({{ $openTabOrderId }})" variant="outline" size="sm">
+                                                Fechar
+                                            </flux:button>
+                                        </div>
                                     </div>
                                 @else
                                     <flux:input wire:model.live.debounce.300ms="tableLabel" placeholder="Identificação (ex: Mesa 5)" />
                                     @error('table_label')
                                         <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
                                     @enderror
+
+                                    <button
+                                        type="button"
+                                        wire:click="toggleBulkTabsForm"
+                                        class="text-xs font-semibold text-amber-700 hover:underline dark:text-amber-400"
+                                    >
+                                        {{ $showBulkTabsForm ? 'Cancelar' : 'Abrir várias comandas de uma vez' }}
+                                    </button>
+
+                                    @if ($showBulkTabsForm)
+                                        <div class="space-y-1.5 rounded-lg border border-amber-200 bg-white p-2.5 dark:border-amber-900/40 dark:bg-zinc-900">
+                                            <flux:textarea
+                                                wire:model="bulkTableLabels"
+                                                rows="2"
+                                                placeholder="Uma comanda por linha ou separada por vírgula. Ex: Mesa 1, Mesa 2, Mesa 3"
+                                            />
+                                            @error('bulk_table_labels')
+                                                <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                                            @enderror
+                                            <flux:button wire:click="openMultipleTabs" variant="primary" size="sm" class="w-full">
+                                                Criar comandas
+                                            </flux:button>
+                                        </div>
+                                    @endif
+
                                     @if ($this->openTabs->isNotEmpty())
                                         <div class="space-y-1">
                                             <p class="text-[10px] uppercase font-bold text-neutral-400 dark:text-neutral-500">Comandas abertas</p>

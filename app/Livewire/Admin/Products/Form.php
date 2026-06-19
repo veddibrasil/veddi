@@ -50,6 +50,10 @@ class Form extends Component
 
     public bool $active = true;
 
+    public bool $available_in_pdv = true;
+
+    public bool $available_in_delivery = true;
+
     public int $sort_order = 0;
 
     public $image;
@@ -88,6 +92,8 @@ class Form extends Component
             'promo_price_type' => $this->isVariant ? ['nullable'] : ['exclude_unless:promo_price_enabled,true', 'required', Rule::in(['fixed', 'percentage'])],
             'promo_price_value' => $this->isVariant ? ['nullable'] : ['exclude_unless:promo_price_enabled,true', 'required', 'numeric', 'min:0.01'],
             'active' => ['boolean'],
+            'available_in_pdv' => ['boolean'],
+            'available_in_delivery' => ['boolean'],
             'sort_order' => ['integer', 'min:0'],
             'image' => ['nullable', 'image', 'max:2048'],
             'selectedBranches' => ['array'],
@@ -161,7 +167,7 @@ class Form extends Component
             $this->product = $product;
             $this->isEditing = true;
             $this->company_id = $product->company_id;
-            $this->fill($product->only('product_category_id', 'name', 'active', 'sort_order'));
+            $this->fill($product->only('product_category_id', 'name', 'active', 'available_in_pdv', 'available_in_delivery', 'sort_order'));
             $this->description = $product->description ?? '';
             $this->price = (string) $product->price;
             $this->isVariant = (bool) $product->is_variant;
@@ -522,6 +528,8 @@ class Form extends Component
             'promo_price_type' => (! $isVariantProduct && $validated['promo_price_enabled']) ? $validated['promo_price_type'] : 'fixed',
             'promo_price_value' => (! $isVariantProduct && $validated['promo_price_enabled']) ? $validated['promo_price_value'] : null,
             'active' => $validated['active'],
+            'available_in_pdv' => $validated['available_in_pdv'],
+            'available_in_delivery' => $validated['available_in_delivery'],
             'sort_order' => $validated['sort_order'],
             'image_path' => $imagePath,
         ];

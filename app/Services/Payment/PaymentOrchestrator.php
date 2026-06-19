@@ -403,6 +403,35 @@ class PaymentOrchestrator
         ];
     }
 
+    /**
+     * Pix manual no PDV — operador confirmou o recebimento (ex: pix na maquininha
+     * ou QR estático da empresa), só registra. Sem geração de cobrança no gateway.
+     */
+    public function processPixManual(Order $order): array
+    {
+        $payment = Payment::create([
+            'order_id' => $order->id,
+            'payment_gateway' => 'pix_manual',
+            'amount' => (float) $order->total,
+            'pix_fee' => 0.0,
+            'status' => 'paid',
+            'paid_at' => now(),
+            'payment_token' => hash('sha256', 'pix'.$order->id.now()->timestamp),
+        ]);
+
+        Log::channel('payments')->info('Pagamento Pix manual (PDV) registrado', [
+            'order_id' => $order->id,
+            'amount' => $order->total,
+        ]);
+
+        return [
+            'id' => $payment->id,
+            'status' => 'paid',
+            'method' => 'pix',
+            'gateway' => 'pix_manual',
+        ];
+    }
+
     // ─────────────────────────────────────────────────────────────
     // Cálculo de taxas
     // ─────────────────────────────────────────────────────────────

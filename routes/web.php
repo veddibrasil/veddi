@@ -116,12 +116,14 @@ Route::middleware(['auth', 'verified', 'company.active'])
         Route::get('/branches/create', \App\Livewire\Admin\Branches\Form::class)->name('branches.create');
         Route::get('/branches/{branch}/edit', \App\Livewire\Admin\Branches\Form::class)->name('branches.edit');
         Route::get('/branches/{branch}/delivery', \App\Livewire\Admin\Branches\DeliverySettings::class)->name('branches.delivery');
+        Route::get('/branches/{branch}/printer', \App\Livewire\Admin\Branches\PrinterSettings::class)->name('branches.printer');
 
         Route::get('/coupons', \App\Livewire\Admin\Coupons\Index::class)->name('coupons.index');
 
         // PDV — exige módulo PDV habilitado + permissão pdv.operate (verificado no componente)
         Route::get('/pdv', \App\Livewire\Admin\Pdv\Terminal::class)->name('pdv');
         Route::get('/pdv/report', \App\Livewire\Admin\Pdv\Report::class)->name('pdv.report');
+        Route::get('/pdv/cash-sessions/{cashSession}/print', \App\Http\Controllers\Admin\Pdv\CashClosingReportController::class)->name('pdv.cash-session.print');
 
     });
 

@@ -185,7 +185,7 @@
     </div>
 
     {{-- Pagamentos PIX --}}
-    <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
+    {{-- <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
         <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Pagamentos PIX</h2>
 
         <div class="flex items-start justify-between gap-4">
@@ -214,10 +214,10 @@
                 Pagamentos PIX ficam disponíveis para saque <strong>1 dia</strong> após a confirmação. Saques via PIX também possuem uma taxa de <strong>R$ 0,50</strong>.
             </span>
         </div>
-    </div>
+    </div> --}}
 
     {{-- Pagamentos Cartão de Crédito --}}
-    <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
+    {{-- <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
         <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Pagamentos Cartão de Crédito</h2>
 
         <div class="flex items-start justify-between gap-4">
@@ -244,7 +244,7 @@
                 Pagamentos via cartão ficam disponíveis para saque conforme o prazo de antecipação configurado (padrão: <strong>15 dias</strong>).
             </span>
         </div>
-    </div>
+    </div> --}}
 
     @if($currentCompany->pdv_module_enabled)
         {{-- PDV --}}

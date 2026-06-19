@@ -114,6 +114,17 @@
                                 </div>
                             @endif
                         </div>
+
+                        {{-- Impressora --}}
+                        <div class="relative group">
+                            <a href="{{ route('admin.branches.printer', $branch) }}"
+                                class="inline-flex items-center justify-center p-1.5 rounded text-violet-600 hover:bg-violet-50 dark:text-violet-400 dark:hover:bg-violet-900/20 transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2m-8 4h8v-6H6v6z" />
+                                </svg>
+                            </a>
+                            <span class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded bg-neutral-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 dark:bg-zinc-600">Impressora</span>
+                        </div>
                         @endif
 
                         {{-- Excluir --}}
