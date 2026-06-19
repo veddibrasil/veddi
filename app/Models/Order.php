@@ -20,6 +20,8 @@ class Order extends Model
         'cash_received', 'cash_change',
         'manual_discount',
         'pdv_cash_session_id',
+        'table_label',
+        'is_open_tab',
     ];
 
     protected $casts = [
@@ -27,6 +29,7 @@ class Order extends Model
         'delivered_email_sent_at' => 'datetime',
         'confirmation_email_sent_at' => 'datetime',
         'scheduled_at' => 'datetime',
+        'is_open_tab' => 'boolean',
     ];
 
     protected static function booted(): void

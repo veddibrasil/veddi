@@ -11,6 +11,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -38,29 +39,7 @@ class OrderService implements OrderServiceInterface
     ): Order {
         $currentCompany = app()->bound('current.company') ? app('current.company') : null;
 
-        // Extrai product_ids únicos do carrinho (suporta chaves simples "42" e compostas "42_1")
-        $productIds = array_unique(array_values(array_map(
-            fn ($item, $key) => (int) ($item['product_id'] ?? explode('_', (string) $key)[0]),
-            array_values($cart),
-            array_keys($cart)
-        )));
-
-        $products = Product::withoutGlobalScopes()
-            ->whereIn('id', $productIds)
-            ->whereHas('branches', fn ($q) => $q
-                ->where('branches.id', $branchId)
-                ->where('branch_product.available', true)
-            )
-            ->where('active', true)
-            ->with('optionGroups')
-            ->get()
-            ->keyBy('id');
-
-        foreach ($productIds as $productId) {
-            if (! $products->has($productId)) {
-                throw new RuntimeException("Produto #{$productId} não está disponível nesta filial.");
-            }
-        }
+        $products = $this->resolveProducts($cart, $branchId);
 
         $customer = \App\Models\Customer::withoutGlobalScopes()->find($customerId);
 
@@ -199,6 +178,121 @@ class OrderService implements OrderServiceInterface
         }
 
         return $order;
+    }
+
+    /**
+     * Adiciona uma nova rodada de itens a um pedido já existente (comanda aberta no PDV).
+     * Reaplica a mesma resolução de preço/opções de createOrder() e recalcula os totais do pedido.
+     *
+     * @param  array<int, array{qty: int, options?: array}>  $cart
+     */
+    public function addItemsToOrder(Order $order, array $cart): Order
+    {
+        $products = $this->resolveProducts($cart, $order->branch_id);
+
+        return DB::transaction(function () use ($order, $cart, $products) {
+            $optionPricing = app(CartOptionPricing::class);
+            $newItems = collect();
+
+            foreach ($cart as $cartKey => $item) {
+                $pid = (int) ($item['product_id'] ?? explode('_', (string) $cartKey)[0]);
+                $product = $products[$pid];
+                $resolved = $optionPricing->resolve($product, is_array($item) ? $item : []);
+                $optionsExtra = (float) $resolved['extra'];
+                $unitPrice = (float) $product->effective_price + $optionsExtra;
+                $quantity = (int) ($item['qty'] ?? 0);
+
+                $newItems->push(OrderItem::create([
+                    'order_id' => $order->id,
+                    'product_id' => $pid,
+                    'product_name' => $product->name,
+                    'unit_price' => $unitPrice,
+                    'quantity' => $quantity,
+                    'subtotal' => $unitPrice * $quantity,
+                    'options' => $resolved['options'] !== [] ? $resolved['options'] : null,
+                ]));
+            }
+
+            app(StockService::class)->deductForItems($newItems, $order);
+
+            $this->recalculateOrderTotals($order);
+
+            Log::channel('orders')->info('Itens adicionados à comanda', [
+                'order_id' => $order->id,
+                'order_number' => $order->order_number,
+                'subtotal' => $order->subtotal,
+                'total' => $order->total,
+            ]);
+
+            return $order->fresh();
+        });
+    }
+
+    /**
+     * Aplica desconto manual a um pedido já existente e recalcula os totais (fechamento de comanda no PDV).
+     */
+    public function applyManualDiscountToOrder(Order $order, float $manualDiscount): Order
+    {
+        $order->manual_discount = max(0.0, $manualDiscount);
+        $this->recalculateOrderTotals($order);
+
+        return $order->fresh();
+    }
+
+    /**
+     * Recalcula subtotal/total/fee/net_value a partir dos OrderItem e do manual_discount atuais. Sem
+     * cupom/frete — usado pelo fluxo de comanda do PDV, que não tem esses conceitos.
+     */
+    private function recalculateOrderTotals(Order $order): void
+    {
+        $subtotal = (float) $order->items()->sum('subtotal');
+        $manualDiscount = (float) $order->manual_discount;
+        $total = max(0, $subtotal - $manualDiscount);
+
+        $currentCompany = app()->bound('current.company') ? app('current.company') : null;
+        $fee = 0.0;
+        $netValue = $total;
+        if ($currentCompany) {
+            $feeBase = max(0.0, $subtotal - $manualDiscount);
+            $fees = app(FeeCalculator::class)->calculate($currentCompany, $feeBase, $total);
+            $fee = $fees['fee'];
+            $netValue = $fees['net_value'];
+        }
+
+        $order->update([
+            'subtotal' => $subtotal,
+            'total' => $total,
+            'fee' => $fee,
+            'net_value' => $netValue,
+        ]);
+    }
+
+    private function resolveProducts(array $cart, int $branchId): Collection
+    {
+        $productIds = array_unique(array_values(array_map(
+            fn ($item, $key) => (int) ($item['product_id'] ?? explode('_', (string) $key)[0]),
+            array_values($cart),
+            array_keys($cart)
+        )));
+
+        $products = Product::withoutGlobalScopes()
+            ->whereIn('id', $productIds)
+            ->whereHas('branches', fn ($q) => $q
+                ->where('branches.id', $branchId)
+                ->where('branch_product.available', true)
+            )
+            ->where('active', true)
+            ->with('optionGroups')
+            ->get()
+            ->keyBy('id');
+
+        foreach ($productIds as $productId) {
+            if (! $products->has($productId)) {
+                throw new RuntimeException("Produto #{$productId} não está disponível nesta filial.");
+            }
+        }
+
+        return $products;
     }
 
     /**

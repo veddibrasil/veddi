@@ -349,58 +349,41 @@ test('pedido PDV salva observação do operador', function () {
     expect($order->notes)->toBe('sem cebola');
 });
 
-// ─── Cupom ───────────────────────────────────────────────────────────────────
+// ─── Desconto manual ────────────────────────────────────────────────────────
 
-test('cupom válido aplica desconto no PDV', function () {
+test('desconto manual fica bloqueado quando empresa desabilita a opção', function () {
     ['admin' => $admin, 'product' => $product, 'company' => $company] = pdvContext();
-
-    $coupon = \App\Models\Coupon::create([
-        'company_id' => $company->id,
-        'code' => 'TESTE10',
-        'name' => '10% off',
-        'type' => 'percentage',
-        'discount_value' => 10,
-        'scope' => 'order',
-        'active' => true,
-    ]);
-
-    $this->actingAs($admin);
-
-    $component = Livewire::test(Terminal::class)
-        ->call('addProduct', $product->id)
-        ->call('proceedToPayment')
-        ->set('couponInput', 'TESTE10')
-        ->call('applyCoupon')
-        ->assertSet('couponError', null);
-
-    expect($component->get('couponDiscount'))->toBe(0.8); // 10% de R$ 8,00
-    expect($component->get('appliedCoupon.code'))->toBe('TESTE10');
-});
-
-test('cupom inválido exibe erro no PDV', function () {
-    ['admin' => $admin] = pdvContext();
+    $company->update(['pdv_manual_discount_enabled' => false]);
 
     $this->actingAs($admin);
 
     Livewire::test(Terminal::class)
-        ->call('addProduct', 1) // produto já adicionado na fixture
+        ->call('addProduct', $product->id)
         ->call('proceedToPayment')
-        ->set('couponInput', 'INEXISTENTE')
-        ->call('applyCoupon')
-        ->assertSet('couponDiscount', 0.0);
+        ->assertSet('manualDiscountAllowed', false)
+        ->set('manualDiscountInput', '2,00')
+        ->call('applyManualDiscount')
+        ->assertSet('manualDiscountAmount', 0.0)
+        ->assertHasErrors('manual_discount');
 });
 
-test('pedido PDV com cupom registra desconto correto', function () {
-    ['admin' => $admin, 'product' => $product, 'company' => $company] = pdvContext();
+// ─── Entrega ────────────────────────────────────────────────────────────────
 
-    \App\Models\Coupon::create([
+test('pedido PDV de entrega salva endereço e taxa na order', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+
+    \App\Models\DeliverySetting::create([
         'company_id' => $company->id,
-        'code' => 'FIXO2',
-        'name' => 'R$2 off',
-        'type' => 'fixed',
-        'discount_value' => 2.00,
-        'scope' => 'order',
+        'branch_id' => $branch->id,
+        'fee_type' => 'flat',
+        'flat_fee' => 5.00,
         'active' => true,
+    ]);
+
+    $customer = Customer::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Cliente Entrega',
+        'phone' => '11999990000',
     ]);
 
     $this->actingAs($admin);
@@ -408,15 +391,40 @@ test('pedido PDV com cupom registra desconto correto', function () {
     Livewire::test(Terminal::class)
         ->call('addProduct', $product->id)
         ->call('proceedToPayment')
-        ->set('couponInput', 'FIXO2')
-        ->call('applyCoupon')
+        ->set('customerId', $customer->id)
+        ->set('deliveryType', 'entrega')
+        ->set('deliveryAddress', 'Rua das Flores')
+        ->set('deliveryNumber', '123')
+        ->set('deliveryNeighborhood', 'Centro')
+        ->set('deliveryCity', 'São Paulo')
+        ->set('deliveryCep', '01000-000')
+        ->call('calculateDeliveryFee')
+        ->assertSet('deliveryFeeError', null)
+        ->assertSet('deliveryFeeAmount', 5.0)
         ->set('paymentMethod', 'cash')
         ->call('processOrder')
         ->assertSet('step', 'success');
 
     $order = Order::withoutGlobalScopes()->first();
-    expect((float) $order->total)->toBe(6.0);   // R$ 8 - R$ 2
-    expect((float) $order->discount)->toBe(2.0);
+    expect((float) $order->delivery_fee)->toBe(5.0);
+    expect($order->delivery_address)->toBe('Rua das Flores');
+    expect($order->delivery_neighborhood)->toBe('Centro');
+});
+
+test('pedido PDV de entrega exige cliente selecionado', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('deliveryType', 'entrega')
+        ->set('paymentMethod', 'cash')
+        ->call('processOrder')
+        ->assertHasErrors('order');
+
+    expect(Order::withoutGlobalScopes()->count())->toBe(0);
 });
 
 // ─── Cancelamento no terminal ─────────────────────────────────────────────────
@@ -625,4 +633,170 @@ test('PDV registra auditoria para venda cancelamento e fechamento', function () 
         ->where('action', 'cash_closed')
         ->exists()
     )->toBeTrue();
+});
+
+test('relatório de fechamento lista sessões encerradas e exibe detalhe', function () {
+    ['admin' => $admin] = pdvContext();
+
+    $this->actingAs($admin);
+
+    $opening = Livewire::test(Terminal::class);
+    $session = PdvCashSession::withoutGlobalScopes()->find($opening->get('cashSessionId'));
+
+    $opening->set('closingAmountInput', (string) $opening->instance()->cashSessionExpected($session))
+        ->call('closeCashSession');
+
+    $session->refresh();
+
+    Livewire::test(Terminal::class)
+        ->call('openClosingReports')
+        ->assertSet('showClosingReports', true)
+        ->assertSee($session->closed_at->format('d/m/Y'))
+        ->call('viewClosedSession', $session->id)
+        ->assertSet('viewingClosedSessionId', $session->id)
+        ->assertSee('Esperado no caixa')
+        ->call('backToClosingReportsList')
+        ->assertSet('viewingClosedSessionId', null);
+});
+
+// ─── Mesa/Comanda ─────────────────────────────────────────────────────────────
+
+test('abrir comanda cria pedido pendente sem pagamento e deduz estoque', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch] = pdvContext();
+
+    DB::table('branch_product')
+        ->where('branch_id', $branch->id)
+        ->where('product_id', $product->id)
+        ->update(['track_stock' => true, 'quantity' => 10]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->set('orderMode', 'mesa')
+        ->call('addProduct', $product->id)
+        ->set('tableLabel', 'Mesa 5')
+        ->call('openTab')
+        ->assertHasNoErrors()
+        ->assertSet('cart', []);
+
+    $order = Order::withoutGlobalScopes()->first();
+    expect($order->status)->toBe('pending');
+    expect($order->is_open_tab)->toBeTrue();
+    expect($order->table_label)->toBe('Mesa 5');
+    expect((float) $order->total)->toBe(8.0);
+    expect(Payment::where('order_id', $order->id)->exists())->toBeFalse();
+
+    $stock = DB::table('branch_product')->where('product_id', $product->id)->first();
+    expect((int) $stock->quantity)->toBe(9);
+});
+
+test('somar rodada de itens na comanda soma total e deduz estoque de novo', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch] = pdvContext();
+
+    DB::table('branch_product')
+        ->where('branch_id', $branch->id)
+        ->where('product_id', $product->id)
+        ->update(['track_stock' => true, 'quantity' => 10]);
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->set('orderMode', 'mesa')
+        ->call('addProduct', $product->id)
+        ->set('tableLabel', 'Mesa 5')
+        ->call('openTab');
+
+    $orderId = Order::withoutGlobalScopes()->first()->id;
+    expect($component->get('openTabOrderId'))->toBe($orderId);
+
+    $component
+        ->call('addProduct', $product->id)
+        ->call('addItemsToTab')
+        ->assertHasNoErrors()
+        ->assertSet('cart', []);
+
+    $order = Order::withoutGlobalScopes()->find($orderId);
+    expect((float) $order->total)->toBe(16.0);
+    expect($order->items()->count())->toBe(2);
+
+    $stock = DB::table('branch_product')->where('product_id', $product->id)->first();
+    expect((int) $stock->quantity)->toBe(8);
+});
+
+test('fechar comanda com dinheiro cobra e marca como paga', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->set('orderMode', 'mesa')
+        ->call('addProduct', $product->id)
+        ->set('tableLabel', 'Mesa 5')
+        ->call('openTab');
+
+    $orderId = Order::withoutGlobalScopes()->first()->id;
+
+    $component
+        ->call('proceedToCloseTab', $orderId)
+        ->assertSet('step', 'payment')
+        ->set('paymentMethod', 'cash')
+        ->set('cashReceivedInput', '10.00')
+        ->call('processOrder')
+        ->assertSet('step', 'success');
+
+    $order = Order::withoutGlobalScopes()->find($orderId);
+    expect($order->is_open_tab)->toBeFalse();
+    expect($order->status)->toBe('paid');
+    expect($order->payment_method)->toBe('cash');
+
+    $payment = Payment::where('order_id', $orderId)->first();
+    expect($payment)->not->toBeNull();
+    expect($payment->status)->toBe('paid');
+});
+
+test('comanda aberta não aparece em shiftStats nem sessionOrders', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->set('orderMode', 'mesa')
+        ->call('addProduct', $product->id)
+        ->set('tableLabel', 'Mesa 5')
+        ->call('openTab');
+
+    expect($component->instance()->shiftStats()['orders'])->toBe(0);
+    expect($component->instance()->sessionOrders()->count())->toBe(0);
+    expect($component->instance()->openTabs()->count())->toBe(1);
+});
+
+test('cancelar comanda aberta restaura estoque das duas rodadas', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch] = pdvContext();
+
+    DB::table('branch_product')
+        ->where('branch_id', $branch->id)
+        ->where('product_id', $product->id)
+        ->update(['track_stock' => true, 'quantity' => 10]);
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->set('orderMode', 'mesa')
+        ->call('addProduct', $product->id)
+        ->set('tableLabel', 'Mesa 5')
+        ->call('openTab');
+
+    $orderId = Order::withoutGlobalScopes()->first()->id;
+
+    $component
+        ->call('addProduct', $product->id)
+        ->call('addItemsToTab');
+
+    $component->call('cancelPdvOrder', $orderId);
+
+    $order = Order::withoutGlobalScopes()->find($orderId);
+    expect($order->status)->toBe('cancelled');
+
+    $stock = DB::table('branch_product')->where('product_id', $product->id)->first();
+    expect((int) $stock->quantity)->toBe(10);
 });

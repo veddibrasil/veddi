@@ -246,6 +246,29 @@
         </div>
     </div>
 
+    @if($currentCompany->pdv_module_enabled)
+        {{-- PDV --}}
+        <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
+            <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">PDV</h2>
+
+            <div class="flex items-start justify-between gap-4">
+                <div>
+                    <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">Permitir desconto manual</p>
+                    <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
+                        Se ativado, o operador pode aplicar desconto manual (valor ou percentual) nas vendas do PDV.<br>
+                        Se desativado, essa opção fica oculta no terminal.
+                    </p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
+                    <flux:field variant="inline">
+                        <flux:switch wire:model.live="pdvManualDiscountEnabled" />
+                        <flux:error name="pdvManualDiscountEnabled" />
+                    </flux:field>
+                </label>
+            </div>
+        </div>
+    @endif
+
     {{-- Agendamento de Pedidos --}}
     <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
         <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Agendamento de Pedidos</h2>

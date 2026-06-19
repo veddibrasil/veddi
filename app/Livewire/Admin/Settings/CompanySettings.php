@@ -41,6 +41,8 @@ class CompanySettings extends Component
 
     public bool $cardFeeAbsorbedByCompany = true;
 
+    public bool $pdvManualDiscountEnabled = true;
+
     public array $chat_highlights = [];
 
     public const DEFAULT_HIGHLIGHTS = [
@@ -65,6 +67,7 @@ class CompanySettings extends Component
         $this->isFree = $company->isFree();
         $this->pixFeeAbsorbedByCompany = (bool) $company->pix_fee_absorbed_by_company;
         $this->cardFeeAbsorbedByCompany = (bool) $company->card_fee_absorbed_by_company;
+        $this->pdvManualDiscountEnabled = (bool) $company->pdv_manual_discount_enabled;
     }
 
     protected function rules(): array
@@ -85,6 +88,7 @@ class CompanySettings extends Component
             'order_prefix' => ['required', 'string', 'max:10', 'regex:/^[A-Z0-9]+$/'],
             'pixFeeAbsorbedByCompany' => ['boolean'],
             'cardFeeAbsorbedByCompany' => ['boolean'],
+            'pdvManualDiscountEnabled' => ['boolean'],
             'scheduleMinAdvanceMinutes' => ['nullable', 'integer', 'min:0', 'max:10080'],
             'logo' => ['nullable', 'image', 'max:2048'],
             'chat_highlights' => ['array', 'max:6'],
@@ -108,6 +112,7 @@ class CompanySettings extends Component
 
         $data['pix_fee_absorbed_by_company'] = $this->pixFeeAbsorbedByCompany;
         $data['card_fee_absorbed_by_company'] = $this->cardFeeAbsorbedByCompany;
+        $data['pdv_manual_discount_enabled'] = $this->pdvManualDiscountEnabled;
         $data['schedule_min_advance_minutes'] = $this->scheduleMinAdvanceMinutes;
 
         if ($this->logo) {

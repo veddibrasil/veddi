@@ -24,7 +24,16 @@ class StockService
     {
         $order->loadMissing('items.product');
 
-        foreach ($order->items as $item) {
+        $this->deductForItems($order->items, $order);
+    }
+
+    /**
+     * Deduz estoque só dos itens informados (ex: nova rodada de uma comanda aberta).
+     * Deve ser chamado dentro de um DB::transaction existente.
+     */
+    public function deductForItems(Collection $items, Order $order): void
+    {
+        foreach ($items as $item) {
             $pivot = DB::table('branch_product')
                 ->where('branch_id', $order->branch_id)
                 ->where('product_id', $item->product_id)

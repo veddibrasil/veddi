@@ -2,16 +2,16 @@
 
 namespace App\Livewire\Admin\Pdv;
 
-use App\Exceptions\CouponException;
+use App\Exceptions\DeliveryException;
 use App\Models\Branch;
-use App\Models\Coupon;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\PdvAuditLog;
 use App\Models\PdvCashSession;
 use App\Models\Product;
 use App\Models\ProductCategory;
-use App\Services\Order\CouponService;
+use App\Services\Order\DeliveryService;
+use App\Services\Order\GeocodingService;
 use App\Services\Order\OrderCancellationPolicy;
 use App\Services\Order\OrderService;
 use App\Services\Order\StockService;
@@ -67,21 +67,33 @@ class Terminal extends Component
 
     public ?int $pixOrderId = null;
 
-    // ── Cupom ─────────────────────────────────────────────────────────────────
-    public string $couponInput = '';
-
-    public ?array $appliedCoupon = null;
-
-    public float $couponDiscount = 0.0;
-
-    public ?string $couponError = null;
-
     // ── Desconto manual ───────────────────────────────────────────────────────
     public string $manualDiscountType = 'fixed'; // 'fixed' | 'percent'
 
     public string $manualDiscountInput = '';
 
     public float $manualDiscountAmount = 0.0;
+
+    public bool $manualDiscountAllowed = false;
+
+    // ── Entrega ───────────────────────────────────────────────────────────────
+    public string $deliveryType = 'balcao'; // 'balcao' | 'entrega'
+
+    public string $deliveryAddress = '';
+
+    public string $deliveryNumber = '';
+
+    public string $deliveryComplement = '';
+
+    public string $deliveryNeighborhood = '';
+
+    public string $deliveryCity = '';
+
+    public string $deliveryCep = '';
+
+    public float $deliveryFeeAmount = 0.0;
+
+    public ?string $deliveryFeeError = null;
 
     // ── Observação ────────────────────────────────────────────────────────────
     public string $notes = '';
@@ -129,6 +141,20 @@ class Terminal extends Component
     // ── Histórico de sessão ───────────────────────────────────────────────────
     public ?int $confirmingCancelSessionOrderId = null;
 
+    // ── Tipo de venda / Mesa-Comanda ───────────────────────────────────────────
+    public string $orderMode = 'impressao'; // 'impressao' | 'mesa'
+
+    public string $tableLabel = '';
+
+    public ?int $openTabOrderId = null;
+
+    public ?int $closingTabOrderId = null;
+
+    // ── Relatórios de fechamento ──────────────────────────────────────────────
+    public bool $showClosingReports = false;
+
+    public ?int $viewingClosedSessionId = null;
+
     // ── Permissões ────────────────────────────────────────────────────────────
     public bool $canOperate = false;
 
@@ -142,6 +168,7 @@ class Terminal extends Component
         abort_unless($user?->hasPermission('pdv.operate', $company), 403);
 
         $this->canOperate = true;
+        $this->manualDiscountAllowed = (bool) $company->pdv_manual_discount_enabled;
 
         $branch = Branch::where('company_id', $company->id)
             ->where('active', true)
@@ -159,6 +186,7 @@ class Terminal extends Component
         $this->cart = [];
         $this->activeCategoryId = null;
         $this->search = '';
+        $this->openTabOrderId = null;
         $this->syncCashSession();
     }
 
@@ -482,6 +510,13 @@ class Terminal extends Component
     public function applyManualDiscount(): void
     {
         $this->resetValidation('manual_discount');
+
+        if (! $this->manualDiscountAllowed) {
+            $this->addError('manual_discount', 'Desconto manual não está habilitado para esta empresa.');
+
+            return;
+        }
+
         $value = (float) str_replace(',', '.', $this->manualDiscountInput ?: '0');
 
         if ($value <= 0) {
@@ -490,7 +525,7 @@ class Terminal extends Component
             return;
         }
 
-        $base = $this->cartTotal - $this->couponDiscount;
+        $base = $this->cartTotal;
 
         if ($this->manualDiscountType === 'percent') {
             if ($value > 100) {
@@ -514,7 +549,6 @@ class Terminal extends Component
                 'type' => $this->manualDiscountType,
                 'input' => $this->manualDiscountInput,
                 'cart_total' => $this->cartTotal,
-                'coupon_discount' => $this->couponDiscount,
             ],
         ]);
     }
@@ -526,6 +560,267 @@ class Terminal extends Component
         $this->resetValidation('manual_discount');
     }
 
+    // ── Entrega ───────────────────────────────────────────────────────────────
+
+    public function calculateDeliveryFee(): void
+    {
+        $this->deliveryFeeError = null;
+        $this->deliveryFeeAmount = 0.0;
+
+        $errors = [];
+        if (mb_strlen(trim($this->deliveryAddress)) < 5) {
+            $errors[] = 'Endereço é obrigatório.';
+        }
+        if (blank($this->deliveryNumber)) {
+            $errors[] = 'Número é obrigatório.';
+        }
+        if (blank($this->deliveryNeighborhood)) {
+            $errors[] = 'Bairro é obrigatório.';
+        }
+        if (blank($this->deliveryCity)) {
+            $errors[] = 'Cidade é obrigatória.';
+        }
+        if (! preg_match('/^\d{5}-?\d{3}$/', $this->deliveryCep)) {
+            $errors[] = 'CEP inválido.';
+        }
+
+        if ($errors !== []) {
+            $this->deliveryFeeError = implode(' ', $errors);
+
+            return;
+        }
+
+        $branch = Branch::find($this->selectedBranchId);
+        $settings = $branch?->deliverySetting;
+
+        if (! $settings) {
+            $this->deliveryFeeError = 'Esta filial não possui configuração de entrega.';
+
+            return;
+        }
+
+        $lat = null;
+        $lng = null;
+
+        if ($settings->fee_type === 'distance') {
+            $coords = app(GeocodingService::class)->geocode([
+                'address' => $this->deliveryAddress,
+                'number' => $this->deliveryNumber,
+                'neighborhood' => $this->deliveryNeighborhood,
+                'city' => $this->deliveryCity,
+                'cep' => $this->deliveryCep,
+            ]);
+
+            if (! $coords) {
+                $this->deliveryFeeError = 'Não foi possível localizar o endereço para calcular a distância.';
+
+                return;
+            }
+
+            $lat = $coords['latitude'];
+            $lng = $coords['longitude'];
+        }
+
+        try {
+            $result = app(DeliveryService::class)->validate($settings, $this->deliveryNeighborhood, $this->cartTotal, $lat, $lng);
+            $this->deliveryFeeAmount = (float) $result['fee'];
+        } catch (DeliveryException $e) {
+            $this->deliveryFeeAmount = 0.0;
+            $this->deliveryFeeError = $e->getMessage();
+        }
+    }
+
+    // ── Mesa/Comanda ──────────────────────────────────────────────────────────
+
+    public function updatedOrderMode(): void
+    {
+        $this->cart = [];
+        $this->tableLabel = '';
+        $this->openTabOrderId = null;
+    }
+
+    public function selectOpenTab(int $orderId): void
+    {
+        $this->openTabOrderId = $orderId;
+        $this->cart = [];
+    }
+
+    public function openTab(): void
+    {
+        if (empty($this->cart) || ! $this->selectedBranchId) {
+            return;
+        }
+
+        $this->resetValidation('table_label');
+        $label = trim($this->tableLabel);
+
+        if (blank($label)) {
+            $this->addError('table_label', 'Informe a identificação da comanda.');
+
+            return;
+        }
+
+        $company = app('current.company');
+        $customerId = $this->resolveCustomerId($company);
+
+        DB::beginTransaction();
+        try {
+            $order = app(OrderService::class)->createOrder(
+                customerId: $customerId,
+                branchId: $this->selectedBranchId,
+                cart: $this->buildOrderCart(),
+                notes: $this->notes,
+                paymentMethod: '',
+                orderType: 'pdv',
+                status: 'pending',
+            );
+
+            $order->update([
+                'pdv_cash_session_id' => $this->cashSessionId,
+                'is_open_tab' => true,
+                'table_label' => $label,
+            ]);
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            $this->addError('order', $e->getMessage());
+
+            return;
+        }
+
+        $this->audit('tab_opened', [
+            'order_id' => $order->id,
+            'amount' => (float) $order->total,
+            'reason' => $label,
+        ]);
+
+        $this->cart = [];
+        $this->tableLabel = '';
+        $this->openTabOrderId = $order->id;
+    }
+
+    public function addItemsToTab(): void
+    {
+        if (empty($this->cart) || ! $this->openTabOrderId) {
+            return;
+        }
+
+        $order = Order::withoutGlobalScopes()
+            ->where('is_open_tab', true)
+            ->find($this->openTabOrderId);
+
+        if (! $order) {
+            $this->addError('order', 'Comanda não encontrada ou já fechada.');
+
+            return;
+        }
+
+        try {
+            $order = app(OrderService::class)->addItemsToOrder($order, $this->buildOrderCart());
+        } catch (\Throwable $e) {
+            $this->addError('order', $e->getMessage());
+
+            return;
+        }
+
+        $this->audit('tab_items_added', [
+            'order_id' => $order->id,
+            'amount' => (float) $order->total,
+        ]);
+
+        $this->cart = [];
+    }
+
+    public function proceedToCloseTab(int $orderId): void
+    {
+        $this->closingTabOrderId = $orderId;
+        $this->step = 'payment';
+        $this->resetPaymentState();
+    }
+
+    private function closeTab(): void
+    {
+        $order = Order::withoutGlobalScopes()
+            ->where('pdv_cash_session_id', $this->cashSessionId)
+            ->where('is_open_tab', true)
+            ->find($this->closingTabOrderId);
+
+        if (! $order) {
+            $this->addError('order', 'Comanda não encontrada ou já fechada.');
+            $this->closingTabOrderId = null;
+
+            return;
+        }
+
+        $company = app('current.company');
+
+        DB::beginTransaction();
+        try {
+            $isPaidOnCreate = in_array($this->paymentMethod, ['cash', 'credit_card']);
+
+            app(OrderService::class)->applyManualDiscountToOrder($order, $this->manualDiscountAmount);
+
+            $order->update([
+                'payment_method' => $this->paymentMethod,
+                'status' => $isPaidOnCreate ? 'paid' : 'awaiting_payment',
+                'is_open_tab' => false,
+                'notes' => $this->notes,
+            ]);
+
+            if ($this->paymentMethod === 'cash') {
+                $cashReceived = (float) str_replace(',', '.', $this->cashReceivedInput ?: $order->total);
+                $order->cash_received = $cashReceived;
+                $order->cash_change = max(0.0, round($cashReceived - (float) $order->total, 2));
+                $order->save();
+
+                $result = app(PaymentOrchestrator::class)->processCash($order);
+                $this->changeAmount = $result['change'];
+            } elseif ($this->paymentMethod === 'credit_card') {
+                app(PaymentOrchestrator::class)->processCardMachine($order);
+            } elseif ($this->paymentMethod === 'pix') {
+                $customer = Customer::withoutGlobalScopes()->find($order->customer_id);
+                $result = app(PaymentOrchestrator::class)->processPix($order, $customer, $company);
+                $this->pixCopyPaste = $result['copy_paste'] ?? null;
+                $this->pixQrCode = $result['qr_code'] ?? null;
+                $this->pixOrderId = $order->id;
+                DB::commit();
+                $this->step = 'pix';
+                $this->lastOrderNumber = $order->order_number;
+                $this->lastOrderTotal = (float) $order->total;
+                $this->lastOrderId = $order->id;
+                $this->audit('tab_closed', [
+                    'order_id' => $order->id,
+                    'amount' => (float) $order->total,
+                    'metadata' => ['payment_method' => 'pix'],
+                ]);
+                $this->openTabOrderId = null;
+                $this->closingTabOrderId = null;
+
+                return;
+            }
+
+            DB::commit();
+            $this->lastOrderTotal = (float) $order->total;
+            $this->audit('tab_closed', [
+                'order_id' => $order->id,
+                'amount' => (float) $order->total,
+                'metadata' => ['payment_method' => $this->paymentMethod],
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            $this->addError('order', $e->getMessage());
+
+            return;
+        }
+
+        $this->lastOrderNumber = $order->order_number;
+        $this->lastOrderId = $order->id;
+        $this->openTabOrderId = null;
+        $this->closingTabOrderId = null;
+        $this->step = 'success';
+    }
+
     // ── Pagamento ─────────────────────────────────────────────────────────────
 
     public function proceedToPayment(): void
@@ -534,83 +829,40 @@ class Terminal extends Component
             return;
         }
 
+        $this->closingTabOrderId = null;
         $this->step = 'payment';
         $this->resetPaymentState();
     }
 
     public function backToCatalog(): void
     {
+        $this->closingTabOrderId = null;
         $this->step = 'catalog';
         $this->resetPaymentState();
     }
 
-    // ── Cupom ─────────────────────────────────────────────────────────────────
-
-    public function applyCoupon(): void
+    public function processOrder(): void
     {
-        $this->couponError = null;
-        $code = strtoupper(trim($this->couponInput));
-
-        if ($code === '') {
-            $this->couponError = 'Informe um código de cupom.';
+        if ($this->closingTabOrderId) {
+            $this->closeTab();
 
             return;
         }
 
-        try {
-            $couponService = app(CouponService::class);
-
-            $coupon = $couponService->validate(
-                $code,
-                $this->customerId ?? 0,
-                $this->cart,
-                $this->cartTotal
-            );
-
-            $discount = $couponService->calculateDiscount($coupon, $this->cart, $this->cartTotal, 0.0);
-
-            $this->appliedCoupon = [
-                'id' => $coupon->id,
-                'code' => $coupon->code,
-                'type' => $coupon->type,
-                'discount' => $discount,
-                'label' => $coupon->name,
-            ];
-            $this->couponDiscount = $discount;
-        } catch (CouponException $e) {
-            $this->couponError = $e->getMessage();
-        }
-    }
-
-    public function removeCoupon(): void
-    {
-        $this->appliedCoupon = null;
-        $this->couponDiscount = 0.0;
-        $this->couponError = null;
-        $this->couponInput = '';
-    }
-
-    public function processOrder(): void
-    {
         if (empty($this->cart) || ! $this->selectedBranchId) {
+            return;
+        }
+
+        if ($this->deliveryType === 'entrega' && ! $this->customerId) {
+            $this->addError('order', 'Selecione ou cadastre um cliente para entrega.');
+
             return;
         }
 
         $company = app('current.company');
         $customerId = $this->resolveCustomerId($company);
 
-        $orderCart = [];
-        foreach ($this->cart as $cartKey => $item) {
-            $orderCart[$cartKey] = [
-                'product_id' => $item['product_id'],
-                'qty' => $item['qty'],
-                'options' => $item['options'] ?? [],
-            ];
-        }
-
-        $coupon = $this->appliedCoupon
-            ? Coupon::find($this->appliedCoupon['id'])
-            : null;
+        $orderCart = $this->buildOrderCart();
 
         DB::beginTransaction();
         try {
@@ -624,13 +876,23 @@ class Terminal extends Component
                 paymentMethod: $this->paymentMethod,
                 orderType: 'pdv',
                 status: $isPaidOnCreate ? 'paid' : 'awaiting_payment',
-                coupon: $coupon,
+                deliveryFee: $this->deliveryFeeAmount,
                 extraDiscount: $this->manualDiscountAmount,
             );
 
             // Link order to current cash session
             if ($this->cashSessionId) {
                 $order->pdv_cash_session_id = $this->cashSessionId;
+                $order->save();
+            }
+
+            if ($this->deliveryType === 'entrega') {
+                $order->delivery_address = $this->deliveryAddress;
+                $order->delivery_number = $this->deliveryNumber;
+                $order->delivery_complement = $this->deliveryComplement;
+                $order->delivery_neighborhood = $this->deliveryNeighborhood;
+                $order->delivery_city = $this->deliveryCity;
+                $order->delivery_cep = $this->deliveryCep;
                 $order->save();
             }
 
@@ -661,7 +923,6 @@ class Terminal extends Component
                     'metadata' => [
                         'payment_method' => 'pix',
                         'cart_count' => $this->cartCount,
-                        'coupon_discount' => $this->couponDiscount,
                         'manual_discount' => $this->manualDiscountAmount,
                     ],
                 ]);
@@ -677,7 +938,6 @@ class Terminal extends Component
                 'metadata' => [
                     'payment_method' => $this->paymentMethod,
                     'cart_count' => $this->cartCount,
-                    'coupon_discount' => $this->couponDiscount,
                     'manual_discount' => $this->manualDiscountAmount,
                 ],
             ]);
@@ -791,12 +1051,12 @@ class Terminal extends Component
         $this->confirmingCancelOrder = false;
         $this->changeAmount = 0.0;
         $this->notes = '';
-        $this->appliedCoupon = null;
-        $this->couponDiscount = 0.0;
-        $this->couponError = null;
-        $this->couponInput = '';
         $this->step = 'catalog';
         $this->showSessionHistory = false;
+        $this->orderMode = 'impressao';
+        $this->tableLabel = '';
+        $this->openTabOrderId = null;
+        $this->closingTabOrderId = null;
         $this->resetPaymentState();
     }
 
@@ -812,6 +1072,30 @@ class Terminal extends Component
     {
         $this->showSessionHistory = false;
         $this->confirmingCancelSessionOrderId = null;
+    }
+
+    // ── Relatórios de fechamento ──────────────────────────────────────────────
+
+    public function openClosingReports(): void
+    {
+        $this->showClosingReports = true;
+        $this->viewingClosedSessionId = null;
+    }
+
+    public function backFromClosingReports(): void
+    {
+        $this->showClosingReports = false;
+        $this->viewingClosedSessionId = null;
+    }
+
+    public function viewClosedSession(int $sessionId): void
+    {
+        $this->viewingClosedSessionId = $sessionId;
+    }
+
+    public function backToClosingReportsList(): void
+    {
+        $this->viewingClosedSessionId = null;
     }
 
     // ── Caixa ─────────────────────────────────────────────────────────────────
@@ -957,6 +1241,10 @@ class Terminal extends Component
     #[Computed]
     public function cartTotal(): float
     {
+        if ($this->closingTabOrderId) {
+            return (float) (Order::withoutGlobalScopes()->find($this->closingTabOrderId)?->subtotal ?? 0.0);
+        }
+
         return round(array_sum(array_map(function ($item) {
             $optionsExtra = 0.0;
             foreach ($item['options'] ?? [] as $group) {
@@ -972,7 +1260,11 @@ class Terminal extends Component
     #[Computed]
     public function cartTotalAfterDiscount(): float
     {
-        return max(0.0, round($this->cartTotal - $this->couponDiscount - $this->manualDiscountAmount, 2));
+        if ($this->closingTabOrderId) {
+            return max(0.0, round($this->cartTotal - $this->manualDiscountAmount, 2));
+        }
+
+        return max(0.0, round($this->cartTotal + $this->deliveryFeeAmount - $this->manualDiscountAmount, 2));
     }
 
     #[Computed]
@@ -1090,20 +1382,42 @@ class Terminal extends Component
             return ['duration' => '', 'orders' => 0, 'revenue' => 0.0, 'terminal' => '', 'operator' => ''];
         }
 
-        $duration = $session->created_at->diffForHumans(now(), true);
+        $orderStats = $this->sessionOrderStats($session->id);
 
+        return [
+            'duration' => $session->created_at->diffForHumans(now(), true),
+            'orders' => $orderStats['orders'],
+            'revenue' => $orderStats['revenue'],
+            'terminal' => $session->terminal_name ?? '',
+            'operator' => auth()->user()?->name ?? '',
+        ];
+    }
+
+    public function closedSessionStats(PdvCashSession $session): array
+    {
+        $orderStats = $this->sessionOrderStats($session->id);
+
+        return [
+            'duration' => $session->closed_at ? $session->created_at->diffForHumans($session->closed_at, true) : '',
+            'orders' => $orderStats['orders'],
+            'revenue' => $orderStats['revenue'],
+            'terminal' => $session->terminal_name ?? '',
+            'operator' => $session->user?->name ?? '',
+        ];
+    }
+
+    private function sessionOrderStats(int $sessionId): array
+    {
         $stats = DB::table('orders')
-            ->where('pdv_cash_session_id', $this->cashSessionId)
+            ->where('pdv_cash_session_id', $sessionId)
+            ->where('is_open_tab', false)
             ->whereNotIn('status', ['cancelled', 'refunded'])
             ->selectRaw('COUNT(*) as total_orders, COALESCE(SUM(total), 0) as total_revenue')
             ->first();
 
         return [
-            'duration' => $duration,
             'orders' => (int) ($stats->total_orders ?? 0),
             'revenue' => (float) ($stats->total_revenue ?? 0.0),
-            'terminal' => $session->terminal_name ?? '',
-            'operator' => auth()->user()?->name ?? '',
         ];
     }
 
@@ -1116,10 +1430,50 @@ class Terminal extends Component
 
         return Order::withoutGlobalScopes()
             ->where('pdv_cash_session_id', $this->cashSessionId)
+            ->where('is_open_tab', false)
             ->with('customer')
             ->latest()
             ->limit(50)
             ->get(['id', 'order_number', 'total', 'payment_method', 'status', 'created_at', 'customer_id', 'discount', 'manual_discount']);
+    }
+
+    #[Computed]
+    public function openTabs(): Collection
+    {
+        if (! $this->cashSessionId) {
+            return collect();
+        }
+
+        return Order::withoutGlobalScopes()
+            ->where('pdv_cash_session_id', $this->cashSessionId)
+            ->where('is_open_tab', true)
+            ->latest()
+            ->get(['id', 'order_number', 'table_label', 'total']);
+    }
+
+    #[Computed]
+    public function closedSessions(): Collection
+    {
+        if (! $this->selectedBranchId) {
+            return collect();
+        }
+
+        return PdvCashSession::with('user')
+            ->where('branch_id', $this->selectedBranchId)
+            ->whereNotNull('closed_at')
+            ->latest('closed_at')
+            ->limit(30)
+            ->get();
+    }
+
+    #[Computed]
+    public function viewingClosedSession(): ?PdvCashSession
+    {
+        if (! $this->viewingClosedSessionId) {
+            return null;
+        }
+
+        return PdvCashSession::with('user')->find($this->viewingClosedSessionId);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -1179,6 +1533,20 @@ class Terminal extends Component
                 ];
             })->toArray(),
         ];
+    }
+
+    private function buildOrderCart(): array
+    {
+        $orderCart = [];
+        foreach ($this->cart as $cartKey => $item) {
+            $orderCart[$cartKey] = [
+                'product_id' => $item['product_id'],
+                'qty' => $item['qty'],
+                'options' => $item['options'] ?? [],
+            ];
+        }
+
+        return $orderCart;
     }
 
     private function checkStockBeforeAdd(int $productId, string $productName): bool
@@ -1330,13 +1698,23 @@ class Terminal extends Component
         $this->pixCopyPaste = null;
         $this->pixQrCode = null;
         $this->pixOrderId = null;
-        $this->appliedCoupon = null;
-        $this->couponDiscount = 0.0;
-        $this->couponError = null;
-        $this->couponInput = '';
         $this->manualDiscountAmount = 0.0;
         $this->manualDiscountInput = '';
         $this->manualDiscountType = 'fixed';
+        $this->resetDeliveryState();
+    }
+
+    private function resetDeliveryState(): void
+    {
+        $this->deliveryType = 'balcao';
+        $this->deliveryAddress = '';
+        $this->deliveryNumber = '';
+        $this->deliveryComplement = '';
+        $this->deliveryNeighborhood = '';
+        $this->deliveryCity = '';
+        $this->deliveryCep = '';
+        $this->deliveryFeeAmount = 0.0;
+        $this->deliveryFeeError = null;
     }
 
     private function audit(string $action, array $data = []): void
