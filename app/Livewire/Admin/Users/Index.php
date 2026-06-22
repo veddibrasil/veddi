@@ -10,7 +10,6 @@ use App\Models\UserPermission;
 use App\Services\Company\UserPermissionService;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -90,7 +89,7 @@ class Index extends Component
         ]);
 
         $company = app('current.company');
-        $temporaryPassword = Str::password(12);
+        $temporaryPassword = 'password';
 
         $user = User::create([
             'name' => $this->newName,

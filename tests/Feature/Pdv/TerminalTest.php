@@ -135,6 +135,39 @@ test('terminal exibe produtos disponíveis na filial', function () {
         ->assertSee($product->name);
 });
 
+test('produtos no terminal seguem ordem da categoria e depois do produto', function () {
+    ['admin' => $admin, 'company' => $company, 'branch' => $branch] = pdvContext();
+
+    $bebidas = ProductCategory::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Bebidas',
+        'active' => true,
+        'sort_order' => 0,
+    ]);
+
+    $refrigerante = Product::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'product_category_id' => $bebidas->id,
+        'name' => 'Refrigerante',
+        'price' => 6.00,
+        'active' => true,
+        'sort_order' => 0,
+    ]);
+
+    DB::table('branch_product')->insert([
+        'branch_id' => $branch->id,
+        'product_id' => $refrigerante->id,
+        'available' => 1,
+    ]);
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class);
+
+    expect($component->get('products')->pluck('name')->all())
+        ->toBe(['Refrigerante', 'Coxinha']);
+});
+
 // ─── Carrinho ─────────────────────────────────────────────────────────────────
 
 test('adicionar produto ao carrinho', function () {
@@ -629,7 +662,10 @@ test('relatório de fechamento lista sessões encerradas e exibe detalhe', funct
     $session = PdvCashSession::withoutGlobalScopes()->find($opening->get('cashSessionId'));
 
     $opening->set('closingAmountInput', (string) $opening->instance()->cashSessionExpected($session))
-        ->call('closeCashSession');
+        ->call('closeCashSession')
+        ->assertSet('showClosingReports', true)
+        ->assertSet('viewingClosedSessionId', $session->id)
+        ->assertSee('Esperado no caixa');
 
     $session->refresh();
 

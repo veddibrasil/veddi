@@ -1268,6 +1268,9 @@ class Terminal extends Component
         $this->reconciliationNotes = '';
         $this->cart = [];
         $this->step = 'open_cash';
+
+        $this->showClosingReports = true;
+        $this->viewingClosedSessionId = $session->id;
     }
 
     public function cancelCloseCash(): void
@@ -1348,6 +1351,7 @@ class Terminal extends Component
                         ->where('branch_product.available', true)
                     )
                 )
+                ->orderBy('sort_order')
                 ->orderBy('name')
                 ->get()
         );
@@ -1366,18 +1370,22 @@ class Terminal extends Component
             "pdv:products:branch:{$branchId}",
             now()->addMinutes(5),
             fn () => Product::withoutGlobalScopes()
+                ->join('product_categories', 'product_categories.id', '=', 'products.product_category_id')
                 ->whereHas('branches', fn ($q) => $q
                     ->where('branches.id', $branchId)
                     ->where('branch_product.available', true)
                 )
-                ->where('active', true)
-                ->where('available_in_pdv', true)
+                ->where('products.active', true)
+                ->where('products.available_in_pdv', true)
                 ->with([
                     'optionGroups.options' => fn ($q) => $q->where('active', true),
                     'optionGroups.inactiveOptions',
                 ])
-                ->orderBy('sort_order')
-                ->orderBy('name')
+                ->orderBy('product_categories.sort_order')
+                ->orderBy('product_categories.name')
+                ->orderBy('products.sort_order')
+                ->orderBy('products.name')
+                ->select('products.*')
                 ->get()
         );
 
