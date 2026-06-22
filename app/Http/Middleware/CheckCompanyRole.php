@@ -43,8 +43,8 @@ class CheckCompanyRole
             }
         }
 
-        // Branch manager: bind their branch to the container
-        if ($userRole === 'branch_manager') {
+        // Papéis travados na própria filial: bind da filial no container
+        if (in_array($userRole, ['branch_manager', 'cozinha', 'caixa'])) {
             $branchId = $user->branchIdForCompany($company);
             if ($branchId) {
                 app()->instance('current.branch', Branch::find($branchId));

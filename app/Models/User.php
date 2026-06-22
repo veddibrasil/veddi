@@ -91,6 +91,11 @@ class User extends Authenticatable
         return $this->roleForCompany($company) === 'branch_manager';
     }
 
+    public function isBranchScoped(Company $company): bool
+    {
+        return in_array($this->roleForCompany($company), ['branch_manager', 'cozinha', 'caixa']);
+    }
+
     public function overridePermissions(): HasMany
     {
         return $this->hasMany(UserPermission::class);

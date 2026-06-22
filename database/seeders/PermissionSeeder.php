@@ -106,6 +106,20 @@ class PermissionSeeder extends Seeder
                 'is_system' => true,
                 'permissions' => $branchManagerPermissions,
             ],
+            [
+                'name' => 'Cozinha',
+                'slug' => 'cozinha',
+                'company_id' => null,
+                'is_system' => true,
+                'permissions' => ['orders.view', 'orders.update'],
+            ],
+            [
+                'name' => 'Caixa',
+                'slug' => 'caixa',
+                'company_id' => null,
+                'is_system' => true,
+                'permissions' => ['orders.view', 'orders.update', 'pdv.operate'],
+            ],
         ];
 
         foreach ($roles as $roleData) {

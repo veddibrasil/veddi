@@ -102,6 +102,46 @@ test('branch_manager não acessa gerenciamento de usuários (somente company_adm
         ->assertForbidden();
 });
 
+// ─── cozinha / caixa ──────────────────────────────────────────────────────────
+
+test('cozinha acessa dashboard e pedidos mas não settings', function () {
+    [, $user] = makeUserWithRole('cozinha');
+
+    $this->actingAs($user)->get(route('admin.dashboard'))->assertOk();
+    $this->actingAs($user)->get(route('admin.orders.index'))->assertOk();
+    $this->actingAs($user)->get(route('admin.settings'))->assertForbidden();
+});
+
+test('caixa acessa dashboard e pedidos mas não settings', function () {
+    [, $user] = makeUserWithRole('caixa');
+
+    $this->actingAs($user)->get(route('admin.dashboard'))->assertOk();
+    $this->actingAs($user)->get(route('admin.orders.index'))->assertOk();
+    $this->actingAs($user)->get(route('admin.settings'))->assertForbidden();
+});
+
+test('cozinha e caixa têm filial travada no container assim como branch_manager', function () {
+    $company = makeCompany();
+    $branch = \App\Models\Branch::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Filial Teste',
+        'address' => 'Rua A',
+        'city' => 'SP',
+        'active' => true,
+        'opens_at' => '00:00:00',
+        'closes_at' => '23:59:59',
+    ]);
+
+    foreach (['cozinha', 'caixa'] as $role) {
+        $user = User::factory()->create();
+        $user->companies()->attach($company->id, ['role' => $role, 'branch_id' => $branch->id]);
+
+        $this->actingAs($user)->get(route('admin.dashboard'))->assertOk();
+
+        expect($user->isBranchScoped($company))->toBeTrue();
+    }
+});
+
 // ─── company_admin ────────────────────────────────────────────────────────────
 
 test('company_admin acessa dashboard', function () {

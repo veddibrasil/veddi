@@ -75,8 +75,8 @@ Route::middleware(['auth', 'verified', 'company.active'])
     ->name('admin.')
     ->group(function () {
 
-        // Dashboard e pedidos: company_admin + branch_manager
-        Route::middleware('company.role:company_admin,branch_manager')->group(function () {
+        // Dashboard e pedidos: company_admin + branch_manager + cozinha + caixa
+        Route::middleware('company.role:company_admin,branch_manager,cozinha,caixa')->group(function () {
             Route::get('/dashboard', \App\Livewire\Admin\Dashboard::class)->name('dashboard');
             Route::get('/orders', \App\Livewire\Admin\Orders\Index::class)->name('orders.index');
             Route::get('/orders/report', \App\Livewire\Admin\Orders\Report::class)->name('orders.report');

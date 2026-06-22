@@ -34,11 +34,15 @@
         <a href="#planos" class="nav-link">Planos</a>
         <a href="#chat-pedidos" class="nav-link">Chat de Pedidos</a>
         <a href="#painel-admin" class="nav-link">Dashboard & Pedidos</a>
+        <a href="#kanban" class="nav-link">Kanban de Pedidos</a>
         <a href="#cardapio" class="nav-link">Cardápio</a>
         <a href="#estoque" class="nav-link">Estoque</a>
         <a href="#filiais" class="nav-link">Filiais & Entrega</a>
+        <a href="#impressora" class="nav-link">Impressora</a>
         <a href="#cupons" class="nav-link">Cupons</a>
         <a href="#relatorios" class="nav-link">Relatórios</a>
+        <a href="#pdv" class="nav-link">PDV</a>
+        <a href="#fiscal" class="nav-link">Notas Fiscais</a>
         <a href="#carteira" class="nav-link">Carteira</a>
         <a href="#faturamento" class="nav-link">Faturamento</a>
         <a href="#usuarios" class="nav-link">Usuários & Papéis</a>
@@ -60,11 +64,15 @@
 
             <p class="text-xs font-bold text-zinc-400 uppercase tracking-widest px-3 mb-2 mt-4">Painel Admin</p>
             <a href="#painel-admin" class="nav-link">Dashboard & Pedidos</a>
+            <a href="#kanban" class="nav-link">Kanban de Pedidos</a>
             <a href="#cardapio" class="nav-link">Cardápio</a>
             <a href="#estoque" class="nav-link">Estoque</a>
             <a href="#filiais" class="nav-link">Filiais & Entrega</a>
+            <a href="#impressora" class="nav-link">Impressora</a>
             <a href="#cupons" class="nav-link">Cupons</a>
             <a href="#relatorios" class="nav-link">Relatórios</a>
+            <a href="#pdv" class="nav-link">PDV</a>
+            <a href="#fiscal" class="nav-link">Notas Fiscais</a>
             <a href="#carteira" class="nav-link">Carteira</a>
             <a href="#faturamento" class="nav-link">Faturamento</a>
             <a href="#usuarios" class="nav-link">Usuários & Papéis</a>
@@ -459,6 +467,64 @@
             </div>
         </section>
 
+        {{-- Kanban de Pedidos --}}
+        <section id="kanban" class="scroll-mt-20">
+            <div class="section-card">
+                <div class="section-head">
+                    <div class="p-2.5 rounded-xl bg-lime-100 shrink-0">
+                        <svg class="size-6 text-lime-700" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125Z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-bold text-zinc-900">Kanban de Pedidos</h2>
+                        <div class="flex gap-2 mt-1">
+                            <span class="badge bg-purple-100 text-purple-700">company_admin</span>
+                            <span class="badge bg-indigo-100 text-indigo-700">branch_manager</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-5 space-y-3">
+                    <div class="info-box">
+                        <p class="sub-title">Alternar entre Lista e Kanban <span class="font-mono text-purple-700 text-xs font-normal">/admin/orders?viewMode=kanban</span></p>
+                        <p class="text-sm text-zinc-600">Na tela de pedidos, um botão alterna entre a visão em lista (tradicional) e a visão em quadro Kanban. A escolha fica salva na URL — se você atualizar a página ou compartilhar o link, a visão selecionada é mantida.</p>
+                    </div>
+                    <div class="info-box">
+                        <p class="sub-title">Colunas por status</p>
+                        <p class="text-sm text-zinc-600 mb-2">Cada coluna representa um status do pedido, na ordem do fluxo operacional:</p>
+                        <ul class="list">
+                            <li>Agendado → Pendente → Aguardando pagamento → Pago → Em preparo → Pronto → Entregue → Cancelado</li>
+                            <li>Cada coluna mostra a contagem de pedidos e carrega <strong>15 pedidos por vez</strong> — use "Carregar mais" para ver os próximos</li>
+                        </ul>
+                    </div>
+                    <div class="info-box">
+                        <p class="sub-title">Arrastar e soltar (drag-and-drop)</p>
+                        <ul class="list">
+                            <li>Arraste o cartão de um pedido para outra coluna para mudar seu status</li>
+                            <li>O sistema valida a transição no servidor — movimentos inválidos são revertidos automaticamente</li>
+                            <li>Ao mover um pedido para "Cancelado", o estoque dos itens é restaurado, igual ao cancelamento pela lista</li>
+                        </ul>
+                    </div>
+                </div>
+
+                    <div class="doc-media">
+                    @php $media = $docMedia('kanban.png') @endphp
+                    @if($media)
+                        @if($media['type'] === 'video')
+                            <video src="{{ $media['url'] }}" controls playsinline muted class="doc-img"></video>
+                        @else
+                            <img src="{{ $media['url'] }}" alt="Kanban de pedidos" class="doc-img">
+                        @endif
+                    @else
+                        <div class="doc-img-placeholder">
+                            <svg class="size-8 text-zinc-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"/></svg>
+                            <p class="text-xs text-zinc-400 text-center px-4">Mídia não encontrada — salve em <code class="bg-zinc-100 px-1 rounded">public/images/docs/kanban.png</code></p>
+                        </div>
+                    @endif
+                    </div>
+            </div>
+        </section>
+
         {{-- Cardápio --}}
         <section id="cardapio" class="scroll-mt-20">
             <div class="section-card">
@@ -694,6 +760,61 @@
             </div>
         </section>
 
+        {{-- Impressora --}}
+        <section id="impressora" class="scroll-mt-20">
+            <div class="section-card">
+                <div class="section-head">
+                    <div class="p-2.5 rounded-xl bg-slate-200 shrink-0">
+                        <svg class="size-6 text-slate-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 0 1 1.913-.247m10.5 0a48.536 48.536 0 0 0-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5Zm-3 0h.008v.008H15V10.5Z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-bold text-zinc-900">Impressora</h2>
+                        <p class="mt-1 text-sm text-zinc-500">Configuração por filial <span class="font-mono text-purple-700 text-xs">/admin/branches/{id}/printer</span></p>
+                    </div>
+                </div>
+                <div class="mt-5 space-y-3">
+                    <div class="grid sm:grid-cols-2 gap-3">
+                        <div class="info-box">
+                            <p class="sub-title">Dados da impressora</p>
+                            <ul class="list">
+                                <li><strong>Endereço IP</strong> e <strong>porta</strong> (padrão 9100) da impressora térmica na rede da filial</li>
+                                <li><strong>Largura do papel:</strong> 58mm ou 80mm</li>
+                                <li><strong>Nome:</strong> identificação opcional, útil quando há mais de um terminal</li>
+                                <li><strong>Impressão automática:</strong> imprime o recibo sem precisar clicar em imprimir a cada venda</li>
+                                <li>Ative ou desative a impressora sem remover a configuração</li>
+                            </ul>
+                        </div>
+                        <div class="info-box">
+                            <p class="sub-title">Teste de conexão</p>
+                            <p class="text-sm text-zinc-600">Antes de salvar, use o botão de teste para confirmar que o sistema consegue se conectar à impressora pelo IP e porta informados. Cada filial pode ter sua própria impressora configurada de forma independente.</p>
+                        </div>
+                    </div>
+                    <div class="info-box">
+                        <p class="sub-title">Onde é usada</p>
+                        <p class="text-sm text-zinc-600">A impressora configurada aqui é usada pelo <a href="#pdv" class="text-purple-700 underline">PDV</a> para imprimir o recibo de cada venda e o relatório de fechamento de caixa via protocolo ESC-POS.</p>
+                    </div>
+                </div>
+
+                    <div class="doc-media">
+                    @php $media = $docMedia('impressora.png') @endphp
+                    @if($media)
+                        @if($media['type'] === 'video')
+                            <video src="{{ $media['url'] }}" controls playsinline muted class="doc-img"></video>
+                        @else
+                            <img src="{{ $media['url'] }}" alt="Configuração de impressora" class="doc-img">
+                        @endif
+                    @else
+                        <div class="doc-img-placeholder">
+                            <svg class="size-8 text-zinc-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"/></svg>
+                            <p class="text-xs text-zinc-400 text-center px-4">Mídia não encontrada — salve em <code class="bg-zinc-100 px-1 rounded">public/images/docs/impressora.png</code></p>
+                        </div>
+                    @endif
+                    </div>
+            </div>
+        </section>
+
         {{-- Cupons --}}
         <section id="cupons" class="scroll-mt-20">
             <div class="section-card">
@@ -847,6 +968,156 @@
             </div>
         </section>
 
+        {{-- PDV --}}
+        <section id="pdv" class="scroll-mt-20">
+            <div class="section-card">
+                <div class="section-head">
+                    <div class="p-2.5 rounded-xl bg-cyan-100 shrink-0">
+                        <svg class="size-6 text-cyan-700" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 15.75V18m-7.5-6.75h.008v.008H8.25v-.008Zm0 2.25h.008v.008H8.25V13.5Zm0 2.25h.008v.008H8.25v-.008Zm0 2.25h.008v.008H8.25V18Zm2.25-4.5h.008v.008H10.5v-.008Zm0 2.25h.008v.008H10.5V13.5Zm0 2.25h.008v.008H10.5v-.008Zm0 2.25h.008v.008H10.5V18Zm2.25-4.5h.008v.008H12.75v-.008Zm0 2.25h.008v.008H12.75V13.5Zm0 2.25h.008v.008H12.75v-.008Zm0 2.25h.008v.008H12.75V18Zm2.25-2.25h.008v.008H15v-.008Zm0-4.5h.008v.008H15v-.008Zm0 2.25h.008v.008H15V13.5ZM6.75 8.25h10.5M6 21h12a1.5 1.5 0 0 0 1.5-1.5V4.5A1.5 1.5 0 0 0 18 3H6a1.5 1.5 0 0 0-1.5 1.5v15A1.5 1.5 0 0 0 6 21Z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-bold text-zinc-900">PDV — Ponto de Venda</h2>
+                        <div class="flex gap-2 mt-1">
+                            <span class="badge bg-cyan-100 text-cyan-700">Add-on pago</span>
+                            <span class="font-mono text-purple-700 text-xs self-center">/admin/pdv</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-5 space-y-3">
+                    <div class="info-box">
+                        <p class="sub-title">O que é</p>
+                        <p class="text-sm text-zinc-600">Terminal de venda presencial para vender no balcão ou em mesas/comandas, sem depender do chat público. É um <strong>módulo pago opcional</strong> (R$ 99/mês, somado à mensalidade do plano atual) — ative ou cancele em <a href="#faturamento" class="text-purple-700 underline">Faturamento</a>. Só opera quem tiver a permissão <code class="text-purple-700 font-normal">pdv.operate</code>.</p>
+                    </div>
+                    <div class="info-box">
+                        <p class="sub-title">Fluxo de venda</p>
+                        <div class="space-y-2 mt-1">
+                            <div class="flex gap-3 items-start">
+                                <span class="step-num bg-cyan-600 text-white text-xs">1</span>
+                                <p class="text-sm text-zinc-600">Abra o caixa informando o valor inicial em dinheiro e, opcionalmente, o nome do terminal</p>
+                            </div>
+                            <div class="flex gap-3 items-start">
+                                <span class="step-num bg-cyan-600 text-white text-xs">2</span>
+                                <p class="text-sm text-zinc-600">Monte o carrinho pelo catálogo, busca por nome ou leitor de código de barras. Produtos com opcionais abrem uma tela de personalização</p>
+                            </div>
+                            <div class="flex gap-3 items-start">
+                                <span class="step-num bg-cyan-600 text-white text-xs">3</span>
+                                <p class="text-sm text-zinc-600">Escolha venda no balcão ou com entrega (exige cliente cadastrado), aplique desconto manual se habilitado, e finalize o pagamento</p>
+                            </div>
+                            <div class="flex gap-3 items-start">
+                                <span class="step-num bg-cyan-600 text-white text-xs">4</span>
+                                <p class="text-sm text-zinc-600">O recibo é impresso automaticamente (se configurado) e o pedido entra no histórico da sessão</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="grid sm:grid-cols-2 gap-3">
+                        <div class="info-box">
+                            <p class="sub-title">Mesa / Comanda</p>
+                            <ul class="list">
+                                <li>Alterne entre modo "Balcão" (venda direta) e modo "Mesa/Comanda" (conta aberta)</li>
+                                <li>Abra uma comanda por vez ou em lote — informe vários nomes separados por vírgula ou linha</li>
+                                <li>Adicione itens à comanda aberta a qualquer momento, antes de fechar</li>
+                                <li>Ao fechar, escolha a forma de pagamento e finalize a conta</li>
+                            </ul>
+                        </div>
+                        <div class="info-box">
+                            <p class="sub-title">Pagamento offline</p>
+                            <ul class="list">
+                                <li><strong>Dinheiro:</strong> informe o valor recebido — o troco é calculado automaticamente</li>
+                                <li><strong>Cartão (maquininha):</strong> registrado como pago manualmente, sem cobrança pelo Vindi</li>
+                                <li><strong>PIX manual:</strong> conferido visualmente pelo operador, também sem cobrança pelo Vindi</li>
+                                <li>Desconto manual (fixo ou percentual) só fica disponível se a empresa habilitar essa opção</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="info-box">
+                        <p class="sub-title">Sessão de caixa</p>
+                        <ul class="list">
+                            <li>Cada operador tem sua própria sessão de caixa por filial (suporte a múltiplos terminais)</li>
+                            <li>Registre suprimentos (entrada de dinheiro) e sangrias (retirada) durante o turno, sempre com motivo</li>
+                            <li>Ao fechar o caixa, informe o valor contado — diferenças acima de R$ 5,00 exigem justificativa</li>
+                            <li>O relatório de fechamento mostra valor de abertura, vendas em dinheiro, suprimentos, sangrias e o valor esperado</li>
+                            <li>Histórico de sessões fechadas e pedidos cancelados, com restauração automática de estoque</li>
+                        </ul>
+                    </div>
+                </div>
+
+                    <div class="doc-media">
+                    @php $media = $docMedia('pdv.mov') @endphp
+                    @if($media)
+                        @if($media['type'] === 'video')
+                            <video src="{{ $media['url'] }}" controls playsinline muted class="doc-img"></video>
+                        @else
+                            <img src="{{ $media['url'] }}" alt="PDV — Ponto de Venda" class="doc-img">
+                        @endif
+                    @else
+                        <div class="doc-img-placeholder">
+                            <svg class="size-8 text-zinc-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"/></svg>
+                            <p class="text-xs text-zinc-400 text-center px-4">Mídia não encontrada — salve em <code class="bg-zinc-100 px-1 rounded">public/images/docs/pdv.mov</code></p>
+                        </div>
+                    @endif
+                    </div>
+            </div>
+        </section>
+
+        {{-- Notas Fiscais --}}
+        <section id="fiscal" class="scroll-mt-20">
+            <div class="section-card">
+                <div class="section-head">
+                    <div class="p-2.5 rounded-xl bg-red-100 shrink-0">
+                        <svg class="size-6 text-red-700" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-bold text-zinc-900">Notas Fiscais — NFC-e</h2>
+                        <p class="mt-1 text-sm text-zinc-500">Emissão fiscal dos pedidos <span class="font-mono text-purple-700 text-xs">/admin/fiscal/notas</span></p>
+                    </div>
+                </div>
+                <div class="mt-5 space-y-3">
+                    <div class="info-box">
+                        <p class="sub-title">O que é</p>
+                        <p class="text-sm text-zinc-600">Emissão de Nota Fiscal de Consumidor Eletrônica (NFC-e) para os pedidos, integrada com a Focus NFe. Quem visualiza precisa da permissão <code class="text-purple-700 font-normal">fiscal.view</code>; quem emite ou cancela precisa de <code class="text-purple-700 font-normal">fiscal.issue</code>.</p>
+                    </div>
+                    <div class="grid sm:grid-cols-2 gap-3">
+                        <div class="info-box">
+                            <p class="sub-title">Status da nota</p>
+                            <ul class="list">
+                                <li><strong>Emitida:</strong> nota gerada e autorizada, com chave de acesso disponível</li>
+                                <li><strong>Pendente:</strong> aguardando retorno da Focus NFe</li>
+                                <li><strong>Cancelada:</strong> emissão cancelada, com justificativa registrada</li>
+                            </ul>
+                        </div>
+                        <div class="info-box">
+                            <p class="sub-title">Busca e consulta</p>
+                            <p class="text-sm text-zinc-600">Encontre uma nota pela chave de acesso, pela referência do provedor (Focus NFe) ou pelo número do pedido. Filtre a lista por status.</p>
+                        </div>
+                    </div>
+                    <div class="info-box">
+                        <p class="sub-title">Cancelamento</p>
+                        <p class="text-sm text-zinc-600">Só é possível cancelar notas ainda ativas. É obrigatório informar uma justificativa com no mínimo 15 caracteres antes de confirmar.</p>
+                    </div>
+                </div>
+
+                    <div class="doc-media">
+                    @php $media = $docMedia('fiscal.png') @endphp
+                    @if($media)
+                        @if($media['type'] === 'video')
+                            <video src="{{ $media['url'] }}" controls playsinline muted class="doc-img"></video>
+                        @else
+                            <img src="{{ $media['url'] }}" alt="Notas fiscais — NFC-e" class="doc-img">
+                        @endif
+                    @else
+                        <div class="doc-img-placeholder">
+                            <svg class="size-8 text-zinc-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"/></svg>
+                            <p class="text-xs text-zinc-400 text-center px-4">Mídia não encontrada — salve em <code class="bg-zinc-100 px-1 rounded">public/images/docs/fiscal.png</code></p>
+                        </div>
+                    @endif
+                    </div>
+            </div>
+        </section>
+
         {{-- Carteira --}}
         <section id="carteira" class="scroll-mt-20">
             <div class="section-card">
@@ -868,9 +1139,9 @@
                         <div class="info-box">
                             <p class="sub-title">Saldo <span class="font-mono text-purple-700 text-xs font-normal">/admin/wallet</span></p>
                             <ul class="list">
-                                <li><strong>Disponível:</strong> valor que já pode ser sacado imediatamente</li>
-                                <li><strong>A receber:</strong> valor de vendas ainda em processamento ou dentro do prazo de compensação</li>
-                                <li>O saldo é atualizado em tempo real e reflete automaticamente no dashboard</li>
+                                <li><strong>Disponível:</strong> valor já liberado, pronto para saque imediato</li>
+                                <li><strong>A receber (em carência):</strong> valor aguardando o prazo de liberação — PIX libera em D+1, cartão e boleto em D+2</li>
+                                <li>O saldo é atualizado automaticamente conforme os pagamentos são confirmados pelo gateway</li>
                                 <li>Consulte o histórico das últimas 50 transações</li>
                                 <li>Veja as últimas 20 solicitações de saque</li>
                             </ul>
@@ -886,16 +1157,16 @@
                         </div>
                     </div>
                     <div class="info-box">
-                        <p class="sub-title">Antecipação de recebíveis <span class="badge bg-yellow-100 text-yellow-700 ml-1">Essencial / PRO</span></p>
+                        <p class="sub-title">Antecipação de recebíveis</p>
                         <ul class="list">
-                            <li>Disponível para planos Essencial e PRO</li>
-                            <li>Selecione quais transações futuras você quer antecipar</li>
-                            <li>O sistema calcula as taxas de antecipação de acordo com o seu plano e o prazo de cada transação</li>
-                            <li>Confirme e o valor líquido (descontada a taxa) fica disponível na carteira em seguida</li>
+                            <li>Disponível para qualquer plano — não depende mais de Essencial ou PRO</li>
+                            <li>Selecione quais transações em carência você quer antecipar</li>
+                            <li>A taxa varia pelo prazo restante até a liberação: até 2 dias 1,45%, até 7 dias 0,75%, até 15 dias 0,75%, 30 dias ou mais sem taxa</li>
+                            <li>Confirme e o valor líquido (já descontada a taxa de antecipação) fica disponível na hora</li>
                         </ul>
                     </div>
                     <div class="info-box-blue">
-                        <p class="text-xs text-blue-800"><strong>Como o dinheiro chega à carteira:</strong> Cada venda paga via PIX tem seu valor líquido (total do pedido menos a taxa da plataforma) creditado na carteira. Você pode sacar quando quiser para sua conta bancária.</p>
+                        <p class="text-xs text-blue-800"><strong>Como o dinheiro chega à carteira:</strong> Após a confirmação do pagamento, o valor líquido é creditado automaticamente. No PIX, primeiro é descontada a taxa do gateway (0,99% — repasse Vindi + margem da plataforma) e, sobre o que resta (sem contar a taxa de entrega, que fica inteira com a empresa), é aplicada a taxa da plataforma do seu plano. No cartão, a taxa da bandeira (1% a 5,33%, conforme o cartão usado) é descontada da mesma forma. O valor fica em carência até o prazo de liberação e depois pode ser sacado.</p>
                     </div>
                 </div>
 
@@ -1110,9 +1381,9 @@
                         <p class="sub-title">Absorção de taxas de pagamento</p>
                         <p class="text-sm text-zinc-600 mb-1">Defina quem paga as taxas dos meios de pagamento:</p>
                         <ul class="list">
-                            <li><strong>Taxa PIX (R$ 0,50):</strong> se a empresa absorver, o cliente não paga — o custo é descontado do seu repasse</li>
-                            <li><strong>Taxa cartão (4%):</strong> se a empresa absorver, o cliente paga o valor do pedido sem acréscimo</li>
-                            <li>Se não absorver, o acréscimo é exibido para o cliente antes de confirmar o pagamento</li>
+                            <li><strong>Taxa PIX (R$ 0,50):</strong> se a empresa absorver, o cliente não paga — o custo fica com a empresa</li>
+                            <li><strong>Taxa cartão (1% a 5,33%, conforme a bandeira):</strong> se a empresa absorver, o cliente paga o valor do pedido sem acréscimo</li>
+                            <li>Se não absorver, o acréscimo correspondente é somado ao total antes de confirmar o pagamento</li>
                         </ul>
                     </div>
                 </div>
@@ -1165,8 +1436,9 @@
                             <p class="sub-title">Vindi — pagamentos dos pedidos</p>
                             <ul class="list">
                                 <li>Gera o QR Code e código copia e cola do PIX para cada pedido</li>
-                                <li>Gerencia a carteira, saldo e transações de cada empresa</li>
-                                <li>Processa pagamentos, antecipações e saques</li>
+                                <li>Processa o pagamento por cartão de crédito do cliente no checkout do chat</li>
+                                <li>Gerencia o split, a carteira, o saldo e as transações de cada empresa</li>
+                                <li>Processa as solicitações de saque da carteira (PIX e TED)</li>
                                 <li>Confirma o pagamento em tempo real via webhook — o pedido é atualizado automaticamente</li>
                                 <li>O PIX de cada pedido expira em 30 minutos</li>
                             </ul>
@@ -1197,16 +1469,17 @@
                             </div>
                             <div class="flex gap-3 items-start">
                                 <span class="step-num bg-emerald-600 text-white text-xs">6</span>
-                                <p class="text-sm text-zinc-600">O valor líquido (descontada a taxa da plataforma) entra na carteira da empresa</p>
+                                <p class="text-sm text-zinc-600">O valor líquido entra na carteira da empresa — já descontadas a taxa do gateway (Vindi) e a taxa da plataforma do plano</p>
                             </div>
                         </div>
                     </div>
                     <div class="info-box">
                         <p class="sub-title">Taxas aplicadas por pedido</p>
                         <ul class="list">
-                            <li><strong>Taxa da plataforma:</strong> percentual cobrado pelo Veddi sobre o subtotal dos produtos (varia por plano)</li>
-                            <li><strong>Taxa PIX:</strong> R$ 0,50 por pedido pago via PIX (pode ser absorvida pela empresa nas configurações)</li>
-                            <li><strong>Taxa cartão:</strong> 4% sobre o valor pago (pode ser absorvida pela empresa nas configurações)</li>
+                            <li><strong>Taxa do gateway (Vindi):</strong> no PIX, 0,99% do valor cobrado (0,85% repasse Vindi + 0,14% margem da plataforma); no cartão, varia por bandeira — Visa 1%, Mastercard/Diners 2,8%, Amex 1,88%, Elo 4,48%, Hipercard 5,33%</li>
+                            <li><strong>Taxa da plataforma:</strong> percentual do plano, aplicado sobre o valor líquido já descontada a taxa do gateway — sem contar a taxa de entrega, que fica inteira com a empresa</li>
+                            <li><strong>Taxa PIX de R$ 0,50:</strong> exibida ao cliente no checkout, a menos que a empresa opte por absorvê-la nas configurações</li>
+                            <li><strong>Acréscimo do cartão:</strong> se a empresa não absorver a taxa da bandeira, o valor correspondente é somado automaticamente ao total cobrado do cliente</li>
                         </ul>
                     </div>
                 </div>

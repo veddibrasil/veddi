@@ -60,7 +60,7 @@ class PrinterSettings extends Component
             $company = app('current.company');
             $this->canSave = $user->hasPermission('branches.update', $company);
 
-            if ($user->isBranchManager($company) && $user->branchIdForCompany($company) !== $branch->id) {
+            if ($user->isBranchScoped($company) && $user->branchIdForCompany($company) !== $branch->id) {
                 abort(403);
             }
         }

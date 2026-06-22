@@ -19,6 +19,8 @@ class Index extends Component
 {
     use WithPagination;
 
+    private const BRANCH_SCOPED_ROLES = ['branch_manager', 'cozinha', 'caixa'];
+
     public string $search = '';
 
     // Formulário de criação de usuário
@@ -99,7 +101,7 @@ class Index extends Component
 
         $user->companies()->attach($company->id, [
             'role' => $this->newRole,
-            'branch_id' => $this->newRole === 'branch_manager' && $this->newBranchId
+            'branch_id' => in_array($this->newRole, self::BRANCH_SCOPED_ROLES) && $this->newBranchId
                 ? $this->newBranchId
                 : null,
         ]);
@@ -131,7 +133,7 @@ class Index extends Component
         $user->companies()->syncWithoutDetaching([
             $company->id => [
                 'role' => $this->linkRole,
-                'branch_id' => $this->linkRole === 'branch_manager' && $this->linkBranchId
+                'branch_id' => in_array($this->linkRole, self::BRANCH_SCOPED_ROLES) && $this->linkBranchId
                     ? $this->linkBranchId
                     : null,
             ],
@@ -169,7 +171,7 @@ class Index extends Component
 
         $user->companies()->updateExistingPivot($company->id, [
             'role' => $this->editRole,
-            'branch_id' => $this->editRole === 'branch_manager' && $this->editBranchId
+            'branch_id' => in_array($this->editRole, self::BRANCH_SCOPED_ROLES) && $this->editBranchId
                 ? $this->editBranchId
                 : null,
         ]);

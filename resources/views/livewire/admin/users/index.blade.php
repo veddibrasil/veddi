@@ -54,7 +54,7 @@
                     </flux:select>
                     @error('newRole') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
-                @if($newRole === 'branch_manager')
+                @if(in_array($newRole, ['branch_manager', 'cozinha', 'caixa']))
                     <div>
                         <flux:select wire:model="newBranchId" label="Filial">
                             <flux:select.option value="0">Todas as filiais</flux:select.option>
@@ -104,7 +104,7 @@
                     </flux:select>
                     @error('linkRole') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
-                @if($linkRole === 'branch_manager')
+                @if(in_array($linkRole, ['branch_manager', 'cozinha', 'caixa']))
                     <div>
                         <flux:select wire:model="linkBranchId" label="Filial">
                             <flux:select.option value="0">Todas as filiais</flux:select.option>
@@ -160,7 +160,7 @@
                                             <flux:select.option value="{{ $role->slug }}">{{ $role->name }}</flux:select.option>
                                         @endforeach
                                     </flux:select>
-                                    @if($editRole === 'branch_manager')
+                                    @if(in_array($editRole, ['branch_manager', 'cozinha', 'caixa']))
                                         <flux:select wire:model="editBranchId">
                                             <flux:select.option value="0">Todas</flux:select.option>
                                             @foreach($branches as $branch)

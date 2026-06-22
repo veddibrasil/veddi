@@ -1,9 +1,10 @@
+@props(['bodyClass' => 'min-h-screen'])
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
     <head>
         @include('partials.head')
     </head>
-    <body class="min-h-screen bg-[#f8f8fb] dark:bg-[#0d1825]">
+    <body class="{{ $bodyClass }} bg-[#f8f8fb] dark:bg-[#0d1825]">
         <flux:sidebar sticky collapsible="mobile" class="veddi-sidebar border-e border-[#5c0079]">
             <flux:sidebar.header>
                 <x-app-logo :sidebar="true" href="{{ auth()->user()?->isSuperAdmin() ? route('superadmin.companies.index') : route('admin.dashboard') }}" wire:navigate />

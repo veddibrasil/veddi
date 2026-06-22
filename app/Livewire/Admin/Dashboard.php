@@ -43,7 +43,7 @@ class Dashboard extends Component
         $can = fn (string $perm) => $isSuperAdmin || ($company && $user?->hasPermission($perm, $company));
 
         $canViewOrders = $can('orders.view');
-        $canViewBranches = $can('branches.view') && ! ($company && $user?->isBranchManager($company));
+        $canViewBranches = $can('branches.view') && ! ($company && $user?->isBranchScoped($company));
         $canViewProducts = $can('products.view');
         $canSettings = $can('company.settings');
 
@@ -53,7 +53,7 @@ class Dashboard extends Component
         $totalOrders = 0;
 
         if ($canViewOrders) {
-            $branchId = $company && $user?->isBranchManager($company)
+            $branchId = $company && $user?->isBranchScoped($company)
                 ? $user->branchIdForCompany($company)
                 : null;
 
