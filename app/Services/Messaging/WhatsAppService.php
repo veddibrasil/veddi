@@ -7,8 +7,6 @@ use App\Models\WhatsAppSetting;
 
 class WhatsAppService
 {
-    public function __construct(private ZApiService $zApi) {}
-
     public function send(string $phone, string $message, ?WhatsAppSetting $settings): bool
     {
         if ($settings === null || ! WhatsAppSetting::hasGlobalCredentials()) {
@@ -21,7 +19,8 @@ class WhatsAppService
             return false;
         }
 
-        return $this->zApi->sendText($normalized, $message);
+        // No WhatsApp provider configured (ZApi removed).
+        return false;
     }
 
     public function normalizePhone(string $phone): ?string
@@ -65,14 +64,6 @@ class WhatsAppService
 
             default => "Atualização do pedido #{$number}: {$event}.",
         };
-    }
-
-    public function buildAdminMessage(Order $order, string $adminMessage): string
-    {
-        $number = $order->order_number;
-        $company = $order->company?->name ?? '';
-
-        return "💬 Mensagem de {$company} sobre seu pedido #{$number}:\n{$adminMessage}";
     }
 
     private function buildAwaitingPaymentMessage(Order $order): string

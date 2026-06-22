@@ -9,7 +9,7 @@
 
     @if(! $hasGlobalCredentials)
         <div class="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-lg px-4 py-3 text-sm dark:bg-yellow-900/30 dark:border-yellow-700 dark:text-yellow-400">
-            As credenciais Z-API (<code>ZAPI_INSTANCE_ID</code>, <code>ZAPI_TOKEN</code>, <code>ZAPI_CLIENT_TOKEN</code>) não estão configuradas no servidor. Contate o administrador do sistema.
+            Nenhum provedor de WhatsApp está configurado no servidor. Contate o administrador do sistema.
         </div>
     @endif
 

@@ -36,12 +36,6 @@ return [
         'cdi_rate_fallback_daily' => (float) env('BACEN_CDI_FALLBACK_DAILY', 0.000527),
     ],
 
-    'zapi' => [
-        'instance_id' => env('ZAPI_INSTANCE_ID'),
-        'token' => env('ZAPI_TOKEN'),
-        'client_token' => env('ZAPI_CLIENT_TOKEN'),
-    ],
-
     'asaas' => [
         'api_key' => env('ASAAS_API_KEY'),
         'sandbox' => env('ASAAS_SANDBOX', true),
