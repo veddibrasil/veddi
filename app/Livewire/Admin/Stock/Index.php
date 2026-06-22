@@ -183,16 +183,6 @@ class Index extends Component
         app(StockService::class)->toggleTracking($branch, $product, ! ($pivot?->track_stock ?? false));
     }
 
-    public function updateMinQuantity(int $productId, int $branchId, int $minQuantity): void
-    {
-        $this->checkPermission('stock.adjust');
-
-        DB::table('branch_product')
-            ->where('branch_id', $branchId)
-            ->where('product_id', $productId)
-            ->update(['min_quantity' => max(0, $minQuantity)]);
-    }
-
     public function render()
     {
         // Filiais da empresa (CompanyScope aplicado automaticamente)

@@ -15,24 +15,6 @@ use Carbon\Carbon;
 
 trait HasOrderFlow
 {
-    // --- Step: Main menu ---
-
-    public function submitMainMenu(string $option): void
-    {
-        if ($option === '1') {
-            $this->addMessage('user', '1 - Fazer pedido');
-            $this->addMessage('bot', 'Ótimo! Escolha uma filial para continuar.');
-            $this->transitionTo('BRANCH_SELECT');
-
-            return;
-        }
-
-        if ($option === '2') {
-            $this->addMessage('user', '2 - Falar com o suporte');
-            $this->addMessage('bot', 'Para falar com a filial, use o botão do WhatsApp no topo do chat. ✅');
-        }
-    }
-
     // --- Cart review → coupon ---
 
     public function confirmCart(): void
@@ -415,11 +397,6 @@ trait HasOrderFlow
     public function backToNotes(): void
     {
         $this->transitionTo('CHECKOUT_NOTES');
-    }
-
-    public function backToCpf(): void
-    {
-        $this->transitionTo('CHECKOUT_CPF');
     }
 
     public function backToSchedule(): void

@@ -21,7 +21,6 @@ class Company extends Model
         'secondary_color_light',
         'accent_color',
         'logo_path',
-        'favicon_path',
         'tagline',
         'footer_text',
         'chat_highlights',
@@ -41,17 +40,6 @@ class Company extends Model
         'asaas_setup_pix_copy_paste',
         'overdue_since',
         'asaas_setup_bank_slip_url',
-        // Payout defaults
-        'default_payout_type',
-        'default_pix_key',
-        'default_pix_key_type',
-        'default_bank_code',
-        'default_bank_agency',
-        'default_bank_account',
-        'default_bank_account_digit',
-        'default_bank_account_type',
-        'default_bank_owner_cpf_cnpj',
-        'default_bank_owner_name',
         'terms_accepted_at',
         'terms_accepted_by_user_id',
         'terms_version',
@@ -102,16 +90,6 @@ class Company extends Model
         $base = rtrim(config('filesystems.disks.s3.url', ''), '/');
 
         return $base.'/'.ltrim($this->logo_path, '/');
-    }
-
-    public function getFaviconUrlAttribute(): ?string
-    {
-        if (! $this->favicon_path) {
-            return null;
-        }
-        $base = rtrim(config('filesystems.disks.s3.url', ''), '/');
-
-        return $base.'/'.ltrim($this->favicon_path, '/');
     }
 
     public function branches(): HasMany
@@ -169,11 +147,6 @@ class Company extends Model
     public function whatsappSetting(): HasOne
     {
         return $this->hasOne(WhatsAppSetting::class);
-    }
-
-    public function walletBalance(): float
-    {
-        return app(\App\Services\Finance\BalanceService::class)->calculateBalance($this)['total_balance'];
     }
 
     public function isPro(): bool
@@ -274,11 +247,6 @@ class Company extends Model
         return $this->status === 'ACTIVE';
     }
 
-    public function isPendingPayment(): bool
-    {
-        return $this->status === 'PENDING_PAYMENT';
-    }
-
     public function isOverdue(): bool
     {
         return $this->status === 'OVERDUE';
@@ -292,11 +260,6 @@ class Company extends Model
     public function canUseFiscalNotes(): bool
     {
         return (bool) $this->fiscal_notes_enabled;
-    }
-
-    public function hasPdvModule(): bool
-    {
-        return (bool) $this->pdv_module_enabled;
     }
 
     public function fiscalConfig(): HasOne

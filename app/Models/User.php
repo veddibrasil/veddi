@@ -5,7 +5,6 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Cache;
@@ -81,11 +80,6 @@ class User extends Authenticatable
         return $pivot?->branch_id;
     }
 
-    public function isCompanyAdmin(Company $company): bool
-    {
-        return $this->isSuperAdmin() || $this->roleForCompany($company) === 'company_admin';
-    }
-
     public function isBranchManager(Company $company): bool
     {
         return $this->roleForCompany($company) === 'branch_manager';
@@ -94,11 +88,6 @@ class User extends Authenticatable
     public function isBranchScoped(Company $company): bool
     {
         return in_array($this->roleForCompany($company), ['branch_manager', 'cozinha', 'caixa']);
-    }
-
-    public function overridePermissions(): HasMany
-    {
-        return $this->hasMany(UserPermission::class);
     }
 
     public function hasPermission(string $permission, Company $company): bool

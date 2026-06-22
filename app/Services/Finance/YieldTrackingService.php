@@ -8,11 +8,6 @@ class YieldTrackingService
 {
     public function __construct(private BacenService $bacen) {}
 
-    public function dailyFactor(float $annualRate): float
-    {
-        return pow(1 + $annualRate / 100, 1 / 252) - 1;
-    }
-
     public function recordSnapshot(float $vindiBalance, float $asaasBalance): PlatformYieldSnapshot
     {
         $today = now()->toDateString();
@@ -49,14 +44,5 @@ class YieldTrackingService
     public function monthlyYield(int $year, int $month): float
     {
         return (float) PlatformYieldSnapshot::forMonth($year, $month)->sum('yield_amount');
-    }
-
-    public function annualProjection(): float
-    {
-        $avg = PlatformYieldSnapshot::orderByDesc('snapshot_date')
-            ->limit(30)
-            ->avg('yield_amount');
-
-        return round((float) $avg * 365, 2);
     }
 }

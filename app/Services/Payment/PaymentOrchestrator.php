@@ -431,35 +431,4 @@ class PaymentOrchestrator
             'gateway' => 'pix_manual',
         ];
     }
-
-    // ─────────────────────────────────────────────────────────────
-    // Cálculo de taxas
-    // ─────────────────────────────────────────────────────────────
-
-    /**
-     * Calcula as taxas de gateway e plataforma por método de pagamento.
-     *
-     * @return array{gateway_fee: float, platform_fee: float, net_amount: float}
-     */
-    public function calculateFees(float $amount, string $method, Company $company, int $installments = 1, string $cardNumber = ''): array
-    {
-        $gatewayFee = match (strtolower($method)) {
-            'pix' => round($amount * (float) config('payments.vindi_pix_rate', 0.0085), 2),
-            'credit_card' => round($amount * $this->resolveCardRate($cardNumber), 2),
-            default => 0.0,
-        };
-
-        $platformFee = round($amount * $company->feePercentageForOrder(), 2);
-
-        return [
-            'gateway_fee' => $gatewayFee,
-            'platform_fee' => $platformFee,
-            'net_amount' => round($amount - $gatewayFee - $platformFee, 2),
-        ];
-    }
-
-    private function resolveCardRate(string $cardNumber): float
-    {
-        return CardBrand::fromNumber($cardNumber)->rate();
-    }
 }

@@ -41,24 +41,4 @@ class CompanyWithdrawal extends Model
     {
         return $this->belongsTo(Company::class);
     }
-
-    public function isPending(): bool
-    {
-        return $this->status === 'pending';
-    }
-
-    public function isProcessing(): bool
-    {
-        return $this->status === 'processing';
-    }
-
-    public function isDone(): bool
-    {
-        return $this->status === 'done';
-    }
-
-    public function isFailed(): bool
-    {
-        return $this->status === 'failed';
-    }
 }
