@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Models\Company;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\Response;
 
 class IdentifyCompany
@@ -20,16 +21,28 @@ class IdentifyCompany
         if ($appHost && str_ends_with($host, '.'.$appHost)) {
             $subdomain = str_replace('.'.$appHost, '', $host);
             if ($subdomain && $subdomain !== $appHost) {
-                $company = Company::where('subdomain', $subdomain)->where('active', true)->first();
+                $company = Cache::get("company:subdomain:{$subdomain}");
+                if (! $company) {
+                    $company = Company::where('subdomain', $subdomain)->where('active', true)->first();
+                    if ($company) {
+                        Cache::put("company:subdomain:{$subdomain}", $company, now()->addMinutes(5));
+                    }
+                }
             }
         }
 
         // 2. Try slug from route parameter
         if (! $company) {
             $slug = $request->route('company');
-            $company = $slug
-                ? Company::where('slug', $slug)->where('active', true)->first()
-                : null;
+            if ($slug) {
+                $company = Cache::get("company:slug:{$slug}");
+                if (! $company) {
+                    $company = Company::where('slug', $slug)->where('active', true)->first();
+                    if ($company) {
+                        Cache::put("company:slug:{$slug}", $company, now()->addMinutes(5));
+                    }
+                }
+            }
         }
 
         // 3. Authenticated user's company (multi-tenant: never trust query-string overrides)

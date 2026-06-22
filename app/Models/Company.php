@@ -7,9 +7,30 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\Cache;
 
 class Company extends Model
 {
+    protected static function booted(): void
+    {
+        static::saved(function (Company $company) {
+            Cache::forget("company:slug:{$company->slug}");
+            Cache::forget("company:subdomain:{$company->subdomain}");
+
+            if (($original = $company->getOriginal('slug')) && $original !== $company->slug) {
+                Cache::forget("company:slug:{$original}");
+            }
+            if (($original = $company->getOriginal('subdomain')) && $original !== $company->subdomain) {
+                Cache::forget("company:subdomain:{$original}");
+            }
+        });
+
+        static::deleted(function (Company $company) {
+            Cache::forget("company:slug:{$company->slug}");
+            Cache::forget("company:subdomain:{$company->subdomain}");
+        });
+    }
+
     protected $fillable = [
         'name',
         'slug',
@@ -191,11 +212,20 @@ class Company extends Model
             return true;
         }
 
-        return $this->orders()
-            ->whereMonth('created_at', now()->month)
-            ->whereYear('created_at', now()->year)
-            ->whereNotIn('status', ['cancelled'])
-            ->count() < $max;
+        $year = now()->year;
+        $month = now()->month;
+
+        $count = Cache::remember(
+            "order_count:active:company:{$this->id}:{$year}-{$month}",
+            now()->addSeconds(60),
+            fn () => $this->orders()
+                ->whereMonth('created_at', $month)
+                ->whereYear('created_at', $year)
+                ->whereNotIn('status', ['cancelled'])
+                ->count()
+        );
+
+        return $count < $max;
     }
 
     public function feePercentageForOrder(?Order $order = null): float
@@ -216,11 +246,15 @@ class Company extends Model
 
         // Count only confirmed (paid/delivered) orders to avoid abandoned pending checkouts
         // inflating the monthly total and triggering the over-limit rate prematurely.
-        $monthlyOrderCount = $this->orders()
-            ->whereMonth('created_at', $reference->month)
-            ->whereYear('created_at', $reference->year)
-            ->whereIn('status', ['paid', 'scheduled', 'preparing', 'ready', 'delivered'])
-            ->count();
+        $monthlyOrderCount = Cache::remember(
+            "order_count:confirmed:company:{$this->id}:{$reference->year}-{$reference->month}",
+            now()->addSeconds(60),
+            fn () => $this->orders()
+                ->whereMonth('created_at', $reference->month)
+                ->whereYear('created_at', $reference->year)
+                ->whereIn('status', ['paid', 'scheduled', 'preparing', 'ready', 'delivered'])
+                ->count()
+        );
 
         if ($monthlyOrderCount < $max) {
             return $rate;

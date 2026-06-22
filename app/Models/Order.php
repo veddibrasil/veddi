@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\Cache;
 
 class Order extends Model
 {
@@ -15,7 +16,6 @@ class Order extends Model
     protected $fillable = [
         'company_id', 'order_number', 'customer_id', 'branch_id', 'subtotal', 'delivery_fee', 'total',
         'status', 'notes', 'scheduled_at', 'payment_method', 'order_type', 'coupon_id', 'discount', 'fee', 'net_value',
-        'fee_billed_at',
         'delivery_address_id',
         'cash_received', 'cash_change',
         'manual_discount',
@@ -25,7 +25,6 @@ class Order extends Model
     ];
 
     protected $casts = [
-        'fee_billed_at' => 'datetime',
         'delivered_email_sent_at' => 'datetime',
         'confirmation_email_sent_at' => 'datetime',
         'scheduled_at' => 'datetime',
@@ -36,6 +35,18 @@ class Order extends Model
     {
         static::creating(function (Order $order) {
             $order->order_number = static::generateOrderNumber();
+        });
+
+        static::saved(function (Order $order) {
+            if (! $order->wasRecentlyCreated && ! $order->wasChanged('status')) {
+                return;
+            }
+
+            $reference = $order->created_at ?? now();
+            $key = "{$order->company_id}:{$reference->year}-{$reference->month}";
+
+            Cache::forget("order_count:active:company:{$key}");
+            Cache::forget("order_count:confirmed:company:{$key}");
         });
 
         static::saving(function (Order $order) {
