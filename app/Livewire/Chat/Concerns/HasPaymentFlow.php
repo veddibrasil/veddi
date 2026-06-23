@@ -226,7 +226,7 @@ trait HasPaymentFlow
         $messages = [
             'awaiting_payment' => "⏳ Pedido {$order->order_number} recebido! Aguardando confirmação do pagamento.",
             'scheduled' => "✅ Pagamento confirmado! Seu pedido {$order->order_number} está agendado para {$scheduledLabel}. Você receberá atualizações quando começarmos a preparar.",
-            'paid' => "✅ Pagamento confirmado! Seu pedido {$order->order_number} já será preparado. Obrigado!",
+            'paid' => "✅ Após a confirmação o seu pedido {$order->order_number} será preparado.",
             'preparing' => "👨‍🍳 Seu pedido {$order->order_number} está sendo preparado! Em breve ficará pronto.",
             'ready' => "🛵 Pedido {$order->order_number} pronto e saiu para entrega! Aguarde em breve.",
             'delivered' => "🎉 Pedido {$order->order_number} entregue! Bom apetite e obrigado pela preferência!",

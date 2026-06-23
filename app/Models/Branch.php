@@ -195,6 +195,11 @@ class Branch extends Model
         return $this->hasOne(BranchPrinter::class);
     }
 
+    public function serviceCharge(): HasOne
+    {
+        return $this->hasOne(BranchServiceCharge::class);
+    }
+
     public function hoursForDay(int $day): array
     {
         $perDay = $this->business_hours[$day] ?? $this->business_hours[(string) $day] ?? null;

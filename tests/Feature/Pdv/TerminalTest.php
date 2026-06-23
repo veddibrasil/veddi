@@ -2,6 +2,7 @@
 
 use App\Livewire\Admin\Pdv\Terminal;
 use App\Models\Branch;
+use App\Models\BranchServiceCharge;
 use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Order;
@@ -880,4 +881,172 @@ test('cancelar comanda aberta restaura estoque das duas rodadas', function () {
 
     $stock = DB::table('branch_product')->where('product_id', $product->id)->first();
     expect((int) $stock->quantity)->toBe(10);
+});
+
+test('comanda aberta individualmente aparece no painel de comandas com o total correto no mesmo request', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->call('openCashSession')
+        ->set('orderMode', 'mesa')
+        ->call('addProduct', $product->id)
+        ->set('tableLabel', 'Mesa 9')
+        ->call('openTab')
+        ->assertHasNoErrors();
+
+    $tabs = $component->get('openTabs');
+    expect($tabs)->toHaveCount(1);
+    expect((float) $tabs->first()->total)->toBe(8.0);
+});
+
+test('taxa de serviço e couvert da filial são aplicados automaticamente no pedido de balcão', function () {
+    ['company' => $company, 'admin' => $admin, 'product' => $product, 'branch' => $branch] = pdvContext();
+
+    $company->update(['plan' => 'free']);
+
+    BranchServiceCharge::create([
+        'branch_id' => $branch->id,
+        'company_id' => $company->id,
+        'service_fee_enabled' => true,
+        'service_fee_type' => 'percent',
+        'service_fee_value' => 10,
+        'couvert_enabled' => true,
+        'couvert_type' => 'fixed',
+        'couvert_value' => 5,
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'cash')
+        ->call('processOrder')
+        ->assertHasNoErrors();
+
+    $order = Order::withoutGlobalScopes()->first();
+
+    expect((float) $order->subtotal)->toBe(8.0);
+    expect((float) $order->service_fee)->toBe(0.8);
+    expect((float) $order->couvert_fee)->toBe(5.0);
+    expect((float) $order->total)->toBe(13.8);
+    // comissão da plataforma incide só sobre o subtotal de produtos, não sobre taxa/couvert
+    expect((float) $order->fee)->toBe(0.08);
+    expect((float) $order->net_value)->toBe(13.72);
+});
+
+test('taxa de serviço e couvert acompanham comanda de mesa ao longo de novas rodadas', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch] = pdvContext();
+
+    BranchServiceCharge::create([
+        'branch_id' => $branch->id,
+        'company_id' => $branch->company_id,
+        'service_fee_enabled' => true,
+        'service_fee_type' => 'percent',
+        'service_fee_value' => 10,
+        'couvert_enabled' => true,
+        'couvert_type' => 'fixed',
+        'couvert_value' => 5,
+    ]);
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->call('openCashSession')
+        ->set('orderMode', 'mesa')
+        ->call('addProduct', $product->id)
+        ->set('tableLabel', 'Mesa 3')
+        ->call('openTab')
+        ->assertHasNoErrors();
+
+    $orderId = Order::withoutGlobalScopes()->first()->id;
+    $order = Order::withoutGlobalScopes()->find($orderId);
+    expect((float) $order->service_fee)->toBe(0.8);
+    expect((float) $order->couvert_fee)->toBe(5.0);
+    expect((float) $order->total)->toBe(13.8);
+
+    $component->call('addProduct', $product->id)
+        ->call('addItemsToTab')
+        ->assertHasNoErrors();
+
+    $order = Order::withoutGlobalScopes()->find($orderId);
+    expect((float) $order->subtotal)->toBe(16.0);
+    expect((float) $order->service_fee)->toBe(1.6);
+    expect((float) $order->couvert_fee)->toBe(5.0);
+    expect((float) $order->total)->toBe(22.6);
+});
+
+test('operador remove taxa de serviço e couvert na hora de finalizar o pedido de balcão', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch] = pdvContext();
+
+    BranchServiceCharge::create([
+        'branch_id' => $branch->id,
+        'company_id' => $branch->company_id,
+        'service_fee_enabled' => true,
+        'service_fee_type' => 'percent',
+        'service_fee_value' => 10,
+        'couvert_enabled' => true,
+        'couvert_type' => 'fixed',
+        'couvert_value' => 5,
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->assertSet('serviceFeeWaived', false)
+        ->set('serviceFeeWaived', true)
+        ->set('couvertFeeWaived', true)
+        ->set('paymentMethod', 'cash')
+        ->call('processOrder')
+        ->assertHasNoErrors();
+
+    $order = Order::withoutGlobalScopes()->first();
+    expect((float) $order->service_fee)->toBe(0.0);
+    expect((float) $order->couvert_fee)->toBe(0.0);
+    expect((float) $order->total)->toBe(8.0);
+});
+
+test('operador remove taxa de serviço só na hora de fechar a comanda, sem afetar rodadas anteriores', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch] = pdvContext();
+
+    BranchServiceCharge::create([
+        'branch_id' => $branch->id,
+        'company_id' => $branch->company_id,
+        'service_fee_enabled' => true,
+        'service_fee_type' => 'percent',
+        'service_fee_value' => 10,
+        'couvert_enabled' => true,
+        'couvert_type' => 'fixed',
+        'couvert_value' => 5,
+    ]);
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->call('openCashSession')
+        ->set('orderMode', 'mesa')
+        ->call('addProduct', $product->id)
+        ->set('tableLabel', 'Mesa 4')
+        ->call('openTab')
+        ->assertHasNoErrors();
+
+    $orderId = Order::withoutGlobalScopes()->first()->id;
+
+    $component
+        ->call('proceedToCloseTab', $orderId)
+        ->set('serviceFeeWaived', true)
+        ->set('couvertFeeWaived', true)
+        ->set('paymentMethod', 'cash')
+        ->call('processOrder')
+        ->assertHasNoErrors();
+
+    $order = Order::withoutGlobalScopes()->find($orderId);
+    expect((float) $order->subtotal)->toBe(8.0);
+    expect((float) $order->service_fee)->toBe(0.0);
+    expect((float) $order->couvert_fee)->toBe(0.0);
+    expect((float) $order->total)->toBe(8.0);
 });

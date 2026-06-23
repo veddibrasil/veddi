@@ -4,6 +4,7 @@ namespace App\Livewire\Admin\Pdv;
 
 use App\Exceptions\DeliveryException;
 use App\Models\Branch;
+use App\Models\BranchServiceCharge;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\PdvAuditLog;
@@ -68,6 +69,10 @@ class Terminal extends Component
     public float $manualDiscountAmount = 0.0;
 
     public bool $manualDiscountAllowed = false;
+
+    public bool $serviceFeeWaived = false;
+
+    public bool $couvertFeeWaived = false;
 
     // ── Entrega ───────────────────────────────────────────────────────────────
     public string $deliveryType = 'balcao'; // 'balcao' | 'entrega'
@@ -184,6 +189,7 @@ class Terminal extends Component
         $this->activeCategoryId = null;
         $this->search = '';
         $this->openTabOrderId = null;
+        unset($this->branchServiceCharge);
         $this->syncCashSession();
     }
 
@@ -201,6 +207,7 @@ class Terminal extends Component
     {
         $barcode = trim($this->barcodeInput);
         $this->barcodeInput = '';
+        $this->dispatch('pdv-barcode-processed');
 
         if (blank($barcode) || ! $this->selectedBranchId) {
             return;
@@ -703,6 +710,8 @@ class Terminal extends Component
                     paymentMethod: '',
                     orderType: 'pdv',
                     status: 'pending',
+                    serviceFee: $this->serviceFeeAmount,
+                    couvertFee: $this->couvertFeeAmount,
                 );
 
                 $order->update([
@@ -765,6 +774,8 @@ class Terminal extends Component
                 paymentMethod: '',
                 orderType: 'pdv',
                 status: 'pending',
+                serviceFee: $this->serviceFeeAmount,
+                couvertFee: $this->couvertFeeAmount,
             );
 
             $order->update([
@@ -790,6 +801,7 @@ class Terminal extends Component
         $this->cart = [];
         $this->tableLabel = '';
         $this->openTabOrderId = $order->id;
+        unset($this->openTabs);
     }
 
     public function addItemsToTab(): void
@@ -849,7 +861,12 @@ class Terminal extends Component
         try {
             $isPaidOnCreate = in_array($this->paymentMethod, ['cash', 'credit_card', 'pix']);
 
-            app(OrderService::class)->applyManualDiscountToOrder($order, $this->manualDiscountAmount);
+            app(OrderService::class)->applyManualDiscountToOrder(
+                $order,
+                $this->manualDiscountAmount,
+                $this->serviceFeeWaived,
+                $this->couvertFeeWaived,
+            );
 
             $order->update([
                 'payment_method' => $this->paymentMethod,
@@ -950,6 +967,8 @@ class Terminal extends Component
                 status: $isPaidOnCreate ? 'paid' : 'awaiting_payment',
                 deliveryFee: $this->deliveryFeeAmount,
                 extraDiscount: $this->manualDiscountAmount,
+                serviceFee: $this->serviceFeeAmount,
+                couvertFee: $this->couvertFeeAmount,
             );
 
             // Link order to current cash session
@@ -1303,10 +1322,58 @@ class Terminal extends Component
     public function cartTotalAfterDiscount(): float
     {
         if ($this->closingTabOrderId) {
-            return max(0.0, round($this->cartTotal - $this->manualDiscountAmount, 2));
+            return max(0.0, round($this->cartTotal + $this->serviceFeeAmount + $this->couvertFeeAmount - $this->manualDiscountAmount, 2));
         }
 
-        return max(0.0, round($this->cartTotal + $this->deliveryFeeAmount - $this->manualDiscountAmount, 2));
+        return max(0.0, round($this->cartTotal + $this->deliveryFeeAmount + $this->serviceFeeAmount + $this->couvertFeeAmount - $this->manualDiscountAmount, 2));
+    }
+
+    #[Computed]
+    public function branchServiceCharge(): ?BranchServiceCharge
+    {
+        if (! $this->selectedBranchId) {
+            return null;
+        }
+
+        return BranchServiceCharge::where('branch_id', $this->selectedBranchId)->first();
+    }
+
+    #[Computed]
+    public function rawServiceFeeAmount(): float
+    {
+        if ($this->closingTabOrderId) {
+            return (float) (Order::withoutGlobalScopes()->find($this->closingTabOrderId)?->service_fee ?? 0.0);
+        }
+
+        return $this->branchServiceCharge?->calculateServiceFee($this->cartTotal) ?? 0.0;
+    }
+
+    #[Computed]
+    public function rawCouvertFeeAmount(): float
+    {
+        if ($this->closingTabOrderId) {
+            return (float) (Order::withoutGlobalScopes()->find($this->closingTabOrderId)?->couvert_fee ?? 0.0);
+        }
+
+        return $this->branchServiceCharge?->calculateCouvert($this->cartTotal) ?? 0.0;
+    }
+
+    #[Computed]
+    public function serviceFeeAmount(): float
+    {
+        return $this->serviceFeeWaived ? 0.0 : $this->rawServiceFeeAmount;
+    }
+
+    #[Computed]
+    public function couvertFeeAmount(): float
+    {
+        return $this->couvertFeeWaived ? 0.0 : $this->rawCouvertFeeAmount;
+    }
+
+    #[Computed]
+    public function needsCustomerForDelivery(): bool
+    {
+        return $this->deliveryType === 'entrega' && ! $this->customerId;
     }
 
     #[Computed]
@@ -1754,6 +1821,8 @@ class Terminal extends Component
         $this->manualDiscountAmount = 0.0;
         $this->manualDiscountInput = '';
         $this->manualDiscountType = 'fixed';
+        $this->serviceFeeWaived = false;
+        $this->couvertFeeWaived = false;
         $this->resetDeliveryState();
     }
 

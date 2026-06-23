@@ -14,7 +14,8 @@ Alpine.data('pdvApp', () => ({
         this._applySidebarState();
         this._initBarcodeScanner();
         this._initShortcuts();
-        this._focusSearch();
+        this._focusBarcode();
+        window.addEventListener('pdv-barcode-processed', () => this._focusBarcode());
     },
 
     toggleSidebar() {
@@ -79,6 +80,12 @@ Alpine.data('pdvApp', () => ({
         });
     },
 
+    _focusBarcode() {
+        requestAnimationFrame(() => {
+            document.getElementById('pdv-barcode-input')?.focus();
+        });
+    },
+
     _initShortcuts() {
         window.addEventListener('keydown', (e) => {
             const tag = e.target.tagName;
@@ -94,7 +101,7 @@ Alpine.data('pdvApp', () => ({
                 if (step === 'payment') {
                     e.preventDefault();
                     wire.call('backToCatalog');
-                    this._focusSearch();
+                    this._focusBarcode();
                 }
                 return;
             }

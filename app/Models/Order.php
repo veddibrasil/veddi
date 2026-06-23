@@ -18,7 +18,7 @@ class Order extends Model
         'status', 'notes', 'scheduled_at', 'payment_method', 'order_type', 'coupon_id', 'discount', 'fee', 'net_value',
         'delivery_address_id',
         'cash_received', 'cash_change',
-        'manual_discount',
+        'manual_discount', 'service_fee', 'couvert_fee',
         'pdv_cash_session_id',
         'table_label',
         'is_open_tab',

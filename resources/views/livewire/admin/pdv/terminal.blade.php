@@ -584,6 +584,7 @@
                         />
                         <div class="relative" x-data="{ focused: false }">
                             <input
+                                id="pdv-barcode-input"
                                 wire:model="barcodeInput"
                                 wire:keydown.enter.prevent="lookupByBarcode"
                                 @focus="focused = true"
@@ -1075,15 +1076,29 @@
 
                         @if (!empty($cart))
                             <div class="border-t border-neutral-100 px-4 py-4 space-y-3 bg-zinc-50 dark:border-zinc-800 dark:bg-[#0f1926]/70 shrink-0">
-                                @if ($manualDiscountAmount > 0)
+                                @if ($manualDiscountAmount > 0 || $this->serviceFeeAmount > 0 || $this->couvertFeeAmount > 0)
                                     <div class="flex justify-between items-center text-xs text-neutral-400 dark:text-neutral-500">
                                         <span>Subtotal</span>
                                         <span>R$ {{ number_format($this->cartTotal, 2, ',', '.') }}</span>
                                     </div>
-                                    <div class="flex justify-between items-center text-xs text-green-600 dark:text-green-400">
-                                        <span>Desc. manual</span>
-                                        <span>− R$ {{ number_format($manualDiscountAmount, 2, ',', '.') }}</span>
-                                    </div>
+                                    @if ($this->serviceFeeAmount > 0)
+                                        <div class="flex justify-between items-center text-xs text-neutral-400 dark:text-neutral-500">
+                                            <span>Taxa de serviço</span>
+                                            <span>+ R$ {{ number_format($this->serviceFeeAmount, 2, ',', '.') }}</span>
+                                        </div>
+                                    @endif
+                                    @if ($this->couvertFeeAmount > 0)
+                                        <div class="flex justify-between items-center text-xs text-neutral-400 dark:text-neutral-500">
+                                            <span>Couvert artístico</span>
+                                            <span>+ R$ {{ number_format($this->couvertFeeAmount, 2, ',', '.') }}</span>
+                                        </div>
+                                    @endif
+                                    @if ($manualDiscountAmount > 0)
+                                        <div class="flex justify-between items-center text-xs text-green-600 dark:text-green-400">
+                                            <span>Desc. manual</span>
+                                            <span>− R$ {{ number_format($manualDiscountAmount, 2, ',', '.') }}</span>
+                                        </div>
+                                    @endif
                                 @endif
                                 <div class="flex justify-between items-end rounded-xl bg-white border border-neutral-200 px-3 py-3 dark:bg-zinc-900 dark:border-zinc-800">
                                     <span class="text-sm font-semibold text-neutral-500 dark:text-neutral-400">Total</span>
@@ -1192,6 +1207,33 @@
                                     @endif
                                 </div>
 
+                                @if ($this->rawServiceFeeAmount > 0 || $this->rawCouvertFeeAmount > 0)
+                                    <div class="grid gap-2 md:grid-cols-2">
+                                        @if ($this->rawServiceFeeAmount > 0)
+                                            <label class="flex items-center justify-between gap-3 px-3 py-2 border rounded-xl dark:border-zinc-700 cursor-pointer">
+                                                <span class="flex items-center gap-2">
+                                                    <flux:checkbox wire:model.live="serviceFeeWaived" />
+                                                    <span class="text-sm">Remover taxa de serviço</span>
+                                                </span>
+                                                <span class="text-xs font-semibold {{ $serviceFeeWaived ? 'text-neutral-400 line-through' : 'text-neutral-600 dark:text-neutral-300' }}">
+                                                    R$ {{ number_format($this->rawServiceFeeAmount, 2, ',', '.') }}
+                                                </span>
+                                            </label>
+                                        @endif
+                                        @if ($this->rawCouvertFeeAmount > 0)
+                                            <label class="flex items-center justify-between gap-3 px-3 py-2 border rounded-xl dark:border-zinc-700 cursor-pointer">
+                                                <span class="flex items-center gap-2">
+                                                    <flux:checkbox wire:model.live="couvertFeeWaived" />
+                                                    <span class="text-sm">Remover couvert artístico</span>
+                                                </span>
+                                                <span class="text-xs font-semibold {{ $couvertFeeWaived ? 'text-neutral-400 line-through' : 'text-neutral-600 dark:text-neutral-300' }}">
+                                                    R$ {{ number_format($this->rawCouvertFeeAmount, 2, ',', '.') }}
+                                                </span>
+                                            </label>
+                                        @endif
+                                    </div>
+                                @endif
+
                                 @if ($deliveryType === 'entrega')
                                     <div class="space-y-3 border rounded-xl p-3 dark:border-zinc-700">
                                         <div class="grid gap-3 md:grid-cols-3">
@@ -1219,6 +1261,9 @@
                                         <flux:label class="text-xs font-semibold">
                                             Cliente {{ $deliveryType === 'entrega' ? '(obrigatório para entrega)' : '(opcional)' }}
                                         </flux:label>
+                                        @if ($this->needsCustomerForDelivery)
+                                            <p class="text-xs text-red-600 dark:text-red-400">Selecione ou cadastre um cliente para entrega.</p>
+                                        @endif
                                         <div class="flex gap-2">
                                             <flux:input
                                                 wire:model="customerQuery"
@@ -1350,7 +1395,7 @@
                                     </div>
 
                                     <div class="mt-auto space-y-3">
-                                        @if ($deliveryFeeAmount > 0 || $manualDiscountAmount > 0)
+                                        @if ($deliveryFeeAmount > 0 || $manualDiscountAmount > 0 || $this->serviceFeeAmount > 0 || $this->couvertFeeAmount > 0)
                                             <div class="space-y-1 text-sm">
                                                 <div class="flex justify-between text-neutral-500 dark:text-neutral-400">
                                                     <span>Subtotal</span>
@@ -1360,6 +1405,18 @@
                                                     <div class="flex justify-between text-neutral-500 dark:text-neutral-400">
                                                         <span>Taxa de entrega</span>
                                                         <span>+ R$ {{ number_format($deliveryFeeAmount, 2, ',', '.') }}</span>
+                                                    </div>
+                                                @endif
+                                                @if ($this->serviceFeeAmount > 0)
+                                                    <div class="flex justify-between text-neutral-500 dark:text-neutral-400">
+                                                        <span>Taxa de serviço</span>
+                                                        <span>+ R$ {{ number_format($this->serviceFeeAmount, 2, ',', '.') }}</span>
+                                                    </div>
+                                                @endif
+                                                @if ($this->couvertFeeAmount > 0)
+                                                    <div class="flex justify-between text-neutral-500 dark:text-neutral-400">
+                                                        <span>Couvert artístico</span>
+                                                        <span>+ R$ {{ number_format($this->couvertFeeAmount, 2, ',', '.') }}</span>
                                                     </div>
                                                 @endif
                                                 @if ($manualDiscountAmount > 0)

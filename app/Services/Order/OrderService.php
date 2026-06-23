@@ -36,6 +36,8 @@ class OrderService implements OrderServiceInterface
         ?Coupon $coupon = null,
         ?Carbon $scheduledAt = null,
         float $extraDiscount = 0.0,
+        float $serviceFee = 0.0,
+        float $couvertFee = 0.0,
     ): Order {
         $currentCompany = app()->bound('current.company') ? app('current.company') : null;
 
@@ -43,7 +45,7 @@ class OrderService implements OrderServiceInterface
 
         $customer = \App\Models\Customer::withoutGlobalScopes()->find($customerId);
 
-        $order = DB::transaction(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer, $extraDiscount) {
+        $order = DB::transaction(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer, $extraDiscount, $serviceFee, $couvertFee) {
             $subtotal = 0.0;
             $optionPricing = app(CartOptionPricing::class);
             foreach ($cart as $cartKey => $item) {
@@ -65,7 +67,9 @@ class OrderService implements OrderServiceInterface
             }
 
             $safeExtraDiscount = max(0.0, (float) $extraDiscount);
-            $total = max(0, $subtotal + $deliveryFee - $discount - $safeExtraDiscount);
+            $safeServiceFee = max(0.0, (float) $serviceFee);
+            $safeCouvertFee = max(0.0, (float) $couvertFee);
+            $total = max(0, $subtotal + $deliveryFee + $safeServiceFee + $safeCouvertFee - $discount - $safeExtraDiscount);
 
             // Calculate platform fee based on company plan (fee applies only to products, not shipping)
             $fee = 0.0;
@@ -84,6 +88,8 @@ class OrderService implements OrderServiceInterface
                 'delivery_fee' => $deliveryFee,
                 'discount' => $discount,
                 'manual_discount' => $safeExtraDiscount,
+                'service_fee' => $safeServiceFee,
+                'couvert_fee' => $safeCouvertFee,
                 'total' => $total,
                 'fee' => $fee,
                 'net_value' => $netValue,
@@ -231,10 +237,14 @@ class OrderService implements OrderServiceInterface
     /**
      * Aplica desconto manual a um pedido já existente e recalcula os totais (fechamento de comanda no PDV).
      */
-    public function applyManualDiscountToOrder(Order $order, float $manualDiscount): Order
-    {
+    public function applyManualDiscountToOrder(
+        Order $order,
+        float $manualDiscount,
+        bool $waiveServiceFee = false,
+        bool $waiveCouvertFee = false,
+    ): Order {
         $order->manual_discount = max(0.0, $manualDiscount);
-        $this->recalculateOrderTotals($order);
+        $this->recalculateOrderTotals($order, $waiveServiceFee, $waiveCouvertFee);
 
         return $order->fresh();
     }
@@ -243,11 +253,16 @@ class OrderService implements OrderServiceInterface
      * Recalcula subtotal/total/fee/net_value a partir dos OrderItem e do manual_discount atuais. Sem
      * cupom/frete — usado pelo fluxo de comanda do PDV, que não tem esses conceitos.
      */
-    private function recalculateOrderTotals(Order $order): void
+    private function recalculateOrderTotals(Order $order, bool $waiveServiceFee = false, bool $waiveCouvertFee = false): void
     {
         $subtotal = (float) $order->items()->sum('subtotal');
         $manualDiscount = (float) $order->manual_discount;
-        $total = max(0, $subtotal - $manualDiscount);
+
+        $charge = $order->branch?->serviceCharge;
+        $serviceFee = ($charge && ! $waiveServiceFee) ? $charge->calculateServiceFee($subtotal) : 0.0;
+        $couvertFee = ($charge && ! $waiveCouvertFee) ? $charge->calculateCouvert($subtotal) : 0.0;
+
+        $total = max(0, $subtotal - $manualDiscount + $serviceFee + $couvertFee);
 
         $currentCompany = app()->bound('current.company') ? app('current.company') : null;
         $fee = 0.0;
@@ -261,6 +276,8 @@ class OrderService implements OrderServiceInterface
 
         $order->update([
             'subtotal' => $subtotal,
+            'service_fee' => $serviceFee,
+            'couvert_fee' => $couvertFee,
             'total' => $total,
             'fee' => $fee,
             'net_value' => $netValue,
