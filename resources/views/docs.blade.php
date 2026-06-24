@@ -42,7 +42,7 @@
         <a href="#cupons" class="nav-link">Cupons</a>
         <a href="#relatorios" class="nav-link">Relatórios</a>
         <a href="#pdv" class="nav-link">PDV</a>
-        <a href="#fiscal" class="nav-link">Notas Fiscais</a>
+        {{-- <a href="#fiscal" class="nav-link">Notas Fiscais</a> --}}
         <a href="#carteira" class="nav-link">Carteira</a>
         <a href="#faturamento" class="nav-link">Faturamento</a>
         <a href="#usuarios" class="nav-link">Usuários & Papéis</a>
@@ -1062,7 +1062,7 @@
         </section>
 
         {{-- Notas Fiscais --}}
-        <section id="fiscal" class="scroll-mt-20">
+        {{-- <section id="fiscal" class="scroll-mt-20">
             <div class="section-card">
                 <div class="section-head">
                     <div class="p-2.5 rounded-xl bg-red-100 shrink-0">
@@ -1116,7 +1116,7 @@
                     @endif
                     </div>
             </div>
-        </section>
+        </section> --}}
 
         {{-- Carteira --}}
         <section id="carteira" class="scroll-mt-20">
@@ -1135,38 +1135,23 @@
                     </div>
                 </div>
                 <div class="mt-5 space-y-3">
-                    <div class="grid sm:grid-cols-2 gap-3">
-                        <div class="info-box">
-                            <p class="sub-title">Saldo <span class="font-mono text-purple-700 text-xs font-normal">/admin/wallet</span></p>
-                            <ul class="list">
-                                <li><strong>Disponível:</strong> valor já liberado, pronto para saque imediato</li>
-                                <li><strong>A receber (em carência):</strong> valor aguardando o prazo de liberação — PIX libera em D+1, cartão e boleto em D+2</li>
-                                <li>O saldo é atualizado automaticamente conforme os pagamentos são confirmados pelo gateway</li>
-                                <li>Consulte o histórico das últimas 50 transações</li>
-                                <li>Veja as últimas 20 solicitações de saque</li>
-                            </ul>
-                        </div>
-                        <div class="info-box">
-                            <p class="sub-title">Saque</p>
-                            <ul class="list">
-                                <li>Valor mínimo de saque: <strong>R$ 10,00</strong></li>
-                                <li><strong>PIX:</strong> informe sua chave PIX (CPF, CNPJ, e-mail, telefone ou chave aleatória). Taxa de R$ 0,50 por saque</li>
-                                <li><strong>TED:</strong> informe banco, agência, conta e dados do titular</li>
-                                <li>Os dados de saque são salvos como padrão para facilitar o próximo saque</li>
-                            </ul>
-                        </div>
+                    <div class="info-box">
+                        <p class="sub-title">Histórico de movimentações <span class="font-mono text-purple-700 text-xs font-normal">/admin/wallet</span></p>
+                        <ul class="list">
+                            <li>Lista os lançamentos da carteira: créditos de pedidos, saques e estornos</li>
+                            <li>Taxas (gateway, cartão, antecipação) ficam ocultas no histórico para simplificar a visualização</li>
+                            <li>A lista é paginada e atualizada em tempo real quando um novo lançamento ocorre</li>
+                        </ul>
                     </div>
                     <div class="info-box">
-                        <p class="sub-title">Antecipação de recebíveis</p>
+                        <p class="sub-title">Saldo e saque</p>
                         <ul class="list">
-                            <li>Disponível para qualquer plano — não depende mais de Essencial ou PRO</li>
-                            <li>Selecione quais transações em carência você quer antecipar</li>
-                            <li>A taxa varia pelo prazo restante até a liberação: até 2 dias 1,45%, até 7 dias 0,75%, até 15 dias 0,75%, 30 dias ou mais sem taxa</li>
-                            <li>Confirme e o valor líquido (já descontada a taxa de antecipação) fica disponível na hora</li>
+                            <li>O botão <strong>"Ver Saldo"</strong> redireciona para o painel da Vindi (abre em nova aba)</li>
+                            <li>Consulta de saldo disponível, valor em carência e solicitação de saque agora são feitos diretamente no painel da Vindi, fora do admin</li>
                         </ul>
                     </div>
                     <div class="info-box-blue">
-                        <p class="text-xs text-blue-800"><strong>Como o dinheiro chega à carteira:</strong> Após a confirmação do pagamento, o valor líquido é creditado automaticamente. No PIX, primeiro é descontada a taxa do gateway (0,99% — repasse Vindi + margem da plataforma) e, sobre o que resta (sem contar a taxa de entrega, que fica inteira com a empresa), é aplicada a taxa da plataforma do seu plano. No cartão, a taxa da bandeira (1% a 5,33%, conforme o cartão usado) é descontada da mesma forma. O valor fica em carência até o prazo de liberação e depois pode ser sacado.</p>
+                        <p class="text-xs text-blue-800"><strong>Como o dinheiro chega à carteira:</strong> Após a confirmação do pagamento, o valor líquido é creditado automaticamente. No PIX, primeiro é descontada a taxa do gateway (0,99% — repasse Vindi + margem da plataforma) e, sobre o que resta (sem contar a taxa de entrega, que fica inteira com a empresa), é aplicada a taxa da plataforma do seu plano. No cartão, a taxa da bandeira (1% a 5,33%, conforme o cartão usado) é descontada da mesma forma. O valor fica em carência até o prazo de liberação (PIX D+1, cartão e boleto D+2) e depois pode ser sacado pelo painel da Vindi.</p>
                     </div>
                 </div>
 
@@ -1478,7 +1463,6 @@
                         <ul class="list">
                             <li><strong>Taxa do gateway (Vindi):</strong> no PIX, 0,99% do valor cobrado (0,85% repasse Vindi + 0,14% margem da plataforma); no cartão, varia por bandeira — Visa 1%, Mastercard/Diners 2,8%, Amex 1,88%, Elo 4,48%, Hipercard 5,33%</li>
                             <li><strong>Taxa da plataforma:</strong> percentual do plano, aplicado sobre o valor líquido já descontada a taxa do gateway — sem contar a taxa de entrega, que fica inteira com a empresa</li>
-                            <li><strong>Taxa PIX de R$ 0,50:</strong> exibida ao cliente no checkout, a menos que a empresa opte por absorvê-la nas configurações</li>
                             <li><strong>Acréscimo do cartão:</strong> se a empresa não absorver a taxa da bandeira, o valor correspondente é somado automaticamente ao total cobrado do cliente</li>
                         </ul>
                     </div>

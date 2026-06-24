@@ -30,6 +30,16 @@ enum CardBrand: string
      */
     public function rate(): float
     {
+        if (app()->environment('production')) {
+            return match ($this) {
+                self::Visa => 0.0291,
+                self::Mastercard => 0.0291,
+                self::Elo => 0.0291,
+                self::Amex => 0.0291,
+                self::Hipercard => 0.0291,
+                self::Diners => 0.0291,
+            };
+        }
         return match ($this) {
             self::Visa => 0.0100,
             self::Mastercard => 0.0280,
