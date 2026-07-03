@@ -1,4 +1,4 @@
-<div class="flex flex-col flex-1 min-h-0 bg-zinc-50 text-neutral-900 dark:bg-[#0f1926] dark:text-neutral-100" x-data="pdvApp()">
+<div class="flex flex-col flex-1 min-h-0 bg-zinc-50 text-neutral-900 dark:bg-[#0f1926] dark:text-neutral-100" x-data="pdvApp()" x-effect="watchPdvStep($wire.step)">
 
     {{-- ══ Header ══ --}}
     <div class="flex items-center justify-between gap-4 px-5 py-3 bg-white border-b border-neutral-200 shadow-sm dark:bg-zinc-900 dark:border-zinc-800 shrink-0">
@@ -538,22 +538,22 @@
                 </div>
             @endif
 
-            {{-- ── Coluna esquerda: Categorias ── --}}
-            <div class="hidden lg:flex w-48 shrink-0 flex-col rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900 overflow-hidden">
-                <div class="px-3 py-3 border-b border-neutral-100 dark:border-zinc-800 shrink-0">
+            {{-- ── Categorias: chips horizontais no mobile, coluna fixa no desktop ── --}}
+            <div class="flex w-full lg:w-48 shrink-0 flex-col rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900 overflow-hidden">
+                <div class="hidden lg:block px-3 py-3 border-b border-neutral-100 dark:border-zinc-800 shrink-0">
                     <p class="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">Categorias</p>
                 </div>
-                <div class="flex-1 overflow-y-auto p-2 space-y-1">
+                <div class="flex flex-row lg:flex-col gap-1.5 lg:gap-1 overflow-x-auto lg:overflow-x-visible lg:overflow-y-auto p-2 lg:flex-1">
                     <button
                         wire:click="selectCategory(null)"
-                        class="w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors {{ $activeCategoryId === null ? 'bg-amber-500 text-white font-bold shadow-sm shadow-amber-500/20 dark:bg-amber-400 dark:text-white' : 'text-neutral-600 hover:bg-amber-50 hover:text-amber-700 dark:text-neutral-300 dark:hover:bg-amber-900/20 dark:hover:text-amber-300' }}"
+                        class="shrink-0 lg:w-full lg:shrink text-left px-3 py-2 lg:py-2.5 rounded-lg text-sm whitespace-nowrap transition-colors {{ $activeCategoryId === null ? 'bg-amber-500 text-white font-bold shadow-sm shadow-amber-500/20 dark:bg-amber-400 dark:text-white' : 'bg-neutral-50 lg:bg-transparent text-neutral-600 hover:bg-amber-50 hover:text-amber-700 dark:bg-zinc-800 dark:lg:bg-transparent dark:text-neutral-300 dark:hover:bg-amber-900/20 dark:hover:text-amber-300' }}"
                     >
                         Todos
                     </button>
                     @foreach ($this->categories as $category)
                         <button
                             wire:click="selectCategory({{ $category->id }})"
-                            class="w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors {{ $activeCategoryId === $category->id ? 'bg-amber-500 text-white font-bold shadow-sm shadow-amber-500/20 dark:bg-amber-400 dark:text-white' : 'text-neutral-600 hover:bg-amber-50 hover:text-amber-700 dark:text-neutral-300 dark:hover:bg-amber-900/20 dark:hover:text-amber-300' }}"
+                            class="shrink-0 lg:w-full lg:shrink text-left px-3 py-2 lg:py-2.5 rounded-lg text-sm whitespace-nowrap transition-colors {{ $activeCategoryId === $category->id ? 'bg-amber-500 text-white font-bold shadow-sm shadow-amber-500/20 dark:bg-amber-400 dark:text-white' : 'bg-neutral-50 lg:bg-transparent text-neutral-600 hover:bg-amber-50 hover:text-amber-700 dark:bg-zinc-800 dark:lg:bg-transparent dark:text-neutral-300 dark:hover:bg-amber-900/20 dark:hover:text-amber-300' }}"
                         >
                             {{ $category->name }}
                         </button>
@@ -603,7 +603,7 @@
                 </div>
 
                 {{-- Grid de produtos --}}
-                <div class="flex-1 overflow-y-auto p-4 bg-zinc-50 dark:bg-[#0f1926]/50">
+                <div class="flex-1 overflow-y-auto p-4 {{ !empty($cart) ? 'pb-24 lg:pb-4' : '' }} bg-zinc-50 dark:bg-[#0f1926]/50">
                     @if ($this->products->isEmpty())
                         <div class="text-center py-12 text-neutral-400 dark:text-neutral-500">
                             <flux:icon.shopping-bag class="size-10 mx-auto mb-2 opacity-40" />
@@ -857,7 +857,10 @@
             {{-- fim coluna central --}}
 
             {{-- ── Coluna direita: Carrinho / Pagamento / Sucesso / PIX ── --}}
-            <div class="w-full lg:w-[22rem] xl:w-[24rem] h-80 lg:h-auto shrink-0 flex flex-col rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900 overflow-hidden">
+            <div
+                class="shrink-0 flex-col rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900 overflow-hidden lg:flex lg:w-[22rem] xl:w-[24rem]"
+                :class="mobileCartOpen ? 'fixed inset-0 z-30 flex' : 'hidden'"
+            >
 
                 {{-- ── Sucesso ── --}}
                 @if ($step === 'success')
@@ -923,17 +926,26 @@
                     <div class="flex flex-col h-full overflow-hidden">
                         <div class="px-4 py-3 border-b border-neutral-100 dark:border-zinc-800 shrink-0 bg-white dark:bg-zinc-900">
                             <div class="flex items-center justify-between gap-3">
-                                <div>
-                                    <p class="text-[11px] font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">Pedido atual</p>
-                                    <h2 class="font-bold text-neutral-900 dark:text-neutral-100">
-                                        Carrinho
-                                        @if ($this->cartCount > 0)
-                                            <span class="ml-1 text-xs font-normal text-neutral-500">({{ $this->cartCount }} itens)</span>
-                                        @endif
-                                    </h2>
+                                <div class="flex items-center gap-2 min-w-0">
+                                    <button
+                                        @click="mobileCartOpen = false"
+                                        class="lg:hidden shrink-0 p-1.5 -ml-1.5 rounded-lg text-neutral-500 hover:bg-neutral-100 dark:hover:bg-zinc-800 dark:text-neutral-400"
+                                        title="Voltar ao catálogo"
+                                    >
+                                        <flux:icon.chevron-left class="size-5" />
+                                    </button>
+                                    <div class="min-w-0">
+                                        <p class="text-[11px] font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">Pedido atual</p>
+                                        <h2 class="font-bold text-neutral-900 dark:text-neutral-100 truncate">
+                                            Carrinho
+                                            @if ($this->cartCount > 0)
+                                                <span class="ml-1 text-xs font-normal text-neutral-500">({{ $this->cartCount }} itens)</span>
+                                            @endif
+                                        </h2>
+                                    </div>
                                 </div>
                                 @if ($this->cartCount > 0)
-                                    <span class="inline-flex size-9 items-center justify-center rounded-lg bg-amber-500 text-sm font-bold text-white shadow-sm shadow-amber-500/20 dark:bg-amber-400 dark:text-white">
+                                    <span class="inline-flex size-9 items-center justify-center rounded-lg bg-amber-500 text-sm font-bold text-white shadow-sm shadow-amber-500/20 dark:bg-amber-400 dark:text-white shrink-0">
                                         {{ $this->cartCount }}
                                     </span>
                                 @endif
@@ -1131,6 +1143,26 @@
                 {{-- fim painel direito --}}
 
             </div>
+
+            {{-- ── Barra flutuante do carrinho (mobile) ── --}}
+            @if (!empty($cart) && $step !== 'payment')
+                <div
+                    x-show="!mobileCartOpen"
+                    class="lg:hidden fixed inset-x-3 bottom-3 z-20 flex items-center justify-between gap-3 rounded-xl bg-amber-500 px-4 py-3 text-white shadow-lg shadow-amber-500/30 dark:bg-amber-400"
+                >
+                    <div class="min-w-0">
+                        <p class="text-xs font-semibold text-white/80">{{ $this->cartCount }} {{ $this->cartCount === 1 ? 'item' : 'itens' }}</p>
+                        <p class="text-lg font-black leading-none">R$ {{ number_format($this->cartTotalAfterDiscount, 2, ',', '.') }}</p>
+                    </div>
+                    <button
+                        @click="mobileCartOpen = true"
+                        class="shrink-0 inline-flex items-center gap-2 rounded-lg bg-white/15 px-4 py-2.5 text-sm font-bold hover:bg-white/25 transition-colors"
+                    >
+                        <flux:icon.shopping-cart class="size-4" />
+                        Ver carrinho
+                    </button>
+                </div>
+            @endif
 
             @if ($step === 'payment')
                 <div class="absolute inset-0 z-30 flex items-center justify-center bg-amber-950/45 p-3 lg:p-6">

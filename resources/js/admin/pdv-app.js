@@ -2,6 +2,8 @@ Alpine.data('pdvApp', () => ({
     selectingProduct: null,
     pendingSelections: {},
     sidebarHidden: false,
+    mobileCartOpen: false,
+    _prevPdvStep: null,
 
     // Barcode scanner state
     _barcodeBuffer: '',
@@ -26,6 +28,17 @@ Alpine.data('pdvApp', () => ({
 
     _applySidebarState() {
         document.body.classList.toggle('pdv-fullscreen', this.sidebarHidden);
+    },
+
+    // Auto-abre o carrinho em tela cheia (mobile) ao concluir pedido,
+    // auto-fecha ao sair da tela de sucesso (ex: "Novo pedido").
+    watchPdvStep(step) {
+        if (step === 'success' && this._prevPdvStep !== 'success') {
+            this.mobileCartOpen = true;
+        } else if (this._prevPdvStep === 'success' && step !== 'success') {
+            this.mobileCartOpen = false;
+        }
+        this._prevPdvStep = step;
     },
 
     _initBarcodeScanner() {
