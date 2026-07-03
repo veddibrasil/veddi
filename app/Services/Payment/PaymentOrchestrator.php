@@ -360,6 +360,42 @@ class PaymentOrchestrator
         ];
     }
 
+    /**
+     * Pedido via portal externo (iFood etc). Quando pré-pago (isPaid=true), o portal já
+     * processou o pagamento do consumidor e faz o repasse ao lojista pelo próprio acerto
+     * do portal, fora do fluxo de gateway/carteira do Mister Coxinha — só registra o
+     * Payment como quitado. Quando pagamento é na entrega/retirada (isPaid=false), fica
+     * pendente até a equipe confirmar o recebimento manualmente.
+     */
+    public function processExternalPortal(Order $order, string $channel, bool $isPaid = true): array
+    {
+        $status = $isPaid ? 'paid' : 'pending';
+
+        $payment = Payment::create([
+            'order_id' => $order->id,
+            'payment_gateway' => $channel,
+            'amount' => (float) $order->total,
+            'pix_fee' => 0.0,
+            'status' => $status,
+            'paid_at' => $isPaid ? now() : null,
+            'payment_token' => hash('sha256', $channel.$order->id.now()->timestamp),
+        ]);
+
+        Log::channel('payments')->info('Pagamento via portal externo registrado', [
+            'order_id' => $order->id,
+            'channel' => $channel,
+            'amount' => $order->total,
+            'status' => $status,
+        ]);
+
+        return [
+            'id' => $payment->id,
+            'status' => $status,
+            'method' => 'external_portal',
+            'gateway' => $channel,
+        ];
+    }
+
     private function vindiAddressFromOrder(Order $order, Customer $customer): array
     {
         $branch = $order->branch;

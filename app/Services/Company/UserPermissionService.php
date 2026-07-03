@@ -97,4 +97,61 @@ class UserPermissionService
                 User::clearPermissionCache($user->id, $company->id);
             });
     }
+
+    /**
+     * Explicitly grant portals.manage to every company_admin of the given company.
+     * Safe to call multiple times (updateOrCreate is idempotent).
+     */
+    public static function grantPortalsPermissions(Company $company): void
+    {
+        $permission = Permission::where('name', 'portals.manage')->first();
+
+        if (! $permission) {
+            return;
+        }
+
+        $company->users()
+            ->wherePivot('role', 'company_admin')
+            ->get()
+            ->each(function (User $user) use ($company, $permission) {
+                UserPermission::updateOrCreate(
+                    [
+                        'user_id' => $user->id,
+                        'company_id' => $company->id,
+                        'permission_id' => $permission->id,
+                    ],
+                    ['granted' => true]
+                );
+
+                User::clearPermissionCache($user->id, $company->id);
+            });
+    }
+
+    /**
+     * Explicitly revoke portals.manage from every company_admin of the given company.
+     */
+    public static function revokePortalsPermissions(Company $company): void
+    {
+        $permission = Permission::where('name', 'portals.manage')->first();
+
+        if (! $permission) {
+            return;
+        }
+
+        $company->users()
+            ->wherePivot('role', 'company_admin')
+            ->get()
+            ->each(function (User $user) use ($company, $permission) {
+                UserPermission::updateOrCreate(
+                    [
+                        'user_id' => $user->id,
+                        'company_id' => $company->id,
+                        'permission_id' => $permission->id,
+                    ],
+                    ['granted' => false]
+                );
+
+                User::clearPermissionCache($user->id, $company->id);
+            });
+    }
 }

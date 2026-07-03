@@ -58,6 +58,8 @@ class Form extends Component
 
     public bool $pdv_module_enabled = false;
 
+    public bool $portals_module_enabled = false;
+
     public string $plan = 'free';
 
     public string $status = 'ACTIVE';
@@ -103,6 +105,7 @@ class Form extends Component
             'active' => ['boolean'],
             'fiscal_notes_enabled' => ['boolean'],
             'pdv_module_enabled' => ['boolean'],
+            'portals_module_enabled' => ['boolean'],
             'plan' => ['required', 'in:free,essencial,pro'],
             'status' => ['required', 'in:ACTIVE,PENDING_PAYMENT,BLOCKED'],
             'logo' => ['nullable', 'image', 'max:2048'],
@@ -134,6 +137,7 @@ class Form extends Component
             $this->status = $company->status ?? 'ACTIVE';
             $this->fiscal_notes_enabled = (bool) $company->fiscal_notes_enabled;
             $this->pdv_module_enabled = (bool) $company->pdv_module_enabled;
+            $this->portals_module_enabled = (bool) $company->portals_module_enabled;
             $this->vindi_affiliate_token = $company->vindi_affiliate_token;
             $this->email = $company->email;
             $this->vindi_partner_id = $company->vindi_partner_id;
@@ -172,6 +176,7 @@ class Form extends Component
         if ($this->isEditing) {
             $planChanged = $this->plan !== $this->originalPlan;
             $pdvModuleChanged = $this->pdv_module_enabled !== (bool) $this->company->pdv_module_enabled;
+            $portalsModuleChanged = $this->portals_module_enabled !== (bool) $this->company->portals_module_enabled;
 
             if ($planChanged) {
                 $this->handlePlanChange($companyData);
@@ -184,6 +189,12 @@ class Form extends Component
                 $this->pdv_module_enabled
                     ? UserPermissionService::grantPdvPermissions($this->company->fresh())
                     : UserPermissionService::revokePdvPermissions($this->company->fresh());
+            }
+
+            if ($portalsModuleChanged) {
+                $this->portals_module_enabled
+                    ? UserPermissionService::grantPortalsPermissions($this->company->fresh())
+                    : UserPermissionService::revokePortalsPermissions($this->company->fresh());
             }
 
             session()->flash('status', 'Empresa atualizada.');

@@ -58,6 +58,9 @@ class PermissionSeeder extends Seeder
             // PDV
             ['name' => 'pdv.operate', 'group' => 'pdv', 'label' => 'Operar terminal PDV'],
 
+            // Portais
+            ['name' => 'portals.manage', 'group' => 'portals', 'label' => 'Gerenciar integração com portais (iFood)'],
+
             // Fiscal
             ['name' => 'fiscal.view',     'group' => 'fiscal', 'label' => 'Visualizar notas fiscais'],
             ['name' => 'fiscal.issue',    'group' => 'fiscal', 'label' => 'Emitir/cancelar notas fiscais'],
@@ -79,6 +82,7 @@ class PermissionSeeder extends Seeder
             'stock.view', 'stock.adjust', 'stock.toggle',
             'coupons.view', 'coupons.create', 'coupons.update', 'coupons.delete',
             'pdv.operate',
+            'portals.manage',
             'fiscal.view', 'fiscal.issue', 'fiscal.settings',
         ];
 

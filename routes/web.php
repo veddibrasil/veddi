@@ -4,6 +4,7 @@ use App\Helpers\Validation;
 use App\Http\Controllers\AsaasSimulatePaymentController;
 use App\Http\Controllers\AsaasWebhookController;
 use App\Http\Controllers\FiscalWebhookController;
+use App\Http\Controllers\IfoodWebhookController;
 use App\Http\Controllers\RegisterCompanyController;
 use App\Http\Controllers\VindiSimulatePaymentController;
 use App\Http\Controllers\VindiWebhookController;
@@ -41,6 +42,11 @@ Route::post('/webhooks/vindi', VindiWebhookController::class)
 Route::post('/webhooks/fiscal', FiscalWebhookController::class)
     ->middleware('throttle:60,1')
     ->name('webhook.fiscal');
+
+// --- Webhook iFood (sem auth, sem CSRF — coberto por webhooks/* em bootstrap/app.php) ---
+Route::post('/webhooks/ifood', IfoodWebhookController::class)
+    ->middleware('throttle:120,1')
+    ->name('webhook.ifood');
 
 // --- API pública ---
 Route::post('/api/validate-cpf', function (Request $request) {
@@ -110,6 +116,7 @@ Route::middleware(['auth', 'verified', 'company.active'])
             Route::get('/users', \App\Livewire\Admin\Users\Index::class)->name('users.index');
             Route::get('/users/{user}/permissions', \App\Livewire\Admin\Users\Permissions::class)->name('users.permissions');
 
+            Route::get('/portals', \App\Livewire\Admin\Portals\Index::class)->name('portals.index');
         });
 
         Route::get('/branches', \App\Livewire\Admin\Branches\Index::class)->name('branches.index');

@@ -56,4 +56,9 @@ return [
         'platform_company_cnpj' => env('PLATFORM_COMPANY_CNPJ'),
     ],
 
+    'ifood' => [
+        'client_id' => env('IFOOD_CLIENT_ID'),
+        'client_secret' => env('IFOOD_CLIENT_SECRET'),
+    ],
+
 ];

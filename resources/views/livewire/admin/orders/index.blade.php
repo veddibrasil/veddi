@@ -61,7 +61,12 @@
                     <a href="{{ route('admin.orders.show', $order) }}"
                         class="flex-1 flex items-center justify-between gap-4 min-w-0">
                         <div class="min-w-0">
-                            <p class="font-mono font-semibold text-sm text-neutral-800 dark:text-neutral-100">{{ $order->order_number }}</p>
+                            <p class="font-mono font-semibold text-sm text-neutral-800 dark:text-neutral-100 flex items-center gap-2">
+                                {{ $order->order_number }}
+                                @if($order->channel === 'ifood')
+                                    <span class="text-[10px] font-sans font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400">iFood</span>
+                                @endif
+                            </p>
                             @if(auth()->user()->isSuperAdmin() && $order->company)
                                 <p class="text-xs font-medium text-amber-600 dark:text-amber-400">{{ $order->company->name }}</p>
                             @endif
@@ -161,8 +166,11 @@
                 >
                     <div class="flex items-start justify-between gap-2 mb-1">
                         <a href="{{ route('admin.orders.show', $order) }}"
-                           class="font-mono text-xs font-semibold text-neutral-800 dark:text-neutral-100 hover:underline">
+                           class="font-mono text-xs font-semibold text-neutral-800 dark:text-neutral-100 hover:underline flex items-center gap-1.5">
                             {{ $order->order_number }}
+                            @if($order->channel === 'ifood')
+                                <span class="text-[9px] font-sans font-semibold px-1 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400">iFood</span>
+                            @endif
                         </a>
                         <a href="{{ route('admin.orders.receipt', $order) }}" target="_blank"
                            title="Imprimir cupom"

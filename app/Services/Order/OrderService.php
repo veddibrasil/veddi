@@ -38,6 +38,9 @@ class OrderService implements OrderServiceInterface
         float $extraDiscount = 0.0,
         float $serviceFee = 0.0,
         float $couvertFee = 0.0,
+        string $channel = 'website',
+        ?int $portalId = null,
+        ?string $externalOrderId = null,
     ): Order {
         $currentCompany = app()->bound('current.company') ? app('current.company') : null;
 
@@ -45,7 +48,7 @@ class OrderService implements OrderServiceInterface
 
         $customer = \App\Models\Customer::withoutGlobalScopes()->find($customerId);
 
-        $order = DB::transaction(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer, $extraDiscount, $serviceFee, $couvertFee) {
+        $order = DB::transaction(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer, $extraDiscount, $serviceFee, $couvertFee, $channel, $portalId, $externalOrderId) {
             $subtotal = 0.0;
             $optionPricing = app(CartOptionPricing::class);
             foreach ($cart as $cartKey => $item) {
@@ -71,10 +74,12 @@ class OrderService implements OrderServiceInterface
             $safeCouvertFee = max(0.0, (float) $couvertFee);
             $total = max(0, $subtotal + $deliveryFee + $safeServiceFee + $safeCouvertFee - $discount - $safeExtraDiscount);
 
-            // Calculate platform fee based on company plan (fee applies only to products, not shipping)
+            // Calculate platform fee based on company plan (fee applies only to products, not shipping).
+            // Pedidos vindos de portal (iFood etc) já pagam comissão própria do portal — isentos da
+            // taxa da plataforma Mister Coxinha.
             $fee = 0.0;
             $netValue = $total;
-            if ($currentCompany) {
+            if ($currentCompany && $portalId === null) {
                 $feeBase = max(0.0, $subtotal - $discount - $safeExtraDiscount);
                 $fees = app(FeeCalculator::class)->calculate($currentCompany, $feeBase, $total);
                 $fee = $fees['fee'];
@@ -99,6 +104,9 @@ class OrderService implements OrderServiceInterface
                 'payment_method' => strtolower($paymentMethod),
                 'order_type' => $orderType,
                 'coupon_id' => $coupon?->id,
+                'channel' => $channel,
+                'portal_id' => $portalId,
+                'external_order_id' => $externalOrderId,
             ]);
 
             if ($orderType === 'delivery' && $customer) {

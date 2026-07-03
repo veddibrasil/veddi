@@ -139,6 +139,20 @@
                 </p>
             </div>
         </div>
+
+        <div class="flex items-start gap-4 rounded-lg border border-neutral-100 dark:border-zinc-700 bg-neutral-50 dark:bg-zinc-700/40 px-4 py-3">
+            <div class="pt-0.5">
+                <flux:checkbox wire:model="portals_module_enabled" id="portals_module_enabled" />
+            </div>
+            <div>
+                <label for="portals_module_enabled" class="text-sm font-medium text-neutral-800 dark:text-neutral-100 cursor-pointer">
+                    Módulo Portais
+                </label>
+                <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                    Libera acesso à integração com portais de delivery (iFood) para esta empresa, independente do plano. Ativação manual aqui não gera cobrança — use isso para overrides; o fluxo normal é a empresa ativar via Configurações &gt; Assinatura.
+                </p>
+            </div>
+        </div>
     </div>
 
     {{-- Cores --}}

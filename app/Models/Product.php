@@ -86,6 +86,11 @@ class Product extends Model
         return $this->hasMany(OrderItem::class);
     }
 
+    public function portalMappings(): HasMany
+    {
+        return $this->hasMany(ProductPortalMapping::class);
+    }
+
     public function optionGroups(): BelongsToMany
     {
         return $this->belongsToMany(ProductOptionGroup::class, 'option_group_product')

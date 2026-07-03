@@ -154,6 +154,11 @@
                             <flux:sidebar.item icon="banknotes" :href="route('admin.wallet')" :current="request()->routeIs('admin.wallet')" wire:navigate target="_blank">
                                 Carteira (Yapay)
                             </flux:sidebar.item>
+                            @if($can('portals.manage') && $company?->portals_module_enabled)
+                                <flux:sidebar.item icon="building-storefront" :href="route('admin.portals.index')" :current="request()->routeIs('admin.portals.*')" wire:navigate>
+                                    Portais
+                                </flux:sidebar.item>
+                            @endif
                             {{-- <flux:sidebar.item icon="chat-bubble-left-ellipsis" :href="route('admin.settings.whatsapp')" :current="request()->routeIs('admin.settings.whatsapp')" wire:navigate>
                                 WhatsApp
                             </flux:sidebar.item> --}}

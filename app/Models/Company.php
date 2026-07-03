@@ -70,6 +70,7 @@ class Company extends Model
         'fiscal_notes_enabled',
         'fiscal_addon_asaas_id',
         'pdv_module_enabled',
+        'portals_module_enabled',
         'pdv_manual_discount_enabled',
         'vindi_affiliate_token',
         'vindi_partner_id',
@@ -87,6 +88,7 @@ class Company extends Model
         'card_fee_absorbed_by_company' => 'boolean',
         'fiscal_notes_enabled' => 'boolean',
         'pdv_module_enabled' => 'boolean',
+        'portals_module_enabled' => 'boolean',
         'pdv_manual_discount_enabled' => 'boolean',
         'schedule_min_advance_minutes' => 'integer',
         'chat_highlights' => 'array',
@@ -199,6 +201,45 @@ class Company extends Model
     public function hasSetupFeePaid(): bool
     {
         return $this->setup_fee_paid_at !== null;
+    }
+
+    /**
+     * Soma da mensalidade de todos os módulos addon ativos (PDV, Portais etc), cobrados
+     * na mesma assinatura Asaas do plano. Lê o estado atual do model — para simular a
+     * ativação/cancelamento de um addon antes de persistir, ajuste o atributo em memória
+     * (ex: `$company->portals_module_enabled = true`) antes de chamar este método.
+     */
+    public function addonMonthlyAmount(): float
+    {
+        $total = 0.0;
+
+        if ($this->pdv_module_enabled) {
+            $total += (float) config('pdv.addon_monthly_price', 99.00);
+        }
+
+        if ($this->portals_module_enabled) {
+            $total += (float) config('portals.addon_monthly_price', 79.00);
+        }
+
+        return $total;
+    }
+
+    /**
+     * Descrição combinada dos módulos addon ativos, usada na cobrança Asaas.
+     */
+    public function addonDescription(): string
+    {
+        $parts = [];
+
+        if ($this->pdv_module_enabled) {
+            $parts[] = 'Módulo PDV';
+        }
+
+        if ($this->portals_module_enabled) {
+            $parts[] = 'Módulo Portais';
+        }
+
+        return implode(' + ', $parts);
     }
 
     /**

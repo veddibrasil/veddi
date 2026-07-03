@@ -81,6 +81,25 @@ class BillingSettings extends Component
 
     public bool $pdvSuccess = false;
 
+    // Módulo Portais (cobrado junto com a assinatura do plano, mesma fatura)
+    public bool $portalsModuleEnabled = false;
+
+    public float $portalsAddonAmount = 79.00;
+
+    public float $portalsCombinedMonthlyAmount = 0.0;
+
+    public bool $confirmingPortalsActivation = false;
+
+    public bool $confirmingPortalsCancellation = false;
+
+    public bool $portalsAcceptedTerms = false;
+
+    public bool $portalsProcessing = false;
+
+    public ?string $portalsError = null;
+
+    public bool $portalsSuccess = false;
+
     public function mount(AsaasServiceInterface $asaasService): void
     {
         $company = app('current.company');
@@ -92,6 +111,9 @@ class BillingSettings extends Component
         $this->pdvModuleEnabled = (bool) $company->pdv_module_enabled;
         $this->pdvAddonAmount = (float) config('pdv.addon_monthly_price', 99.00);
         $this->combinedMonthlyAmount = ($company->plan?->monthlyPrice() ?? 0.0) + $this->pdvAddonAmount;
+        $this->portalsModuleEnabled = (bool) $company->portals_module_enabled;
+        $this->portalsAddonAmount = (float) config('portals.addon_monthly_price', 79.00);
+        $this->portalsCombinedMonthlyAmount = ($company->plan?->monthlyPrice() ?? 0.0) + $this->portalsAddonAmount;
 
         /** @var Subscription|null $subscription */
         $subscription = $company->subscriptions()->latest()->first();
@@ -167,9 +189,9 @@ class BillingSettings extends Component
                 'asaas_subscription_id' => null,
             ]);
 
-            // Módulo PDV é plano-independente: se estava ativo, recria a cobrança
-            // (agora só do módulo, já que o plano gratuito não tem mensalidade).
-            if ($company->pdv_module_enabled) {
+            // Módulos addon (PDV, Portais) são plano-independentes: se algum estava ativo,
+            // recria a cobrança (agora só dos addons, já que o plano gratuito não tem mensalidade).
+            if ($company->pdv_module_enabled || $company->portals_module_enabled) {
                 CreateAsaasSubscription::dispatch($company->fresh());
             }
 
@@ -180,7 +202,7 @@ class BillingSettings extends Component
             $this->nextDueDate = null;
             $this->lastPaymentAt = null;
             $this->payments = [];
-            $this->combinedMonthlyAmount = $company->pdv_module_enabled ? $this->pdvAddonAmount : 0.0;
+            $this->combinedMonthlyAmount = $company->addonMonthlyAmount();
         } else {
             // Upgrade or cross-grade to a paid plan (Essencial or PRO)
             if (! $company->asaas_customer_id) {
@@ -229,15 +251,15 @@ class BillingSettings extends Component
             }
 
             if ($isFromFree) {
-                // Upgrade from free: charge setup fee + first month (+ módulo PDV se ativo) as one-time charge.
+                // Upgrade from free: charge setup fee + first month (+ addons ativos) as one-time charge.
                 // After webhook confirms, ProcessAsaasWebhook will apply pending_plan and create subscription
-                // (CreateAsaasSubscription já soma o módulo PDV automaticamente a partir do 2º mês).
+                // (CreateAsaasSubscription já soma os addons automaticamente a partir do 2º mês).
                 $setupFee = $targetPlan->setupFee();
-                $pdvExtraAmount = $company->pdv_module_enabled ? $this->pdvAddonAmount : 0.0;
-                $firstAmount = $setupFee + $targetPlan->monthlyPrice() + $pdvExtraAmount;
+                $addonExtraAmount = $company->addonMonthlyAmount();
+                $firstAmount = $setupFee + $targetPlan->monthlyPrice() + $addonExtraAmount;
                 $description = "Taxa de ativação + 1º mês ({$targetPlan->label()}) — {$company->name}";
-                if ($pdvExtraAmount > 0) {
-                    $description .= ' + Módulo PDV';
+                if ($addonExtraAmount > 0) {
+                    $description .= ' + '.$company->addonDescription();
                 }
 
                 $charge = $asaasService->createCharge(
@@ -347,18 +369,18 @@ class BillingSettings extends Component
             // Upgrade from free includes setup fee; cross-grade between paid plans does not
             $isFromFree = $company->plan === Plan::Free;
             $setupFee = $isFromFree ? $targetPlan->setupFee() : 0.0;
-            // Módulo PDV é cobrado na mesma fatura do plano, não como assinatura separada.
-            $pdvExtraAmount = $company->pdv_module_enabled ? $this->pdvAddonAmount : 0.0;
-            $pdvExtraDescription = $company->pdv_module_enabled ? 'Módulo PDV' : '';
-            $chargeAmount = $setupFee + $targetPlan->monthlyPrice() + $pdvExtraAmount;
+            // Addons (PDV, Portais) são cobrados na mesma fatura do plano, não como assinatura separada.
+            $addonExtraAmount = $company->addonMonthlyAmount();
+            $addonExtraDescription = $company->addonDescription();
+            $chargeAmount = $setupFee + $targetPlan->monthlyPrice() + $addonExtraAmount;
             $description = $isFromFree
                 ? "Taxa de ativação + 1º mês ({$targetPlan->label()}) — {$company->name}"
                 : "1º mês plano {$targetPlan->label()} — {$company->name}";
-            if ($pdvExtraDescription !== '') {
-                $description .= " + {$pdvExtraDescription}";
+            if ($addonExtraDescription !== '') {
+                $description .= " + {$addonExtraDescription}";
             }
 
-            // Charge first month (+ activation fee if upgrading from free, + módulo PDV se ativo) via transparent checkout
+            // Charge first month (+ activation fee if upgrading from free, + addons ativos) via transparent checkout
             $charge = $asaasService->createCreditCardCharge(
                 customerId: $company->asaas_customer_id,
                 amount: $chargeAmount,
@@ -387,8 +409,8 @@ class BillingSettings extends Component
                 creditCard: $creditCard,
                 holderInfo: $holderInfo,
                 nextDueDate: now()->addMonth()->toDateString(),
-                extraAmount: $pdvExtraAmount,
-                extraDescription: $pdvExtraDescription,
+                extraAmount: $addonExtraAmount,
+                extraDescription: $addonExtraDescription,
             );
 
             Subscription::create([
@@ -426,7 +448,7 @@ class BillingSettings extends Component
             $this->nextDueDate = now()->addMonth()->format('d/m/Y');
             $this->lastPaymentAt = now()->format('d/m/Y');
             $this->payments = [];
-            $this->combinedMonthlyAmount = $targetPlan->monthlyPrice() + $pdvExtraAmount;
+            $this->combinedMonthlyAmount = $targetPlan->monthlyPrice() + $addonExtraAmount;
 
             $this->cardSuccess = true;
             $this->cardProcessing = false;
@@ -557,9 +579,11 @@ class BillingSettings extends Component
             );
 
             // Módulo PDV entra na MESMA fatura da assinatura do plano — não é uma assinatura separada.
-            // Por isso a assinatura atual é cancelada e recriada já com o valor combinado.
-            $combinedAmount = $plan->monthlyPrice() + $this->pdvAddonAmount;
-            $description = "{$plan->asaasDescription()} + Módulo PDV — {$company->name}";
+            // Por isso a assinatura atual é cancelada e recriada já com o valor combinado (soma
+            // com Portais também, se já estiver ativo).
+            $company->pdv_module_enabled = true;
+            $combinedAmount = $plan->monthlyPrice() + $company->addonMonthlyAmount();
+            $description = "{$plan->asaasDescription()} + {$company->addonDescription()} — {$company->name}";
 
             $charge = $asaasService->createCreditCardCharge(
                 customerId: $company->asaas_customer_id,
@@ -597,8 +621,8 @@ class BillingSettings extends Component
                 creditCard: $creditCard,
                 holderInfo: $holderInfo,
                 nextDueDate: now()->addMonth()->toDateString(),
-                extraAmount: $this->pdvAddonAmount,
-                extraDescription: 'Módulo PDV',
+                extraAmount: $company->addonMonthlyAmount(),
+                extraDescription: $company->addonDescription(),
             );
 
             Subscription::create([
@@ -650,27 +674,34 @@ class BillingSettings extends Component
         $plan = $company->plan;
         $planAmount = $plan->monthlyPrice();
 
+        // Simula a desativação em memória (sem salvar ainda) pra somar corretamente
+        // qualquer outro addon (ex: Portais) que continue ativo.
+        $company->pdv_module_enabled = false;
+        $remainingAmount = $planAmount + $company->addonMonthlyAmount();
+        $remainingDescription = $company->addonMonthlyAmount() > 0
+            ? "{$plan->asaasDescription()} + {$company->addonDescription()}"
+            : $plan->asaasDescription();
+
         try {
             if ($company->asaas_subscription_id) {
-                if ($planAmount > 0) {
+                if ($remainingAmount > 0) {
                     // Debita o valor do módulo diretamente na assinatura existente — não cancela
                     // nem recria nada, então não depende de dados de cartão. A partir do próximo
-                    // vencimento a cobrança volta a ser só o valor do plano.
+                    // vencimento a cobrança volta a ser só o valor do plano (+ outros addons ativos).
                     $result = $asaasService->updateSubscriptionValue(
                         $company->asaas_subscription_id,
-                        $planAmount,
-                        $plan->asaasDescription(),
+                        $remainingAmount,
+                        $remainingDescription,
                     );
 
                     Subscription::where('company_id', $company->id)
                         ->where('asaas_subscription_id', $company->asaas_subscription_id)
                         ->whereIn('status', ['active', 'pending'])
-                        ->update(['amount' => $result['value'] ?? $planAmount]);
+                        ->update(['amount' => $result['value'] ?? $remainingAmount]);
 
-                    $this->amount = $result['value'] ?? $planAmount;
+                    $this->amount = $result['value'] ?? $remainingAmount;
                 } else {
-                    // Plano atual não tem mensalidade (ex.: Free) — o módulo era o único valor
-                    // cobrado nessa assinatura, então não há nada para debitar: cancela de fato.
+                    // Nada mais a cobrar (plano gratuito e nenhum outro addon ativo): cancela de fato.
                     $asaasService->cancelSubscription($company->asaas_subscription_id);
 
                     Subscription::where('company_id', $company->id)
@@ -696,10 +727,267 @@ class BillingSettings extends Component
         UserPermissionService::revokePdvPermissions($company->fresh());
 
         $this->pdvModuleEnabled = false;
-        $this->combinedMonthlyAmount = $planAmount;
+        $this->combinedMonthlyAmount = $remainingAmount;
         $this->confirmingPdvCancellation = false;
 
         session()->flash('status', 'Módulo PDV cancelado. O valor foi debitado da sua assinatura a partir do próximo vencimento.');
+    }
+
+    public function confirmPortalsActivation(): void
+    {
+        $this->portalsError = null;
+        $this->portalsSuccess = false;
+        $this->portalsAcceptedTerms = false;
+        $this->confirmingPortalsActivation = true;
+    }
+
+    public function cancelPortalsActivation(): void
+    {
+        $this->confirmingPortalsActivation = false;
+        $this->portalsAcceptedTerms = false;
+    }
+
+    public function confirmPortalsCancellation(): void
+    {
+        $this->portalsError = null;
+        $this->confirmingPortalsCancellation = true;
+    }
+
+    public function cancelPortalsCancellation(): void
+    {
+        $this->confirmingPortalsCancellation = false;
+    }
+
+    public function proceedToPortalsCardModal(): void
+    {
+        if (! $this->portalsAcceptedTerms) {
+            session()->flash('error', 'Você precisa aceitar os Termos de Responsabilidade para continuar.');
+
+            return;
+        }
+
+        $this->confirmingPortalsActivation = false;
+        $this->dispatch('open-portals-card-modal');
+    }
+
+    public function activatePortalsModule(AsaasServiceInterface $asaasService): void
+    {
+        $this->validate([
+            'cardNumber' => ['required', 'string', 'min:13'],
+            'cardExpiry' => ['required', 'regex:/^\d{2}\/\d{2}$/', function ($attr, $value, $fail) {
+                [$month, $year] = explode('/', $value);
+                $month = (int) $month;
+                $year = (int) ('20'.$year);
+                if ($month < 1 || $month > 12) {
+                    $fail('Mês de validade inválido.');
+
+                    return;
+                }
+                if ($year < now()->year || ($year === now()->year && $month < now()->month)) {
+                    $fail('Cartão vencido.');
+                }
+            }],
+            'cardCvv' => ['required', 'digits_between:3,4'],
+            'cardHolderName' => ['required', 'string', 'min:3'],
+            'cardCpfCnpj' => ['required', 'string', function ($attr, $value, $fail) {
+                $digits = preg_replace('/\D/', '', $value);
+                if (strlen($digits) !== 11 && strlen($digits) !== 14) {
+                    $fail('CPF deve ter 11 dígitos e CNPJ 14 dígitos.');
+                }
+            }],
+            'cardPostalCode' => ['required', 'string', 'min:8'],
+            'cardAddressNumber' => ['required', 'string'],
+        ]);
+
+        $this->portalsProcessing = true;
+        $this->portalsError = null;
+
+        try {
+            $company = app('current.company');
+
+            if (! $company->asaas_customer_id) {
+                $this->portalsError = 'Esta empresa não possui cadastro no Asaas. Entre em contato com o suporte.';
+                $this->portalsProcessing = false;
+
+                return;
+            }
+
+            $plan = $company->plan;
+            $admin = $company->users()->first();
+            $phone = preg_replace('/\D/', '', $company->branches()->withoutGlobalScopes()->value('phone') ?? '');
+
+            [$month, $year] = explode('/', $this->cardExpiry);
+
+            $creditCard = new CreditCardDTO(
+                holderName: $this->cardHolderName,
+                number: $this->cardNumber,
+                expiryMonth: $month,
+                expiryYear: '20'.$year,
+                ccv: $this->cardCvv,
+            );
+
+            $holderInfo = new CreditCardHolderDTO(
+                name: $admin?->name ?? $this->cardHolderName,
+                email: $admin?->email ?? '',
+                cpfCnpj: $this->cardCpfCnpj,
+                postalCode: $this->cardPostalCode,
+                addressNumber: $this->cardAddressNumber,
+                mobilePhone: $phone,
+                phone: $phone,
+            );
+
+            // Módulo Portais entra na MESMA fatura da assinatura do plano — não é uma assinatura
+            // separada. Por isso a assinatura atual é cancelada e recriada já com o valor combinado
+            // (soma com PDV também, se já estiver ativo).
+            $company->portals_module_enabled = true;
+            $combinedAmount = $plan->monthlyPrice() + $company->addonMonthlyAmount();
+            $description = "{$plan->asaasDescription()} + {$company->addonDescription()} — {$company->name}";
+
+            $charge = $asaasService->createCreditCardCharge(
+                customerId: $company->asaas_customer_id,
+                amount: $combinedAmount,
+                description: $description,
+                externalReference: "portals_module_activation_{$company->id}",
+                creditCard: $creditCard,
+                holderInfo: $holderInfo,
+            );
+
+            if (($charge['status'] ?? '') !== 'CONFIRMED') {
+                $reason = $charge['creditCard']['declineReason']
+                    ?? $charge['failReason']
+                    ?? 'verifique os dados e tente novamente';
+
+                $this->portalsError = "Pagamento recusado: {$reason}.";
+                $this->portalsProcessing = false;
+
+                return;
+            }
+
+            if ($company->asaas_subscription_id) {
+                $asaasService->cancelSubscription($company->asaas_subscription_id);
+
+                Subscription::where('company_id', $company->id)
+                    ->where('asaas_subscription_id', $company->asaas_subscription_id)
+                    ->whereIn('status', ['active', 'pending'])
+                    ->update(['status' => 'cancelled']);
+            }
+
+            $result = $asaasService->createSubscription(
+                customerId: $company->asaas_customer_id,
+                plan: $plan,
+                billingType: 'CREDIT_CARD',
+                creditCard: $creditCard,
+                holderInfo: $holderInfo,
+                nextDueDate: now()->addMonth()->toDateString(),
+                extraAmount: $company->addonMonthlyAmount(),
+                extraDescription: $company->addonDescription(),
+            );
+
+            Subscription::create([
+                'company_id' => $company->id,
+                'asaas_subscription_id' => $result['id'],
+                'plan' => $plan->value,
+                'status' => 'active',
+                'amount' => $result['value'],
+                'billing_cycle' => 'MONTHLY',
+                'next_due_date' => $result['nextDueDate'],
+            ]);
+
+            $company->update([
+                'portals_module_enabled' => true,
+                'asaas_subscription_id' => $result['id'],
+                'subscription_payment_method' => 'CREDIT_CARD',
+            ]);
+
+            UserPermissionService::grantPortalsPermissions($company->fresh());
+
+            $this->persistTermsAcceptance($company);
+
+            $this->portalsModuleEnabled = true;
+            $this->asaasSubscriptionId = $result['id'];
+            $this->amount = $result['value'];
+            $this->nextDueDate = now()->addMonth()->format('d/m/Y');
+            $this->lastPaymentAt = now()->format('d/m/Y');
+            $this->combinedMonthlyAmount = $result['value'];
+            $this->payments = [];
+            $this->portalsSuccess = true;
+            $this->portalsProcessing = false;
+
+            $this->cardNumber = '';
+            $this->cardExpiry = '';
+            $this->cardCvv = '';
+            $this->cardHolderName = '';
+            $this->cardCpfCnpj = '';
+            $this->cardPostalCode = '';
+            $this->cardAddressNumber = '';
+        } catch (\Throwable $e) {
+            $this->portalsError = 'Erro ao processar pagamento. Por favor, tente novamente.';
+            $this->portalsProcessing = false;
+        }
+    }
+
+    public function cancelPortalsModule(AsaasServiceInterface $asaasService): void
+    {
+        $company = app('current.company');
+        $plan = $company->plan;
+        $planAmount = $plan->monthlyPrice();
+
+        // Simula a desativação em memória (sem salvar ainda) pra somar corretamente
+        // qualquer outro addon (ex: PDV) que continue ativo.
+        $company->portals_module_enabled = false;
+        $remainingAmount = $planAmount + $company->addonMonthlyAmount();
+        $remainingDescription = $company->addonMonthlyAmount() > 0
+            ? "{$plan->asaasDescription()} + {$company->addonDescription()}"
+            : $plan->asaasDescription();
+
+        try {
+            if ($company->asaas_subscription_id) {
+                if ($remainingAmount > 0) {
+                    $result = $asaasService->updateSubscriptionValue(
+                        $company->asaas_subscription_id,
+                        $remainingAmount,
+                        $remainingDescription,
+                    );
+
+                    Subscription::where('company_id', $company->id)
+                        ->where('asaas_subscription_id', $company->asaas_subscription_id)
+                        ->whereIn('status', ['active', 'pending'])
+                        ->update(['amount' => $result['value'] ?? $remainingAmount]);
+
+                    $this->amount = $result['value'] ?? $remainingAmount;
+                } else {
+                    $asaasService->cancelSubscription($company->asaas_subscription_id);
+
+                    Subscription::where('company_id', $company->id)
+                        ->where('asaas_subscription_id', $company->asaas_subscription_id)
+                        ->whereIn('status', ['active', 'pending'])
+                        ->update(['status' => 'cancelled']);
+
+                    $company->update(['asaas_subscription_id' => null]);
+                    $this->asaasSubscriptionId = null;
+                    $this->amount = null;
+                }
+            } else {
+                $this->amount = null;
+            }
+        } catch (\Throwable $e) {
+            $this->portalsError = 'Erro ao cancelar o módulo no Asaas. Tente novamente em alguns instantes.';
+
+            return;
+        }
+
+        $company->update(['portals_module_enabled' => false]);
+
+        // Desconecta portais ativos — sem o addon, pedido do iFood não deve mais ser processado.
+        \App\Models\Portal::where('company_id', $company->id)->update(['status' => 'disconnected']);
+
+        UserPermissionService::revokePortalsPermissions($company->fresh());
+
+        $this->portalsModuleEnabled = false;
+        $this->combinedMonthlyAmount = $remainingAmount;
+        $this->confirmingPortalsCancellation = false;
+
+        session()->flash('status', 'Módulo Portais cancelado. O valor foi debitado da sua assinatura a partir do próximo vencimento.');
     }
 
     public function render(): View

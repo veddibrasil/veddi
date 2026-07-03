@@ -22,6 +22,10 @@ class Order extends Model
         'pdv_cash_session_id',
         'table_label',
         'is_open_tab',
+        'channel',
+        'portal_id',
+        'external_order_id',
+        'external_status',
     ];
 
     protected $casts = [
@@ -135,6 +139,11 @@ class Order extends Model
     public function coupon(): BelongsTo
     {
         return $this->belongsTo(Coupon::class);
+    }
+
+    public function portal(): BelongsTo
+    {
+        return $this->belongsTo(Portal::class);
     }
 
     public function deliveryAddressRecord(): BelongsTo

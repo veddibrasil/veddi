@@ -49,8 +49,8 @@ class CreateAsaasSubscription implements ShouldBeUnique, ShouldQueue
 
         $plan = $this->company->pending_plan ?? $this->company->plan;
         $billingType = $this->company->subscription_payment_method ?? 'PIX';
-        $extraAmount = $this->company->pdv_module_enabled ? (float) config('pdv.addon_monthly_price', 99.00) : 0.0;
-        $extraDescription = $this->company->pdv_module_enabled ? 'Módulo PDV' : '';
+        $extraAmount = $this->company->addonMonthlyAmount();
+        $extraDescription = $this->company->addonDescription();
 
         try {
             $result = $asaasService->createSubscription(
