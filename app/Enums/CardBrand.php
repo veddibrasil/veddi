@@ -40,6 +40,7 @@ enum CardBrand: string
                 self::Diners => 0.0291,
             };
         }
+
         return match ($this) {
             self::Visa => 0.0100,
             self::Mastercard => 0.0280,

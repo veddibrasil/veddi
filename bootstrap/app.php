@@ -28,6 +28,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             \App\Http\Middleware\IdentifyCompany::class,
         ]);
+        $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
         $middleware->alias([
             'identify.company' => \App\Http\Middleware\IdentifyCompany::class,
             'company.role' => \App\Http\Middleware\CheckCompanyRole::class,
