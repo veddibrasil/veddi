@@ -29,9 +29,19 @@ class FiscalNoteService
             throw new \RuntimeException('Configuração fiscal não habilitada para esta empresa.');
         }
 
-        if (! config('fiscal.focus_nfe.token')) {
+        $token = $companyConfig->provider_token ?: config('fiscal.focus_nfe.token');
+
+        if (! $token) {
             throw new \RuntimeException('Token do provedor fiscal não configurado. Contate o suporte.');
         }
+
+        $environment = $companyConfig->environment ?: config('fiscal.environment');
+
+        // Empresa com token próprio (conta Focus NFe dela) emite pela conta dela;
+        // sem token próprio, cai no token da plataforma (via provider injetado).
+        $provider = $companyConfig->provider_token
+            ? new FocusNfeService($companyConfig->provider_token, $this->baseUrlFor($environment))
+            : $this->provider;
 
         $branch = Branch::withoutGlobalScopes()->find($order->branch_id);
 
@@ -44,14 +54,16 @@ class FiscalNoteService
             emitenteMunicipio: $branch?->city ?? '',
             emitenteUf: $branch?->state ?? '',
             emitenteCep: $branch?->cep ?? '',
-            emitenteCrt: config('fiscal.crt'),
-            nfceSerie: (string) config('fiscal.nfce_serie'),
+            emitenteCrt: $companyConfig->crt ?: config('fiscal.crt'),
+            emitenteInscricaoEstadual: $companyConfig->inscricao_estadual,
+            nfceSerie: (string) ($companyConfig->nfce_serie ?: config('fiscal.nfce_serie')),
             orderId: $order->id,
             total: (float) $order->total,
             paymentMethod: $order->payment_method ?? 'other',
             items: $this->buildItems($order),
             customerDocument: $customerDocument,
-            environment: config('fiscal.environment'),
+            environment: $environment,
+            orderType: $order->order_type,
         );
 
         $fiscalNote = FiscalNote::create([
@@ -61,7 +73,7 @@ class FiscalNoteService
         ]);
 
         try {
-            $result = $this->provider->issue($dto);
+            $result = $provider->issue($dto);
 
             $fiscalNote->update([
                 'status' => $result->status,
@@ -105,7 +117,14 @@ class FiscalNoteService
             throw new \RuntimeException('Nota fiscal sem referência do provider.');
         }
 
-        $result = $this->provider->cancel($note->provider_reference, $justification);
+        $companyConfig = $note->company->fiscalConfig;
+        $environment = $companyConfig?->environment ?: config('fiscal.environment');
+
+        $provider = $companyConfig?->provider_token
+            ? new FocusNfeService($companyConfig->provider_token, $this->baseUrlFor($environment))
+            : $this->provider;
+
+        $result = $provider->cancel($note->provider_reference, $justification);
 
         $data = $note->data ?? [];
         $data['cancelled_at'] = now()->toIso8601String();
@@ -115,6 +134,18 @@ class FiscalNoteService
             'status' => $result->status === 'cancelled' ? 'cancelled' : 'error',
             'data' => $data,
         ]);
+    }
+
+    private function baseUrlFor(string $environment): string
+    {
+        // Só bate na API de produção da Focus NFe quando o app roda em produção —
+        // qualquer outro APP_ENV sempre usa homologação, mesmo que a empresa esteja
+        // configurada como "produção", para nunca emitir nota fiscal real fora de produção.
+        if (app()->isProduction() && $environment === 'producao') {
+            return config('fiscal.focus_nfe.base_url_producao');
+        }
+
+        return config('fiscal.focus_nfe.base_url_homologacao');
     }
 
     private function buildItems(Order $order): array

@@ -3,6 +3,7 @@
 namespace App\Livewire\Admin\Fiscal;
 
 use App\Models\CompanyFiscalConfig;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -20,11 +21,15 @@ class Config extends Component
 
     public string $providerToken = '';
 
+    public bool $hasProviderToken = false;
+
     public string $environment = 'homologacao';
 
     public string $nfceSerie = '1';
 
     public $certificateFile = null;
+
+    public bool $hasCertificate = false;
 
     public string $certificatePassword = '';
 
@@ -42,11 +47,12 @@ class Config extends Component
         if ($config) {
             $this->crt = $config->crt;
             $this->enabled = $config->enabled;
-            $this->inscricaoEstadual = $config->getSetting('inscricao_estadual') ?? '';
-            $this->provider = $config->getSetting('provider') ?? 'focus_nfe';
-            $this->providerToken = $config->getSetting('provider_token') ?? '';
-            $this->environment = $config->getSetting('environment') ?? 'homologacao';
-            $this->nfceSerie = (string) ($config->getSetting('nfce_serie') ?? '1');
+            $this->inscricaoEstadual = $config->inscricao_estadual ?? '';
+            $this->provider = $config->provider;
+            $this->environment = $config->environment;
+            $this->nfceSerie = (string) $config->nfce_serie;
+            $this->hasProviderToken = filled($config->provider_token);
+            $this->hasCertificate = filled($config->certificate_path);
         }
     }
 
@@ -57,7 +63,7 @@ class Config extends Component
 
         $this->validate([
             'crt' => ['required', 'integer', 'in:1,2,3'],
-            'providerToken' => ['required', 'string', 'max:255'],
+            'providerToken' => ['nullable', 'string', 'max:255'],
             'environment' => ['required', 'in:homologacao,producao'],
             'nfceSerie' => ['required', 'integer', 'min:1'],
             'inscricaoEstadual' => ['nullable', 'string', 'max:50'],
@@ -69,25 +75,40 @@ class Config extends Component
 
         $config->crt = $this->crt;
         $config->enabled = $this->enabled;
+        $config->inscricao_estadual = $this->inscricaoEstadual ?: null;
+        $config->provider = $this->provider;
+        $config->environment = $this->environment;
+        $config->nfce_serie = (int) $this->nfceSerie;
 
-        $config->setSetting('inscricao_estadual', $this->inscricaoEstadual ?: null);
-        $config->setSetting('provider', $this->provider);
-        $config->setSetting('provider_token', $this->providerToken);
-        $config->setSetting('environment', $this->environment);
-        $config->setSetting('nfce_serie', (int) $this->nfceSerie);
+        // Token/senha só são sobrescritos quando o usuário digita um novo valor —
+        // o campo fica em branco no mount() para não expor o segredo já salvo.
+        if ($this->providerToken !== '') {
+            $config->provider_token = $this->providerToken;
+        }
 
         if ($this->certificateFile) {
-            $config->setSetting('certificate', base64_encode(file_get_contents($this->certificateFile->getRealPath())));
+            if ($config->certificate_path) {
+                Storage::disk('local')->delete($config->certificate_path);
+            }
+
+            $config->certificate_path = $this->certificateFile->storeAs(
+                'fiscal-certificates',
+                "company-{$company->id}.".$this->certificateFile->getClientOriginalExtension(),
+                'local',
+            );
         }
 
         if ($this->certificatePassword !== '') {
-            $config->setSetting('certificate_password', $this->certificatePassword);
+            $config->certificate_password = $this->certificatePassword;
         }
 
         $config->save();
 
         $this->certificateFile = null;
         $this->certificatePassword = '';
+        $this->providerToken = '';
+        $this->hasProviderToken = filled($config->provider_token);
+        $this->hasCertificate = filled($config->certificate_path);
 
         session()->flash('status', 'Configurações fiscais salvas.');
     }

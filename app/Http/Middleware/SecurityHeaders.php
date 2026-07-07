@@ -20,14 +20,17 @@ class SecurityHeaders
         $response->headers->set('X-Content-Type-Options', 'nosniff');
         $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
         $response->headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+
+        $devSources = app()->environment('local') ? ' http://localhost:* ws://localhost:*' : '';
+
         $response->headers->set(
             'Content-Security-Policy',
             "default-src 'self'; ".
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; ".
-            "style-src 'self' 'unsafe-inline'; ".
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval'{$devSources}; ".
+            "style-src 'self' 'unsafe-inline' https://fonts.bunny.net{$devSources}; ".
             "img-src 'self' data: https:; ".
-            "font-src 'self' data:; ".
-            "connect-src 'self' ws: wss:; ".
+            "font-src 'self' data: https://fonts.bunny.net; ".
+            "connect-src 'self' ws: wss:{$devSources}; ".
             "object-src 'none'; ".
             "base-uri 'self'; ".
             "form-action 'self'; ".

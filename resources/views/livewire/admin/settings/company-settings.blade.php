@@ -291,6 +291,7 @@
     </div>
 
     {{-- Nota Fiscal --}}
+    @php $fiscalCompany = app('current.company'); @endphp
     <div class="bg-blue-50 border border-blue-200 rounded-xl p-5 dark:bg-blue-900/20 dark:border-blue-800">
         <div class="flex items-start gap-3">
             <svg class="w-5 h-5 text-blue-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -298,11 +299,21 @@
             </svg>
             <div class="space-y-1">
                 <p class="text-sm font-semibold text-blue-800 dark:text-blue-300">Emissão de Nota Fiscal</p>
-                <p class="text-xs text-blue-700 dark:text-blue-400 leading-relaxed">
-                    A emissão de NF-e ou NFC-e referente às vendas realizadas pela sua empresa é de sua exclusiva responsabilidade.
-                    A plataforma não realiza emissão fiscal em nome das empresas cadastradas.
-                    Consulte seu contador para adequar sua operação à legislação vigente.
-                </p>
+                @if($fiscalCompany?->canUseFiscalNotes())
+                    <p class="text-xs text-blue-700 dark:text-blue-400 leading-relaxed">
+                        O módulo fiscal está habilitado para sua empresa: a plataforma emite NFC-e para os pedidos via integração com a Focus NFe,
+                        usando os dados configurados em <a href="{{ route('admin.fiscal.config') }}" class="underline font-medium" wire:navigate>Fiscal &rarr; Configurações</a>.
+                        A responsabilidade pela correção dos dados fiscais informados (CRT, inscrição estadual, NCM/CFOP dos produtos) e pela adequação
+                        da operação à legislação vigente continua sendo exclusivamente sua. Consulte seu contador em caso de dúvida.
+                    </p>
+                @else
+                    <p class="text-xs text-blue-700 dark:text-blue-400 leading-relaxed">
+                        A emissão de NF-e ou NFC-e referente às vendas realizadas pela sua empresa é de sua exclusiva responsabilidade.
+                        O módulo fiscal da plataforma não está habilitado para sua empresa — entre em contato com o suporte para contratá-lo.
+                        Sem o módulo habilitado, a plataforma não realiza emissão fiscal em seu nome.
+                        Consulte seu contador para adequar sua operação à legislação vigente.
+                    </p>
+                @endif
             </div>
         </div>
     </div>

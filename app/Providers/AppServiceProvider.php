@@ -69,9 +69,20 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(AsaasServiceInterface::class, AsaasService::class);
         $this->app->bind(OrderServiceInterface::class, OrderService::class);
         $this->app->bind(FiscalNoteProviderInterface::class, function () {
+            // Só bate na API de produção da Focus NFe quando o app roda em produção —
+            // qualquer outro APP_ENV (local, testing, staging) sempre usa homologação,
+            // mesmo que a empresa esteja configurada como "produção", para nunca emitir
+            // nota fiscal real fora do ambiente de produção.
+            $useProducao = app()->isProduction() && config('fiscal.environment', 'homologacao') === 'producao';
+
             return new FocusNfeService(
                 token: config('fiscal.focus_nfe.token', ''),
-                baseUrl: config('fiscal.focus_nfe.base_url', 'https://homologacao.focusnfe.com.br'),
+                baseUrl: config(
+                    $useProducao
+                        ? 'fiscal.focus_nfe.base_url_producao'
+                        : 'fiscal.focus_nfe.base_url_homologacao',
+                    'https://homologacao.focusnfe.com.br',
+                ),
             );
         });
         $this->app->bind(WalletServiceInterface::class, WalletService::class);

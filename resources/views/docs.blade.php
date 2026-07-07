@@ -42,7 +42,7 @@
         <a href="#cupons" class="nav-link">Cupons</a>
         <a href="#relatorios" class="nav-link">Relatórios</a>
         <a href="#pdv" class="nav-link">PDV</a>
-        {{-- <a href="#fiscal" class="nav-link">Notas Fiscais</a> --}}
+        <a href="#fiscal" class="nav-link">Notas Fiscais</a>
         <a href="#carteira" class="nav-link">Carteira</a>
         <a href="#faturamento" class="nav-link">Faturamento</a>
         <a href="#usuarios" class="nav-link">Usuários & Papéis</a>
@@ -1062,7 +1062,7 @@
         </section>
 
         {{-- Notas Fiscais --}}
-        {{-- <section id="fiscal" class="scroll-mt-20">
+        <section id="fiscal" class="scroll-mt-20">
             <div class="section-card">
                 <div class="section-head">
                     <div class="p-2.5 rounded-xl bg-red-100 shrink-0">
@@ -1078,7 +1078,7 @@
                 <div class="mt-5 space-y-3">
                     <div class="info-box">
                         <p class="sub-title">O que é</p>
-                        <p class="text-sm text-zinc-600">Emissão de Nota Fiscal de Consumidor Eletrônica (NFC-e) para os pedidos, integrada com a Focus NFe. Quem visualiza precisa da permissão <code class="text-purple-700 font-normal">fiscal.view</code>; quem emite ou cancela precisa de <code class="text-purple-700 font-normal">fiscal.issue</code>.</p>
+                        <p class="text-sm text-zinc-600">Emissão de Nota Fiscal de Consumidor Eletrônica (NFC-e) para os pedidos, integrada com a Focus NFe. Quem visualiza precisa da permissão <code class="text-purple-700 font-normal">fiscal.view</code>; quem emite ou cancela precisa de <code class="text-purple-700 font-normal">fiscal.issue</code>; quem configura precisa de <code class="text-purple-700 font-normal">fiscal.settings</code>.</p>
                     </div>
                     <div class="grid sm:grid-cols-2 gap-3">
                         <div class="info-box">
@@ -1098,6 +1098,10 @@
                         <p class="sub-title">Cancelamento</p>
                         <p class="text-sm text-zinc-600">Só é possível cancelar notas ainda ativas. É obrigatório informar uma justificativa com no mínimo 15 caracteres antes de confirmar.</p>
                     </div>
+                    <div class="info-box">
+                        <p class="sub-title">Configurações (<span class="font-mono text-purple-700 text-xs">/admin/fiscal/configuracoes</span>)</p>
+                        <p class="text-sm text-zinc-600">Cada empresa define seu regime tributário (CRT), inscrição estadual, série da NFC-e e ambiente (homologação/produção). Opcionalmente, a empresa pode informar seu próprio token Focus NFe; se deixado em branco, a emissão usa o token da plataforma.</p>
+                    </div>
                 </div>
 
                     <div class="doc-media">
@@ -1116,7 +1120,7 @@
                     @endif
                     </div>
             </div>
-        </section> --}}
+        </section>
 
         {{-- Carteira --}}
         <section id="carteira" class="scroll-mt-20">

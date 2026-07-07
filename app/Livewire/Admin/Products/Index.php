@@ -88,12 +88,24 @@ class Index extends Component
         $product = Product::withoutGlobalScope(CompanyScope::class)->findOrFail($this->deletingId);
         $this->authorize('delete', $product);
 
+        $branchIds = $product->branches()->pluck('branches.id');
+        $companyId = $product->company_id;
+
+        $product->active = false;
+        $product->save();
+
         if ($product->orderItems()->exists()) {
             $product->delete();
             session()->flash('status', 'Produto desativado pois possui pedidos vinculados.');
         } else {
             $product->forceDelete();
             session()->flash('status', 'Produto removido.');
+        }
+
+        foreach ($branchIds as $branchId) {
+            Cache::forget("menu:branch:{$branchId}:company:{$companyId}");
+            Cache::forget("pdv:products:branch:{$branchId}");
+            Cache::forget("pdv:categories:branch:{$branchId}");
         }
 
         $this->deletingId = null;

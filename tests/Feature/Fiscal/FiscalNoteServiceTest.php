@@ -12,6 +12,7 @@ use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Services\Fiscal\FiscalNoteService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 
 uses(RefreshDatabase::class);
 
@@ -172,4 +173,79 @@ test('canUseFiscalNotes retorna true somente com fiscal_notes_enabled = true', f
     $company->refresh();
 
     expect($company->canUseFiscalNotes())->toBeFalse();
+});
+
+test('FiscalNoteService usa token da empresa mesmo fora de produção (URL continua homologação por segurança)', function () {
+    ['order' => $order, 'config' => $config] = fiscalTestContext();
+
+    $config->update([
+        'provider_token' => 'token-da-empresa',
+        'environment' => 'producao',
+        'crt' => 3,
+        'nfce_serie' => 2,
+        'inscricao_estadual' => '111222333',
+    ]);
+
+    config(['fiscal.focus_nfe.base_url_producao' => 'https://api.focusnfe.com.br']);
+    config(['fiscal.focus_nfe.base_url_homologacao' => 'https://homologacao.focusnfe.com.br']);
+
+    Http::fake([
+        '*' => Http::response(['status' => 'autorizado', 'chave_nfe' => str_repeat('1', 44)], 200),
+    ]);
+
+    app(FiscalNoteService::class)->issue($order);
+
+    // APP_ENV de teste não é produção — mesmo com a empresa configurada como "produção",
+    // a chamada real tem que ir pra homologação (guarda contra emitir nota fiscal real fora de prod).
+    Http::assertSent(function (\Illuminate\Http\Client\Request $request) {
+        return str_contains($request->url(), 'homologacao.focusnfe.com.br')
+            && $request->hasHeader('Authorization', 'Basic '.base64_encode('token-da-empresa:'))
+            && ($request['cnpj_emitente'] ?? null) === '12345678000100';
+    });
+});
+
+test('FiscalNoteService usa API de produção da Focus NFe quando APP_ENV é production e empresa está em produção', function () {
+    ['order' => $order, 'config' => $config] = fiscalTestContext();
+
+    $config->update([
+        'provider_token' => 'token-da-empresa',
+        'environment' => 'producao',
+    ]);
+
+    config(['fiscal.focus_nfe.base_url_producao' => 'https://api.focusnfe.com.br']);
+
+    app()->instance('env', 'production');
+
+    Http::fake([
+        '*' => Http::response(['status' => 'autorizado', 'chave_nfe' => str_repeat('1', 44)], 200),
+    ]);
+
+    app(FiscalNoteService::class)->issue($order);
+
+    Http::assertSent(fn (\Illuminate\Http\Client\Request $request) => str_contains($request->url(), 'api.focusnfe.com.br'));
+
+    app()->instance('env', 'testing');
+});
+
+test('FocusNfeService monta payload conforme especificação da API (sem objeto emitente, campos obrigatórios presentes)', function () {
+    ['order' => $order] = fiscalTestContext();
+
+    Http::fake([
+        '*' => Http::response(['status' => 'autorizado', 'chave_nfe' => str_repeat('1', 44)], 200),
+    ]);
+
+    app(FiscalNoteService::class)->issue($order);
+
+    Http::assertSent(function (\Illuminate\Http\Client\Request $request) {
+        $data = $request->data();
+
+        return $request->hasHeader('Authorization', 'Basic '.base64_encode('token_test:'))
+            && ! array_key_exists('emitente', $data)
+            && ! array_key_exists('forma_pagamento', $data)
+            && ($data['cnpj_emitente'] ?? null) === '12345678000100'
+            && isset($data['data_emissao'])
+            && ($data['modalidade_frete'] ?? null) === '9'
+            && ($data['local_destino'] ?? null) === '1'
+            && ($data['presenca_comprador'] ?? null) === '4';
+    });
 });

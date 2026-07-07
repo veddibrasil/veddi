@@ -58,7 +58,9 @@
             <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Integração Focus NFe</h2>
 
             <div>
-                <flux:input wire:model="providerToken" label="Token Focus NFe" type="password" placeholder="Token da API" :disabled="!$canManage" />
+                <flux:input wire:model="providerToken" label="Token Focus NFe" type="password"
+                    placeholder="{{ $hasProviderToken ? 'Token já configurado — deixe em branco para manter' : 'Token da API (opcional, usa o token da plataforma se vazio)' }}"
+                    :disabled="!$canManage" />
                 @error('providerToken') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
         </div>
@@ -66,7 +68,10 @@
         {{-- Certificado --}}
         <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
             <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Certificado Digital A1</h2>
-            <p class="text-xs text-neutral-400 dark:text-neutral-500">Envie apenas para atualizar o certificado. Arquivos aceitos: .pfx, .p12</p>
+            <p class="text-xs text-neutral-400 dark:text-neutral-500">
+                Envie apenas para atualizar o certificado. Arquivos aceitos: .pfx, .p12
+                @if($hasCertificate) <span class="text-green-600 dark:text-green-400">Certificado já configurado.</span> @endif
+            </p>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -76,7 +81,9 @@
                     @error('certificateFile') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
                 <div>
-                    <flux:input wire:model="certificatePassword" label="Senha do Certificado" type="password" placeholder="Senha do arquivo .pfx" :disabled="!$canManage" />
+                    <flux:input wire:model="certificatePassword" label="Senha do Certificado" type="password"
+                        placeholder="{{ $hasCertificate ? 'Senha já configurada — deixe em branco para manter' : 'Senha do arquivo .pfx' }}"
+                        :disabled="!$canManage" />
                     @error('certificatePassword') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
             </div>

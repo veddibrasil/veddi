@@ -26,7 +26,7 @@ class FocusNfeService implements FiscalNoteProviderInterface
         $ref = 'order_'.$dto->orderId.'_'.time();
 
         try {
-            $response = Http::withToken($this->token)
+            $response = Http::withBasicAuth($this->token, '')
                 ->post("{$this->baseUrl}/v2/nfce?ref={$ref}", $payload);
 
             $body = $response->json() ?? [];
@@ -72,7 +72,7 @@ class FocusNfeService implements FiscalNoteProviderInterface
     public function cancel(string $providerReference, string $justification): FiscalNoteResult
     {
         try {
-            $response = Http::withToken($this->token)
+            $response = Http::withBasicAuth($this->token, '')
                 ->delete("{$this->baseUrl}/v2/nfce/{$providerReference}", [
                     'justificativa' => $justification,
                 ]);
@@ -99,7 +99,7 @@ class FocusNfeService implements FiscalNoteProviderInterface
     public function query(string $accessKey): FiscalNoteResult
     {
         try {
-            $response = Http::withToken($this->token)
+            $response = Http::withBasicAuth($this->token, '')
                 ->get("{$this->baseUrl}/v2/nfce/{$accessKey}");
 
             $body = $response->json() ?? [];
@@ -154,20 +154,15 @@ class FocusNfeService implements FiscalNoteProviderInterface
             ];
         }
 
+        // Focus NFe identifica o emitente pelo CNPJ já cadastrado no painel deles
+        // (endpoint /v2/empresas) — não se reenvia razão social/endereço/CRT a cada nota.
         $payload = [
             'natureza_operacao' => 'Venda de mercadoria',
-            'forma_pagamento' => 0,
-            'emitente' => [
-                'cnpj' => preg_replace('/\D/', '', $dto->emitenteCnpj),
-                'nome' => $dto->emitenteNome,
-                'logradouro' => $dto->emitenteLogradouro,
-                'numero' => $dto->emitenteNumero,
-                'bairro' => $dto->emitenteBairro,
-                'municipio' => $dto->emitenteMunicipio,
-                'uf' => $dto->emitenteUf,
-                'cep' => preg_replace('/\D/', '', $dto->emitenteCep),
-                'regime_tributario' => $dto->emitenteCrt,
-            ],
+            'data_emissao' => now()->toIso8601String(),
+            'cnpj_emitente' => preg_replace('/\D/', '', $dto->emitenteCnpj),
+            'modalidade_frete' => '9',
+            'local_destino' => '1',
+            'presenca_comprador' => $this->mapPresencaComprador($dto->orderType),
             'items' => $items,
             'formas_pagamento' => [
                 [
@@ -194,6 +189,15 @@ class FocusNfeService implements FiscalNoteProviderInterface
             'debit_card', 'cartao_debito' => '04',
             'cash', 'dinheiro' => '01',
             default => '99',
+        };
+    }
+
+    private function mapPresencaComprador(?string $orderType): string
+    {
+        return match ($orderType) {
+            'delivery' => '4', // entrega a domicílio
+            'pickup', 'pdv' => '1', // presencial (retirada no local ou balcão)
+            default => '9', // não se aplica / não informado
         };
     }
 }

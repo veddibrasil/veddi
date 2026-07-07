@@ -14,6 +14,7 @@ readonly class FiscalNoteDTO
         public string $emitenteUf,
         public string $emitenteCep,
         public int $emitenteCrt,
+        public ?string $emitenteInscricaoEstadual,
         public string $nfceSerie,
         public int $orderId,
         public float $total,
@@ -22,5 +23,6 @@ readonly class FiscalNoteDTO
         public array $items,
         public ?string $customerDocument = null,
         public string $environment = 'homologacao',
+        public ?string $orderType = null,
     ) {}
 }
