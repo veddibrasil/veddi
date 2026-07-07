@@ -11,6 +11,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
+    if (config('app.env') === 'local') {
+        return redirect()->route('admin.dashboard');
+    }
+
     return redirect('https://veddi.com.br');
 });
 

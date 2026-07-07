@@ -34,7 +34,7 @@ class HealthController extends Controller
             $healthy = false;
         }
 
-        // Queue (Horizon / Redis queue connection)
+        // Queue (Redis connection)
         try {
             Queue::size();
             $checks['queue'] = 'ok';
