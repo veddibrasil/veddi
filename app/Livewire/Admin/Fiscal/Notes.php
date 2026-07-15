@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Admin\Fiscal;
 
+use App\Jobs\IssueFiscalNote;
 use App\Models\FiscalNote;
 use App\Services\Fiscal\FiscalNoteService;
 use Livewire\Attributes\Url;
@@ -75,7 +76,7 @@ class Notes extends Component
 
         $note = FiscalNote::find($this->cancelNoteId);
 
-        if (! $note || ! $note->isActive()) {
+        if (! $note || ! $note->isCancellable()) {
             session()->flash('error', 'Nota não encontrada ou não pode ser cancelada.');
             $this->closeCancelModal();
 
@@ -86,6 +87,25 @@ class Notes extends Component
 
         $this->closeCancelModal();
         session()->flash('status', 'Cancelamento solicitado.');
+    }
+
+    public function reissue(int $noteId): void
+    {
+        abort_unless($this->canIssue, 403);
+
+        $note = FiscalNote::find($noteId);
+
+        if (! $note || ! $note->order_id || ! in_array($note->status, ['error', 'rejected'], true)) {
+            session()->flash('error', 'Nota não pode ser reemitida.');
+
+            return;
+        }
+
+        // FiscalNoteService::issue() já garante (via lock) que não cria uma nota
+        // ativa duplicada caso outra emissão para o mesmo pedido esteja em andamento.
+        IssueFiscalNote::dispatch($note->order_id);
+
+        session()->flash('status', 'Reemissão de NFC-e enfileirada.');
     }
 
     public function render()

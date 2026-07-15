@@ -13,8 +13,19 @@ class FiscalWebhookController extends Controller
 {
     public function __invoke(Request $request): JsonResponse
     {
+        $data = $request->json()->all();
+        $ref = $data['ref'] ?? null;
+        $event = $data['evento'] ?? null;
+
+        // O segredo é por empresa (CompanyFiscalConfig::webhook_token), então a nota
+        // precisa ser resolvida antes da checagem de autorização — sem ref ainda não
+        // dá pra saber qual empresa validar, então cai no token global como fallback.
+        $note = $ref
+            ? FiscalNote::withoutGlobalScopes()->with('company.fiscalConfig')->where('provider_reference', $ref)->first()
+            : null;
+
         $token = $request->header('x-focus-nfe-token', '');
-        $expected = config('fiscal.focus_nfe.webhook_token');
+        $expected = $note?->company?->fiscalConfig?->resolveWebhookToken() ?: config('fiscal.focus_nfe.webhook_token');
 
         if (empty($expected) || ! hash_equals((string) $expected, (string) $token)) {
             Log::channel('fiscal')->warning('Focus NFe webhook: token inválido', [
@@ -24,10 +35,6 @@ class FiscalWebhookController extends Controller
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
-        $data = $request->json()->all();
-        $ref = $data['ref'] ?? null;
-        $event = $data['evento'] ?? null;
-
         Log::channel('fiscal')->info('Focus NFe webhook recebido', [
             'ref' => $ref,
             'evento' => $event,
@@ -36,8 +43,6 @@ class FiscalWebhookController extends Controller
         if (! $ref) {
             return response()->json(['error' => 'Missing ref'], 422);
         }
-
-        $note = FiscalNote::where('provider_reference', $ref)->first();
 
         if (! $note) {
             Log::channel('fiscal')->warning('Focus NFe webhook: nota não encontrada para a ref', [

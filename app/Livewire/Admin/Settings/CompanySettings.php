@@ -19,6 +19,8 @@ class CompanySettings extends Component
 
     public ?string $footer_text = '';
 
+    public ?string $email = '';
+
     public string $primary_color = '#5c347f';
 
     public string $primary_color_dark = '#19273c';
@@ -57,7 +59,7 @@ class CompanySettings extends Component
     {
         $company = app('current.company');
         $this->fill($company->only(
-            'name', 'slug', 'tagline', 'footer_text',
+            'name', 'slug', 'tagline', 'footer_text', 'email',
             'primary_color', 'primary_color_dark', 'primary_color_light',
             'secondary_color', 'secondary_color_light', 'accent_color',
             'order_prefix'
@@ -79,6 +81,7 @@ class CompanySettings extends Component
             'slug' => ['required', 'string', 'max:100', 'regex:/^[a-z0-9\-]+$/', new ReservedSlug, "unique:companies,slug,{$company->id}"],
             'tagline' => ['nullable', 'string', 'max:255'],
             'footer_text' => ['nullable', 'string', 'max:255'],
+            'email' => ['nullable', 'email', 'max:255'],
             'primary_color' => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'primary_color_dark' => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'primary_color_light' => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
@@ -104,7 +107,7 @@ class CompanySettings extends Component
         $company = app('current.company');
 
         if ($company->isFree()) {
-            $data = collect($validated)->only(['name', 'slug', 'tagline', 'footer_text', 'order_prefix'])->toArray();
+            $data = collect($validated)->only(['name', 'slug', 'tagline', 'footer_text', 'email', 'order_prefix'])->toArray();
         } else {
             $data = collect($validated)->except(['logo', 'chat_highlights'])->toArray();
             $data['chat_highlights'] = $this->chat_highlights ?: null;

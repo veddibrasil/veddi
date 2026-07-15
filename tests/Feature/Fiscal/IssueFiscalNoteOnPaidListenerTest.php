@@ -1,5 +1,8 @@
 <?php
 
+use App\Contracts\FiscalNoteProviderInterface;
+use App\DTOs\FiscalNoteDTO;
+use App\DTOs\FiscalNoteResult;
 use App\Events\OrderStatusUpdated;
 use App\Jobs\IssueFiscalNote;
 use App\Models\Branch;
@@ -8,6 +11,7 @@ use App\Models\CompanyFiscalConfig;
 use App\Models\Customer;
 use App\Models\FiscalNote;
 use App\Models\Order;
+use App\Services\Fiscal\FiscalNoteService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 
@@ -118,4 +122,60 @@ test('mudança de status diferente de paid não dispara emissão', function () {
     event(new OrderStatusUpdated($order->fresh()));
 
     Bus::assertNotDispatched(IssueFiscalNote::class);
+});
+
+test('rodar o job de emissão duas vezes para o mesmo pedido (corrida real) só cria uma nota fiscal', function () {
+    // Sem Bus::fake(): executa o job de verdade duas vezes, simulando dois disparos
+    // concorrentes (evento de pagamento duplicado, retry) chegando quase juntos.
+    ['order' => $order, 'company' => $company] = autoIssueTestContext();
+    $company->update(['owner_cpf_cnpj' => '12345678000100']);
+
+    app()->bind(FiscalNoteProviderInterface::class, function () {
+        return new class implements FiscalNoteProviderInterface
+        {
+            public function issue(FiscalNoteDTO $dto): FiscalNoteResult
+            {
+                return new FiscalNoteResult(status: 'authorized', providerReference: 'ref_race', accessKey: str_repeat('1', 44));
+            }
+
+            public function cancel(string $providerReference, string $justification): FiscalNoteResult
+            {
+                return new FiscalNoteResult(status: 'cancelled', providerReference: $providerReference);
+            }
+
+            public function query(string $providerReference): FiscalNoteResult
+            {
+                return new FiscalNoteResult(status: 'authorized', providerReference: $providerReference);
+            }
+
+            public function createCompany(array $payload): array
+            {
+                return [];
+            }
+
+            public function updateCompany(string $focusCompanyId, array $payload): array
+            {
+                return [];
+            }
+
+            public function listWebhooks(): array
+            {
+                return [];
+            }
+
+            public function createWebhook(array $payload): array
+            {
+                return [];
+            }
+
+            public function deleteWebhook(string $webhookId): void {}
+        };
+    });
+
+    $service = app(FiscalNoteService::class);
+    (new IssueFiscalNote($order->id))->handle($service);
+    (new IssueFiscalNote($order->id))->handle($service);
+
+    expect(FiscalNote::where('order_id', $order->id)->count())->toBe(1);
+    expect(FiscalNote::where('order_id', $order->id)->first()->status)->toBe('authorized');
 });

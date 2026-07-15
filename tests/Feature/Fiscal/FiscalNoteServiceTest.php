@@ -308,6 +308,40 @@ test('FocusNfeService monta payload conforme especificação da API (sem objeto 
     });
 });
 
+test('FiscalNoteService impede emissão duplicada para o mesmo pedido enquanto já existe nota ativa', function () {
+    // Simula a corrida: evento de pagamento duplicado ou retry de job chamando
+    // issue() duas vezes pro mesmo pedido antes da primeira nota sair de pending/authorized.
+    ['order' => $order] = fiscalTestContext();
+    mockProvider('authorized');
+
+    $service = app(FiscalNoteService::class);
+    $first = $service->issue($order);
+
+    expect($first->status)->toBe('authorized');
+
+    expect(fn () => $service->issue($order))
+        ->toThrow(\App\Exceptions\FiscalNoteAlreadyIssuedException::class);
+
+    expect(\App\Models\FiscalNote::where('order_id', $order->id)->count())->toBe(1);
+});
+
+test('FiscalNoteService permite reemitir quando a nota anterior não está mais ativa', function () {
+    ['order' => $order] = fiscalTestContext();
+    mockProvider('rejected');
+
+    $first = app(FiscalNoteService::class)->issue($order);
+
+    expect($first->status)->toBe('rejected');
+
+    // Rebinda o provider fake e resolve a instância de novo — FiscalNoteService recebe
+    // o provider no construtor, então reusar o objeto antigo manteria o mock anterior.
+    mockProvider('authorized');
+    $second = app(FiscalNoteService::class)->issue($order);
+
+    expect($second->status)->toBe('authorized');
+    expect(\App\Models\FiscalNote::where('order_id', $order->id)->count())->toBe(2);
+});
+
 test('CompanyFiscalConfig::tokenFor retorna o token do ambiente certo e cai para o legado quando ausente', function () {
     ['config' => $config] = fiscalTestContext();
 

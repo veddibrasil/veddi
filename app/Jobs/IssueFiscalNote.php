@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Exceptions\FiscalNoteAlreadyIssuedException;
 use App\Models\FiscalNote;
 use App\Models\Order;
 use App\Services\Fiscal\FiscalNoteService;
@@ -41,7 +42,14 @@ class IssueFiscalNote implements ShouldQueue
             return;
         }
 
-        $service->issue($order, $this->customerDocument);
+        try {
+            $service->issue($order, $this->customerDocument);
+        } catch (FiscalNoteAlreadyIssuedException $e) {
+            Log::channel('fiscal')->info('IssueFiscalNote: emissão ignorada, nota já ativa', [
+                'order_id' => $this->orderId,
+                'reason' => $e->getMessage(),
+            ]);
+        }
     }
 
     public function failed(\Throwable $exception): void

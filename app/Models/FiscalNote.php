@@ -53,4 +53,14 @@ class FiscalNote extends Model
     {
         return in_array($this->status, ['pending', 'authorized']);
     }
+
+    /**
+     * Cancelamento na SEFAZ só se aplica a nota já autorizada — "pending" ainda está
+     * em processamento assíncrono na Focus/SEFAZ, cancelar nesse estado só rende um
+     * erro genérico da API em vez de deixar claro que é preciso esperar a autorização.
+     */
+    public function isCancellable(): bool
+    {
+        return $this->status === 'authorized';
+    }
 }

@@ -10,6 +10,7 @@ use App\Services\Fiscal\FocusNfeService;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -78,8 +79,11 @@ class Config extends Component
 
         $this->companyName = $company->name;
         $this->companyEmail = $company->email ?? '';
-        $this->hasOwnerCpfCnpj = strlen(preg_replace('/\D/', '', $company->owner_cpf_cnpj ?? '')) === 14;
-        $this->ownerCpfCnpj = $this->hasOwnerCpfCnpj ? $company->owner_cpf_cnpj : '';
+        // Trava só depois que o CNPJ já foi registrado na Focus NFe (não apenas
+        // preenchido) — antes disso, corrigir um CNPJ digitado errado não pode
+        // exigir suporte, já que a Focus ainda nem conhece esse emissor.
+        $this->hasOwnerCpfCnpj = $company->fiscalConfig?->isRegisteredWithFocus() ?? false;
+        $this->ownerCpfCnpj = $company->owner_cpf_cnpj ?? '';
 
         $branch = Branch::withoutGlobalScopes()->where('company_id', $company->id)->first();
         $this->hasBranch = (bool) $branch;
@@ -126,8 +130,9 @@ class Config extends Component
         ]);
 
         // CNPJ não tem tela própria de edição — só é gravável aqui enquanto a empresa
-        // não tiver um CNPJ válido; uma vez cadastrado, o campo fica travado (disabled
-        // na view) para não divergir do que já foi registrado na Focus NFe.
+        // ainda não foi registrada na Focus NFe; uma vez registrada, o campo fica
+        // travado (disabled na view) para não divergir do que a Focus já reconhece
+        // como emissor. Antes disso, digitar errado e corrigir não deve depender de suporte.
         if (! $this->hasOwnerCpfCnpj && $this->ownerCpfCnpj !== '') {
             $digits = preg_replace('/\D/', '', $this->ownerCpfCnpj);
 
@@ -138,7 +143,6 @@ class Config extends Component
             }
 
             $company->update(['owner_cpf_cnpj' => $digits]);
-            $this->hasOwnerCpfCnpj = true;
             $this->ownerCpfCnpj = $digits;
         }
 
@@ -220,6 +224,7 @@ class Config extends Component
         $this->hasCertificate = filled($config->certificate_path);
         $this->hasCscNfceProducao = filled($config->csc_nfce_producao);
         $this->focusNfeCompanyId = $config->focus_nfe_company_id;
+        $this->hasOwnerCpfCnpj = $config->isRegisteredWithFocus();
 
         session()->flash('status', 'Configurações fiscais salvas.');
     }
@@ -247,8 +252,22 @@ class Config extends Component
         ];
 
         if ($this->certificateFile) {
-            $payload['arquivo_certificado_base64'] = base64_encode(file_get_contents($this->certificateFile->getRealPath()));
-            $payload['senha_certificado'] = $this->certificatePassword !== '' ? $this->certificatePassword : $config->certificate_password;
+            $certificateContent = file_get_contents($this->certificateFile->getRealPath());
+            $password = $this->certificatePassword !== '' ? $this->certificatePassword : $config->certificate_password;
+
+            // Valida arquivo+senha localmente (ext-openssl) antes de ir pra Focus —
+            // sem isso o erro só aparece depois do round-trip com a API deles.
+            if (! openssl_pkcs12_read($certificateContent, $parsedCertificate, (string) $password)) {
+                throw new FocusNfeCompanyRegistrationException(
+                    message: 'Não foi possível ler o certificado com a senha informada. Verifique o arquivo (.pfx/.p12) e a senha.',
+                    statusCode: 422,
+                    errors: [],
+                    rawResponse: [],
+                );
+            }
+
+            $payload['arquivo_certificado_base64'] = base64_encode($certificateContent);
+            $payload['senha_certificado'] = $password;
         }
 
         $csc = $this->cscNfceProducao !== '' ? $this->cscNfceProducao : $config->csc_nfce_producao;
@@ -295,15 +314,15 @@ class Config extends Component
             return;
         }
 
-        // Focus não consegue chamar uma URL local — sem isso o cadastro fica
-        // tentando e falhando toda hora em ambiente de dev.
-        // if (! app()->environment('production')) {
-        //     Log::channel('fiscal')->debug('Focus NFe: registro de webhook pulado (ambiente não-produção)', [
-        //         'company_id' => $company->id,
-        //     ]);
+        // Focus não consegue chamar uma URL local — local/testing não tem APP_URL
+        // pública, então o registro só ficaria tentando e falhando à toa.
+        if (app()->environment(['local', 'testing'])) {
+            Log::channel('fiscal')->debug('Focus NFe: registro de webhook pulado (ambiente local/testing)', [
+                'company_id' => $company->id,
+            ]);
 
-        //     return;
-        // }
+            return;
+        }
 
         try {
             // Focus NFe não tem evento "nfce" isolado — autorização de NFC-e (modelo 65)
@@ -313,9 +332,16 @@ class Config extends Component
                 ->first(fn (array $hook) => ($hook['cnpj'] ?? null) === $cnpj && ($hook['event'] ?? null) === 'nfe');
 
             if ($existing) {
+                // Webhook já existe na Focus com um segredo que não temos como recuperar
+                // (a API não retorna o valor de authorization) — não sobrescreve
+                // webhook_token local pra não dessincronizar do que a Focus vai enviar.
                 $config->focus_nfe_webhook_id = $existing['id'] ?? null;
 
                 return;
+            }
+
+            if (! $config->webhook_token) {
+                $config->webhook_token = Str::random(40);
             }
 
             $response = $service->createWebhook([
@@ -323,7 +349,7 @@ class Config extends Component
                 'url' => route('webhook.fiscal', absolute: true),
                 'cnpj' => $cnpj,
                 'authorization_header' => 'x-focus-nfe-token',
-                'authorization' => config('fiscal.focus_nfe.webhook_token'),
+                'authorization' => $config->webhook_token,
             ]);
 
             $config->focus_nfe_webhook_id = $response['id'] ?? null;

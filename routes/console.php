@@ -40,6 +40,13 @@ Schedule::job(new \App\Jobs\ResolveExpiredVindiPaymentsJob)
     ->withoutOverlapping(expiresAt: 10)
     ->onOneServer();
 
+// Resolve notas fiscais presas em pending quando o webhook da Focus NFe nunca chega
+Schedule::job(new \App\Jobs\ReconcilePendingFiscalNotesJob)
+    ->name('reconcile-pending-fiscal-notes')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping(expiresAt: 10)
+    ->onOneServer();
+
 // Comentado: reconciliação depende de endpoints Yapay de saldo/listagem — não confirmados.
 // Schedule::job(new \App\Jobs\VindiReconciliationJob)
 //     ->name('vindi-reconciliation')

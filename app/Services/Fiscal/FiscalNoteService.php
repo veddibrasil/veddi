@@ -4,10 +4,12 @@ namespace App\Services\Fiscal;
 
 use App\Contracts\FiscalNoteProviderInterface;
 use App\DTOs\FiscalNoteDTO;
+use App\Exceptions\FiscalNoteAlreadyIssuedException;
 use App\Models\Branch;
 use App\Models\CompanyFiscalConfig;
 use App\Models\FiscalNote;
 use App\Models\Order;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class FiscalNoteService
@@ -68,11 +70,7 @@ class FiscalNoteService
             orderType: $order->order_type,
         );
 
-        $fiscalNote = FiscalNote::create([
-            'company_id' => $company->id,
-            'order_id' => $order->id,
-            'status' => 'pending',
-        ]);
+        $fiscalNote = $this->createPendingNoteExclusively($order, $company->id);
 
         try {
             $result = $provider->issue($dto);
@@ -111,6 +109,36 @@ class FiscalNoteService
         }
 
         return $fiscalNote->fresh();
+    }
+
+    /**
+     * Trava a linha do pedido durante a checagem de nota ativa + criação do registro
+     * pending, numa única transação. Sem isso, dois disparos concorrentes (ex.: evento
+     * de pagamento duplicado, retry de job) passam ambos pelo "existe nota?" antes que
+     * qualquer um grave a sua, e a empresa acaba emitindo duas NFC-e reais pro mesmo pedido.
+     */
+    private function createPendingNoteExclusively(Order $order, int $companyId): FiscalNote
+    {
+        return DB::transaction(function () use ($order, $companyId) {
+            Order::withoutGlobalScopes()->whereKey($order->id)->lockForUpdate()->first();
+
+            $hasActiveNote = FiscalNote::withoutGlobalScopes()
+                ->where('order_id', $order->id)
+                ->whereIn('status', ['pending', 'authorized'])
+                ->exists();
+
+            if ($hasActiveNote) {
+                throw new FiscalNoteAlreadyIssuedException(
+                    "Já existe uma nota fiscal ativa para o pedido {$order->id}."
+                );
+            }
+
+            return FiscalNote::create([
+                'company_id' => $companyId,
+                'order_id' => $order->id,
+                'status' => 'pending',
+            ]);
+        });
     }
 
     public function cancel(FiscalNote $note, string $justification): void

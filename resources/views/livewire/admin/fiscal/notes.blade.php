@@ -93,10 +93,17 @@
                                         XML
                                     </a>
                                 @endif
-                                @if($canIssue && $note->isActive())
+                                @if($canIssue && $note->isCancellable())
                                     <button wire:click="openCancelModal({{ $note->id }})"
                                         class="text-red-500 hover:text-red-700 dark:text-red-400 font-medium text-xs">
                                         Cancelar
+                                    </button>
+                                @endif
+                                @if($canIssue && $note->order_id && in_array($note->status, ['error', 'rejected']))
+                                    <button wire:click="reissue({{ $note->id }})"
+                                        wire:confirm="Reemitir NFC-e para este pedido?"
+                                        class="text-blue-600 hover:text-blue-800 dark:text-blue-400 font-medium text-xs">
+                                        Reemitir
                                     </button>
                                 @endif
                                 @if($note->error_message)

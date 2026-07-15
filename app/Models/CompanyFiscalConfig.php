@@ -19,6 +19,7 @@ class CompanyFiscalConfig extends Model
         'token_homologacao',
         'focus_nfe_company_id',
         'focus_nfe_webhook_id',
+        'webhook_token',
         'focus_nfe_registered_at',
         'csc_nfce_producao',
         'id_token_nfce_producao',
@@ -37,6 +38,7 @@ class CompanyFiscalConfig extends Model
         'token_homologacao' => 'encrypted',
         'certificate_password' => 'encrypted',
         'csc_nfce_producao' => 'encrypted',
+        'webhook_token' => 'encrypted',
         'focus_nfe_registered_at' => 'datetime',
     ];
 
@@ -60,5 +62,15 @@ class CompanyFiscalConfig extends Model
     public function isRegisteredWithFocus(): bool
     {
         return filled($this->focus_nfe_company_id);
+    }
+
+    /**
+     * Segredo esperado no header do webhook Focus NFe para esta empresa. Cai para o
+     * token global (config/fiscal.php) quando a empresa ainda não tem um próprio —
+     * fallback legado/registro em andamento, não pensado como padrão permanente.
+     */
+    public function resolveWebhookToken(): ?string
+    {
+        return $this->webhook_token ?: config('fiscal.focus_nfe.webhook_token');
     }
 }

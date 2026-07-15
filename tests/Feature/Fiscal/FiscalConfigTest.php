@@ -38,6 +38,21 @@ function fakeFocusNfeEmpresaCreated(): void
     ]);
 }
 
+function fakeFiscalCertificate(string $password = 'senha123'): UploadedFile
+{
+    // Config::save() agora valida o .pfx localmente com openssl_pkcs12_read antes de
+    // mandar pra Focus (proteção contra senha errada só ser descoberta no round-trip
+    // com a API) — um arquivo com bytes aleatórios (UploadedFile::fake()->create())
+    // não é mais aceito, então os testes precisam de um PKCS12 de verdade.
+    $privateKey = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+    $csr = openssl_csr_new(['commonName' => 'Empresa Teste Fiscal'], $privateKey);
+    $cert = openssl_csr_sign($csr, null, $privateKey, 365);
+
+    openssl_pkcs12_export($cert, $pkcs12, $privateKey, $password);
+
+    return UploadedFile::fake()->createWithContent('certificado.pfx', $pkcs12);
+}
+
 function grantFiscalSettingsPermission(User $user, Company $company): void
 {
     $permission = Permission::firstOrCreate(
@@ -127,7 +142,7 @@ test('salvar com enabled=true registra empresa na Focus NFe (POST) e persiste to
     Livewire::actingAs($admin)
         ->test(Config::class)
         ->set('enabled', true)
-        ->set('certificateFile', UploadedFile::fake()->create('certificado.pfx', 100))
+        ->set('certificateFile', fakeFiscalCertificate('senha123'))
         ->set('certificatePassword', 'senha123')
         ->call('save')
         ->assertHasNoErrors();
@@ -200,8 +215,11 @@ test('erro 422 da Focus NFe (certificado inválido) impede salvar e mostra erro 
     Livewire::actingAs($admin)
         ->test(Config::class)
         ->set('enabled', true)
-        ->set('certificateFile', UploadedFile::fake()->create('certificado.pfx', 100))
-        ->set('certificatePassword', 'senha-errada')
+        // Senha bate com o certificado (passa na validação local) — o 422 simulado
+        // representa uma rejeição do lado da Focus (ex.: cert revogado/expirado),
+        // não senha incorreta, que já é barrada antes de qualquer chamada à API.
+        ->set('certificateFile', fakeFiscalCertificate('senha123'))
+        ->set('certificatePassword', 'senha123')
         ->call('save')
         ->assertHasErrors(['certificateFile']);
 
@@ -281,7 +299,7 @@ test('upload de certificado salva arquivo no disco privado', function () {
 
     Livewire::actingAs($admin)
         ->test(Config::class)
-        ->set('certificateFile', UploadedFile::fake()->create('certificado.pfx', 100))
+        ->set('certificateFile', fakeFiscalCertificate('senha123'))
         ->set('certificatePassword', 'senha123')
         ->call('save')
         ->assertHasNoErrors();
@@ -293,7 +311,7 @@ test('upload de certificado salva arquivo no disco privado', function () {
     \Illuminate\Support\Facades\Storage::disk('local')->assertExists($config->certificate_path);
 });
 
-test('CNPJ fica editável quando a empresa ainda não tem um cadastrado, e é persistido na empresa', function () {
+test('CNPJ fica editável e persistido enquanto a empresa não foi registrada na Focus NFe', function () {
     $company = Company::create([
         'name' => 'Empresa Sem CNPJ',
         'slug' => 'empresa-sem-cnpj-'.uniqid(),
@@ -314,9 +332,46 @@ test('CNPJ fica editável quando a empresa ainda não tem um cadastrado, e é pe
         ->set('ownerCpfCnpj', '12.345.678/0001-99')
         ->call('save')
         ->assertHasNoErrors()
-        ->assertSet('hasOwnerCpfCnpj', true);
+        // Sem registrar a empresa na Focus NFe (enabled=true não foi acionado), o
+        // campo continua editável — um CNPJ digitado errado não deveria travar pra
+        // sempre exigindo suporte antes de a Focus sequer conhecer esse emissor.
+        ->assertSet('hasOwnerCpfCnpj', false);
 
     expect($company->fresh()->owner_cpf_cnpj)->toBe('12345678000199');
+
+    // Rebinda a empresa recém-carregada — o objeto anterior guarda em cache a
+    // relação fiscalConfig como null (era null no primeiro mount()), e reusá-lo
+    // faria o segundo save() tentar criar outro CompanyFiscalConfig pro mesmo company_id.
+    app()->instance('current.company', $company->fresh());
+
+    // Corrige o CNPJ numa segunda submissão — segue destravado.
+    Livewire::actingAs($admin)
+        ->test(Config::class)
+        ->set('ownerCpfCnpj', '98.765.432/0001-10')
+        ->call('save')
+        ->assertHasNoErrors()
+        ->assertSet('hasOwnerCpfCnpj', false);
+
+    expect($company->fresh()->owner_cpf_cnpj)->toBe('98765432000110');
+});
+
+test('CNPJ trava para edição depois que a empresa é registrada na Focus NFe', function () {
+    fakeFocusNfeEmpresaCreated();
+
+    $company = fiscalConfigTestCompany();
+    app()->instance('current.company', $company);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+    grantFiscalSettingsPermission($admin, $company);
+
+    Livewire::actingAs($admin)
+        ->test(Config::class)
+        ->assertSet('hasOwnerCpfCnpj', false)
+        ->set('enabled', true)
+        ->call('save')
+        ->assertHasNoErrors()
+        ->assertSet('hasOwnerCpfCnpj', true);
 });
 
 test('CNPJ inválido (menos de 14 dígitos) mostra erro e não salva nada', function () {
