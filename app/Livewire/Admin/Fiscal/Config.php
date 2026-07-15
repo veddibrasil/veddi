@@ -297,13 +297,13 @@ class Config extends Component
 
         // Focus não consegue chamar uma URL local — sem isso o cadastro fica
         // tentando e falhando toda hora em ambiente de dev.
-        if (! app()->environment('production')) {
-            Log::channel('fiscal')->debug('Focus NFe: registro de webhook pulado (ambiente não-produção)', [
-                'company_id' => $company->id,
-            ]);
+        // if (! app()->environment('production')) {
+        //     Log::channel('fiscal')->debug('Focus NFe: registro de webhook pulado (ambiente não-produção)', [
+        //         'company_id' => $company->id,
+        //     ]);
 
-            return;
-        }
+        //     return;
+        // }
 
         try {
             // Focus NFe não tem evento "nfce" isolado — autorização de NFC-e (modelo 65)

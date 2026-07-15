@@ -1,9 +1,11 @@
 <?php
 
+use App\Jobs\IssueFiscalNote;
 use App\Livewire\Admin\Pdv\Terminal;
 use App\Models\Branch;
 use App\Models\BranchServiceCharge;
 use App\Models\Company;
+use App\Models\CompanyFiscalConfig;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Payment;
@@ -14,6 +16,7 @@ use App\Models\ProductCategory;
 use App\Models\User;
 use App\Services\Payment\PaymentOrchestrator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
@@ -251,6 +254,28 @@ test('pedido PDV com pagamento em dinheiro cria order e payment', function () {
     expect($payment)->not->toBeNull();
     expect($payment->status)->toBe('paid');
     expect($payment->payment_gateway)->toBe('cash');
+});
+
+test('pedido PDV pago em dinheiro dispara emissão automática de nota fiscal', function () {
+    ['admin' => $admin, 'product' => $product, 'company' => $company] = pdvContext();
+
+    $company->update(['fiscal_notes_enabled' => true]);
+    CompanyFiscalConfig::create(['company_id' => $company->id, 'enabled' => true]);
+
+    Bus::fake();
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'cash')
+        ->set('cashReceivedInput', '10.00')
+        ->call('processOrder')
+        ->assertSet('step', 'success');
+
+    $order = Order::withoutGlobalScopes()->first();
+
+    Bus::assertDispatched(IssueFiscalNote::class, fn ($job) => $job->orderId === $order->id);
 });
 
 // ─── Pedido com PIX ───────────────────────────────────────────────────────────
@@ -834,6 +859,34 @@ test('fechar comanda com dinheiro cobra e marca como paga', function () {
     $payment = Payment::where('order_id', $orderId)->first();
     expect($payment)->not->toBeNull();
     expect($payment->status)->toBe('paid');
+});
+
+test('fechar comanda com dinheiro dispara emissão automática de nota fiscal', function () {
+    ['admin' => $admin, 'product' => $product, 'company' => $company] = pdvContext();
+
+    $company->update(['fiscal_notes_enabled' => true]);
+    CompanyFiscalConfig::create(['company_id' => $company->id, 'enabled' => true]);
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->set('orderMode', 'mesa')
+        ->call('addProduct', $product->id)
+        ->set('tableLabel', 'Mesa 5')
+        ->call('openTab');
+
+    $orderId = Order::withoutGlobalScopes()->first()->id;
+
+    Bus::fake();
+
+    $component
+        ->call('proceedToCloseTab', $orderId)
+        ->set('paymentMethod', 'cash')
+        ->set('cashReceivedInput', '10.00')
+        ->call('processOrder')
+        ->assertSet('step', 'success');
+
+    Bus::assertDispatched(IssueFiscalNote::class, fn ($job) => $job->orderId === $orderId);
 });
 
 test('comanda aberta não aparece em shiftStats nem sessionOrders', function () {

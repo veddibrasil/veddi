@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Admin\Pdv;
 
+use App\Events\OrderStatusUpdated;
 use App\Exceptions\DeliveryException;
 use App\Models\Branch;
 use App\Models\BranchServiceCharge;
@@ -890,6 +891,14 @@ class Terminal extends Component
             }
 
             DB::commit();
+
+            // Fora da transação: fechar comanda com status 'paid' não passa por createOrder()
+            // nem por nenhuma outra transição — sem isso a nota fiscal automática nunca dispara
+            // pra pedidos pagos aqui (ver OrderService::createOrder() pro mesmo problema na criação).
+            if ($isPaidOnCreate) {
+                OrderStatusUpdated::dispatch($order);
+            }
+
             $this->lastOrderTotal = (float) $order->total;
             $this->audit('tab_closed', [
                 'order_id' => $order->id,
@@ -1002,6 +1011,13 @@ class Terminal extends Component
             }
 
             DB::commit();
+
+            // Fora da transação: pedido nasce 'paid' aqui (à vista/cartão/pix no PDV) e nunca
+            // passa por outra transição depois — sem isso a nota fiscal automática nunca dispara.
+            if ($isPaidOnCreate) {
+                OrderStatusUpdated::dispatch($order);
+            }
+
             $this->lastOrderTotal = (float) $order->total;
             $this->audit('order_created', [
                 'order_id' => $order->id,

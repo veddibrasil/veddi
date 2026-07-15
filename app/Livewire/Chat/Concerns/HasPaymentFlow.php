@@ -154,6 +154,9 @@ trait HasPaymentFlow
             $this->addMessage('bot', $summary."\n\n🕐 Pedido agendado para {$scheduledLabel}. Pagamento em dinheiro na entrega. Obrigado!");
             $this->transitionTo('ORDER_CONFIRMED');
         } elseif ($initialStatus === 'paid') {
+            // Pedido nasce 'paid' (dinheiro) e nunca passa por outra transição de status depois —
+            // sem isso, nada escuta OrderStatusUpdated e a nota fiscal automática nunca dispara.
+            OrderStatusUpdated::dispatch($order);
             $this->addMessage('bot', $summary."\n\nPagamento em dinheiro na entrega. Obrigado!");
             $this->transitionTo('ORDER_CONFIRMED');
         } elseif ($this->paymentMethod === 'CARD') {

@@ -99,12 +99,12 @@ function fiscalTestContext(): array
     return compact('company', 'config', 'order', 'branch');
 }
 
-function mockProvider(string $status = 'authorized'): void
+function mockProvider(string $status = 'authorized', ?string $accessKey = null): void
 {
     $result = new FiscalNoteResult(
         status: $status,
         providerReference: 'ref_test_001',
-        accessKey: str_repeat('0', 44),
+        accessKey: $accessKey ?? str_repeat('0', 44),
         xmlUrl: 'https://focus.test/xml',
         danfeUrl: 'https://focus.test/danfe',
     );
@@ -166,6 +166,19 @@ test('FiscalNoteService emite nota e persiste com status authorized', function (
     expect($note->provider_reference)->toBe('ref_test_001');
     expect($note->access_key)->toHaveLength(44);
     expect($note->data['danfe_url'])->toBe('https://focus.test/danfe');
+});
+
+test('FiscalNoteService persiste access_key com prefixo NFe (47 chars) sem truncar', function () {
+    // Focus NFe às vezes retorna chave_nfe com prefixo "NFe" além dos 44 dígitos
+    // (visto em produção, fiscal-2026-07-15.log) — char(44) truncava e quebrava o update.
+    ['order' => $order] = fiscalTestContext();
+    mockProvider('authorized', 'NFe'.str_repeat('1', 44));
+
+    $note = app(FiscalNoteService::class)->issue($order);
+
+    expect($note->status)->toBe('authorized');
+    expect($note->access_key)->toBe('NFe'.str_repeat('1', 44));
+    expect($note->access_key)->toHaveLength(47);
 });
 
 test('FiscalNoteService lança exceção quando fiscal_notes_enabled = false', function () {
