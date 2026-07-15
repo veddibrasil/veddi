@@ -59,7 +59,7 @@ class CreateAsaasSubscription implements ShouldBeUnique, ShouldQueue
         }
 
         if ($this->company->fiscal_notes_enabled) {
-            $extraAmount += (float) config('fiscal.addon_monthly_price', 65.00);
+            $extraAmount += (float) config('fiscal.addon_monthly_price', 149.00);
             $extraParts[] = 'Módulo Fiscal';
         }
 

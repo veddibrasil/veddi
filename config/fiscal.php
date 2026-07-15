@@ -23,6 +23,6 @@ return [
         'password' => env('FISCAL_CERT_PASSWORD'),
     ],
 
-    'addon_monthly_price' => (float) env('FISCAL_ADDON_PRICE', 65.00),
+    'addon_monthly_price' => (float) env('FISCAL_ADDON_PRICE', 149.00),
 
 ];

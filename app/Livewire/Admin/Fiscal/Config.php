@@ -231,7 +231,7 @@ class Config extends Component
         $payload = [
             'nome' => $company->name,
             'cnpj' => $cnpj,
-            'inscricao_estadual' => $this->inscricaoEstadual ?: null,
+            'inscricao_estadual' => $this->inscricaoEstadual !== '' ? $this->inscricaoEstadual : 'ISENTO',
             'inscricao_municipal' => $this->inscricaoMunicipal ?: null,
             'regime_tributario' => $this->crt,
             'logradouro' => $branch?->address,

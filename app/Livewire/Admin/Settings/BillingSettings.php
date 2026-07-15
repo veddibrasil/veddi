@@ -84,7 +84,7 @@ class BillingSettings extends Component
     // Módulo Fiscal (cobrado junto com a assinatura do plano, mesma fatura — mesmo padrão do PDV)
     public bool $fiscalModuleEnabled = false;
 
-    public float $fiscalAddonAmount = 65.00;
+    public float $fiscalAddonAmount = 149.00;
 
     public bool $confirmingFiscalActivation = false;
 
@@ -109,7 +109,7 @@ class BillingSettings extends Component
         $this->pdvModuleEnabled = (bool) $company->pdv_module_enabled;
         $this->pdvAddonAmount = (float) config('pdv.addon_monthly_price', 99.00);
         $this->fiscalModuleEnabled = (bool) $company->fiscal_notes_enabled;
-        $this->fiscalAddonAmount = (float) config('fiscal.addon_monthly_price', 65.00);
+        $this->fiscalAddonAmount = (float) config('fiscal.addon_monthly_price', 149.00);
         $this->combinedMonthlyAmount = ($company->plan?->monthlyPrice() ?? 0.0)
             + $this->combinedAddonExtra($this->pdvModuleEnabled, $this->fiscalModuleEnabled)['amount'];
 

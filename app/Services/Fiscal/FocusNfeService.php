@@ -37,6 +37,17 @@ class FocusNfeService implements FiscalNoteProviderInterface
                 'status' => $response->status(),
             ]);
 
+            if ($response->status() === 422 && isset($body['codigo']) && ! isset($body['status'])) {
+                // 422 com 'codigo' (ex.: erro_validacao_schema) é rejeição imediata do Focus
+                // antes de submeter à SEFAZ — não tem 'status' assíncrono, é erro definitivo.
+                return new FiscalNoteResult(
+                    status: 'error',
+                    providerReference: $ref,
+                    errorMessage: $body['mensagem'] ?? 'Erro de validação no Focus NFe',
+                    rawResponse: $body,
+                );
+            }
+
             if ($response->successful() || $response->status() === 422) {
                 $status = $this->mapStatus($body['status'] ?? 'processing');
 

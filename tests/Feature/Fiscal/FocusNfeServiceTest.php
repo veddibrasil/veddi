@@ -1,8 +1,30 @@
 <?php
 
+use App\DTOs\FiscalNoteDTO;
 use App\Exceptions\FocusNfeCompanyRegistrationException;
 use App\Services\Fiscal\FocusNfeService;
 use Illuminate\Support\Facades\Http;
+
+function fiscalNoteDtoForTest(): FiscalNoteDTO
+{
+    return new FiscalNoteDTO(
+        emitenteCnpj: '12345678000100',
+        emitenteNome: 'Empresa Teste',
+        emitenteLogradouro: 'Rua A',
+        emitenteNumero: '100',
+        emitenteBairro: 'Centro',
+        emitenteMunicipio: 'São Paulo',
+        emitenteUf: 'SP',
+        emitenteCep: '01310000',
+        emitenteCrt: 1,
+        emitenteInscricaoEstadual: 'ISENTO',
+        nfceSerie: '1',
+        orderId: 1,
+        total: 30.00,
+        paymentMethod: 'PIX',
+        items: [],
+    );
+}
 
 test('query() usa a referência (ref) no path, não a chave de acesso', function () {
     Http::fake([
@@ -19,6 +41,32 @@ test('query() usa a referência (ref) no path, não a chave de acesso', function
         return str_contains($request->url(), '/v2/nfce/ref_test_001')
             && ! str_contains($request->url(), str_repeat('1', 44));
     });
+});
+
+test('issue() marca status error quando Focus rejeita com erro de validação de schema (422 sem status assíncrono)', function () {
+    Http::fake([
+        '*/v2/nfce*' => Http::response([
+            'codigo' => 'erro_validacao_schema',
+            'mensagem' => "41:0: ERROR: Element '{http://www.portalfiscal.inf.br/nfe}IE': [facet 'pattern'] The value '' is not accepted by the pattern '[0-9]{2,14}|ISENTO'.",
+        ], 422),
+    ]);
+
+    $service = new FocusNfeService('tok', 'https://homologacao.focusnfe.com.br');
+    $result = $service->issue(fiscalNoteDtoForTest());
+
+    expect($result->status)->toBe('error');
+    expect($result->errorMessage)->toContain('IE');
+});
+
+test('issue() mantém status pending quando 422 vem com status assíncrono da SEFAZ', function () {
+    Http::fake([
+        '*/v2/nfce*' => Http::response(['status' => 'processando_autorizacao'], 422),
+    ]);
+
+    $service = new FocusNfeService('tok', 'https://homologacao.focusnfe.com.br');
+    $result = $service->issue(fiscalNoteDtoForTest());
+
+    expect($result->status)->toBe('pending');
 });
 
 test('createCompany() faz POST em /v2/empresas e retorna o corpo decodificado', function () {

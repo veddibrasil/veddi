@@ -46,13 +46,13 @@ test('ativação do módulo fiscal combina valor do plano + fiscal em uma única
         $mock->shouldReceive('getSubscriptionPayments')->andReturn([]);
         $mock->shouldReceive('createCreditCardCharge')
             ->once()
-            ->withArgs(fn ($customerId, $amount, $description) => $amount === 59.0 + 65.0)
+            ->withArgs(fn ($customerId, $amount, $description) => $amount === 59.0 + 149.0)
             ->andReturn(['status' => 'CONFIRMED']);
         $mock->shouldReceive('cancelSubscription')->once();
         $mock->shouldReceive('createSubscription')
             ->once()
-            ->withArgs(fn ($customerId, $plan, $billingType, $creditCard, $holderInfo, $nextDueDate, $extraAmount, $extraDescription) => $extraAmount === 65.0 && $extraDescription === 'Módulo Fiscal')
-            ->andReturn(['id' => 'sub_new_fiscal', 'status' => 'ACTIVE', 'value' => 59.0 + 65.0, 'nextDueDate' => now()->addMonth()->toDateString()]);
+            ->withArgs(fn ($customerId, $plan, $billingType, $creditCard, $holderInfo, $nextDueDate, $extraAmount, $extraDescription) => $extraAmount === 149.0 && $extraDescription === 'Módulo Fiscal')
+            ->andReturn(['id' => 'sub_new_fiscal', 'status' => 'ACTIVE', 'value' => 59.0 + 149.0, 'nextDueDate' => now()->addMonth()->toDateString()]);
     });
 
     $test = Livewire::actingAs($admin)->test(BillingSettings::class);
@@ -101,13 +101,13 @@ test('ativação do módulo fiscal soma ao módulo PDV já ativo', function () {
         $mock->shouldReceive('getSubscriptionPayments')->andReturn([]);
         $mock->shouldReceive('createCreditCardCharge')
             ->once()
-            ->withArgs(fn ($customerId, $amount) => $amount === 59.0 + 99.0 + 65.0)
+            ->withArgs(fn ($customerId, $amount) => $amount === 59.0 + 99.0 + 149.0)
             ->andReturn(['status' => 'CONFIRMED']);
         $mock->shouldReceive('cancelSubscription')->once();
         $mock->shouldReceive('createSubscription')
             ->once()
-            ->withArgs(fn ($customerId, $plan, $billingType, $creditCard, $holderInfo, $nextDueDate, $extraAmount, $extraDescription) => $extraAmount === 99.0 + 65.0 && $extraDescription === 'Módulo PDV + Módulo Fiscal')
-            ->andReturn(['id' => 'sub_new_combined', 'status' => 'ACTIVE', 'value' => 59.0 + 99.0 + 65.0, 'nextDueDate' => now()->addMonth()->toDateString()]);
+            ->withArgs(fn ($customerId, $plan, $billingType, $creditCard, $holderInfo, $nextDueDate, $extraAmount, $extraDescription) => $extraAmount === 99.0 + 149.0 && $extraDescription === 'Módulo PDV + Módulo Fiscal')
+            ->andReturn(['id' => 'sub_new_combined', 'status' => 'ACTIVE', 'value' => 59.0 + 99.0 + 149.0, 'nextDueDate' => now()->addMonth()->toDateString()]);
     });
 
     $test = Livewire::actingAs($admin)->test(BillingSettings::class);
