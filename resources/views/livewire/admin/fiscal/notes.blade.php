@@ -100,8 +100,8 @@
                                     </button>
                                 @endif
                                 @if($note->error_message)
-                                    <span class="text-red-500 dark:text-red-400 text-xs truncate max-w-xs" title="{{ $note->error_message }}">
-                                        Erro
+                                    <span class="text-red-500 dark:text-red-400 text-xs truncate max-w-[12rem]" title="{{ $note->error_message }}">
+                                        {{ $note->error_message }}
                                     </span>
                                 @endif
                             </div>

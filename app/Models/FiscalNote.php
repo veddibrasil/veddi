@@ -40,6 +40,12 @@ class FiscalNote extends Model
 
     public function getErrorMessageAttribute(): ?string
     {
+        // Focus NFe preenche mensagem_sefaz mesmo em nota autorizada (ex.: "Autorizado
+        // o uso da NF-e"), então só é erro de fato quando o status também é de falha.
+        if (! in_array($this->status, ['rejected', 'error'], true)) {
+            return null;
+        }
+
         return $this->data['error_message'] ?? null;
     }
 
