@@ -292,20 +292,7 @@
 
     {{-- Nota Fiscal --}}
     @php $fiscalCompany = app('current.company'); @endphp
-    @if($fiscalCompany?->canUseFiscalNotes())
-        <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
-            <div>
-                <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Fiscal</h2>
-                <p class="text-xs text-neutral-400 mt-1 dark:text-neutral-500">
-                    O módulo fiscal está habilitado para sua empresa: a plataforma emite NFC-e para os pedidos via integração com a Focus NFe.
-                    A responsabilidade pela correção dos dados fiscais informados (CRT, inscrição estadual, NCM/CFOP dos produtos) e pela adequação
-                    da operação à legislação vigente continua sendo exclusivamente sua. Consulte seu contador em caso de dúvida.
-                </p>
-            </div>
-
-            <livewire:admin.fiscal.config />
-        </div>
-    @else
+    @unless($fiscalCompany?->canUseFiscalNotes())
         <div class="bg-blue-50 border border-blue-200 rounded-xl p-5 dark:bg-blue-900/20 dark:border-blue-800">
             <div class="flex items-start gap-3">
                 <svg class="w-5 h-5 text-blue-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -322,7 +309,7 @@
                 </div>
             </div>
         </div>
-    @endif
+    @endunless
 
     <div class="flex gap-3 pb-8">
         <flux:button wire:click="save" class="bg-amber-500! text-white! hover:bg-amber-600!"

@@ -102,6 +102,7 @@ Route::middleware(['auth', 'verified', 'company.active'])
         // Fiscal — company_admin + branch_manager (com permissão)
         Route::middleware('company.role:company_admin,branch_manager')->group(function () {
             Route::get('/fiscal/notas', \App\Livewire\Admin\Fiscal\Notes::class)->name('fiscal.notes');
+            Route::get('/fiscal/configuracoes', \App\Livewire\Admin\Fiscal\Config::class)->name('fiscal.config');
         });
 
         // Gestão completa: só company_admin
