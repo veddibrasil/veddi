@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\FiscalNote;
+use App\Services\Fiscal\FiscalNoteService;
+use App\Services\Fiscal\FocusNfeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -53,9 +55,13 @@ class FiscalWebhookController extends Controller
         };
 
         if ($status) {
+            $configuredEnvironment = $note->company->fiscalConfig?->environment ?: config('fiscal.environment');
+            $effectiveEnvironment = FiscalNoteService::resolveEffectiveEnvironment($configuredEnvironment);
+            $baseUrl = FiscalNoteService::resolveBaseUrl($effectiveEnvironment);
+
             $existing = $note->data ?? [];
-            $existing['danfe_url'] = $data['caminho_danfe'] ?? $existing['danfe_url'] ?? null;
-            $existing['xml_url'] = $data['caminho_xml_nota_fiscal'] ?? $existing['xml_url'] ?? null;
+            $existing['danfe_url'] = FocusNfeService::absoluteUrl($data['caminho_danfe'] ?? null, $baseUrl) ?? $existing['danfe_url'] ?? null;
+            $existing['xml_url'] = FocusNfeService::absoluteUrl($data['caminho_xml_nota_fiscal'] ?? null, $baseUrl) ?? $existing['xml_url'] ?? null;
             $existing['error_message'] = $data['mensagem_sefaz'] ?? $existing['error_message'] ?? null;
             $existing['raw_response'] = $data;
 

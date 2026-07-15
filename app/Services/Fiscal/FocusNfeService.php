@@ -55,8 +55,8 @@ class FocusNfeService implements FiscalNoteProviderInterface
                     status: $status,
                     providerReference: $ref,
                     accessKey: $body['chave_nfe'] ?? null,
-                    xmlUrl: $body['caminho_xml_nota_fiscal'] ?? null,
-                    danfeUrl: $body['caminho_danfe'] ?? null,
+                    xmlUrl: self::absoluteUrl($body['caminho_xml_nota_fiscal'] ?? null, $this->baseUrl),
+                    danfeUrl: self::absoluteUrl($body['caminho_danfe'] ?? null, $this->baseUrl),
                     errorMessage: $body['mensagem_sefaz'] ?? ($body['erros'][0]['mensagem'] ?? null),
                     rawResponse: $body,
                 );
@@ -121,8 +121,8 @@ class FocusNfeService implements FiscalNoteProviderInterface
                 status: $status,
                 providerReference: $providerReference,
                 accessKey: $body['chave_nfe'] ?? null,
-                xmlUrl: $body['caminho_xml_nota_fiscal'] ?? null,
-                danfeUrl: $body['caminho_danfe'] ?? null,
+                xmlUrl: self::absoluteUrl($body['caminho_xml_nota_fiscal'] ?? null, $this->baseUrl),
+                danfeUrl: self::absoluteUrl($body['caminho_danfe'] ?? null, $this->baseUrl),
                 rawResponse: $body,
             );
         } catch (\Throwable $e) {
@@ -227,6 +227,24 @@ class FocusNfeService implements FiscalNoteProviderInterface
                 rawResponse: $body,
             );
         }
+    }
+
+    /**
+     * Focus NFe retorna caminho_danfe/caminho_xml_nota_fiscal como paths relativos
+     * ao host da API (ex.: "/v2/nfce/xxx.pdf"), não URLs absolutas. Sem prefixar o
+     * host, o link no navegador resolve contra o domínio do painel, não da Focus.
+     */
+    public static function absoluteUrl(?string $path, string $baseUrl): ?string
+    {
+        if (! $path) {
+            return null;
+        }
+
+        if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) {
+            return $path;
+        }
+
+        return rtrim($baseUrl, '/').'/'.ltrim($path, '/');
     }
 
     private function mapStatus(string $focusStatus): string

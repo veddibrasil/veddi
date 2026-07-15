@@ -173,10 +173,25 @@ class FiscalNoteService
      */
     private function effectiveEnvironment(string $configuredEnvironment): string
     {
-        return (app()->isProduction() && $configuredEnvironment === 'producao') ? 'producao' : 'homologacao';
+        return self::resolveEffectiveEnvironment($configuredEnvironment);
     }
 
     private function baseUrlFor(string $effectiveEnvironment): string
+    {
+        return self::resolveBaseUrl($effectiveEnvironment);
+    }
+
+    /**
+     * Público/estático para ser reutilizado pelo webhook, que recebe callbacks
+     * fora do fluxo normal de emissão e precisa da mesma regra host x ambiente
+     * para montar URLs absolutas de DANFE/XML.
+     */
+    public static function resolveEffectiveEnvironment(string $configuredEnvironment): string
+    {
+        return (app()->isProduction() && $configuredEnvironment === 'producao') ? 'producao' : 'homologacao';
+    }
+
+    public static function resolveBaseUrl(string $effectiveEnvironment): string
     {
         return $effectiveEnvironment === 'producao'
             ? config('fiscal.focus_nfe.base_url_producao')
