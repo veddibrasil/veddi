@@ -173,6 +173,62 @@ class FocusNfeService implements FiscalNoteProviderInterface
         return $body;
     }
 
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function listWebhooks(): array
+    {
+        $response = Http::withBasicAuth($this->token, '')->get("{$this->baseUrl}/v2/hooks");
+
+        if (! $response->successful()) {
+            throw new FocusNfeCompanyRegistrationException(
+                message: $response->json('mensagem') ?? 'Erro ao listar webhooks na Focus NFe',
+                statusCode: $response->status(),
+                errors: $response->json('erros') ?? [],
+                rawResponse: $response->json() ?? [],
+            );
+        }
+
+        return $response->json() ?? [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public function createWebhook(array $payload): array
+    {
+        $response = Http::withBasicAuth($this->token, '')->post("{$this->baseUrl}/v2/hooks", $payload);
+        $body = $response->json() ?? [];
+
+        if (! $response->successful()) {
+            throw new FocusNfeCompanyRegistrationException(
+                message: $body['mensagem'] ?? ($body['erros'][0]['mensagem'] ?? 'Erro ao criar webhook na Focus NFe'),
+                statusCode: $response->status(),
+                errors: $body['erros'] ?? [],
+                rawResponse: $body,
+            );
+        }
+
+        return $body;
+    }
+
+    public function deleteWebhook(string $webhookId): void
+    {
+        $response = Http::withBasicAuth($this->token, '')->delete("{$this->baseUrl}/v2/hooks/{$webhookId}");
+
+        if (! $response->successful()) {
+            $body = $response->json() ?? [];
+
+            throw new FocusNfeCompanyRegistrationException(
+                message: $body['mensagem'] ?? 'Erro ao remover webhook na Focus NFe',
+                statusCode: $response->status(),
+                errors: $body['erros'] ?? [],
+                rawResponse: $body,
+            );
+        }
+    }
+
     private function mapStatus(string $focusStatus): string
     {
         return match ($focusStatus) {

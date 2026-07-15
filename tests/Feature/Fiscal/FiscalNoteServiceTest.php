@@ -138,6 +138,18 @@ function mockProvider(string $status = 'authorized'): void
             {
                 return [];
             }
+
+            public function listWebhooks(): array
+            {
+                return [];
+            }
+
+            public function createWebhook(array $payload): array
+            {
+                return [];
+            }
+
+            public function deleteWebhook(string $webhookId): void {}
         };
     });
 }

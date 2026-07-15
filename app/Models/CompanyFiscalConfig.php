@@ -18,6 +18,7 @@ class CompanyFiscalConfig extends Model
         'token_producao',
         'token_homologacao',
         'focus_nfe_company_id',
+        'focus_nfe_webhook_id',
         'focus_nfe_registered_at',
         'csc_nfce_producao',
         'id_token_nfce_producao',

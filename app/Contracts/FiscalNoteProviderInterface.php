@@ -28,4 +28,21 @@ interface FiscalNoteProviderInterface
      * @return array<string, mixed>
      */
     public function updateCompany(string $focusCompanyId, array $payload): array;
+
+    /**
+     * Lista todos os webhooks (gatilhos) cadastrados para o token — GET /v2/hooks.
+     * A Focus NFe não oferece filtro por cnpj/evento na API, então o filtro é feito
+     * pelo chamador sobre o array retornado.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function listWebhooks(): array;
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public function createWebhook(array $payload): array;
+
+    public function deleteWebhook(string $webhookId): void;
 }

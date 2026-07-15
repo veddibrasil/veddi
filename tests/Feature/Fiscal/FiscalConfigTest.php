@@ -421,3 +421,132 @@ test('registro na Focus NFe sempre bate no domínio de produção, mesmo fora de
             && ! str_contains($request->url(), 'homologacao');
     });
 });
+
+test('webhook não é registrado fora de ambiente de produção', function () {
+    fakeFocusNfeEmpresaCreated();
+
+    $company = fiscalConfigTestCompany();
+    app()->instance('current.company', $company);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+    grantFiscalSettingsPermission($admin, $company);
+
+    Livewire::actingAs($admin)
+        ->test(Config::class)
+        ->set('enabled', true)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    Http::assertNotSent(fn (\Illuminate\Http\Client\Request $request) => str_contains($request->url(), '/v2/hooks'));
+
+    expect(CompanyFiscalConfig::where('company_id', $company->id)->first()->focus_nfe_webhook_id)->toBeNull();
+});
+
+test('salvar em produção registra webhook (POST /v2/hooks) quando ainda não existe', function () {
+    app()->instance('env', 'production');
+
+    $company = fiscalConfigTestCompany();
+    app()->instance('current.company', $company);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+    grantFiscalSettingsPermission($admin, $company);
+
+    Http::fake([
+        '*/v2/empresas' => Http::response([
+            'id' => 'focus-empresa-1',
+            'token_producao' => 'tok-prod-1',
+            'token_homologacao' => 'tok-homolog-1',
+        ], 201),
+        '*/v2/hooks' => Http::sequence()
+            ->push([], 200) // GET /v2/hooks — lista vazia
+            ->push(['id' => 'hook-1'], 201), // POST /v2/hooks — criado
+    ]);
+
+    Livewire::actingAs($admin)
+        ->test(Config::class)
+        ->set('enabled', true)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect(CompanyFiscalConfig::where('company_id', $company->id)->first()->focus_nfe_webhook_id)->toBe('hook-1');
+
+    Http::assertSent(function (\Illuminate\Http\Client\Request $request) {
+        return $request->method() === 'POST'
+            && str_contains($request->url(), '/v2/hooks')
+            && ($request['event'] ?? null) === 'nfe'
+            && ($request['cnpj'] ?? null) === '12345678000199'
+            && ($request['url'] ?? null) === route('webhook.fiscal', absolute: true);
+    });
+});
+
+test('salvar em produção não recria webhook quando já existe um pro cnpj+evento', function () {
+    app()->instance('env', 'production');
+
+    $company = fiscalConfigTestCompany();
+    app()->instance('current.company', $company);
+
+    CompanyFiscalConfig::create([
+        'company_id' => $company->id,
+        'enabled' => true,
+        'focus_nfe_company_id' => 'focus-empresa-1',
+    ]);
+
+    Http::fake([
+        '*/v2/empresas/focus-empresa-1' => Http::response([
+            'id' => 'focus-empresa-1',
+            'token_producao' => 'tok-prod-2',
+            'token_homologacao' => 'tok-homolog-2',
+        ], 200),
+        '*/v2/hooks' => Http::response([
+            ['id' => 'hook-existente', 'cnpj' => '12345678000199', 'event' => 'nfe'],
+        ], 200),
+    ]);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+    grantFiscalSettingsPermission($admin, $company);
+
+    Livewire::actingAs($admin)
+        ->test(Config::class)
+        ->set('crt', 3)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect(CompanyFiscalConfig::where('company_id', $company->id)->first()->focus_nfe_webhook_id)->toBe('hook-existente');
+
+    Http::assertNotSent(fn (\Illuminate\Http\Client\Request $request) => $request->method() === 'POST'
+        && str_contains($request->url(), '/v2/hooks'));
+});
+
+test('falha ao registrar webhook não impede salvar a configuração fiscal', function () {
+    app()->instance('env', 'production');
+
+    Http::fake([
+        '*/v2/empresas' => Http::response([
+            'id' => 'focus-empresa-1',
+            'token_producao' => 'tok-prod-1',
+            'token_homologacao' => 'tok-homolog-1',
+        ], 201),
+        '*/v2/hooks' => Http::response(['mensagem' => 'Erro interno'], 500),
+    ]);
+
+    $company = fiscalConfigTestCompany();
+    app()->instance('current.company', $company);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+    grantFiscalSettingsPermission($admin, $company);
+
+    Livewire::actingAs($admin)
+        ->test(Config::class)
+        ->set('enabled', true)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    $config = CompanyFiscalConfig::where('company_id', $company->id)->first();
+    expect($config)->not->toBeNull();
+    expect($config->focus_nfe_company_id)->toBe('focus-empresa-1');
+    expect($config->focus_nfe_webhook_id)->toBeNull();
+});

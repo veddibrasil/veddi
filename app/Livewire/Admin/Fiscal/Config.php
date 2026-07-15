@@ -276,6 +276,63 @@ class Config extends Component
         $config->token_producao = $response['token_producao'] ?? $config->token_producao;
         $config->token_homologacao = $response['token_homologacao'] ?? $config->token_homologacao;
         $config->focus_nfe_registered_at = now();
+
+        $this->ensureWebhookRegistered($cnpj, $config, $service, $company);
+    }
+
+    /**
+     * Registra o webhook de status assíncrono (POST /v2/hooks) pro CNPJ da empresa,
+     * pra Focus NFe avisar autorização/rejeição de NFC-e no FiscalWebhookController
+     * em vez de depender só de query() manual.
+     *
+     * Best-effort: não bloqueia o cadastro da empresa (já feito acima) se falhar —
+     * sem webhook o sistema ainda funciona via consulta manual, só perde a
+     * atualização automática de status.
+     */
+    private function ensureWebhookRegistered(string $cnpj, CompanyFiscalConfig $config, FocusNfeService $service, Company $company): void
+    {
+        if ($config->focus_nfe_webhook_id) {
+            return;
+        }
+
+        // Focus não consegue chamar uma URL local — sem isso o cadastro fica
+        // tentando e falhando toda hora em ambiente de dev.
+        if (! app()->environment('production')) {
+            Log::channel('fiscal')->debug('Focus NFe: registro de webhook pulado (ambiente não-produção)', [
+                'company_id' => $company->id,
+            ]);
+
+            return;
+        }
+
+        try {
+            // Focus NFe não tem evento "nfce" isolado — autorização de NFC-e (modelo 65)
+            // e NF-e (modelo 55) compartilham o evento "nfe". "nfce_contingencia" é caso
+            // à parte (emissão em contingência), não cobre autorização normal.
+            $existing = collect($service->listWebhooks())
+                ->first(fn (array $hook) => ($hook['cnpj'] ?? null) === $cnpj && ($hook['event'] ?? null) === 'nfe');
+
+            if ($existing) {
+                $config->focus_nfe_webhook_id = $existing['id'] ?? null;
+
+                return;
+            }
+
+            $response = $service->createWebhook([
+                'event' => 'nfe',
+                'url' => route('webhook.fiscal', absolute: true),
+                'cnpj' => $cnpj,
+                'authorization_header' => 'x-focus-nfe-token',
+                'authorization' => config('fiscal.focus_nfe.webhook_token'),
+            ]);
+
+            $config->focus_nfe_webhook_id = $response['id'] ?? null;
+        } catch (\Throwable $e) {
+            Log::channel('fiscal')->warning('Focus NFe: falha ao registrar webhook', [
+                'company_id' => $company->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function baseUrlForRegistration(): string

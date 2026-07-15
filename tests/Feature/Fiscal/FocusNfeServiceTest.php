@@ -132,3 +132,87 @@ test('updateCompany() lança FocusNfeCompanyRegistrationException em resposta de
     expect(fn () => $service->updateCompany('focus-empresa-1', ['nome' => 'Empresa Teste']))
         ->toThrow(FocusNfeCompanyRegistrationException::class, 'Empresa não encontrada');
 });
+
+test('listWebhooks() faz GET em /v2/hooks e retorna o array decodificado', function () {
+    Http::fake([
+        '*/v2/hooks' => Http::response([
+            ['id' => 'hook-1', 'cnpj' => '12345678000199', 'event' => 'nfce'],
+        ], 200),
+    ]);
+
+    $service = new FocusNfeService('platform-token', 'https://api.focusnfe.com.br');
+    $hooks = $service->listWebhooks();
+
+    expect($hooks)->toHaveCount(1);
+    expect($hooks[0]['id'])->toBe('hook-1');
+
+    Http::assertSent(fn (\Illuminate\Http\Client\Request $request) => $request->method() === 'GET'
+        && str_contains($request->url(), '/v2/hooks'));
+});
+
+test('listWebhooks() lança exceção quando Focus responde erro', function () {
+    Http::fake([
+        '*/v2/hooks' => Http::response(['mensagem' => 'Token inválido'], 401),
+    ]);
+
+    $service = new FocusNfeService('platform-token', 'https://api.focusnfe.com.br');
+
+    expect(fn () => $service->listWebhooks())
+        ->toThrow(FocusNfeCompanyRegistrationException::class, 'Token inválido');
+});
+
+test('createWebhook() faz POST em /v2/hooks com o payload informado', function () {
+    Http::fake([
+        '*/v2/hooks' => Http::response(['id' => 'hook-1'], 201),
+    ]);
+
+    $service = new FocusNfeService('platform-token', 'https://api.focusnfe.com.br');
+    $response = $service->createWebhook([
+        'event' => 'nfce',
+        'url' => 'https://exemplo.com/webhooks/fiscal',
+        'cnpj' => '12345678000199',
+    ]);
+
+    expect($response['id'])->toBe('hook-1');
+
+    Http::assertSent(function (\Illuminate\Http\Client\Request $request) {
+        return $request->method() === 'POST'
+            && str_contains($request->url(), '/v2/hooks')
+            && ($request['event'] ?? null) === 'nfce'
+            && ($request['cnpj'] ?? null) === '12345678000199';
+    });
+});
+
+test('createWebhook() lança FocusNfeCompanyRegistrationException em resposta de erro', function () {
+    Http::fake([
+        '*/v2/hooks' => Http::response(['mensagem' => 'Evento inválido'], 400),
+    ]);
+
+    $service = new FocusNfeService('platform-token', 'https://api.focusnfe.com.br');
+
+    expect(fn () => $service->createWebhook(['event' => 'invalido', 'url' => 'https://exemplo.com']))
+        ->toThrow(FocusNfeCompanyRegistrationException::class, 'Evento inválido');
+});
+
+test('deleteWebhook() faz DELETE em /v2/hooks/{id}', function () {
+    Http::fake([
+        '*/v2/hooks/hook-1' => Http::response([], 200),
+    ]);
+
+    $service = new FocusNfeService('platform-token', 'https://api.focusnfe.com.br');
+    $service->deleteWebhook('hook-1');
+
+    Http::assertSent(fn (\Illuminate\Http\Client\Request $request) => $request->method() === 'DELETE'
+        && str_contains($request->url(), '/v2/hooks/hook-1'));
+});
+
+test('deleteWebhook() lança exceção quando Focus responde erro', function () {
+    Http::fake([
+        '*/v2/hooks/hook-1' => Http::response(['mensagem' => 'Webhook não encontrado'], 404),
+    ]);
+
+    $service = new FocusNfeService('platform-token', 'https://api.focusnfe.com.br');
+
+    expect(fn () => $service->deleteWebhook('hook-1'))
+        ->toThrow(FocusNfeCompanyRegistrationException::class, 'Webhook não encontrado');
+});
