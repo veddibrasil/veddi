@@ -124,9 +124,19 @@ function mockProvider(string $status = 'authorized'): void
                 return $this->r;
             }
 
-            public function query(string $key): FiscalNoteResult
+            public function query(string $providerReference): FiscalNoteResult
             {
                 return $this->r;
+            }
+
+            public function createCompany(array $payload): array
+            {
+                return [];
+            }
+
+            public function updateCompany(string $focusCompanyId, array $payload): array
+            {
+                return [];
             }
         };
     });
@@ -175,11 +185,12 @@ test('canUseFiscalNotes retorna true somente com fiscal_notes_enabled = true', f
     expect($company->canUseFiscalNotes())->toBeFalse();
 });
 
-test('FiscalNoteService usa token da empresa mesmo fora de produção (URL continua homologação por segurança)', function () {
+test('FiscalNoteService usa token de homologação da empresa mesmo fora de produção (URL continua homologação por segurança)', function () {
     ['order' => $order, 'config' => $config] = fiscalTestContext();
 
     $config->update([
-        'provider_token' => 'token-da-empresa',
+        'token_producao' => 'token-producao-empresa',
+        'token_homologacao' => 'token-homologacao-empresa',
         'environment' => 'producao',
         'crt' => 3,
         'nfce_serie' => 2,
@@ -196,19 +207,38 @@ test('FiscalNoteService usa token da empresa mesmo fora de produção (URL conti
     app(FiscalNoteService::class)->issue($order);
 
     // APP_ENV de teste não é produção — mesmo com a empresa configurada como "produção",
-    // a chamada real tem que ir pra homologação (guarda contra emitir nota fiscal real fora de prod).
+    // a chamada real tem que ir pra homologação (guarda contra emitir nota fiscal real fora de prod),
+    // usando o token de homologação da empresa, não o de produção.
     Http::assertSent(function (\Illuminate\Http\Client\Request $request) {
         return str_contains($request->url(), 'homologacao.focusnfe.com.br')
-            && $request->hasHeader('Authorization', 'Basic '.base64_encode('token-da-empresa:'))
+            && $request->hasHeader('Authorization', 'Basic '.base64_encode('token-homologacao-empresa:'))
             && ($request['cnpj_emitente'] ?? null) === '12345678000100';
     });
+});
+
+test('FiscalNoteService usa token legado (provider_token) quando dual token não está configurado', function () {
+    ['order' => $order, 'config' => $config] = fiscalTestContext();
+
+    $config->update([
+        'provider_token' => 'token-legado',
+        'environment' => 'homologacao',
+    ]);
+
+    Http::fake([
+        '*' => Http::response(['status' => 'autorizado', 'chave_nfe' => str_repeat('1', 44)], 200),
+    ]);
+
+    app(FiscalNoteService::class)->issue($order);
+
+    Http::assertSent(fn (\Illuminate\Http\Client\Request $request) => $request->hasHeader('Authorization', 'Basic '.base64_encode('token-legado:')));
 });
 
 test('FiscalNoteService usa API de produção da Focus NFe quando APP_ENV é production e empresa está em produção', function () {
     ['order' => $order, 'config' => $config] = fiscalTestContext();
 
     $config->update([
-        'provider_token' => 'token-da-empresa',
+        'token_producao' => 'token-producao-empresa',
+        'token_homologacao' => 'token-homologacao-empresa',
         'environment' => 'producao',
     ]);
 
@@ -222,7 +252,10 @@ test('FiscalNoteService usa API de produção da Focus NFe quando APP_ENV é pro
 
     app(FiscalNoteService::class)->issue($order);
 
-    Http::assertSent(fn (\Illuminate\Http\Client\Request $request) => str_contains($request->url(), 'api.focusnfe.com.br'));
+    Http::assertSent(function (\Illuminate\Http\Client\Request $request) {
+        return str_contains($request->url(), 'api.focusnfe.com.br')
+            && $request->hasHeader('Authorization', 'Basic '.base64_encode('token-producao-empresa:'));
+    });
 
     app()->instance('env', 'testing');
 });
@@ -248,4 +281,23 @@ test('FocusNfeService monta payload conforme especificação da API (sem objeto 
             && ($data['local_destino'] ?? null) === '1'
             && ($data['presenca_comprador'] ?? null) === '4';
     });
+});
+
+test('CompanyFiscalConfig::tokenFor retorna o token do ambiente certo e cai para o legado quando ausente', function () {
+    ['config' => $config] = fiscalTestContext();
+
+    $config->update([
+        'token_producao' => 'tok-prod',
+        'token_homologacao' => 'tok-homolog',
+        'provider_token' => 'tok-legado',
+    ]);
+
+    expect($config->tokenFor('producao'))->toBe('tok-prod');
+    expect($config->tokenFor('homologacao'))->toBe('tok-homolog');
+
+    $config->update(['token_producao' => null, 'token_homologacao' => null]);
+    $config->refresh();
+
+    expect($config->tokenFor('producao'))->toBe('tok-legado');
+    expect($config->tokenFor('homologacao'))->toBe('tok-legado');
 });

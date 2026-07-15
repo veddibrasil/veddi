@@ -5,6 +5,7 @@ namespace App\Services\Fiscal;
 use App\Contracts\FiscalNoteProviderInterface;
 use App\DTOs\FiscalNoteDTO;
 use App\Models\Branch;
+use App\Models\CompanyFiscalConfig;
 use App\Models\FiscalNote;
 use App\Models\Order;
 use Illuminate\Support\Facades\Log;
@@ -19,6 +20,11 @@ class FiscalNoteService
     {
         $company = $order->company;
 
+        Log::channel('fiscal')->info('FiscalNoteService: emissão iniciada', [
+            'order_id' => $order->id,
+            'company_id' => $company->id,
+        ]);
+
         if (! $company->canUseFiscalNotes()) {
             throw new \RuntimeException('Módulo de nota fiscal não habilitado para esta empresa.');
         }
@@ -29,19 +35,15 @@ class FiscalNoteService
             throw new \RuntimeException('Configuração fiscal não habilitada para esta empresa.');
         }
 
-        $token = $companyConfig->provider_token ?: config('fiscal.focus_nfe.token');
+        $environment = $companyConfig->environment ?: config('fiscal.environment');
+        $effectiveEnvironment = $this->effectiveEnvironment($environment);
+        $token = $companyConfig->tokenFor($effectiveEnvironment) ?: config('fiscal.focus_nfe.token');
 
         if (! $token) {
             throw new \RuntimeException('Token do provedor fiscal não configurado. Contate o suporte.');
         }
 
-        $environment = $companyConfig->environment ?: config('fiscal.environment');
-
-        // Empresa com token próprio (conta Focus NFe dela) emite pela conta dela;
-        // sem token próprio, cai no token da plataforma (via provider injetado).
-        $provider = $companyConfig->provider_token
-            ? new FocusNfeService($companyConfig->provider_token, $this->baseUrlFor($environment))
-            : $this->provider;
+        $provider = $this->resolveProvider($companyConfig, $effectiveEnvironment);
 
         $branch = Branch::withoutGlobalScopes()->find($order->branch_id);
 
@@ -89,7 +91,7 @@ class FiscalNoteService
                 ],
             ]);
 
-            Log::channel('webhook')->info('Nota fiscal emitida', [
+            Log::channel('fiscal')->info('Nota fiscal emitida', [
                 'order_id' => $order->id,
                 'fiscal_note_id' => $fiscalNote->id,
                 'status' => $result->status,
@@ -100,7 +102,7 @@ class FiscalNoteService
                 'data' => ['error_message' => $e->getMessage()],
             ]);
 
-            Log::channel('webhook')->error('Erro ao emitir nota fiscal', [
+            Log::channel('fiscal')->error('Erro ao emitir nota fiscal', [
                 'order_id' => $order->id,
                 'error' => $e->getMessage(),
             ]);
@@ -113,15 +115,21 @@ class FiscalNoteService
 
     public function cancel(FiscalNote $note, string $justification): void
     {
+        Log::channel('fiscal')->info('FiscalNoteService: cancelamento solicitado', [
+            'fiscal_note_id' => $note->id,
+            'order_id' => $note->order_id,
+        ]);
+
         if (! $note->provider_reference) {
             throw new \RuntimeException('Nota fiscal sem referência do provider.');
         }
 
         $companyConfig = $note->company->fiscalConfig;
         $environment = $companyConfig?->environment ?: config('fiscal.environment');
+        $effectiveEnvironment = $this->effectiveEnvironment($environment);
 
-        $provider = $companyConfig?->provider_token
-            ? new FocusNfeService($companyConfig->provider_token, $this->baseUrlFor($environment))
+        $provider = $companyConfig
+            ? $this->resolveProvider($companyConfig, $effectiveEnvironment)
             : $this->provider;
 
         $result = $provider->cancel($note->provider_reference, $justification);
@@ -134,18 +142,45 @@ class FiscalNoteService
             'status' => $result->status === 'cancelled' ? 'cancelled' : 'error',
             'data' => $data,
         ]);
+
+        Log::channel('fiscal')->info('FiscalNoteService: resultado do cancelamento', [
+            'fiscal_note_id' => $note->id,
+            'status' => $note->status,
+        ]);
     }
 
-    private function baseUrlFor(string $environment): string
+    /**
+     * Empresa com token próprio (dual token da Focus NFe ou o legado provider_token)
+     * emite pela conta dela; sem token próprio, cai no provider da plataforma (injetado).
+     * Recebe o ambiente já efetivo (pós rebaixamento de segurança) para token e URL
+     * nunca ficarem dessincronizados (token de produção batendo em URL de homologação).
+     */
+    private function resolveProvider(CompanyFiscalConfig $companyConfig, string $effectiveEnvironment): FiscalNoteProviderInterface
     {
-        // Só bate na API de produção da Focus NFe quando o app roda em produção —
-        // qualquer outro APP_ENV sempre usa homologação, mesmo que a empresa esteja
-        // configurada como "produção", para nunca emitir nota fiscal real fora de produção.
-        if (app()->isProduction() && $environment === 'producao') {
-            return config('fiscal.focus_nfe.base_url_producao');
+        $token = $companyConfig->tokenFor($effectiveEnvironment);
+
+        if (! $token) {
+            return $this->provider;
         }
 
-        return config('fiscal.focus_nfe.base_url_homologacao');
+        return new FocusNfeService($token, $this->baseUrlFor($effectiveEnvironment));
+    }
+
+    /**
+     * Só bate na API de produção da Focus NFe quando o app roda em produção —
+     * qualquer outro APP_ENV sempre usa homologação, mesmo que a empresa esteja
+     * configurada como "produção", para nunca emitir nota fiscal real fora de produção.
+     */
+    private function effectiveEnvironment(string $configuredEnvironment): string
+    {
+        return (app()->isProduction() && $configuredEnvironment === 'producao') ? 'producao' : 'homologacao';
+    }
+
+    private function baseUrlFor(string $effectiveEnvironment): string
+    {
+        return $effectiveEnvironment === 'producao'
+            ? config('fiscal.focus_nfe.base_url_producao')
+            : config('fiscal.focus_nfe.base_url_homologacao');
     }
 
     private function buildItems(Order $order): array

@@ -114,18 +114,11 @@
                         </flux:sidebar.group>
                     @endif
 
-                    @if($company?->canUseFiscalNotes() && ($can('fiscal.view') || $can('fiscal.issue') || $can('fiscal.settings')))
+                    @if($company?->canUseFiscalNotes() && ($can('fiscal.view') || $can('fiscal.issue')))
                         <flux:sidebar.group heading="Fiscal" class="grid">
-                            @if($can('fiscal.view') || $can('fiscal.issue'))
-                                <flux:sidebar.item icon="document-text" :href="route('admin.fiscal.notes')" :current="request()->routeIs('admin.fiscal.notes')" wire:navigate>
-                                    Notas Fiscais
-                                </flux:sidebar.item>
-                            @endif
-                            @if($can('fiscal.settings'))
-                                <flux:sidebar.item icon="cog-6-tooth" :href="route('admin.fiscal.config')" :current="request()->routeIs('admin.fiscal.config')" wire:navigate>
-                                    Configurações
-                                </flux:sidebar.item>
-                            @endif
+                            <flux:sidebar.item icon="document-text" :href="route('admin.fiscal.notes')" :current="request()->routeIs('admin.fiscal.notes')" wire:navigate>
+                                Notas Fiscais
+                            </flux:sidebar.item>
                         </flux:sidebar.group>
                     @endif
 

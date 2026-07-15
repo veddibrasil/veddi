@@ -26,10 +26,15 @@ class IssueFiscalNote implements ShouldQueue
 
     public function handle(FiscalNoteService $service): void
     {
+        Log::channel('fiscal')->info('IssueFiscalNote: job iniciado', [
+            'order_id' => $this->orderId,
+            'attempt' => $this->attempts(),
+        ]);
+
         $order = Order::withoutGlobalScopes()->with(['company', 'items.product', 'branch'])->find($this->orderId);
 
         if (! $order) {
-            Log::channel('webhook')->warning('IssueFiscalNote: pedido não encontrado', [
+            Log::channel('fiscal')->warning('IssueFiscalNote: pedido não encontrado', [
                 'order_id' => $this->orderId,
             ]);
 
@@ -41,7 +46,7 @@ class IssueFiscalNote implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        Log::channel('webhook')->error('IssueFiscalNote: falha definitiva', [
+        Log::channel('fiscal')->error('IssueFiscalNote: falha definitiva', [
             'order_id' => $this->orderId,
             'error' => $exception->getMessage(),
         ]);

@@ -2,7 +2,13 @@
 
 namespace App\Livewire\Admin\Fiscal;
 
+use App\Exceptions\FocusNfeCompanyRegistrationException;
+use App\Models\Branch;
+use App\Models\Company;
 use App\Models\CompanyFiscalConfig;
+use App\Services\Fiscal\FocusNfeService;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -35,6 +41,34 @@ class Config extends Component
 
     public bool $canManage = false;
 
+    public ?string $focusNfeCompanyId = null;
+
+    // Campo que falta no cadastro (não existe tela de edição de CNPJ hoje) — só fica
+    // editável aqui enquanto a empresa não tiver um CNPJ válido cadastrado.
+    public string $ownerCpfCnpj = '';
+
+    public bool $hasOwnerCpfCnpj = false;
+
+    public string $inscricaoMunicipal = '';
+
+    public string $cscNfceProducao = '';
+
+    public bool $hasCscNfceProducao = false;
+
+    public string $idTokenNfceProducao = '';
+
+    // Dados já cadastrados em outras telas (empresa/filial) — exibidos aqui como
+    // somente leitura para conferência, sem duplicar o ponto de edição.
+    public string $companyName = '';
+
+    public string $companyEmail = '';
+
+    public string $branchAddressLine = '';
+
+    public string $branchPhone = '';
+
+    public bool $hasBranch = false;
+
     public function mount(): void
     {
         $company = app('current.company');
@@ -42,17 +76,33 @@ class Config extends Component
 
         $this->canManage = $user->hasPermission('fiscal.settings', $company);
 
+        $this->companyName = $company->name;
+        $this->companyEmail = $company->email ?? '';
+        $this->hasOwnerCpfCnpj = strlen(preg_replace('/\D/', '', $company->owner_cpf_cnpj ?? '')) === 14;
+        $this->ownerCpfCnpj = $this->hasOwnerCpfCnpj ? $company->owner_cpf_cnpj : '';
+
+        $branch = Branch::withoutGlobalScopes()->where('company_id', $company->id)->first();
+        $this->hasBranch = (bool) $branch;
+        $this->branchAddressLine = $branch
+            ? trim("{$branch->address}, {$branch->number} - {$branch->neighborhood}, {$branch->city}/{$branch->state} - {$branch->cep}", ' -,')
+            : '';
+        $this->branchPhone = $branch?->phone ?? '';
+
         $config = $company->fiscalConfig;
 
         if ($config) {
             $this->crt = $config->crt;
             $this->enabled = $config->enabled;
             $this->inscricaoEstadual = $config->inscricao_estadual ?? '';
+            $this->inscricaoMunicipal = $config->inscricao_municipal ?? '';
             $this->provider = $config->provider;
             $this->environment = $config->environment;
             $this->nfceSerie = (string) $config->nfce_serie;
             $this->hasProviderToken = filled($config->provider_token);
             $this->hasCertificate = filled($config->certificate_path);
+            $this->focusNfeCompanyId = $config->focus_nfe_company_id;
+            $this->hasCscNfceProducao = filled($config->csc_nfce_producao);
+            $this->idTokenNfceProducao = $config->id_token_nfce_producao ?? '';
         }
     }
 
@@ -67,23 +117,85 @@ class Config extends Component
             'environment' => ['required', 'in:homologacao,producao'],
             'nfceSerie' => ['required', 'integer', 'min:1'],
             'inscricaoEstadual' => ['nullable', 'string', 'max:50'],
+            'inscricaoMunicipal' => ['nullable', 'string', 'max:50'],
+            'ownerCpfCnpj' => ['nullable', 'string'],
+            'cscNfceProducao' => ['nullable', 'string', 'max:255'],
+            'idTokenNfceProducao' => ['nullable', 'string', 'max:20'],
             'certificateFile' => ['nullable', 'file', 'mimes:pfx,p12', 'max:2048'],
             'certificatePassword' => ['nullable', 'string', 'max:255'],
         ]);
+
+        // CNPJ não tem tela própria de edição — só é gravável aqui enquanto a empresa
+        // não tiver um CNPJ válido; uma vez cadastrado, o campo fica travado (disabled
+        // na view) para não divergir do que já foi registrado na Focus NFe.
+        if (! $this->hasOwnerCpfCnpj && $this->ownerCpfCnpj !== '') {
+            $digits = preg_replace('/\D/', '', $this->ownerCpfCnpj);
+
+            if (strlen($digits) !== 14) {
+                $this->addError('ownerCpfCnpj', 'CNPJ deve ter 14 dígitos.');
+
+                return;
+            }
+
+            $company->update(['owner_cpf_cnpj' => $digits]);
+            $this->hasOwnerCpfCnpj = true;
+            $this->ownerCpfCnpj = $digits;
+        }
 
         $config = $company->fiscalConfig ?? new CompanyFiscalConfig(['company_id' => $company->id]);
 
         $config->crt = $this->crt;
         $config->enabled = $this->enabled;
         $config->inscricao_estadual = $this->inscricaoEstadual ?: null;
+        $config->inscricao_municipal = $this->inscricaoMunicipal ?: null;
         $config->provider = $this->provider;
         $config->environment = $this->environment;
         $config->nfce_serie = (int) $this->nfceSerie;
+        $config->id_token_nfce_producao = $this->idTokenNfceProducao ?: null;
 
-        // Token/senha só são sobrescritos quando o usuário digita um novo valor —
+        // Token/senha/CSC só são sobrescritos quando o usuário digita um novo valor —
         // o campo fica em branco no mount() para não expor o segredo já salvo.
         if ($this->providerToken !== '') {
             $config->provider_token = $this->providerToken;
+        }
+
+        if ($this->certificatePassword !== '') {
+            $config->certificate_password = $this->certificatePassword;
+        }
+
+        if ($this->cscNfceProducao !== '') {
+            $config->csc_nfce_producao = $this->cscNfceProducao;
+        }
+
+        // Habilitar o módulo exige registrar (ou atualizar) o CNPJ emissor na Focus NFe
+        // (POST/PUT /v2/empresas) antes de qualquer coisa ser persistida localmente —
+        // do contrário a empresa fica "habilitada" sem a Focus reconhecer o emissor,
+        // e a emissão de nota real falha silenciosamente.
+        if ($this->enabled) {
+            $cnpj = preg_replace('/\D/', '', $company->owner_cpf_cnpj ?? '');
+
+            if (strlen($cnpj) !== 14) {
+                $this->addError('enabled', 'Cadastre o CNPJ da empresa antes de habilitar a emissão fiscal.');
+
+                return;
+            }
+
+            try {
+                $this->registerWithFocusNfe($company, $config, $cnpj);
+            } catch (FocusNfeCompanyRegistrationException $e) {
+                $this->mapFocusErrorsToForm($company, $e);
+
+                return;
+            } catch (ConnectionException|\Throwable $e) {
+                Log::channel('fiscal')->error('Focus NFe: falha ao registrar empresa', [
+                    'company_id' => $company->id,
+                    'error' => $e->getMessage(),
+                ]);
+
+                $this->addError('enabled', 'Não foi possível confirmar o cadastro com a Focus NFe agora. Tente novamente em instantes.');
+
+                return;
+            }
         }
 
         if ($this->certificateFile) {
@@ -98,19 +210,98 @@ class Config extends Component
             );
         }
 
-        if ($this->certificatePassword !== '') {
-            $config->certificate_password = $this->certificatePassword;
-        }
-
         $config->save();
 
         $this->certificateFile = null;
         $this->certificatePassword = '';
         $this->providerToken = '';
+        $this->cscNfceProducao = '';
         $this->hasProviderToken = filled($config->provider_token);
         $this->hasCertificate = filled($config->certificate_path);
+        $this->hasCscNfceProducao = filled($config->csc_nfce_producao);
+        $this->focusNfeCompanyId = $config->focus_nfe_company_id;
 
         session()->flash('status', 'Configurações fiscais salvas.');
+    }
+
+    private function registerWithFocusNfe(Company $company, CompanyFiscalConfig $config, string $cnpj): void
+    {
+        $branch = Branch::withoutGlobalScopes()->where('company_id', $company->id)->first();
+
+        $payload = [
+            'nome' => $company->name,
+            'cnpj' => $cnpj,
+            'inscricao_estadual' => $this->inscricaoEstadual ?: null,
+            'inscricao_municipal' => $this->inscricaoMunicipal ?: null,
+            'regime_tributario' => $this->crt,
+            'logradouro' => $branch?->address,
+            'numero' => $branch?->number,
+            'complemento' => $branch?->complement,
+            'bairro' => $branch?->neighborhood,
+            'municipio' => $branch?->city,
+            'uf' => $branch?->state,
+            'cep' => preg_replace('/\D/', '', $branch?->cep ?? '') ?: null,
+            'habilita_nfce' => true,
+            'email' => $company->email,
+            'telefone' => $branch?->phone,
+        ];
+
+        if ($this->certificateFile) {
+            $payload['arquivo_certificado_base64'] = base64_encode(file_get_contents($this->certificateFile->getRealPath()));
+            $payload['senha_certificado'] = $this->certificatePassword !== '' ? $this->certificatePassword : $config->certificate_password;
+        }
+
+        $csc = $this->cscNfceProducao !== '' ? $this->cscNfceProducao : $config->csc_nfce_producao;
+
+        if ($csc) {
+            $payload['csc_nfce_producao'] = $csc;
+        }
+
+        if ($this->idTokenNfceProducao !== '') {
+            $payload['id_token_nfce_producao'] = $this->idTokenNfceProducao;
+        }
+
+        // Registro é feito pela conta integradora da plataforma na Focus NFe
+        // (o token por empresa só existe depois do registro, para emissão de nota).
+        $service = new FocusNfeService(
+            config('fiscal.focus_nfe.token'),
+            $this->baseUrlForRegistration(),
+        );
+
+        $response = $config->focus_nfe_company_id
+            ? $service->updateCompany($config->focus_nfe_company_id, $payload)
+            : $service->createCompany($payload);
+
+        $config->focus_nfe_company_id = $response['id'] ?? $config->focus_nfe_company_id;
+        $config->token_producao = $response['token_producao'] ?? $config->token_producao;
+        $config->token_homologacao = $response['token_homologacao'] ?? $config->token_homologacao;
+        $config->focus_nfe_registered_at = now();
+    }
+
+    private function baseUrlForRegistration(): string
+    {
+        // /v2/empresas é gestão de conta (cadastro do CNPJ emissor), não emissão de nota —
+        // só existe no domínio de produção da Focus NFe, mesmo pra registrar uma empresa
+        // que vai emitir em homologação. Retorna 404 se chamado em homologacao.focusnfe.com.br.
+        return config('fiscal.focus_nfe.base_url_producao');
+    }
+
+    private function mapFocusErrorsToForm(Company $company, FocusNfeCompanyRegistrationException $e): void
+    {
+        $message = $e->getMessage();
+        $lower = mb_strtolower($message);
+
+        if (str_contains($lower, 'senha') || str_contains($lower, 'certificado')) {
+            $this->addError('certificateFile', $message);
+        } else {
+            $this->addError('enabled', $message);
+        }
+
+        Log::channel('fiscal')->warning('Focus NFe: erro ao registrar empresa', [
+            'company_id' => $company->id,
+            'status_code' => $e->statusCode,
+            'message' => $message,
+        ]);
     }
 
     public function render()

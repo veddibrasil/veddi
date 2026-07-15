@@ -5,6 +5,7 @@ namespace App\Services\Fiscal;
 use App\Contracts\FiscalNoteProviderInterface;
 use App\DTOs\FiscalNoteDTO;
 use App\DTOs\FiscalNoteResult;
+use App\Exceptions\FocusNfeCompanyRegistrationException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -31,7 +32,7 @@ class FocusNfeService implements FiscalNoteProviderInterface
 
             $body = $response->json() ?? [];
 
-            Log::channel('webhook')->info('Focus NFe: emissão solicitada', [
+            Log::channel('fiscal')->info('Focus NFe: emissão solicitada', [
                 'ref' => $ref,
                 'status' => $response->status(),
             ]);
@@ -57,7 +58,7 @@ class FocusNfeService implements FiscalNoteProviderInterface
                 rawResponse: $body,
             );
         } catch (\Throwable $e) {
-            Log::channel('webhook')->error('Focus NFe: exceção ao emitir', [
+            Log::channel('fiscal')->error('Focus NFe: exceção ao emitir', [
                 'order_id' => $dto->orderId,
                 'error' => $e->getMessage(),
             ]);
@@ -96,18 +97,18 @@ class FocusNfeService implements FiscalNoteProviderInterface
         }
     }
 
-    public function query(string $accessKey): FiscalNoteResult
+    public function query(string $providerReference): FiscalNoteResult
     {
         try {
             $response = Http::withBasicAuth($this->token, '')
-                ->get("{$this->baseUrl}/v2/nfce/{$accessKey}");
+                ->get("{$this->baseUrl}/v2/nfce/{$providerReference}");
 
             $body = $response->json() ?? [];
             $status = $this->mapStatus($body['status'] ?? 'error');
 
             return new FiscalNoteResult(
                 status: $status,
-                providerReference: $accessKey,
+                providerReference: $providerReference,
                 accessKey: $body['chave_nfe'] ?? null,
                 xmlUrl: $body['caminho_xml_nota_fiscal'] ?? null,
                 danfeUrl: $body['caminho_danfe'] ?? null,
@@ -116,10 +117,49 @@ class FocusNfeService implements FiscalNoteProviderInterface
         } catch (\Throwable $e) {
             return new FiscalNoteResult(
                 status: 'error',
-                accessKey: $accessKey,
+                providerReference: $providerReference,
                 errorMessage: $e->getMessage(),
             );
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public function createCompany(array $payload): array
+    {
+        return $this->requestCompany('post', '/v2/empresas', $payload);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    public function updateCompany(string $focusCompanyId, array $payload): array
+    {
+        return $this->requestCompany('put', "/v2/empresas/{$focusCompanyId}", $payload);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function requestCompany(string $method, string $path, array $payload): array
+    {
+        $response = Http::withBasicAuth($this->token, '')->{$method}("{$this->baseUrl}{$path}", $payload);
+        $body = $response->json() ?? [];
+
+        if (! $response->successful()) {
+            throw new FocusNfeCompanyRegistrationException(
+                message: $body['mensagem'] ?? ($body['erros'][0]['mensagem'] ?? 'Erro ao registrar empresa na Focus NFe'),
+                statusCode: $response->status(),
+                errors: $body['erros'] ?? [],
+                rawResponse: $body,
+            );
+        }
+
+        return $body;
     }
 
     private function mapStatus(string $focusStatus): string

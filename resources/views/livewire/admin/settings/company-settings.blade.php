@@ -292,31 +292,37 @@
 
     {{-- Nota Fiscal --}}
     @php $fiscalCompany = app('current.company'); @endphp
-    <div class="bg-blue-50 border border-blue-200 rounded-xl p-5 dark:bg-blue-900/20 dark:border-blue-800">
-        <div class="flex items-start gap-3">
-            <svg class="w-5 h-5 text-blue-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-            </svg>
-            <div class="space-y-1">
-                <p class="text-sm font-semibold text-blue-800 dark:text-blue-300">Emissão de Nota Fiscal</p>
-                @if($fiscalCompany?->canUseFiscalNotes())
-                    <p class="text-xs text-blue-700 dark:text-blue-400 leading-relaxed">
-                        O módulo fiscal está habilitado para sua empresa: a plataforma emite NFC-e para os pedidos via integração com a Focus NFe,
-                        usando os dados configurados em <a href="{{ route('admin.fiscal.config') }}" class="underline font-medium" wire:navigate>Fiscal &rarr; Configurações</a>.
-                        A responsabilidade pela correção dos dados fiscais informados (CRT, inscrição estadual, NCM/CFOP dos produtos) e pela adequação
-                        da operação à legislação vigente continua sendo exclusivamente sua. Consulte seu contador em caso de dúvida.
-                    </p>
-                @else
+    @if($fiscalCompany?->canUseFiscalNotes())
+        <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
+            <div>
+                <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Fiscal</h2>
+                <p class="text-xs text-neutral-400 mt-1 dark:text-neutral-500">
+                    O módulo fiscal está habilitado para sua empresa: a plataforma emite NFC-e para os pedidos via integração com a Focus NFe.
+                    A responsabilidade pela correção dos dados fiscais informados (CRT, inscrição estadual, NCM/CFOP dos produtos) e pela adequação
+                    da operação à legislação vigente continua sendo exclusivamente sua. Consulte seu contador em caso de dúvida.
+                </p>
+            </div>
+
+            <livewire:admin.fiscal.config />
+        </div>
+    @else
+        <div class="bg-blue-50 border border-blue-200 rounded-xl p-5 dark:bg-blue-900/20 dark:border-blue-800">
+            <div class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-blue-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <div class="space-y-1">
+                    <p class="text-sm font-semibold text-blue-800 dark:text-blue-300">Emissão de Nota Fiscal</p>
                     <p class="text-xs text-blue-700 dark:text-blue-400 leading-relaxed">
                         A emissão de NF-e ou NFC-e referente às vendas realizadas pela sua empresa é de sua exclusiva responsabilidade.
                         O módulo fiscal da plataforma não está habilitado para sua empresa — entre em contato com o suporte para contratá-lo.
                         Sem o módulo habilitado, a plataforma não realiza emissão fiscal em seu nome.
                         Consulte seu contador para adequar sua operação à legislação vigente.
                     </p>
-                @endif
+                </div>
             </div>
         </div>
-    </div>
+    @endif
 
     <div class="flex gap-3 pb-8">
         <flux:button wire:click="save" class="bg-amber-500! text-white! hover:bg-amber-600!"

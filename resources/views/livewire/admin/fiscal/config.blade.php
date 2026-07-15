@@ -14,6 +14,71 @@
     @endunless
 
     <form wire:submit="save" class="space-y-6">
+        {{-- Cadastro completo exigido pela Focus NFe --}}
+        <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
+            <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Cadastro para emissão fiscal</h2>
+            <p class="text-xs text-neutral-400 dark:text-neutral-500">
+                Dados exigidos pela Focus NFe para registrar o emissor. Campos já preenchidos em outras telas aparecem bloqueados aqui — edite-os em
+                <a href="{{ route('admin.settings') }}" class="underline">Configurações da Empresa</a> ou
+                <a href="{{ route('admin.branches.index') }}" class="underline">Filiais</a>.
+            </p>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <flux:input value="{{ $companyName }}" label="Nome da empresa" disabled />
+                </div>
+                <div>
+                    <flux:input value="{{ $companyEmail ?: '—' }}" label="E-mail" disabled />
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    @if($hasOwnerCpfCnpj)
+                        <flux:input value="{{ $ownerCpfCnpj }}" label="CNPJ" disabled />
+                        <p class="text-xs text-green-600 dark:text-green-400 mt-1">CNPJ já cadastrado.</p>
+                    @else
+                        <flux:input wire:model="ownerCpfCnpj" label="CNPJ" placeholder="Só números" :disabled="!$canManage" />
+                        <p class="text-xs text-yellow-600 dark:text-yellow-400 mt-1">Campo obrigatório e ainda não cadastrado — necessário para habilitar a emissão fiscal.</p>
+                    @endif
+                    @error('ownerCpfCnpj') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                </div>
+                <div>
+                    @if($hasBranch)
+                        <flux:input value="{{ $branchAddressLine }}" label="Endereço da filial" disabled />
+                    @else
+                        <flux:input value="Nenhuma filial cadastrada" label="Endereço da filial" disabled />
+                    @endif
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <flux:input value="{{ $branchPhone ?: '—' }}" label="Telefone da filial" disabled />
+                </div>
+                <div>
+                    <flux:input wire:model="inscricaoMunicipal" label="Inscrição Municipal" placeholder="Deixe em branco se não possuir" :disabled="!$canManage" />
+                    @error('inscricaoMunicipal') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <flux:input wire:model="cscNfceProducao" label="CSC de Produção" type="password"
+                        placeholder="{{ $hasCscNfceProducao ? 'CSC já configurado — deixe em branco para manter' : 'Código de Segurança do Contribuinte (obtido no portal da SEFAZ)' }}"
+                        :disabled="!$canManage" />
+                    @error('cscNfceProducao') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                </div>
+                <div>
+                    <flux:input wire:model="idTokenNfceProducao" label="ID do Token CSC" placeholder="Ex: 000001" :disabled="!$canManage" />
+                    @error('idTokenNfceProducao') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                </div>
+            </div>
+            <p class="text-xs text-neutral-400 dark:text-neutral-500">
+                CSC e ID do Token são exigidos pela SEFAZ apenas para emissão de NFC-e em produção — gere-os no portal da Fazenda do seu estado.
+            </p>
+        </div>
+
         {{-- Habilitação --}}
         <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
             <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Emissão de NFC-e</h2>
@@ -22,6 +87,17 @@
                 <flux:switch wire:model="enabled" :disabled="!$canManage" />
                 <span class="text-sm text-neutral-600 dark:text-neutral-300">Habilitar emissão de NFC-e para esta empresa</span>
             </div>
+            @error('enabled') <p class="text-red-500 text-xs">{{ $message }}</p> @enderror
+
+            @if($focusNfeCompanyId)
+                <p class="text-xs text-green-600 dark:text-green-400">
+                    Empresa registrada na Focus NFe (ID: {{ $focusNfeCompanyId }}).
+                </p>
+            @elseif($enabled)
+                <p class="text-xs text-yellow-600 dark:text-yellow-400">
+                    Empresa ainda não registrada na Focus NFe — salve com o CNPJ e o certificado preenchidos para ativar a emissão real.
+                </p>
+            @endif
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -56,10 +132,13 @@
         {{-- Provider --}}
         <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
             <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Integração Focus NFe</h2>
+            <p class="text-xs text-neutral-400 dark:text-neutral-500">
+                O registro da empresa e os tokens de emissão são obtidos automaticamente ao salvar com CNPJ e certificado preenchidos.
+            </p>
 
             <div>
-                <flux:input wire:model="providerToken" label="Token Focus NFe" type="password"
-                    placeholder="{{ $hasProviderToken ? 'Token já configurado — deixe em branco para manter' : 'Token da API (opcional, usa o token da plataforma se vazio)' }}"
+                <flux:input wire:model="providerToken" label="Token manual (avançado)" type="password"
+                    placeholder="{{ $hasProviderToken ? 'Token já configurado — deixe em branco para manter' : 'Só preencha se precisar sobrescrever o token obtido automaticamente' }}"
                     :disabled="!$canManage" />
                 @error('providerToken') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>

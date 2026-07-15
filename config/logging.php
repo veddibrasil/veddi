@@ -165,6 +165,14 @@ return [
             'tap' => [\App\Logging\DiscordWebhookTap::class],
         ],
 
+        'fiscal' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/fiscal.log'),
+            'level' => 'debug',
+            'days' => 90,
+            'replace_placeholders' => true,
+        ],
+
         'audit' => [
             'driver' => 'daily',
             'path' => storage_path('logs/audit.log'),

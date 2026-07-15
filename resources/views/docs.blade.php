@@ -1099,7 +1099,7 @@
                         <p class="text-sm text-zinc-600">Só é possível cancelar notas ainda ativas. É obrigatório informar uma justificativa com no mínimo 15 caracteres antes de confirmar.</p>
                     </div>
                     <div class="info-box">
-                        <p class="sub-title">Configurações (<span class="font-mono text-purple-700 text-xs">/admin/fiscal/configuracoes</span>)</p>
+                        <p class="sub-title">Configurações (<span class="font-mono text-purple-700 text-xs">/admin/settings</span>)</p>
                         <p class="text-sm text-zinc-600">Cada empresa define seu regime tributário (CRT), inscrição estadual, série da NFC-e e ambiente (homologação/produção). Opcionalmente, a empresa pode informar seu próprio token Focus NFe; se deixado em branco, a emissão usa o token da plataforma.</p>
                     </div>
                 </div>

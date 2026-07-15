@@ -13,6 +13,7 @@ use App\Events\CompanyActivated;
 use App\Events\NewOrderPlaced;
 use App\Events\OrderStatusUpdated;
 use App\Listeners\CreateVindiPartnerAccountOnActivation;
+use App\Listeners\IssueFiscalNoteOnPaid;
 use App\Listeners\SendOrderConfirmationEmail;
 use App\Listeners\SendOrderDeliveredEmail;
 use App\Listeners\SendWelcomeSubscriptionEmail;
@@ -110,6 +111,7 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(NewOrderPlaced::class, SendOrderConfirmationEmail::class);
         Event::listen(OrderStatusUpdated::class, SendWhatsAppStatusNotification::class);
         Event::listen(OrderStatusUpdated::class, SendOrderDeliveredEmail::class);
+        Event::listen(OrderStatusUpdated::class, IssueFiscalNoteOnPaid::class);
     }
 
     protected function registerPolicies(): void

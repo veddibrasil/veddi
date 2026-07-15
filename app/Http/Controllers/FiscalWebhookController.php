@@ -15,7 +15,7 @@ class FiscalWebhookController extends Controller
         $expected = config('fiscal.focus_nfe.webhook_token');
 
         if (empty($expected) || ! hash_equals((string) $expected, (string) $token)) {
-            Log::channel('webhook')->warning('Focus NFe webhook: token inválido', [
+            Log::channel('fiscal')->warning('Focus NFe webhook: token inválido', [
                 'ip' => $request->ip(),
             ]);
 
@@ -26,7 +26,7 @@ class FiscalWebhookController extends Controller
         $ref = $data['ref'] ?? null;
         $event = $data['evento'] ?? null;
 
-        Log::channel('webhook')->info('Focus NFe webhook recebido', [
+        Log::channel('fiscal')->info('Focus NFe webhook recebido', [
             'ref' => $ref,
             'evento' => $event,
         ]);
@@ -38,6 +38,10 @@ class FiscalWebhookController extends Controller
         $note = FiscalNote::where('provider_reference', $ref)->first();
 
         if (! $note) {
+            Log::channel('fiscal')->warning('Focus NFe webhook: nota não encontrada para a ref', [
+                'ref' => $ref,
+            ]);
+
             return response()->json(['status' => 'ok']);
         }
 
@@ -59,6 +63,17 @@ class FiscalWebhookController extends Controller
                 'status' => $status,
                 'access_key' => $data['chave_nfe'] ?? $note->access_key,
                 'data' => $existing,
+            ]);
+
+            Log::channel('fiscal')->info('Focus NFe webhook: status da nota atualizado', [
+                'fiscal_note_id' => $note->id,
+                'order_id' => $note->order_id,
+                'status' => $status,
+            ]);
+        } else {
+            Log::channel('fiscal')->warning('Focus NFe webhook: status não mapeado', [
+                'fiscal_note_id' => $note->id,
+                'raw_status' => $data['status'] ?? null,
             ]);
         }
 

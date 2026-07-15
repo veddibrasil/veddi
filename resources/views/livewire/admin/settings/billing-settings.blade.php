@@ -173,7 +173,7 @@
                         <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
                         Ativo
                     </span>
-                    <a href="{{ route('admin.fiscal.config') }}" wire:navigate
+                    <a href="{{ route('admin.settings') }}" wire:navigate
                        class="text-sm text-[#7A00A3] hover:underline dark:text-purple-300">
                         Configurar
                     </a>
@@ -926,7 +926,7 @@
                         </svg>
                     </div>
                     <p class="font-semibold text-neutral-800 dark:text-neutral-100">Pagamento confirmado!</p>
-                    <p class="text-sm text-neutral-500 dark:text-neutral-400">Módulo Fiscal ativado. Configure o CRT, inscrição estadual e demais dados em <a href="{{ route('admin.fiscal.config') }}" wire:navigate class="text-[#7A00A3] hover:underline">Fiscal &rarr; Configurações</a>.</p>
+                    <p class="text-sm text-neutral-500 dark:text-neutral-400">Módulo Fiscal ativado. Configure o CRT, inscrição estadual e demais dados em <a href="{{ route('admin.settings') }}" wire:navigate class="text-[#7A00A3] hover:underline">Configurações da Empresa</a>.</p>
                     <flux:modal.close>
                         <flux:button variant="primary">Fechar</flux:button>
                     </flux:modal.close>
