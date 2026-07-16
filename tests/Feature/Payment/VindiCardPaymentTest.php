@@ -576,7 +576,7 @@ test('PaymentCalculatorService retorna platform_rate e platform_fee_amount separ
     expect($result['final_amount'])->toBe($expectedFinal);
 });
 
-test('processCreditCard não cria payment quando sem credenciais Vindi', function () {
+test('processCreditCard simula aprovação e cria payment quando sem credenciais Vindi', function () {
     config()->set('payments.vindi_token_account', null);
 
     $ctx = vindiCardContext();
@@ -597,9 +597,11 @@ test('processCreditCard não cria payment quando sem credenciais Vindi', functio
         $ctx['order'], $ctx['customer'], $ctx['company'], $cardData, 1
     );
 
-    expect($result['approved'])->toBeFalse()
-        ->and($result['id'])->toBeNull();
+    expect($result['approved'])->toBeTrue()
+        ->and($result['id'])->toStartWith('sim_vindi_');
 
     $payment = Payment::where('order_id', $ctx['order']->id)->first();
-    expect($payment)->toBeNull();
+    expect($payment)->not->toBeNull()
+        ->and($payment->status)->toBe('paid')
+        ->and($payment->vindi_transaction_token)->toStartWith('sim_vindi_');
 });

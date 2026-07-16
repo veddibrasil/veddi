@@ -300,34 +300,8 @@ class PaymentOrchestrator
             );
 
             $transactionToken = $result['transaction_token'];
-            $approved = ($result['status_name'] ?? '') === 'Aprovada';
-            $paymentToken = hash('sha256', $order->id.$customer->id.Str::random(32));
-
             $transactionId = $result['transaction_id'] ?? null;
-
-            DB::transaction(function () use ($order, $transactionToken, $transactionId, $chargeAmount, $cardFee, $cardRate, $installments, $paymentToken, $approved) {
-                $payment = Payment::create([
-                    'order_id' => $order->id,
-                    'vindi_transaction_token' => $transactionToken,
-                    'vindi_transaction_id' => $transactionId,
-                    'payment_gateway' => 'vindi',
-                    'amount' => $chargeAmount,
-                    'original_amount' => (float) $order->total,
-                    'card_fee' => $cardFee,
-                    'card_fee_rate' => $cardRate,
-                    'installments' => $installments,
-                    'status' => $approved ? 'paid' : 'pending',
-                    'paid_at' => $approved ? now() : null,
-                    'payment_token' => $paymentToken,
-                ]);
-
-                if ($approved) {
-                    $order->update(['status' => 'paid']);
-                    $fresh = $order->fresh();
-                    app(WalletServiceInterface::class)->creditForOrder($fresh, $payment);
-                    app(TransactionServiceInterface::class)->createForPayment($fresh, $payment);
-                }
-            });
+            $approved = ($result['status_name'] ?? '') === 'Aprovada';
 
             Log::channel('payments')->info('Cartão Vindi criado', [
                 'order_id' => $order->id,
@@ -336,20 +310,50 @@ class PaymentOrchestrator
                 'installments' => $installments,
                 'approved' => $approved,
             ]);
+        } else {
+            // Modo simulação (sem credenciais Vindi configuradas): aprova
+            // direto, igual à maquininha/dinheiro no PDV, pra não travar o
+            // fluxo de dev esperando um webhook que nunca vai chegar.
+            $transactionToken = 'sim_vindi_'.uniqid();
+            $transactionId = null;
+            $approved = true;
 
-            return [
-                'id' => $transactionToken,
-                'approved' => $approved,
-                'status' => $approved ? 'paid' : 'pending',
-                'method' => 'credit_card',
-                'gateway' => 'vindi',
-            ];
+            Log::channel('payments')->info('Cartão Vindi simulado (sem credenciais)', [
+                'order_id' => $order->id,
+                'charge_amount' => $chargeAmount,
+            ]);
         }
 
+        $paymentToken = hash('sha256', $order->id.$customer->id.Str::random(32));
+
+        DB::transaction(function () use ($order, $transactionToken, $transactionId, $chargeAmount, $cardFee, $cardRate, $installments, $paymentToken, $approved) {
+            $payment = Payment::create([
+                'order_id' => $order->id,
+                'vindi_transaction_token' => $transactionToken,
+                'vindi_transaction_id' => $transactionId,
+                'payment_gateway' => 'vindi',
+                'amount' => $chargeAmount,
+                'original_amount' => (float) $order->total,
+                'card_fee' => $cardFee,
+                'card_fee_rate' => $cardRate,
+                'installments' => $installments,
+                'status' => $approved ? 'paid' : 'pending',
+                'paid_at' => $approved ? now() : null,
+                'payment_token' => $paymentToken,
+            ]);
+
+            if ($approved) {
+                $order->update(['status' => 'paid']);
+                $fresh = $order->fresh();
+                app(WalletServiceInterface::class)->creditForOrder($fresh, $payment);
+                app(TransactionServiceInterface::class)->createForPayment($fresh, $payment);
+            }
+        });
+
         return [
-            'id' => null,
-            'approved' => false,
-            'status' => 'pending',
+            'id' => $transactionToken,
+            'approved' => $approved,
+            'status' => $approved ? 'paid' : 'pending',
             'method' => 'credit_card',
             'gateway' => 'vindi',
         ];
