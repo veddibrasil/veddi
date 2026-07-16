@@ -127,6 +127,7 @@
                         </div>
 
                         {{-- Taxa de Serviço / Couvert --}}
+                        @if($branch->company?->pdv_module_enabled)
                         <div class="relative group">
                             <a href="{{ route('admin.branches.service-charges', $branch) }}"
                                 class="inline-flex items-center justify-center p-1.5 rounded text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-900/20 transition-colors">
@@ -136,6 +137,7 @@
                             </a>
                             <span class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded bg-neutral-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 dark:bg-zinc-600">Taxa de Serviço</span>
                         </div>
+                        @endif
                         @endif
 
                         {{-- Excluir --}}

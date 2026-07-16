@@ -54,6 +54,7 @@ class ServiceCharges extends Component
             $this->canSave = true;
         } elseif (app()->bound('current.company')) {
             $company = app('current.company');
+            abort_unless($company->pdv_module_enabled, 403, 'Módulo PDV não está habilitado para esta empresa.');
             $this->canSave = $user->hasPermission('branches.update', $company);
 
             if ($user->isBranchScoped($company) && $user->branchIdForCompany($company) !== $branch->id) {

@@ -19,6 +19,7 @@ function makeServiceChargeTestCompany(): Company
         'slug' => 'service-charge-'.uniqid(),
         'order_prefix' => 'SCT',
         'active' => true,
+        'pdv_module_enabled' => true,
     ]);
 }
 
@@ -109,6 +110,21 @@ test('percentual acima de 100 é rejeitado', function () {
         ->set('service_fee_value', '150')
         ->call('save')
         ->assertHasErrors('service_fee_value');
+});
+
+test('company sem modulo PDV não acessa taxa de serviço', function () {
+    $company = makeServiceChargeTestCompany();
+    $company->update(['pdv_module_enabled' => false]);
+    $branch = makeServiceChargeTestBranch($company);
+
+    app()->instance('current.company', $company);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+
+    Livewire::actingAs($admin)
+        ->test(ServiceCharges::class, ['branch' => $branch])
+        ->assertForbidden();
 });
 
 test('branch_manager com permissão concedida salva taxas da própria filial', function () {

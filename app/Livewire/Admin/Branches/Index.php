@@ -81,7 +81,7 @@ class Index extends Component
 
         $query = $isSuperAdmin
             ? Branch::withoutGlobalScope(CompanyScope::class)->with(['company', 'addressRecord'])->orderBy('name')
-            : Branch::with('addressRecord')->orderBy('name');
+            : Branch::with(['addressRecord', 'company'])->orderBy('name');
 
         $branches = $query->get();
 
