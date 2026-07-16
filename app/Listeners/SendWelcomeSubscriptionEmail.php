@@ -32,6 +32,14 @@ class SendWelcomeSubscriptionEmail
             return;
         }
 
-        Mail::to($admin->email)->send(new WelcomeSubscription($admin, $company));
+        try {
+            Mail::to($admin->email)->send(new WelcomeSubscription($admin, $company));
+        } catch (\Throwable $e) {
+            Log::warning('Falha ao enviar email de boas-vindas de assinatura', [
+                'company_id' => $company->id,
+                'email' => $admin->email,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

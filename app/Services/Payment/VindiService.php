@@ -183,6 +183,12 @@ class VindiService
             'payload' => $payload,
         ]);
 
+        Log::channel('discord')->debug('Vindi createTransaction resposta', [
+            'status' => $response->status(),
+            'response' => $data,
+            'payload' => $payload,
+        ]);
+
         // Yapay sometimes returns HTTP 4xx with validation warnings but still creates the transaction.
         // Check additional_data for a valid token before deciding to fail.
         $fallbackToken = $data['additional_data']['token_transaction'] ?? null;

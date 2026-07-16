@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\UserPermission;
 use App\Services\Company\UserPermissionService;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -108,7 +109,15 @@ class Index extends Component
 
         UserPermissionService::assignRolePermissions($user, $company, $this->newRole);
 
-        Mail::to($user->email)->send(new WelcomeUser($user, $company, $temporaryPassword));
+        try {
+            Mail::to($user->email)->send(new WelcomeUser($user, $company, $temporaryPassword));
+        } catch (\Throwable $e) {
+            Log::warning('Falha ao enviar email de boas-vindas ao novo usuário', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         $this->reset(['newName', 'newEmail', 'newRole', 'newBranchId', 'showCreateForm']);
         session()->flash('status', 'Usuário criado e e-mail de boas-vindas enviado.');
