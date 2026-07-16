@@ -144,37 +144,33 @@ return [
         ],
 
         'orders' => [
-            'driver' => 'daily',
-            'path' => storage_path('logs/orders.log'),
+            'driver' => 'single',
+            'path' => storage_path('logs/laravel.log'),
             'level' => 'debug',
-            'days' => 30,
             'replace_placeholders' => true,
             'tap' => [\App\Logging\DiscordWebhookTap::class],
         ],
 
         'payments' => [
-            'driver' => 'daily',
-            'path' => storage_path('logs/payments.log'),
+            'driver' => 'single',
+            'path' => storage_path('logs/laravel.log'),
             'level' => 'debug',
-            'days' => 60,
             'replace_placeholders' => true,
             'tap' => [\App\Logging\DiscordWebhookTap::class],
         ],
 
         'chat' => [
-            'driver' => 'daily',
-            'path' => storage_path('logs/chat.log'),
+            'driver' => 'single',
+            'path' => storage_path('logs/laravel.log'),
             'level' => 'debug',
-            'days' => 14,
             'replace_placeholders' => true,
             'tap' => [\App\Logging\DiscordWebhookTap::class],
         ],
 
         'webhook' => [
-            'driver' => 'daily',
-            'path' => storage_path('logs/webhook.log'),
+            'driver' => 'single',
+            'path' => storage_path('logs/laravel.log'),
             'level' => 'debug',
-            'days' => 60,
             'replace_placeholders' => true,
             'tap' => [\App\Logging\DiscordWebhookTap::class],
         ],
