@@ -19,18 +19,18 @@ class SecurityHeaders
         $response->headers->set('X-Frame-Options', 'SAMEORIGIN');
         $response->headers->set('X-Content-Type-Options', 'nosniff');
         $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
-        $response->headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+        $response->headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(self)');
 
         $devSources = app()->environment('local') ? ' http://localhost:* ws://localhost:*' : '';
 
         $response->headers->set(
             'Content-Security-Policy',
             "default-src 'self'; ".
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval'{$devSources}; ".
-            "style-src 'self' 'unsafe-inline' https://fonts.bunny.net{$devSources}; ".
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://api.mapbox.com{$devSources}; ".
+            "style-src 'self' 'unsafe-inline' https://fonts.bunny.net https://unpkg.com https://api.mapbox.com{$devSources}; ".
             "img-src 'self' data: https:; ".
             "font-src 'self' data: https://fonts.bunny.net; ".
-            "connect-src 'self' ws: wss:{$devSources}; ".
+            "connect-src 'self' ws: wss: https://nominatim.openstreetmap.org https://api.mapbox.com https://events.mapbox.com{$devSources}; ".
             "object-src 'none'; ".
             "base-uri 'self'; ".
             "form-action 'self'; ".

@@ -43,7 +43,7 @@
     </button>
     <p id="map-{{ $prefix }}-error" style="display:none" class="text-red-500 text-xs -mt-1 flex items-center gap-1"></p>
 
-    <div id="map-{{ $prefix }}-container" style="display:none" class="rounded-xl overflow-hidden border border-blue-200 shadow-sm">
+    <div id="map-{{ $prefix }}-container" wire:ignore style="display:none" class="rounded-xl overflow-hidden border border-blue-200 shadow-sm">
         <div class="bg-blue-50 px-3 py-1.5 flex items-center justify-between">
             <span class="text-xs font-semibold text-blue-700">📍 Arraste o pin para ajustar</span>
             <button type="button" onclick="mapPickerCloseMap('{{ $prefix }}')" class="text-blue-400 hover:text-blue-700 text-lg leading-none">×</button>

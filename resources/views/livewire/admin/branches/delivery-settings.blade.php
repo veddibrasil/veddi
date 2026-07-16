@@ -235,7 +235,7 @@
                     <span class="text-xs font-medium text-blue-700 dark:text-blue-300">Arraste o pin ou clique no mapa para posicionar a filial</span>
                     <button type="button" @click="mapOpen = false; mapDestroy()" class="text-blue-400 hover:text-blue-700 text-lg leading-none">×</button>
                 </div>
-                <div id="branch-map-el" style="height:280px; width:100%;"></div>
+                <div id="branch-map-el" wire:ignore style="height:280px; width:100%;"></div>
                 <div class="flex gap-2 bg-blue-50 px-3 py-2 dark:bg-blue-900/30">
                     <button type="button" @click="mapOpen = false; mapDestroy()"
                         class="flex-1 text-xs border border-neutral-300 text-neutral-600 px-3 py-1.5 rounded-lg hover:bg-neutral-50 dark:border-zinc-600 dark:text-neutral-300 dark:hover:bg-zinc-700">

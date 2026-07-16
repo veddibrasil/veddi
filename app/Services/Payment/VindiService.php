@@ -181,6 +181,38 @@ class VindiService
         $fallbackStatus = $data['additional_data']['status_name'] ?? null;
 
         if ($response->failed() && ! $fallbackToken) {
+            $validationErrors = $data['error_response']['validation_errors'] ?? [];
+            $duplicateOrderNumber = false;
+            foreach ($validationErrors as $validationError) {
+                if (($validationError['field'] ?? null) === 'order_number') {
+                    $duplicateOrderNumber = true;
+                    break;
+                }
+            }
+
+            // order_number is never reusable at Vindi. A duplicate here means a prior
+            // attempt (job retry after a client-side timeout/exception) already created
+            // the transaction remotely — we have no token to show it, but the eventual
+            // webhook will reconcile via order_number (see ProcessVindiWebhook fallback).
+            // Failing hard here would wrongly cancel an order that may already be paid.
+            if ($duplicateOrderNumber) {
+                Log::channel('payments')->warning('Vindi: order_number duplicado — transação já existe remotamente, aguardando webhook', [
+                    'payload' => $payload,
+                    'validation_errors' => $validationErrors,
+                ]);
+
+                Log::channel('discord')->warning('Vindi: order_number duplicado — pedido sem QR/confirmação local, aguardando webhook', [
+                    'channel' => 'payments',
+                    'order_number' => $payload['transaction']['order_number'] ?? null,
+                ]);
+
+                return [
+                    'transaction_token' => null,
+                    'transaction_id' => null,
+                    'status_name' => 'pending_reconciliation',
+                ];
+            }
+
             Log::channel('payments')->error('Vindi API erro', [
                 'body' => json_encode($data ?? $response->body()),
                 'payload' => $payload,

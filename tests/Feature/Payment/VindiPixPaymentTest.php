@@ -373,6 +373,75 @@ test('PIX simulado criado quando sem credenciais Vindi', function () {
         ->and($payment->status)->toBe('pending');
 });
 
+test('VindiService.createPixCharge não lança exceção quando Vindi rejeita order_number duplicado', function () {
+    config()->set('payments.vindi_token_account', 'tok_test');
+    config()->set('payments.vindi_reseller_token', 'res_test');
+
+    Http::fake([
+        '*/transactions/payment' => Http::response([
+            'message_response' => ['message' => 'error'],
+            'error_response' => [
+                'validation_errors' => [
+                    [
+                        'code' => '6',
+                        'message' => 'já está em uso',
+                        'field' => 'order_number',
+                        'message_complete' => 'Número pedido já está em uso',
+                    ],
+                ],
+            ],
+            'additional_data' => [
+                'transaction_id' => null,
+                'order_number' => null,
+                'status_id' => null,
+                'status_name' => null,
+                'token_transaction' => null,
+            ],
+        ], 422),
+    ]);
+
+    $ctx = vindiPixContext();
+
+    $result = app(VindiService::class)->createPixCharge(
+        amount: 50.50,
+        externalRef: (string) $ctx['order']->id,
+        customer: $ctx['customer'],
+    );
+
+    expect($result['transaction_token'])->toBeNull()
+        ->and($result['pix_qr_code'] ?? null)->toBeNull()
+        ->and($result['pix_copy_paste'] ?? null)->toBeNull();
+});
+
+test('PaymentOrchestrator.processPix cria Payment com token nulo quando Vindi rejeita order_number duplicado, sem lançar exceção', function () {
+    config()->set('payments.vindi_token_account', 'tok_test');
+    config()->set('payments.vindi_reseller_token', 'res_test');
+
+    Http::fake([
+        '*/transactions/payment' => Http::response([
+            'message_response' => ['message' => 'error'],
+            'error_response' => [
+                'validation_errors' => [
+                    ['code' => '6', 'message' => 'já está em uso', 'field' => 'order_number', 'message_complete' => 'Número pedido já está em uso'],
+                ],
+            ],
+            'additional_data' => ['transaction_id' => null, 'order_number' => null, 'status_id' => null, 'status_name' => null, 'token_transaction' => null],
+        ], 422),
+    ]);
+
+    $ctx = vindiPixContext();
+
+    $result = app(PaymentOrchestrator::class)->processPix($ctx['order'], $ctx['customer'], $ctx['company']);
+
+    expect($result['gateway'])->toBe('vindi');
+
+    $payment = Payment::where('order_id', $ctx['order']->id)->first();
+
+    expect($payment)->not->toBeNull()
+        ->and($payment->vindi_transaction_token)->toBeNull()
+        ->and($payment->status)->toBe('pending');
+});
+
 test('PIX com frete: shipping_price enviado separado e comissao sobre subtotal', function () {
     config()->set('payments.vindi_token_account', 'tok_test');
     config()->set('payments.vindi_reseller_token', 'res_test');

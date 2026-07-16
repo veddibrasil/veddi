@@ -190,6 +190,8 @@
 
                         <div class="w-full h-52 relative">
                             <div id="customer-map-{{ $order->id }}"
+                                 wire:ignore
+                                 wire:key="customer-map-{{ $order->id }}-{{ md5($addrFull) }}"
                                  data-token="{{ $mapboxToken }}"
                                  data-address="{{ $addrFull }}"
                                  class="w-full h-full"></div>
