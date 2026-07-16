@@ -84,6 +84,20 @@ return [
             'level' => env('DISCORD_LOG_LEVEL', 'critical'),
         ],
 
+        // Canal dedicado ao fluxo de geração de PIX (Vindi), do início ao
+        // sucesso/falha. Threshold mais baixo que o canal 'discord' (que fica
+        // em 'error' em produção) para que o log de sucesso também apareça.
+        'discord_pix' => [
+            'driver' => 'monolog',
+            'handler' => \App\Logging\DiscordWebhookHandler::class,
+            'handler_with' => [
+                'webhookUrl' => env('DISCORD_PIX_LOG_WEBHOOK_URL', env('DISCORD_LOG_WEBHOOK_URL', '')),
+                'level' => env('DISCORD_PIX_LOG_LEVEL', 'info'),
+            ],
+            'url' => env('DISCORD_PIX_LOG_WEBHOOK_URL', env('DISCORD_LOG_WEBHOOK_URL', '')),
+            'level' => env('DISCORD_PIX_LOG_LEVEL', 'info'),
+        ],
+
         'papertrail' => [
             'driver' => 'monolog',
             'level' => env('LOG_LEVEL', 'debug'),

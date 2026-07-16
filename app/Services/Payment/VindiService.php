@@ -67,6 +67,14 @@ class VindiService
             'amount' => $amount,
         ]);
 
+        if (empty($result['pix_qr_code']) && empty($result['pix_copy_paste'])) {
+            Log::channel('discord_pix')->critical('PIX: cobrança criada sem QR code/copia-e-cola', [
+                'external_ref' => $externalRef,
+                'transaction_token' => $result['transaction_token'] ?? null,
+                'status_name' => $result['status_name'] ?? null,
+            ]);
+        }
+
         return [
             'transaction_token' => $result['transaction_token'],
             'transaction_id' => $result['transaction_id'] ?? null,

@@ -74,6 +74,13 @@ class PaymentOrchestrator
             ]);
         }
 
+        Log::channel('discord_pix')->info('PIX: iniciando geração de cobrança', [
+            'order_id' => $order->id,
+            'company_id' => $company->id,
+            'amount' => $chargeAmount,
+            'has_affiliate' => (bool) $affiliateEmail,
+        ]);
+
         $gatewayRate = (float) config('payments.vindi_pix_rate', 0.0085);
         $platformRate = (float) config('payments.vindi_pix_platform_rate', 0.0014);
         $planExtraRate = $company->feePercentageForOrder($order);
@@ -107,15 +114,26 @@ class PaymentOrchestrator
         $tokenAccount = config('payments.vindi_token_account');
 
         if ($tokenAccount) {
-            $result = $this->vindi->createPixCharge(
-                amount: $chargeAmount,
-                externalRef: (string) $order->id,
-                customer: $customer,
-                affiliateEmail: $affiliateEmail,
-                affiliatePercentual: $affiliatePercentual,
-                address: $this->vindiAddressFromOrder($order, $customer),
-                deliveryFee: (float) ($order->delivery_fee ?? 0),
-            );
+            try {
+                $result = $this->vindi->createPixCharge(
+                    amount: $chargeAmount,
+                    externalRef: (string) $order->id,
+                    customer: $customer,
+                    affiliateEmail: $affiliateEmail,
+                    affiliatePercentual: $affiliatePercentual,
+                    address: $this->vindiAddressFromOrder($order, $customer),
+                    deliveryFee: (float) ($order->delivery_fee ?? 0),
+                );
+            } catch (\Throwable $e) {
+                Log::channel('discord_pix')->error('PIX: falha ao criar cobrança via Vindi', [
+                    'order_id' => $order->id,
+                    'company_id' => $company->id,
+                    'amount' => $chargeAmount,
+                    'error' => $e->getMessage(),
+                ]);
+
+                throw $e;
+            }
 
             $payment = Payment::create([
                 'order_id' => $order->id,
@@ -135,6 +153,13 @@ class PaymentOrchestrator
                 'order_id' => $order->id,
                 'vindi_transaction_token' => $result['transaction_token'],
                 'charge_amount' => $chargeAmount,
+            ]);
+
+            Log::channel('discord_pix')->info('PIX: cobrança criada com sucesso', [
+                'order_id' => $order->id,
+                'vindi_transaction_token' => $result['transaction_token'],
+                'amount' => $chargeAmount,
+                'has_qr_code' => ! empty($result['pix_qr_code']),
             ]);
         } else {
             // Modo simulação (sem credenciais Vindi configuradas)
@@ -158,6 +183,11 @@ class PaymentOrchestrator
 
             Log::channel('payments')->info('PIX Vindi simulado (sem credenciais)', [
                 'order_id' => $order->id,
+            ]);
+
+            Log::channel('discord_pix')->info('PIX: cobrança simulada (sem credenciais Vindi)', [
+                'order_id' => $order->id,
+                'amount' => $chargeAmount,
             ]);
         }
 
