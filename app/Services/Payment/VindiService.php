@@ -267,6 +267,13 @@ class VindiService
         ];
     }
 
+    private function resolveCustomerEmail(Customer $customer): string
+    {
+        $email = trim((string) $customer->email);
+
+        return $email !== '' ? $email : "cliente{$customer->id}@sememail.veddi.com.br";
+    }
+
     private function buildCustomerPayload(Customer $customer, array $address = []): array
     {
         $taxId = preg_replace('/\D/', '', $customer->tax_id ?? '');
@@ -274,7 +281,7 @@ class VindiService
 
         $data = [
             'name' => $customer->name,
-            'email' => $customer->email,
+            'email' => $this->resolveCustomerEmail($customer),
             'cpf' => $isCnpj ? null : $taxId,
             'cnpj' => $isCnpj ? $taxId : null,
             'company_name' => null,
