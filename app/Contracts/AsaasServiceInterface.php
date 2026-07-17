@@ -22,6 +22,7 @@ interface AsaasServiceInterface
         ?string $nextDueDate = null,
         float $extraAmount = 0.0,
         string $extraDescription = '',
+        ?string $creditCardToken = null,
     ): array;
 
     public function updateSubscriptionValue(string $subscriptionId, float $value, string $description): array;
@@ -37,9 +38,10 @@ interface AsaasServiceInterface
         float $amount,
         string $description,
         string $externalReference,
-        CreditCardDTO $creditCard,
-        CreditCardHolderDTO $holderInfo,
-        int $installments = 1
+        ?CreditCardDTO $creditCard = null,
+        ?CreditCardHolderDTO $holderInfo = null,
+        int $installments = 1,
+        ?string $creditCardToken = null,
     ): array;
 
     public function findOrCreateCustomer(AsaasCustomerDTO $customer): string;

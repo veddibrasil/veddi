@@ -60,6 +60,11 @@ class BillingSettings extends Component
 
     public bool $acceptedTerms = false;
 
+    // Cartão salvo (token Asaas) — permite reusar sem redigitar PAN/CVV
+    public bool $useSavedCard = false;
+
+    public ?string $savedCardLabel = null;
+
     public ?string $planChangeError = null;
 
     // Módulo PDV (cobrado junto com a assinatura do plano, mesma fatura)
@@ -110,6 +115,7 @@ class BillingSettings extends Component
         $this->pdvAddonAmount = (float) config('pdv.addon_monthly_price', 99.00);
         $this->fiscalModuleEnabled = (bool) $company->fiscal_notes_enabled;
         $this->fiscalAddonAmount = (float) config('fiscal.addon_monthly_price', 149.00);
+        $this->savedCardLabel = $company->savedAsaasCardLabel();
         $this->combinedMonthlyAmount = ($company->plan?->monthlyPrice() ?? 0.0)
             + $this->combinedAddonExtra($this->pdvModuleEnabled, $this->fiscalModuleEnabled)['amount'];
 
@@ -143,6 +149,7 @@ class BillingSettings extends Component
         $this->planChangeError = null;
         $this->cardSuccess = false;
         $this->acceptedTerms = false;
+        $this->useSavedCard = app('current.company')->hasSavedAsaasCard();
         $this->confirmingPlanChange = true;
     }
 
@@ -288,44 +295,48 @@ class BillingSettings extends Component
             return;
         }
 
-        $this->validate([
-            'cardNumber' => ['required', 'string', 'min:13'],
-            'cardExpiry' => ['required', 'regex:/^\d{2}\/\d{2}$/', function ($attr, $value, $fail) {
-                [$month, $year] = explode('/', $value);
-                $month = (int) $month;
-                $year = (int) ('20'.$year);
-                if ($month < 1 || $month > 12) {
-                    $fail('Mês de validade inválido.');
+        $useSavedCard = $this->useSavedCard && app('current.company')->hasSavedAsaasCard();
 
-                    return;
-                }
-                if ($year < now()->year || ($year === now()->year && $month < now()->month)) {
-                    $fail('Cartão vencido.');
-                }
-            }],
-            'cardCvv' => ['required', 'digits_between:3,4'],
-            'cardHolderName' => ['required', 'string', 'min:3'],
-            'cardCpfCnpj' => ['required', 'string', function ($attr, $value, $fail) {
-                $digits = preg_replace('/\D/', '', $value);
-                if (strlen($digits) !== 11 && strlen($digits) !== 14) {
-                    $fail('CPF deve ter 11 dígitos e CNPJ 14 dígitos.');
-                }
-            }],
-            'cardPostalCode' => ['required', 'string', 'min:8'],
-            'cardAddressNumber' => ['required', 'string'],
-        ], [
-            'cardNumber.required' => 'Informe o número do cartão.',
-            'cardNumber.min' => 'Número do cartão inválido.',
-            'cardExpiry.required' => 'Informe a validade.',
-            'cardExpiry.regex' => 'Use o formato MM/AA.',
-            'cardCvv.required' => 'Informe o CVV.',
-            'cardCvv.digits_between' => 'CVV deve ter 3 ou 4 dígitos.',
-            'cardHolderName.required' => 'Informe o nome conforme está no cartão.',
-            'cardCpfCnpj.required' => 'Informe o CPF ou CNPJ do titular.',
-            'cardPostalCode.required' => 'Informe o CEP de cobrança.',
-            'cardPostalCode.min' => 'CEP inválido.',
-            'cardAddressNumber.required' => 'Informe o número do endereço.',
-        ]);
+        if (! $useSavedCard) {
+            $this->validate([
+                'cardNumber' => ['required', 'string', 'min:13'],
+                'cardExpiry' => ['required', 'regex:/^\d{2}\/\d{2}$/', function ($attr, $value, $fail) {
+                    [$month, $year] = explode('/', $value);
+                    $month = (int) $month;
+                    $year = (int) ('20'.$year);
+                    if ($month < 1 || $month > 12) {
+                        $fail('Mês de validade inválido.');
+
+                        return;
+                    }
+                    if ($year < now()->year || ($year === now()->year && $month < now()->month)) {
+                        $fail('Cartão vencido.');
+                    }
+                }],
+                'cardCvv' => ['required', 'digits_between:3,4'],
+                'cardHolderName' => ['required', 'string', 'min:3'],
+                'cardCpfCnpj' => ['required', 'string', function ($attr, $value, $fail) {
+                    $digits = preg_replace('/\D/', '', $value);
+                    if (strlen($digits) !== 11 && strlen($digits) !== 14) {
+                        $fail('CPF deve ter 11 dígitos e CNPJ 14 dígitos.');
+                    }
+                }],
+                'cardPostalCode' => ['required', 'string', 'min:8'],
+                'cardAddressNumber' => ['required', 'string'],
+            ], [
+                'cardNumber.required' => 'Informe o número do cartão.',
+                'cardNumber.min' => 'Número do cartão inválido.',
+                'cardExpiry.required' => 'Informe a validade.',
+                'cardExpiry.regex' => 'Use o formato MM/AA.',
+                'cardCvv.required' => 'Informe o CVV.',
+                'cardCvv.digits_between' => 'CVV deve ter 3 ou 4 dígitos.',
+                'cardHolderName.required' => 'Informe o nome conforme está no cartão.',
+                'cardCpfCnpj.required' => 'Informe o CPF ou CNPJ do titular.',
+                'cardPostalCode.required' => 'Informe o CEP de cobrança.',
+                'cardPostalCode.min' => 'CEP inválido.',
+                'cardAddressNumber.required' => 'Informe o número do endereço.',
+            ]);
+        }
 
         $this->cardProcessing = true;
         $this->cardError = null;
@@ -341,28 +352,36 @@ class BillingSettings extends Component
                 return;
             }
 
-            $admin = $company->users()->first();
-            $phone = preg_replace('/\D/', '', $company->branches()->withoutGlobalScopes()->value('phone') ?? '');
+            $creditCard = null;
+            $holderInfo = null;
+            $creditCardToken = null;
 
-            [$month, $year] = explode('/', $this->cardExpiry);
+            if ($useSavedCard) {
+                $creditCardToken = $company->asaas_credit_card_token;
+            } else {
+                $admin = $company->users()->first();
+                $phone = preg_replace('/\D/', '', $company->branches()->withoutGlobalScopes()->value('phone') ?? '');
 
-            $creditCard = new CreditCardDTO(
-                holderName: $this->cardHolderName,
-                number: $this->cardNumber,
-                expiryMonth: $month,
-                expiryYear: '20'.$year,
-                ccv: $this->cardCvv,
-            );
+                [$month, $year] = explode('/', $this->cardExpiry);
 
-            $holderInfo = new CreditCardHolderDTO(
-                name: $admin?->name ?? $this->cardHolderName,
-                email: $admin?->email ?? '',
-                cpfCnpj: $this->cardCpfCnpj,
-                postalCode: $this->cardPostalCode,
-                addressNumber: $this->cardAddressNumber,
-                mobilePhone: $phone,
-                phone: $phone,
-            );
+                $creditCard = new CreditCardDTO(
+                    holderName: $this->cardHolderName,
+                    number: $this->cardNumber,
+                    expiryMonth: $month,
+                    expiryYear: '20'.$year,
+                    ccv: $this->cardCvv,
+                );
+
+                $holderInfo = new CreditCardHolderDTO(
+                    name: $admin?->name ?? $this->cardHolderName,
+                    email: $admin?->email ?? '',
+                    cpfCnpj: $this->cardCpfCnpj,
+                    postalCode: $this->cardPostalCode,
+                    addressNumber: $this->cardAddressNumber,
+                    mobilePhone: $phone,
+                    phone: $phone,
+                );
+            }
 
             // Upgrade from free includes setup fee; cross-grade between paid plans does not
             $isFromFree = $company->plan === Plan::Free;
@@ -385,6 +404,7 @@ class BillingSettings extends Component
                 externalReference: "plan_change_{$company->id}_{$targetPlan->value}",
                 creditCard: $creditCard,
                 holderInfo: $holderInfo,
+                creditCardToken: $creditCardToken,
             );
 
             if (($charge['status'] ?? '') !== 'CONFIRMED') {
@@ -398,16 +418,20 @@ class BillingSettings extends Component
                 return;
             }
 
+            $company->saveAsaasCreditCardFromCharge($charge);
+            $creditCardToken ??= $charge['creditCard']['creditCardToken'] ?? null;
+
             // Create recurring subscription starting next month (avoids double-charging)
             $result = $asaasService->createSubscription(
                 customerId: $company->asaas_customer_id,
                 plan: $targetPlan,
                 billingType: 'CREDIT_CARD',
-                creditCard: $creditCard,
-                holderInfo: $holderInfo,
+                creditCard: $creditCardToken ? null : $creditCard,
+                holderInfo: $creditCardToken ? null : $holderInfo,
                 nextDueDate: now()->addMonth()->toDateString(),
                 extraAmount: $extra['amount'],
                 extraDescription: $extra['description'],
+                creditCardToken: $creditCardToken,
             );
 
             Subscription::create([
@@ -505,38 +529,43 @@ class BillingSettings extends Component
             return;
         }
 
+        $this->useSavedCard = app('current.company')->hasSavedAsaasCard();
         $this->confirmingPdvActivation = false;
         $this->dispatch('open-pdv-card-modal');
     }
 
     public function activatePdvModule(AsaasServiceInterface $asaasService): void
     {
-        $this->validate([
-            'cardNumber' => ['required', 'string', 'min:13'],
-            'cardExpiry' => ['required', 'regex:/^\d{2}\/\d{2}$/', function ($attr, $value, $fail) {
-                [$month, $year] = explode('/', $value);
-                $month = (int) $month;
-                $year = (int) ('20'.$year);
-                if ($month < 1 || $month > 12) {
-                    $fail('Mês de validade inválido.');
+        $useSavedCard = $this->useSavedCard && app('current.company')->hasSavedAsaasCard();
 
-                    return;
-                }
-                if ($year < now()->year || ($year === now()->year && $month < now()->month)) {
-                    $fail('Cartão vencido.');
-                }
-            }],
-            'cardCvv' => ['required', 'digits_between:3,4'],
-            'cardHolderName' => ['required', 'string', 'min:3'],
-            'cardCpfCnpj' => ['required', 'string', function ($attr, $value, $fail) {
-                $digits = preg_replace('/\D/', '', $value);
-                if (strlen($digits) !== 11 && strlen($digits) !== 14) {
-                    $fail('CPF deve ter 11 dígitos e CNPJ 14 dígitos.');
-                }
-            }],
-            'cardPostalCode' => ['required', 'string', 'min:8'],
-            'cardAddressNumber' => ['required', 'string'],
-        ]);
+        if (! $useSavedCard) {
+            $this->validate([
+                'cardNumber' => ['required', 'string', 'min:13'],
+                'cardExpiry' => ['required', 'regex:/^\d{2}\/\d{2}$/', function ($attr, $value, $fail) {
+                    [$month, $year] = explode('/', $value);
+                    $month = (int) $month;
+                    $year = (int) ('20'.$year);
+                    if ($month < 1 || $month > 12) {
+                        $fail('Mês de validade inválido.');
+
+                        return;
+                    }
+                    if ($year < now()->year || ($year === now()->year && $month < now()->month)) {
+                        $fail('Cartão vencido.');
+                    }
+                }],
+                'cardCvv' => ['required', 'digits_between:3,4'],
+                'cardHolderName' => ['required', 'string', 'min:3'],
+                'cardCpfCnpj' => ['required', 'string', function ($attr, $value, $fail) {
+                    $digits = preg_replace('/\D/', '', $value);
+                    if (strlen($digits) !== 11 && strlen($digits) !== 14) {
+                        $fail('CPF deve ter 11 dígitos e CNPJ 14 dígitos.');
+                    }
+                }],
+                'cardPostalCode' => ['required', 'string', 'min:8'],
+                'cardAddressNumber' => ['required', 'string'],
+            ]);
+        }
 
         $this->pdvProcessing = true;
         $this->pdvError = null;
@@ -552,28 +581,36 @@ class BillingSettings extends Component
             }
 
             $plan = $company->plan;
-            $admin = $company->users()->first();
-            $phone = preg_replace('/\D/', '', $company->branches()->withoutGlobalScopes()->value('phone') ?? '');
+            $creditCard = null;
+            $holderInfo = null;
+            $creditCardToken = null;
 
-            [$month, $year] = explode('/', $this->cardExpiry);
+            if ($useSavedCard) {
+                $creditCardToken = $company->asaas_credit_card_token;
+            } else {
+                $admin = $company->users()->first();
+                $phone = preg_replace('/\D/', '', $company->branches()->withoutGlobalScopes()->value('phone') ?? '');
 
-            $creditCard = new CreditCardDTO(
-                holderName: $this->cardHolderName,
-                number: $this->cardNumber,
-                expiryMonth: $month,
-                expiryYear: '20'.$year,
-                ccv: $this->cardCvv,
-            );
+                [$month, $year] = explode('/', $this->cardExpiry);
 
-            $holderInfo = new CreditCardHolderDTO(
-                name: $admin?->name ?? $this->cardHolderName,
-                email: $admin?->email ?? '',
-                cpfCnpj: $this->cardCpfCnpj,
-                postalCode: $this->cardPostalCode,
-                addressNumber: $this->cardAddressNumber,
-                mobilePhone: $phone,
-                phone: $phone,
-            );
+                $creditCard = new CreditCardDTO(
+                    holderName: $this->cardHolderName,
+                    number: $this->cardNumber,
+                    expiryMonth: $month,
+                    expiryYear: '20'.$year,
+                    ccv: $this->cardCvv,
+                );
+
+                $holderInfo = new CreditCardHolderDTO(
+                    name: $admin?->name ?? $this->cardHolderName,
+                    email: $admin?->email ?? '',
+                    cpfCnpj: $this->cardCpfCnpj,
+                    postalCode: $this->cardPostalCode,
+                    addressNumber: $this->cardAddressNumber,
+                    mobilePhone: $phone,
+                    phone: $phone,
+                );
+            }
 
             // Módulo PDV entra na MESMA fatura da assinatura do plano — não é uma assinatura separada.
             // Por isso a assinatura atual é cancelada e recriada já com o valor combinado.
@@ -588,6 +625,7 @@ class BillingSettings extends Component
                 externalReference: "pdv_module_activation_{$company->id}",
                 creditCard: $creditCard,
                 holderInfo: $holderInfo,
+                creditCardToken: $creditCardToken,
             );
 
             if (($charge['status'] ?? '') !== 'CONFIRMED') {
@@ -600,6 +638,9 @@ class BillingSettings extends Component
 
                 return;
             }
+
+            $company->saveAsaasCreditCardFromCharge($charge);
+            $creditCardToken ??= $charge['creditCard']['creditCardToken'] ?? null;
 
             if ($company->asaas_subscription_id) {
                 $asaasService->cancelSubscription($company->asaas_subscription_id);
@@ -614,11 +655,12 @@ class BillingSettings extends Component
                 customerId: $company->asaas_customer_id,
                 plan: $plan,
                 billingType: 'CREDIT_CARD',
-                creditCard: $creditCard,
-                holderInfo: $holderInfo,
+                creditCard: $creditCardToken ? null : $creditCard,
+                holderInfo: $creditCardToken ? null : $holderInfo,
                 nextDueDate: now()->addMonth()->toDateString(),
                 extraAmount: $extra['amount'],
                 extraDescription: $extra['description'],
+                creditCardToken: $creditCardToken,
             );
 
             Subscription::create([
@@ -760,38 +802,43 @@ class BillingSettings extends Component
             return;
         }
 
+        $this->useSavedCard = app('current.company')->hasSavedAsaasCard();
         $this->confirmingFiscalActivation = false;
         $this->dispatch('open-fiscal-card-modal');
     }
 
     public function activateFiscalModule(AsaasServiceInterface $asaasService): void
     {
-        $this->validate([
-            'cardNumber' => ['required', 'string', 'min:13'],
-            'cardExpiry' => ['required', 'regex:/^\d{2}\/\d{2}$/', function ($attr, $value, $fail) {
-                [$month, $year] = explode('/', $value);
-                $month = (int) $month;
-                $year = (int) ('20'.$year);
-                if ($month < 1 || $month > 12) {
-                    $fail('Mês de validade inválido.');
+        $useSavedCard = $this->useSavedCard && app('current.company')->hasSavedAsaasCard();
 
-                    return;
-                }
-                if ($year < now()->year || ($year === now()->year && $month < now()->month)) {
-                    $fail('Cartão vencido.');
-                }
-            }],
-            'cardCvv' => ['required', 'digits_between:3,4'],
-            'cardHolderName' => ['required', 'string', 'min:3'],
-            'cardCpfCnpj' => ['required', 'string', function ($attr, $value, $fail) {
-                $digits = preg_replace('/\D/', '', $value);
-                if (strlen($digits) !== 11 && strlen($digits) !== 14) {
-                    $fail('CPF deve ter 11 dígitos e CNPJ 14 dígitos.');
-                }
-            }],
-            'cardPostalCode' => ['required', 'string', 'min:8'],
-            'cardAddressNumber' => ['required', 'string'],
-        ]);
+        if (! $useSavedCard) {
+            $this->validate([
+                'cardNumber' => ['required', 'string', 'min:13'],
+                'cardExpiry' => ['required', 'regex:/^\d{2}\/\d{2}$/', function ($attr, $value, $fail) {
+                    [$month, $year] = explode('/', $value);
+                    $month = (int) $month;
+                    $year = (int) ('20'.$year);
+                    if ($month < 1 || $month > 12) {
+                        $fail('Mês de validade inválido.');
+
+                        return;
+                    }
+                    if ($year < now()->year || ($year === now()->year && $month < now()->month)) {
+                        $fail('Cartão vencido.');
+                    }
+                }],
+                'cardCvv' => ['required', 'digits_between:3,4'],
+                'cardHolderName' => ['required', 'string', 'min:3'],
+                'cardCpfCnpj' => ['required', 'string', function ($attr, $value, $fail) {
+                    $digits = preg_replace('/\D/', '', $value);
+                    if (strlen($digits) !== 11 && strlen($digits) !== 14) {
+                        $fail('CPF deve ter 11 dígitos e CNPJ 14 dígitos.');
+                    }
+                }],
+                'cardPostalCode' => ['required', 'string', 'min:8'],
+                'cardAddressNumber' => ['required', 'string'],
+            ]);
+        }
 
         $this->fiscalProcessing = true;
         $this->fiscalError = null;
@@ -807,28 +854,36 @@ class BillingSettings extends Component
             }
 
             $plan = $company->plan;
-            $admin = $company->users()->first();
-            $phone = preg_replace('/\D/', '', $company->branches()->withoutGlobalScopes()->value('phone') ?? '');
+            $creditCard = null;
+            $holderInfo = null;
+            $creditCardToken = null;
 
-            [$month, $year] = explode('/', $this->cardExpiry);
+            if ($useSavedCard) {
+                $creditCardToken = $company->asaas_credit_card_token;
+            } else {
+                $admin = $company->users()->first();
+                $phone = preg_replace('/\D/', '', $company->branches()->withoutGlobalScopes()->value('phone') ?? '');
 
-            $creditCard = new CreditCardDTO(
-                holderName: $this->cardHolderName,
-                number: $this->cardNumber,
-                expiryMonth: $month,
-                expiryYear: '20'.$year,
-                ccv: $this->cardCvv,
-            );
+                [$month, $year] = explode('/', $this->cardExpiry);
 
-            $holderInfo = new CreditCardHolderDTO(
-                name: $admin?->name ?? $this->cardHolderName,
-                email: $admin?->email ?? '',
-                cpfCnpj: $this->cardCpfCnpj,
-                postalCode: $this->cardPostalCode,
-                addressNumber: $this->cardAddressNumber,
-                mobilePhone: $phone,
-                phone: $phone,
-            );
+                $creditCard = new CreditCardDTO(
+                    holderName: $this->cardHolderName,
+                    number: $this->cardNumber,
+                    expiryMonth: $month,
+                    expiryYear: '20'.$year,
+                    ccv: $this->cardCvv,
+                );
+
+                $holderInfo = new CreditCardHolderDTO(
+                    name: $admin?->name ?? $this->cardHolderName,
+                    email: $admin?->email ?? '',
+                    cpfCnpj: $this->cardCpfCnpj,
+                    postalCode: $this->cardPostalCode,
+                    addressNumber: $this->cardAddressNumber,
+                    mobilePhone: $phone,
+                    phone: $phone,
+                );
+            }
 
             // Módulo Fiscal entra na MESMA fatura da assinatura do plano — mesmo padrão do PDV.
             $extra = $this->combinedAddonExtra($this->pdvModuleEnabled, true);
@@ -842,6 +897,7 @@ class BillingSettings extends Component
                 externalReference: "fiscal_module_activation_{$company->id}",
                 creditCard: $creditCard,
                 holderInfo: $holderInfo,
+                creditCardToken: $creditCardToken,
             );
 
             if (($charge['status'] ?? '') !== 'CONFIRMED') {
@@ -854,6 +910,9 @@ class BillingSettings extends Component
 
                 return;
             }
+
+            $company->saveAsaasCreditCardFromCharge($charge);
+            $creditCardToken ??= $charge['creditCard']['creditCardToken'] ?? null;
 
             if ($company->asaas_subscription_id) {
                 $asaasService->cancelSubscription($company->asaas_subscription_id);
@@ -868,11 +927,12 @@ class BillingSettings extends Component
                 customerId: $company->asaas_customer_id,
                 plan: $plan,
                 billingType: 'CREDIT_CARD',
-                creditCard: $creditCard,
-                holderInfo: $holderInfo,
+                creditCard: $creditCardToken ? null : $creditCard,
+                holderInfo: $creditCardToken ? null : $holderInfo,
                 nextDueDate: now()->addMonth()->toDateString(),
                 extraAmount: $extra['amount'],
                 extraDescription: $extra['description'],
+                creditCardToken: $creditCardToken,
             );
 
             Subscription::create([

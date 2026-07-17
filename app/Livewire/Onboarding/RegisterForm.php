@@ -558,6 +558,7 @@ class RegisterForm extends Component
                 'asaas_setup_charge_id' => $charge['id'],
                 'setup_fee_paid_at' => now(),
             ]);
+            $company->saveAsaasCreditCardFromCharge($charge);
 
             app(CompanyService::class)->activate($company);
 

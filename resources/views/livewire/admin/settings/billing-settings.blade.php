@@ -381,6 +381,17 @@
                     </div>
                 @endif
 
+                @if($savedCardLabel)
+                    <div class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 dark:border-zinc-700 p-4">
+                        <div>
+                            <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">Usar cartão salvo</p>
+                            <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">{{ $savedCardLabel }}</p>
+                        </div>
+                        <flux:switch wire:model.live="useSavedCard" />
+                    </div>
+                @endif
+
+                @if(! $savedCardLabel || ! $useSavedCard)
                 <div>
                     <flux:input
                         wire:model="cardNumber"
@@ -470,6 +481,7 @@
                         @error('cardAddressNumber') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
                     </div>
                 </div>
+                @endif
 
                 <button
                     wire:click="submitCardForSubscription"
@@ -662,6 +674,17 @@
                     </div>
                 @endif
 
+                @if($savedCardLabel)
+                    <div class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 dark:border-zinc-700 p-4">
+                        <div>
+                            <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">Usar cartão salvo</p>
+                            <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">{{ $savedCardLabel }}</p>
+                        </div>
+                        <flux:switch wire:model.live="useSavedCard" />
+                    </div>
+                @endif
+
+                @if(! $savedCardLabel || ! $useSavedCard)
                 <div>
                     <flux:input
                         wire:model="cardNumber"
@@ -751,6 +774,7 @@
                         @error('cardAddressNumber') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
                     </div>
                 </div>
+                @endif
 
                 <button
                     wire:click="activatePdvModule"
@@ -942,6 +966,17 @@
                     </div>
                 @endif
 
+                @if($savedCardLabel)
+                    <div class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 dark:border-zinc-700 p-4">
+                        <div>
+                            <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">Usar cartão salvo</p>
+                            <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">{{ $savedCardLabel }}</p>
+                        </div>
+                        <flux:switch wire:model.live="useSavedCard" />
+                    </div>
+                @endif
+
+                @if(! $savedCardLabel || ! $useSavedCard)
                 <div>
                     <flux:input
                         wire:model="cardNumber"
@@ -1031,6 +1066,7 @@
                         @error('cardAddressNumber') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
                     </div>
                 </div>
+                @endif
 
                 <button
                     wire:click="activateFiscalModule"

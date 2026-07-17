@@ -73,6 +73,7 @@ class CreateAsaasSubscription implements ShouldBeUnique, ShouldQueue
                 nextDueDate: $this->nextDueDate,
                 extraAmount: $extraAmount,
                 extraDescription: $extraDescription,
+                creditCardToken: $billingType === 'CREDIT_CARD' ? $this->company->asaas_credit_card_token : null,
             );
         } catch (AsaasCircuitOpenException $e) {
             Log::channel('payments')->warning('Circuit aberto — CreateAsaasSubscription adiado 15 min', [

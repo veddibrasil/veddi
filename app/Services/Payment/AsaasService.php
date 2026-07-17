@@ -200,6 +200,7 @@ class AsaasService implements AsaasServiceInterface
         ?string $nextDueDate = null,
         float $extraAmount = 0.0,
         string $extraDescription = '',
+        ?string $creditCardToken = null,
     ): array {
         $amount = $plan->monthlyPrice() + $extraAmount;
         $description = $extraDescription !== ''
@@ -222,26 +223,31 @@ class AsaasService implements AsaasServiceInterface
             'description' => $description,
         ];
 
-        if ($creditCard !== null) {
-            $payload['creditCard'] = [
-                'holderName' => strtoupper($creditCard->holderName),
-                'number' => preg_replace('/\D/', '', $creditCard->number),
-                'expiryMonth' => $creditCard->expiryMonth,
-                'expiryYear' => $creditCard->expiryYear,
-                'ccv' => $creditCard->ccv,
-            ];
-        }
+        if ($creditCardToken !== null) {
+            // Token substitui creditCard/creditCardHolderInfo — cartão não trafega novamente.
+            $payload['creditCardToken'] = $creditCardToken;
+        } else {
+            if ($creditCard !== null) {
+                $payload['creditCard'] = [
+                    'holderName' => strtoupper($creditCard->holderName),
+                    'number' => preg_replace('/\D/', '', $creditCard->number),
+                    'expiryMonth' => $creditCard->expiryMonth,
+                    'expiryYear' => $creditCard->expiryYear,
+                    'ccv' => $creditCard->ccv,
+                ];
+            }
 
-        if ($holderInfo !== null) {
-            $payload['creditCardHolderInfo'] = array_filter([
-                'name' => $holderInfo->name,
-                'email' => $holderInfo->email,
-                'cpfCnpj' => preg_replace('/\D/', '', $holderInfo->cpfCnpj),
-                'postalCode' => preg_replace('/\D/', '', $holderInfo->postalCode),
-                'addressNumber' => $holderInfo->addressNumber,
-                'mobilePhone' => $holderInfo->mobilePhone ?? $holderInfo->phone,
-                'phone' => $holderInfo->phone ?? $holderInfo->mobilePhone,
-            ], fn ($v) => $v !== null && $v !== '');
+            if ($holderInfo !== null) {
+                $payload['creditCardHolderInfo'] = array_filter([
+                    'name' => $holderInfo->name,
+                    'email' => $holderInfo->email,
+                    'cpfCnpj' => preg_replace('/\D/', '', $holderInfo->cpfCnpj),
+                    'postalCode' => preg_replace('/\D/', '', $holderInfo->postalCode),
+                    'addressNumber' => $holderInfo->addressNumber,
+                    'mobilePhone' => $holderInfo->mobilePhone ?? $holderInfo->phone,
+                    'phone' => $holderInfo->phone ?? $holderInfo->mobilePhone,
+                ], fn ($v) => $v !== null && $v !== '');
+            }
         }
 
         $response = $this->request('post', 'subscriptions', $payload);
@@ -409,24 +415,33 @@ class AsaasService implements AsaasServiceInterface
     /**
      * Create a credit card charge (à vista) for an order.
      *
-     * @param  array{holderName: string, number: string, expiryMonth: string, expiryYear: string, ccv: string}  $creditCard
-     * @param  array{name: string, email: string, cpfCnpj: string, postalCode: string, addressNumber: string, phone?: string}  $holderInfo
-     * @return array Asaas payment object — check ['status'] for CONFIRMED or DECLINED, ['declineReason'] on failure
+     * Pass either $creditCardToken (reuses a previously saved card, no PAN/CVV sent again)
+     * or both $creditCard and $holderInfo (raw card data, first-time charge).
+     *
+     * @return array Asaas payment object — check ['status'] for CONFIRMED or DECLINED, ['declineReason'] on failure.
+     *               When tokenization is enabled on the Asaas account, an approved charge also
+     *               returns creditCard.creditCardToken/creditCardBrand/creditCardNumber (last 4).
      */
     public function createCreditCardCharge(
         string $customerId,
         float $amount,
         string $description,
         string $externalReference,
-        CreditCardDTO $creditCard,
-        CreditCardHolderDTO $holderInfo,
-        int $installments = 1
+        ?CreditCardDTO $creditCard = null,
+        ?CreditCardHolderDTO $holderInfo = null,
+        int $installments = 1,
+        ?string $creditCardToken = null,
     ): array {
+        if ($creditCardToken === null && ($creditCard === null || $holderInfo === null)) {
+            throw new \InvalidArgumentException('createCreditCardCharge requer creditCardToken ou creditCard+holderInfo.');
+        }
+
         Log::channel('payments')->info('Criando cobrança de cartão de crédito no Asaas', [
             'customer_id' => $customerId,
             'amount' => $amount,
             'installments' => $installments,
             'external_reference' => $externalReference,
+            'using_saved_token' => $creditCardToken !== null,
         ]);
 
         $payload = [
@@ -436,14 +451,20 @@ class AsaasService implements AsaasServiceInterface
             'dueDate' => now()->toDateString(),
             'description' => $description,
             'externalReference' => $externalReference,
-            'creditCard' => [
+        ];
+
+        if ($creditCardToken !== null) {
+            // Token substitui creditCard/creditCardHolderInfo — cartão não trafega novamente.
+            $payload['creditCardToken'] = $creditCardToken;
+        } else {
+            $payload['creditCard'] = [
                 'holderName' => strtoupper($creditCard->holderName),
                 'number' => preg_replace('/\D/', '', $creditCard->number),
                 'expiryMonth' => $creditCard->expiryMonth,
                 'expiryYear' => $creditCard->expiryYear,
                 'ccv' => $creditCard->ccv,
-            ],
-            'creditCardHolderInfo' => array_filter([
+            ];
+            $payload['creditCardHolderInfo'] = array_filter([
                 'name' => $holderInfo->name,
                 'email' => $holderInfo->email,
                 'cpfCnpj' => preg_replace('/\D/', '', $holderInfo->cpfCnpj),
@@ -451,8 +472,8 @@ class AsaasService implements AsaasServiceInterface
                 'addressNumber' => $holderInfo->addressNumber,
                 'mobilePhone' => $holderInfo->mobilePhone ?? $holderInfo->phone,
                 'phone' => $holderInfo->phone ?? $holderInfo->mobilePhone,
-            ], fn ($v) => $v !== null && $v !== ''),
-        ];
+            ], fn ($v) => $v !== null && $v !== '');
+        }
 
         if ($installments > 1) {
             $payload['installmentCount'] = $installments;

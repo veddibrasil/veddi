@@ -61,6 +61,9 @@ class Company extends Model
         'asaas_setup_pix_copy_paste',
         'overdue_since',
         'asaas_setup_bank_slip_url',
+        'asaas_credit_card_token',
+        'asaas_credit_card_last_four',
+        'asaas_credit_card_brand',
         'terms_accepted_at',
         'terms_accepted_by_user_id',
         'terms_version',
@@ -274,6 +277,42 @@ class Company extends Model
     public function schedulingEnabled(): bool
     {
         return $this->schedule_min_advance_minutes > 0;
+    }
+
+    public function hasSavedAsaasCard(): bool
+    {
+        return filled($this->asaas_credit_card_token);
+    }
+
+    public function savedAsaasCardLabel(): ?string
+    {
+        if (! $this->hasSavedAsaasCard()) {
+            return null;
+        }
+
+        return trim(($this->asaas_credit_card_brand ?: 'Cartão').' •••• '.($this->asaas_credit_card_last_four ?: '****'));
+    }
+
+    /**
+     * Persiste o token de cartão retornado pelo Asaas após uma cobrança aprovada,
+     * para reuso em cobranças futuras sem re-enviar PAN/CVV. Não faz nada se o
+     * Asaas não retornar token (tokenização não habilitada na conta).
+     *
+     * @param  array  $charge  Resposta de createCreditCardCharge/createSubscription do AsaasService
+     */
+    public function saveAsaasCreditCardFromCharge(array $charge): void
+    {
+        $token = $charge['creditCard']['creditCardToken'] ?? null;
+
+        if (! $token) {
+            return;
+        }
+
+        $this->update([
+            'asaas_credit_card_token' => $token,
+            'asaas_credit_card_last_four' => $charge['creditCard']['creditCardNumber'] ?? $this->asaas_credit_card_last_four,
+            'asaas_credit_card_brand' => $charge['creditCard']['creditCardBrand'] ?? $this->asaas_credit_card_brand,
+        ]);
     }
 
     public function isActive(): bool
