@@ -60,8 +60,14 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
                     ->first();
 
                 if (! $payment) {
-                    // Fallback: tentar pelo order_number no payload
-                    $orderId = $this->payload['transaction']['order_number'] ?? null;
+                    // Fallback: tentar pelo order_number no payload.
+                    // Formato é "{namespace-do-ambiente}-{order_id}" (ver
+                    // PaymentOrchestrator::vindiExternalRef) — pega só o id numérico.
+                    $orderNumber = $this->payload['transaction']['order_number'] ?? null;
+                    $orderId = $orderNumber !== null
+                        ? (str_contains((string) $orderNumber, '-') ? substr(strrchr((string) $orderNumber, '-'), 1) : $orderNumber)
+                        : null;
+
                     if ($orderId) {
                         $payment = Payment::where('order_id', $orderId)
                             ->whereNull('vindi_transaction_token')

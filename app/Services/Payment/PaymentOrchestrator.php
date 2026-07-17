@@ -21,6 +21,20 @@ class PaymentOrchestrator
         private readonly VindiService $vindi,
     ) {}
 
+    /**
+     * Vindi's order_number is unique per token_account, não por banco. Ambientes
+     * distintos (staging A, staging B) compartilhando as mesmas credenciais Vindi
+     * reusam o mesmo autoincrement de order.id, colidindo remotamente. Prefixamos
+     * com um hash curto do nome do banco pra namespacear por ambiente.
+     */
+    private function vindiExternalRef(Order $order): string
+    {
+        $database = (string) config('database.connections.'.config('database.default').'.database');
+        $namespace = substr(md5($database), 0, 6);
+
+        return "{$namespace}-{$order->id}";
+    }
+
     // ─────────────────────────────────────────────────────────────
     // Roteamento principal
     // ─────────────────────────────────────────────────────────────
@@ -125,7 +139,7 @@ class PaymentOrchestrator
             try {
                 $result = $this->vindi->createPixCharge(
                     amount: $chargeAmount,
-                    externalRef: (string) $order->id,
+                    externalRef: $this->vindiExternalRef($order),
                     customer: $customer,
                     affiliateEmail: $affiliateEmail,
                     affiliatePercentual: $affiliatePercentual,
@@ -287,7 +301,7 @@ class PaymentOrchestrator
             try {
                 $result = $this->vindi->createCreditCardCharge(
                     amount: $chargeAmount,
-                    externalRef: (string) $order->id,
+                    externalRef: $this->vindiExternalRef($order),
                     card: new CreditCardDTO(
                         holderName: $cardData['holderName'],
                         number: $cardData['number'],

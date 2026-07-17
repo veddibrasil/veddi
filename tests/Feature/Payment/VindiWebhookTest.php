@@ -130,6 +130,38 @@ test('ProcessVindiWebhook marca pagamento como pago e atualiza pedido', function
         ->and($ctx['order']->status)->toBe('paid');
 });
 
+test('ProcessVindiWebhook fallback por order_number namespaced (sem token local ainda) encontra o pedido', function () {
+    $ctx = vindiWebhookContext();
+    $ctx['payment']->update(['vindi_transaction_token' => null]);
+
+    $wallet = Mockery::mock(WalletServiceInterface::class);
+    $wallet->shouldReceive('creditForOrder')->once();
+    app()->instance(WalletServiceInterface::class, $wallet);
+
+    $transactions = Mockery::mock(TransactionServiceInterface::class);
+    $transactions->shouldReceive('createForPayment')->once();
+    app()->instance(TransactionServiceInterface::class, $transactions);
+
+    // Formato "{namespace-do-ambiente}-{order_id}" — ver PaymentOrchestrator::vindiExternalRef.
+    $payload = [
+        'token_account' => 'tok_test',
+        'transaction' => [
+            'token' => 'vindi_tok_wh_002',
+            'status_name' => 'Aprovada',
+            'order_number' => 'a1b2c3-'.$ctx['order']->id,
+        ],
+    ];
+
+    $job = new ProcessVindiWebhook('vindi_tok_wh_002', 'Aprovada', $payload);
+    $job->handle();
+
+    $ctx['payment']->refresh();
+    $ctx['order']->refresh();
+
+    expect($ctx['payment']->status)->toBe('paid')
+        ->and($ctx['order']->status)->toBe('paid');
+});
+
 test('ProcessVindiWebhook idempotente — webhook duplicado não credita duas vezes', function () {
     $ctx = vindiWebhookContext();
     $ctx['payment']->update(['status' => 'paid', 'paid_at' => now()]);
