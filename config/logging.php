@@ -54,7 +54,9 @@ return [
 
         'stack' => [
             'driver' => 'stack',
-            'channels' => explode(',', (string) env('LOG_STACK', 'single')),
+            // 'nightwatch' sempre incluso para que todo log, independente do
+            // canal ou nivel, chegue ao dashboard do Nightwatch.
+            'channels' => array_unique([...explode(',', (string) env('LOG_STACK', 'single')), 'nightwatch']),
             'ignore_exceptions' => false,
         ],
 
@@ -74,6 +76,12 @@ return [
         ],
 
         'discord' => [
+            'driver' => 'stack',
+            'channels' => ['discord_target', 'nightwatch'],
+            'ignore_exceptions' => false,
+        ],
+
+        'discord_target' => [
             'driver' => 'monolog',
             'handler' => \App\Logging\DiscordWebhookHandler::class,
             'handler_with' => [
@@ -88,6 +96,12 @@ return [
         // sucesso/falha. Threshold mais baixo que o canal 'discord' (que fica
         // em 'error' em produção) para que o log de sucesso também apareça.
         'discord_pix' => [
+            'driver' => 'stack',
+            'channels' => ['discord_pix_target', 'nightwatch'],
+            'ignore_exceptions' => false,
+        ],
+
+        'discord_pix_target' => [
             'driver' => 'monolog',
             'handler' => \App\Logging\DiscordWebhookHandler::class,
             'handler_with' => [
@@ -144,38 +158,68 @@ return [
         ],
 
         'orders' => [
+            'driver' => 'stack',
+            'channels' => ['orders_target', 'nightwatch'],
+            'ignore_exceptions' => false,
+            'tap' => [\App\Logging\DiscordWebhookTap::class],
+        ],
+
+        'orders_target' => [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),
             'level' => 'debug',
             'replace_placeholders' => true,
-            'tap' => [\App\Logging\DiscordWebhookTap::class],
         ],
 
         'payments' => [
+            'driver' => 'stack',
+            'channels' => ['payments_target', 'nightwatch'],
+            'ignore_exceptions' => false,
+            'tap' => [\App\Logging\DiscordWebhookTap::class],
+        ],
+
+        'payments_target' => [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),
             'level' => 'debug',
             'replace_placeholders' => true,
-            'tap' => [\App\Logging\DiscordWebhookTap::class],
         ],
 
         'chat' => [
+            'driver' => 'stack',
+            'channels' => ['chat_target', 'nightwatch'],
+            'ignore_exceptions' => false,
+            'tap' => [\App\Logging\DiscordWebhookTap::class],
+        ],
+
+        'chat_target' => [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),
             'level' => 'debug',
             'replace_placeholders' => true,
-            'tap' => [\App\Logging\DiscordWebhookTap::class],
         ],
 
         'webhook' => [
+            'driver' => 'stack',
+            'channels' => ['webhook_target', 'nightwatch'],
+            'ignore_exceptions' => false,
+            'tap' => [\App\Logging\DiscordWebhookTap::class],
+        ],
+
+        'webhook_target' => [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),
             'level' => 'debug',
             'replace_placeholders' => true,
-            'tap' => [\App\Logging\DiscordWebhookTap::class],
         ],
 
         'fiscal' => [
+            'driver' => 'stack',
+            'channels' => ['fiscal_target', 'nightwatch'],
+            'ignore_exceptions' => false,
+        ],
+
+        'fiscal_target' => [
             'driver' => 'daily',
             'path' => storage_path('logs/fiscal.log'),
             'level' => 'debug',
@@ -184,6 +228,12 @@ return [
         ],
 
         'audit' => [
+            'driver' => 'stack',
+            'channels' => ['audit_target', 'nightwatch'],
+            'ignore_exceptions' => false,
+        ],
+
+        'audit_target' => [
             'driver' => 'daily',
             'path' => storage_path('logs/audit.log'),
             'level' => 'info',
@@ -192,6 +242,12 @@ return [
         ],
 
         'whatsapp' => [
+            'driver' => 'stack',
+            'channels' => ['whatsapp_target', 'nightwatch'],
+            'ignore_exceptions' => false,
+        ],
+
+        'whatsapp_target' => [
             'driver' => 'daily',
             'path' => storage_path('logs/whatsapp.log'),
             'level' => 'debug',
