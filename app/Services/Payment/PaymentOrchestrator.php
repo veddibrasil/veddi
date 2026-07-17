@@ -113,6 +113,14 @@ class PaymentOrchestrator
 
         $tokenAccount = config('payments.vindi_token_account');
 
+        if (! $tokenAccount && config('app.env') === 'production') {
+            Log::channel('discord')->critical('Produção sem credenciais Vindi configuradas — PIX caindo em modo simulação', [
+                'type' => 'payments',
+                'order_id' => $order->id,
+                'company_id' => $company->id,
+            ]);
+        }
+
         if ($tokenAccount) {
             try {
                 $result = $this->vindi->createPixCharge(
@@ -265,39 +273,59 @@ class PaymentOrchestrator
 
         $tokenAccount = config('payments.vindi_token_account');
 
+        if (! $tokenAccount && config('app.env') === 'production') {
+            Log::channel('discord')->critical('Produção sem credenciais Vindi configuradas — cartão caindo em modo simulação', [
+                'type' => 'payments',
+                'order_id' => $order->id,
+                'company_id' => $company->id,
+            ]);
+        }
+
         if ($tokenAccount) {
             $vindiAddress = $this->vindiAddressFromOrder($order, $customer);
 
-            $result = $this->vindi->createCreditCardCharge(
-                amount: $chargeAmount,
-                externalRef: (string) $order->id,
-                card: new CreditCardDTO(
-                    holderName: $cardData['holderName'],
-                    number: $cardData['number'],
-                    expiryMonth: $cardData['expiryMonth'],
-                    expiryYear: $cardData['expiryYear'],
-                    ccv: $cardData['ccv'],
-                    token: $cardData['token'] ?? null,
-                ),
-                holder: new CreditCardHolderDTO(
-                    name: $customer->name,
-                    email: $customer->email ?? '',
-                    cpfCnpj: $cardData['cpfCnpj'] ?? $customer->tax_id ?? '',
-                    postalCode: $cardData['postalCode'] ?? $vindiAddress['postal_code'] ?? '',
-                    addressNumber: $cardData['addressNumber'] ?? $vindiAddress['number'] ?? 'S/N',
-                    phone: $customer->phone ?? null,
-                    street: $vindiAddress['street'],
-                    complement: $vindiAddress['complement'],
-                    neighborhood: $vindiAddress['neighborhood'],
-                    city: $vindiAddress['city'],
-                    state: $vindiAddress['state'],
-                ),
-                installments: $installments,
-                affiliateEmail: $affiliateEmail,
-                affiliatePercentual: $affiliatePercentual,
-                company: $company,
-                deliveryFee: (float) ($order->delivery_fee ?? 0),
-            );
+            try {
+                $result = $this->vindi->createCreditCardCharge(
+                    amount: $chargeAmount,
+                    externalRef: (string) $order->id,
+                    card: new CreditCardDTO(
+                        holderName: $cardData['holderName'],
+                        number: $cardData['number'],
+                        expiryMonth: $cardData['expiryMonth'],
+                        expiryYear: $cardData['expiryYear'],
+                        ccv: $cardData['ccv'],
+                        token: $cardData['token'] ?? null,
+                    ),
+                    holder: new CreditCardHolderDTO(
+                        name: $customer->name,
+                        email: $customer->email ?? '',
+                        cpfCnpj: $cardData['cpfCnpj'] ?? $customer->tax_id ?? '',
+                        postalCode: $cardData['postalCode'] ?? $vindiAddress['postal_code'] ?? '',
+                        addressNumber: $cardData['addressNumber'] ?? $vindiAddress['number'] ?? 'S/N',
+                        phone: $customer->phone ?? null,
+                        street: $vindiAddress['street'],
+                        complement: $vindiAddress['complement'],
+                        neighborhood: $vindiAddress['neighborhood'],
+                        city: $vindiAddress['city'],
+                        state: $vindiAddress['state'],
+                    ),
+                    installments: $installments,
+                    affiliateEmail: $affiliateEmail,
+                    affiliatePercentual: $affiliatePercentual,
+                    company: $company,
+                    deliveryFee: (float) ($order->delivery_fee ?? 0),
+                );
+            } catch (\Throwable $e) {
+                Log::channel('discord')->error('Cartão: falha ao criar cobrança via Vindi', [
+                    'type' => 'payments',
+                    'order_id' => $order->id,
+                    'company_id' => $company->id,
+                    'amount' => $chargeAmount,
+                    'error' => $e->getMessage(),
+                ]);
+
+                throw $e;
+            }
 
             $transactionToken = $result['transaction_token'];
             $transactionId = $result['transaction_id'] ?? null;
@@ -326,29 +354,50 @@ class PaymentOrchestrator
 
         $paymentToken = hash('sha256', $order->id.$customer->id.Str::random(32));
 
-        DB::transaction(function () use ($order, $transactionToken, $transactionId, $chargeAmount, $cardFee, $cardRate, $installments, $paymentToken, $approved) {
-            $payment = Payment::create([
+        try {
+            DB::transaction(function () use ($order, $transactionToken, $transactionId, $chargeAmount, $cardFee, $cardRate, $installments, $paymentToken, $approved) {
+                $payment = Payment::create([
+                    'order_id' => $order->id,
+                    'vindi_transaction_token' => $transactionToken,
+                    'vindi_transaction_id' => $transactionId,
+                    'payment_gateway' => 'vindi',
+                    'amount' => $chargeAmount,
+                    'original_amount' => (float) $order->total,
+                    'card_fee' => $cardFee,
+                    'card_fee_rate' => $cardRate,
+                    'installments' => $installments,
+                    'status' => $approved ? 'paid' : 'pending',
+                    'paid_at' => $approved ? now() : null,
+                    'payment_token' => $paymentToken,
+                ]);
+
+                if ($approved) {
+                    $order->update(['status' => 'paid']);
+                    $fresh = $order->fresh();
+                    app(WalletServiceInterface::class)->creditForOrder($fresh, $payment);
+                    app(TransactionServiceInterface::class)->createForPayment($fresh, $payment);
+                }
+            });
+        } catch (\Throwable $e) {
+            // Vindi já pode ter aprovado a cobrança (ver log "Cartão Vindi criado" acima)
+            // mas o commit local falhou e a transação foi revertida — cliente cobrado,
+            // pedido não marcado como pago. Precisa de reconciliação manual.
+            Log::channel('discord')->critical('Cartão: transação local falhou após resposta da Vindi — possível cobrança sem pedido pago', [
+                'type' => 'payments',
                 'order_id' => $order->id,
                 'vindi_transaction_token' => $transactionToken,
-                'vindi_transaction_id' => $transactionId,
-                'payment_gateway' => 'vindi',
-                'amount' => $chargeAmount,
-                'original_amount' => (float) $order->total,
-                'card_fee' => $cardFee,
-                'card_fee_rate' => $cardRate,
-                'installments' => $installments,
-                'status' => $approved ? 'paid' : 'pending',
-                'paid_at' => $approved ? now() : null,
-                'payment_token' => $paymentToken,
+                'gateway_approved' => $approved,
+                'error' => $e->getMessage(),
             ]);
 
-            if ($approved) {
-                $order->update(['status' => 'paid']);
-                $fresh = $order->fresh();
-                app(WalletServiceInterface::class)->creditForOrder($fresh, $payment);
-                app(TransactionServiceInterface::class)->createForPayment($fresh, $payment);
-            }
-        });
+            throw $e;
+        }
+
+        Log::channel('payments')->info('Cartão: pagamento local persistido', [
+            'order_id' => $order->id,
+            'vindi_transaction_token' => $transactionToken,
+            'approved' => $approved,
+        ]);
 
         return [
             'id' => $transactionToken,

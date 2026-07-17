@@ -12,6 +12,7 @@ use App\Services\Order\CouponService;
 use App\Services\Order\DeliveryService;
 use App\Services\Order\GeocodingService;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 
 trait HasOrderFlow
 {
@@ -86,8 +87,21 @@ trait HasOrderFlow
             $this->addMessage('user', "Cupom: {$coupon->code}");
             $this->addMessage('bot', "✅ {$discountLabel} Escolha o tipo de entrega:");
             $this->transitionTo('CHECKOUT_ORDER_TYPE');
+
+            Log::channel('chat')->info('Cupom aplicado', [
+                'customer_id' => $this->customerId,
+                'coupon_code' => $coupon->code,
+                'discount' => $discount,
+                'cart_total' => $this->cartTotal,
+            ]);
         } catch (CouponException $e) {
             $this->couponError = $e->getMessage();
+
+            Log::channel('chat')->info('Cupom rejeitado', [
+                'customer_id' => $this->customerId,
+                'coupon_code' => $code,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
@@ -166,6 +180,12 @@ trait HasOrderFlow
                     $this->customer_latitude = (string) $coords['latitude'];
                     $this->customer_longitude = (string) $coords['longitude'];
                     $geocodedNow = true;
+                } else {
+                    Log::channel('chat')->info('Geocoding não encontrou coordenadas', [
+                        'customer_id' => $this->customerId,
+                        'cep' => preg_replace('/\D/', '', $this->cep),
+                        'city' => $this->city,
+                    ]);
                 }
             }
 
@@ -250,8 +270,24 @@ trait HasOrderFlow
             $this->freeDelivery = $result['free'];
 
             $this->transitionTo('CHECKOUT_DELIVERY_FEE');
+
+            Log::channel('chat')->info('Frete calculado', [
+                'customer_id' => $this->customerId,
+                'branch_id' => $this->selectedBranchId,
+                'neighborhood' => $this->neighborhood,
+                'fee' => $result['fee'],
+                'free' => $result['free'],
+            ]);
         } catch (DeliveryException $e) {
             $this->addMessage('bot', $e->getMessage());
+
+            Log::channel('chat')->info('Frete rejeitado', [
+                'customer_id' => $this->customerId,
+                'branch_id' => $this->selectedBranchId,
+                'neighborhood' => $this->neighborhood,
+                'cart_total' => $this->cartTotal,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
@@ -453,11 +489,24 @@ trait HasOrderFlow
         } catch (\Exception) {
             $this->addError('scheduledAt', 'Data/hora inválida.');
 
+            Log::channel('chat')->info('Agendamento rejeitado: formato inválido', [
+                'customer_id' => $this->customerId,
+                'branch_id' => $this->selectedBranchId,
+                'scheduleDate' => $this->scheduleDate,
+                'scheduleTime' => $this->scheduleTime,
+            ]);
+
             return;
         }
 
         if ($scheduled->isPast()) {
             $this->addError('scheduledAt', 'O horário deve ser no futuro.');
+
+            Log::channel('chat')->info('Agendamento rejeitado: horário no passado', [
+                'customer_id' => $this->customerId,
+                'branch_id' => $this->selectedBranchId,
+                'attempted_at' => $scheduled->toIso8601String(),
+            ]);
 
             return;
         }
@@ -465,6 +514,13 @@ trait HasOrderFlow
         $minTime = now(config('app.timezone'))->addMinutes($minMinutes);
         if ($scheduled->lt($minTime)) {
             $this->addError('scheduledAt', "Agende com pelo menos {$minMinutes} minutos de antecedência.");
+
+            Log::channel('chat')->info('Agendamento rejeitado: antecedência mínima não atingida', [
+                'customer_id' => $this->customerId,
+                'branch_id' => $this->selectedBranchId,
+                'attempted_at' => $scheduled->toIso8601String(),
+                'min_minutes' => $minMinutes,
+            ]);
 
             return;
         }
@@ -478,6 +534,13 @@ trait HasOrderFlow
             if ($availableDays !== null && ! in_array($dayOfWeek, $availableDays)) {
                 $this->addError('scheduledAt', 'A filial não atende no dia selecionado.');
 
+                Log::channel('chat')->info('Agendamento rejeitado: filial fechada no dia', [
+                    'customer_id' => $this->customerId,
+                    'branch_id' => $this->selectedBranchId,
+                    'attempted_at' => $scheduled->toIso8601String(),
+                    'day_of_week' => $dayOfWeek,
+                ]);
+
                 return;
             }
 
@@ -486,10 +549,24 @@ trait HasOrderFlow
                 if ($timeStr < $hours['opens_at'] || $timeStr > $hours['closes_at']) {
                     $this->addError('scheduledAt', "A filial funciona entre {$hours['opens_at']} e {$hours['closes_at']}.");
 
+                    Log::channel('chat')->info('Agendamento rejeitado: fora do horário de funcionamento', [
+                        'customer_id' => $this->customerId,
+                        'branch_id' => $this->selectedBranchId,
+                        'attempted_time' => $timeStr,
+                        'opens_at' => $hours['opens_at'],
+                        'closes_at' => $hours['closes_at'],
+                    ]);
+
                     return;
                 }
             }
         }
+
+        Log::channel('chat')->info('Agendamento confirmado', [
+            'customer_id' => $this->customerId,
+            'branch_id' => $this->selectedBranchId,
+            'scheduled_at' => $scheduled->toIso8601String(),
+        ]);
 
         $this->scheduledAt = $scheduled->toIso8601String();
         $scheduledLabel = $scheduled->format('d/m/Y \à\s H:i');

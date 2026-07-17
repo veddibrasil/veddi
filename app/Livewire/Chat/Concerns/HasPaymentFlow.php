@@ -119,6 +119,16 @@ trait HasPaymentFlow
                 $coupon,
                 $scheduledAt,
             );
+
+            Log::channel('orders')->info('Pedido criado no chat', [
+                'order_id' => $order->id,
+                'customer_id' => $this->customerId,
+                'branch_id' => $this->selectedBranchId,
+                'payment_method' => $this->paymentMethod,
+                'order_type' => $this->orderType,
+                'status' => $initialStatus,
+            ]);
+
         } catch (RuntimeException $e) {
             Log::channel('discord')->error('Falha ao criar pedido no chat', [
                 'type' => 'orders',
@@ -146,6 +156,15 @@ trait HasPaymentFlow
         }
 
         \App\Events\NewOrderPlaced::dispatch($order->load('customer'));
+
+        Log::channel('orders')->info('Evento NewOrderPlaced disparado', [
+            'order_id' => $order->id,
+            'customer_id' => $this->customerId,
+            'branch_id' => $this->selectedBranchId,
+            'payment_method' => $this->paymentMethod,
+            'order_type' => $this->orderType,
+            'status' => $initialStatus,
+        ]);
 
         $summary = $orderService->buildOrderSummaryFromOrder($order);
 
@@ -187,12 +206,23 @@ trait HasPaymentFlow
         $maxAttempts = $phase === 'pay' ? 30 : 10;
 
         if (RateLimiter::tooManyAttempts($rateLimitKey, $maxAttempts)) {
+            Log::channel('chat')->warning('checkPaymentStatus rate limitado', [
+                'order_id' => $this->orderId,
+                'customer_id' => $this->customerId,
+                'phase' => $phase,
+            ]);
+
             return;
         }
         RateLimiter::hit($rateLimitKey, 60);
 
         $order = Order::find($this->orderId);
         if (! $order) {
+            Log::channel('chat')->warning('checkPaymentStatus: pedido não encontrado', [
+                'order_id' => $this->orderId,
+                'customer_id' => $this->customerId,
+            ]);
+
             return;
         }
 
@@ -212,6 +242,11 @@ trait HasPaymentFlow
                 $this->pixCopyPaste = $payment->pix_copy_paste;
                 $this->paymentId = $payment->asaas_payment_id;
                 $this->expiresAt = $payment->expires_at?->toIso8601String();
+            } else {
+                Log::channel('chat')->warning('Pedido aguardando pagamento sem registro de Payment', [
+                    'order_id' => $this->orderId,
+                    'customer_id' => $this->customerId,
+                ]);
             }
         }
 
@@ -258,6 +293,11 @@ trait HasPaymentFlow
 
         $order = Order::find($this->orderId);
         if (! $order) {
+            Log::channel('chat')->warning('handlePaymentExpired: pedido não encontrado', [
+                'order_id' => $this->orderId,
+                'customer_id' => $this->customerId,
+            ]);
+
             return;
         }
 
@@ -306,6 +346,11 @@ trait HasPaymentFlow
             $this->cardError = 'Pedido não encontrado. Tente novamente.';
             $this->submitting = false;
 
+            Log::channel('chat')->warning('submitCardPayment: pedido não encontrado', [
+                'order_id' => $this->orderId,
+                'customer_id' => $this->customerId,
+            ]);
+
             return;
         }
 
@@ -337,6 +382,12 @@ trait HasPaymentFlow
             $this->cardAddressNumber = '';
             $this->cardToken = null;
             $this->cardFeeBreakdown = [];
+
+            Log::channel('orders')->info('Resultado do cartão recebido no chat', [
+                'order_id' => $order->id,
+                'customer_id' => $this->customerId,
+                'approved' => $result['approved'],
+            ]);
 
             if ($result['approved']) {
                 OrderStatusUpdated::dispatch($order->fresh());
@@ -376,8 +427,14 @@ trait HasPaymentFlow
 
         try {
             app(OrderCancellationPolicy::class)->authorizeCustomerCancel($order);
-        } catch (\RuntimeException) {
+        } catch (\RuntimeException $e) {
             $this->addMessage('bot', 'Não é possível cancelar o pedido no momento. Entre em contato com a loja.');
+
+            Log::channel('orders')->info('Cancelamento pelo cliente rejeitado pela política', [
+                'order_id' => $order->id,
+                'customer_id' => $this->customerId,
+                'error' => $e->getMessage(),
+            ]);
 
             return;
         }
@@ -397,9 +454,15 @@ trait HasPaymentFlow
 
         try {
             app(OrderServiceInterface::class)->cancelOrder($order, $this->customerId);
-        } catch (RuntimeException) {
+        } catch (RuntimeException $e) {
             $this->showCancelConfirm = false;
             $this->addMessage('bot', 'Não foi possível cancelar o pedido. Entre em contato com a loja.');
+
+            Log::channel('orders')->info('Cancelamento confirmado pelo cliente falhou', [
+                'order_id' => $order->id,
+                'customer_id' => $this->customerId,
+                'error' => $e->getMessage(),
+            ]);
 
             return;
         }
@@ -451,6 +514,13 @@ trait HasPaymentFlow
 
     public function retryOrder(): void
     {
+        if ($this->orderId) {
+            Log::channel('orders')->info('Pedido abandonado via retryOrder', [
+                'order_id' => $this->orderId,
+                'customer_id' => $this->customerId,
+            ]);
+        }
+
         $this->cart = [];
         $this->orderId = null;
         $this->pixQrCode = null;

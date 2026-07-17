@@ -65,6 +65,7 @@ class VindiService
             'external_ref' => $externalRef,
             'transaction_token' => $result['transaction_token'] ?? null,
             'amount' => $amount,
+            'result' => $result,
         ]);
 
         if (empty($result['pix_qr_code']) && empty($result['pix_copy_paste'])) {
@@ -139,7 +140,7 @@ class VindiService
         ];
 
         Log::channel('payments')->debug('Vindi payload cartão', [
-            'payload' => $payload,
+            'payload' => $this->redactCardPayload($payload),
         ]);
 
         $result = $this->createTransaction($payload);
@@ -167,8 +168,41 @@ class VindiService
         ]);
 
         $data = $response->json();
+        $status = $data['data_response']['transaction']['status_name'] ?? 'unknown';
 
-        return $data['data_response']['transaction']['status_name'] ?? 'unknown';
+        Log::channel('payments')->debug('Vindi getTransactionStatus', [
+            'transaction_token' => $transactionToken,
+            'http_status' => $response->status(),
+            'status_name' => $status,
+        ]);
+
+        if ($response->failed() || $status === 'unknown') {
+            Log::channel('payments')->warning('Vindi getTransactionStatus: resposta inesperada', [
+                'transaction_token' => $transactionToken,
+                'http_status' => $response->status(),
+                'body' => $data,
+            ]);
+        }
+
+        return $status;
+    }
+
+    /**
+     * Mascara PAN e CVV antes de logar — nunca persistir dado de cartão em log
+     * (PCI-DSS), mesmo em canal interno, já que 'payments' replica pro Nightwatch.
+     */
+    private function redactCardPayload(array $payload): array
+    {
+        if (isset($payload['payment']['card_number'])) {
+            $digits = (string) $payload['payment']['card_number'];
+            $payload['payment']['card_number'] = str_repeat('*', max(strlen($digits) - 4, 0)).substr($digits, -4);
+        }
+
+        if (isset($payload['payment']['card_cvv'])) {
+            $payload['payment']['card_cvv'] = '***';
+        }
+
+        return $payload;
     }
 
     private function createTransaction(array $payload): array
@@ -176,17 +210,18 @@ class VindiService
         $response = Http::asJson()->post("{$this->baseUrl}/transactions/payment", $payload);
 
         $data = $response->json();
+        $safePayload = $this->redactCardPayload($payload);
 
         Log::channel('payments')->debug('Vindi createTransaction resposta', [
             'status' => $response->status(),
             'response' => $data,
-            'payload' => $payload,
+            'payload' => $safePayload,
         ]);
 
         Log::channel('discord')->debug('Vindi createTransaction resposta', [
             'status' => $response->status(),
             'response' => $data,
-            'payload' => $payload,
+            'payload' => $safePayload,
         ]);
 
         // Yapay sometimes returns HTTP 4xx with validation warnings but still creates the transaction.
@@ -211,7 +246,7 @@ class VindiService
             // Failing hard here would wrongly cancel an order that may already be paid.
             if ($duplicateOrderNumber) {
                 Log::channel('payments')->warning('Vindi: order_number duplicado — transação já existe remotamente, aguardando webhook', [
-                    'payload' => $payload,
+                    'payload' => $safePayload,
                     'validation_errors' => $validationErrors,
                 ]);
 
@@ -229,7 +264,7 @@ class VindiService
 
             Log::channel('payments')->error('Vindi API erro', [
                 'body' => json_encode($data ?? $response->body()),
-                'payload' => $payload,
+                'payload' => $safePayload,
             ]);
 
             throw new \RuntimeException("Vindi API error {$response->status()}: {$response->body()}");

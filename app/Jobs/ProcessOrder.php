@@ -49,6 +49,7 @@ class ProcessOrder implements ShouldBeUnique, ShouldQueue
             'customer_id' => $this->customer->id,
             'payment_method' => $this->paymentMethod,
             'total' => $this->order->total,
+            'attempt' => $this->attempts(),
         ]);
 
         try {
@@ -73,11 +74,13 @@ class ProcessOrder implements ShouldBeUnique, ShouldQueue
             Log::channel('discord')->error('Falha ao processar pedido — cancelado', [
                 'channel' => 'orders',
                 'order_id' => $this->order->id,
+                'attempt' => $this->attempts(),
                 'error' => $e->getMessage(),
             ]);
             Log::channel('discord')->error('Falha ao criar cobrança', [
                 'channel' => 'payments',
                 'order_id' => $this->order->id,
+                'attempt' => $this->attempts(),
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
@@ -85,5 +88,16 @@ class ProcessOrder implements ShouldBeUnique, ShouldQueue
             OrderStatusUpdated::dispatch($this->order->fresh());
             throw $e;
         }
+    }
+
+    public function failed(\Throwable $e): void
+    {
+        Log::channel('discord')->critical('ProcessOrder: todas as tentativas esgotadas', [
+            'channel' => 'orders',
+            'order_id' => $this->order->id,
+            'order_number' => $this->order->order_number,
+            'payment_method' => $this->paymentMethod,
+            'error' => $e->getMessage(),
+        ]);
     }
 }

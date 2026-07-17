@@ -79,6 +79,12 @@ class OrderService implements OrderServiceInterface
                 $fees = app(FeeCalculator::class)->calculate($currentCompany, $feeBase, $total);
                 $fee = $fees['fee'];
                 $netValue = $fees['net_value'];
+            } else {
+                Log::channel('orders')->warning('Pedido criado sem current.company vinculada — taxa da plataforma zerada', [
+                    'customer_id' => $customerId,
+                    'branch_id' => $branchId,
+                    'total' => $total,
+                ]);
             }
 
             $order = Order::create([
@@ -306,6 +312,12 @@ class OrderService implements OrderServiceInterface
 
         foreach ($productIds as $productId) {
             if (! $products->has($productId)) {
+                Log::channel('orders')->info('Produto indisponível ao criar pedido', [
+                    'product_id' => $productId,
+                    'branch_id' => $branchId,
+                    'channel_column' => $channelColumn,
+                ]);
+
                 throw new RuntimeException("Produto #{$productId} não está disponível nesta filial.");
             }
         }
@@ -332,6 +344,13 @@ class OrderService implements OrderServiceInterface
 
         if ($policy->requiresRefund($order)) {
             $payment = $order->payment;
+
+            Log::channel('orders')->info('Cancelamento do cliente disparando reembolso', [
+                'order_id' => $order->id,
+                'customer_id' => $customerId,
+                'payment_amount' => $payment->amount,
+            ]);
+
             app(RefundServiceInterface::class)->initiateRefund(
                 $order,
                 $payment,

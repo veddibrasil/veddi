@@ -47,12 +47,21 @@ class PaymentService
         $payment = Payment::where('order_id', $orderId)->first();
 
         if (! $payment) {
+            Log::channel('payments')->warning('simulatePayment: nenhum Payment para o pedido', [
+                'order_id' => $orderId,
+            ]);
+
             return;
         }
 
         $payment->update(['status' => 'paid', 'paid_at' => now()]);
         $payment->order->update(['status' => 'paid']);
         OrderStatusUpdated::dispatch($payment->order->fresh());
+
+        Log::channel('payments')->warning('Pagamento simulado (debug)', [
+            'order_id' => $orderId,
+            'payment_id' => $payment->id,
+        ]);
     }
 
     /**
@@ -71,6 +80,11 @@ class PaymentService
                 'order_id' => $order->id,
                 'payment_method' => $paymentMethod,
                 'queue' => 'critical',
+            ]);
+        } else {
+            Log::channel('payments')->info('expireAndRenew: pedido não está mais pendente/aguardando pagamento, ignorado', [
+                'order_id' => $order->id,
+                'status' => $order->status,
             ]);
         }
     }
