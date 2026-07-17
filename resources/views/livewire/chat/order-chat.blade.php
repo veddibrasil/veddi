@@ -1169,41 +1169,27 @@
         {{-- ── PAYMENT_CARD_FORM ── --}}
         @elseif ($step === 'PAYMENT_CARD_FORM')
             <div class="space-y-4 px-1 py-2">
-                <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">Insira os dados do cartão:</p>
+                @if (!empty($customerCards) && !$useNewCard)
+                    <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">Escolha um cartão salvo:</p>
 
-                {{-- Número do cartão --}}
-                <div>
-                    <label class="block text-xs text-neutral-500 mb-1">Número do cartão</label>
-                    <input
-                        wire:model="cardNumber"
-                        placeholder="0000 0000 0000 0000"
-                        maxlength="19"
-                        inputmode="numeric"
-                        autocomplete="cc-number"
-                        x-data
-                        x-mask="9999 9999 9999 9999"
-                        class="w-full rounded-lg border @error('cardNumber') border-red-400 @else border-neutral-300 dark:border-neutral-600 @enderror bg-white dark:bg-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    />
-                    @error('cardNumber')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
-                </div>
-
-                {{-- Validade + CVV --}}
-                <div class="flex gap-3">
-                    <div class="flex-1">
-                        <label class="block text-xs text-neutral-500 mb-1">Validade</label>
-                        <input
-                            wire:model="cardExpiry"
-                            placeholder="MM/AA"
-                            x-data
-                            x-mask="99/99"
-                            maxlength="5"
-                            inputmode="numeric"
-                            autocomplete="cc-exp"
-                            class="w-full rounded-lg border @error('cardExpiry') border-red-400 @else border-neutral-300 dark:border-neutral-600 @enderror bg-white dark:bg-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        />
-                        @error('cardExpiry')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
+                    {{-- Cartões salvos --}}
+                    <div class="flex flex-wrap gap-2">
+                        @foreach ($customerCards as $savedCard)
+                            <button
+                                type="button"
+                                wire:click="selectSavedCard({{ $savedCard['id'] }})"
+                                class="flex items-center gap-2 rounded-lg border {{ $selectedCardId === $savedCard['id'] ? 'border-purple-500 ring-1 ring-purple-500' : 'border-neutral-300 dark:border-neutral-600' }} bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-left"
+                            >
+                                <span>{{ $savedCard['label'] }}</span>
+                                @if ($selectedCardId === $savedCard['id'])
+                                    <span class="text-purple-500">✓</span>
+                                @endif
+                            </button>
+                        @endforeach
                     </div>
-                    <div class="flex-1">
+
+                    {{-- CVV do cartão salvo --}}
+                    <div>
                         <label class="block text-xs text-neutral-500 mb-1">CVV</label>
                         <input
                             wire:model="cardCvv"
@@ -1216,20 +1202,79 @@
                         />
                         @error('cardCvv')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
                     </div>
-                </div>
 
-                {{-- Nome no cartão --}}
-                <div>
-                    <label class="block text-xs text-neutral-500 mb-1">Nome impresso no cartão</label>
-                    <input
-                        wire:model="cardHolderName"
-                        placeholder="NOME SOBRENOME"
-                        autocomplete="cc-name"
-                        style="text-transform:uppercase"
-                        class="w-full rounded-lg border @error('cardHolderName') border-red-400 @else border-neutral-300 dark:border-neutral-600 @enderror bg-white dark:bg-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    />
-                    @error('cardHolderName')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
-                </div>
+                    <button type="button" wire:click="useNewCardForm" class="mc-btn-outline w-full">
+                        Usar outro cartão
+                    </button>
+                @else
+                    <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">Insira os dados do cartão:</p>
+
+                    {{-- Número do cartão --}}
+                    <div>
+                        <label class="block text-xs text-neutral-500 mb-1">Número do cartão</label>
+                        <input
+                            wire:model="cardNumber"
+                            placeholder="0000 0000 0000 0000"
+                            maxlength="19"
+                            inputmode="numeric"
+                            autocomplete="cc-number"
+                            x-data
+                            x-mask="9999 9999 9999 9999"
+                            class="w-full rounded-lg border @error('cardNumber') border-red-400 @else border-neutral-300 dark:border-neutral-600 @enderror bg-white dark:bg-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                        @error('cardNumber')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
+                    </div>
+
+                    {{-- Validade + CVV --}}
+                    <div class="flex gap-3">
+                        <div class="flex-1">
+                            <label class="block text-xs text-neutral-500 mb-1">Validade</label>
+                            <input
+                                wire:model="cardExpiry"
+                                placeholder="MM/AA"
+                                x-data
+                                x-mask="99/99"
+                                maxlength="5"
+                                inputmode="numeric"
+                                autocomplete="cc-exp"
+                                class="w-full rounded-lg border @error('cardExpiry') border-red-400 @else border-neutral-300 dark:border-neutral-600 @enderror bg-white dark:bg-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                            @error('cardExpiry')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-xs text-neutral-500 mb-1">CVV</label>
+                            <input
+                                wire:model="cardCvv"
+                                placeholder="CVV"
+                                maxlength="4"
+                                inputmode="numeric"
+                                type="password"
+                                autocomplete="cc-csc"
+                                class="w-full rounded-lg border @error('cardCvv') border-red-400 @else border-neutral-300 dark:border-neutral-600 @enderror bg-white dark:bg-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                            @error('cardCvv')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
+                        </div>
+                    </div>
+
+                    {{-- Nome no cartão --}}
+                    <div>
+                        <label class="block text-xs text-neutral-500 mb-1">Nome impresso no cartão</label>
+                        <input
+                            wire:model="cardHolderName"
+                            placeholder="NOME SOBRENOME"
+                            autocomplete="cc-name"
+                            style="text-transform:uppercase"
+                            class="w-full rounded-lg border @error('cardHolderName') border-red-400 @else border-neutral-300 dark:border-neutral-600 @enderror bg-white dark:bg-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                        @error('cardHolderName')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
+                    </div>
+
+                    @if (!empty($customerCards))
+                        <button type="button" wire:click="selectSavedCard({{ $customerCards[0]['id'] }})" class="mc-btn-outline w-full">
+                            Usar cartão salvo
+                        </button>
+                    @endif
+                @endif
 
                 {{-- Breakdown de taxas --}}
                 @if (!empty($cardFeeBreakdown))

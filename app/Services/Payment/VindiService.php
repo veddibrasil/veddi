@@ -90,6 +90,7 @@ class VindiService
         string $externalRef,
         CreditCardDTO $card,
         CreditCardHolderDTO $holder,
+        CardBrand $brand,
         int $installments = 1,
         ?string $affiliateEmail = null,
         float $affiliatePercentual = 100.0,
@@ -99,14 +100,20 @@ class VindiService
         $payload = $this->buildBasePayload($externalRef);
         $payload['customer'] = $this->buildHolderPayload($holder);
 
-        $basePayment = [
-            'payment_method_id' => CardBrand::fromNumber($card->number)->methodId(),
-            'card_number' => preg_replace('/\D/', '', $card->number),
-            'card_name' => $card->holderName,
-            'card_expdate_month' => $card->expiryMonth,
-            'card_expdate_year' => $card->expiryYear,
-            'card_cvv' => $card->ccv,
-        ];
+        $basePayment = ['payment_method_id' => $brand->methodId()];
+
+        // Cartão salvo: reusa card_token em vez de reenviar PAN/validade/nome.
+        // card_cvv continua obrigatório em ambos os casos (exigência da Vindi).
+        if ($card->token) {
+            $basePayment['card_token'] = $card->token;
+            $basePayment['card_cvv'] = $card->ccv;
+        } else {
+            $basePayment['card_number'] = preg_replace('/\D/', '', $card->number);
+            $basePayment['card_name'] = $card->holderName;
+            $basePayment['card_expdate_month'] = $card->expiryMonth;
+            $basePayment['card_expdate_year'] = $card->expiryYear;
+            $basePayment['card_cvv'] = $card->ccv;
+        }
 
         $affiliates = [];
         if ($affiliateEmail) {
@@ -157,6 +164,8 @@ class VindiService
             'transaction_id' => $result['transaction_id'] ?? null,
             'status' => 'pending',
             'status_name' => $result['status_name'] ?? 'pending',
+            'card_token' => $result['card_token'] ?? null,
+            'payment_response' => $result['payment_response'] ?? null,
         ];
     }
 
@@ -200,6 +209,10 @@ class VindiService
 
         if (isset($payload['payment']['card_cvv'])) {
             $payload['payment']['card_cvv'] = '***';
+        }
+
+        if (isset($payload['payment']['card_token'])) {
+            $payload['payment']['card_token'] = substr((string) $payload['payment']['card_token'], 0, 8).'...';
         }
 
         return $payload;
@@ -297,6 +310,14 @@ class VindiService
         if (! empty($payment['qrcode_original_path'])) {
             $result['pix_qr_code'] = $payment['qrcode_path'] ?? null;
             $result['pix_copy_paste'] = $payment['qrcode_original_path'];
+        }
+
+        if (! empty($payment['payment_response'])) {
+            $result['payment_response'] = $payment['payment_response'];
+        }
+
+        if (! empty($payment['card_token'])) {
+            $result['card_token'] = $payment['card_token'];
         }
 
         return $result;

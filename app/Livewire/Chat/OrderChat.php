@@ -123,7 +123,11 @@ class OrderChat extends Component
 
     public ?string $cardError = null;
 
-    public ?string $cardToken = null;
+    public array $customerCards = [];
+
+    public ?int $selectedCardId = null;
+
+    public bool $useNewCard = false;
 
     // --- Coupon ---
     public string $couponInput = '';
@@ -686,6 +690,9 @@ class OrderChat extends Component
         $this->cardAddressNumber = '';
         $this->cardError = null;
         $this->cardFeeBreakdown = [];
+        $this->customerCards = [];
+        $this->selectedCardId = null;
+        $this->useNewCard = false;
         $this->resetErrorBag();
     }
 

@@ -179,6 +179,7 @@ trait HasPaymentFlow
             $this->addMessage('bot', $summary."\n\nPagamento em dinheiro na entrega. Obrigado!");
             $this->transitionTo('ORDER_CONFIRMED');
         } elseif ($this->paymentMethod === 'CARD') {
+            $this->loadCustomerCards($customer);
             $this->addMessage('bot', $summary."\n\nPreencha os dados do cartão para finalizar.");
             $this->transitionTo('PAYMENT_CARD_FORM');
         } else {
@@ -313,6 +314,36 @@ trait HasPaymentFlow
         $this->addMessage('bot', 'O tempo para pagamento expirou. Gerando nova cobrança...');
     }
 
+    /**
+     * Carrega os cartões salvos do cliente (tokens Vindi de cobranças aprovadas
+     * anteriores) para oferecer reuso sem re-digitar PAN/validade/nome.
+     */
+    private function loadCustomerCards(Customer $customer): void
+    {
+        $this->customerCards = $customer->cards()
+            ->get(['id', 'brand', 'last_four'])
+            ->map(fn ($card) => ['id' => $card->id, 'label' => $card->label()])
+            ->toArray();
+
+        $this->selectedCardId = $this->customerCards[0]['id'] ?? null;
+        $this->useNewCard = $this->customerCards === [];
+    }
+
+    public function selectSavedCard(int $cardId): void
+    {
+        $this->selectedCardId = $cardId;
+        $this->useNewCard = false;
+        $this->cardCvv = '';
+        $this->cardError = null;
+    }
+
+    public function useNewCardForm(): void
+    {
+        $this->useNewCard = true;
+        $this->selectedCardId = null;
+        $this->cardError = null;
+    }
+
     public function submitCardPayment(): void
     {
         if ($this->submitting) {
@@ -320,21 +351,32 @@ trait HasPaymentFlow
         }
         $this->cardError = null;
 
-        $this->validate([
-            'cardNumber' => ['required', 'min:14'],
-            'cardExpiry' => ['required', 'regex:/^\d{2}\/\d{2}$/'],
-            'cardCvv' => ['required', 'min:3', 'max:4'],
-            'cardHolderName' => ['required', 'min:3'],
-        ], [
-            'cardNumber.required' => 'Informe o número do cartão.',
-            'cardNumber.min' => 'Número do cartão inválido.',
-            'cardExpiry.required' => 'Informe a validade.',
-            'cardExpiry.regex' => 'Validade inválida. Use MM/AA.',
-            'cardCvv.required' => 'Informe o CVV.',
-            'cardCvv.min' => 'CVV inválido.',
-            'cardHolderName.required' => 'Informe o nome impresso no cartão.',
-            'cardHolderName.min' => 'Nome inválido.',
-        ]);
+        $usingSavedCard = ! $this->useNewCard && $this->selectedCardId;
+
+        if ($usingSavedCard) {
+            $this->validate([
+                'cardCvv' => ['required', 'min:3', 'max:4'],
+            ], [
+                'cardCvv.required' => 'Informe o CVV.',
+                'cardCvv.min' => 'CVV inválido.',
+            ]);
+        } else {
+            $this->validate([
+                'cardNumber' => ['required', 'min:14'],
+                'cardExpiry' => ['required', 'regex:/^\d{2}\/\d{2}$/'],
+                'cardCvv' => ['required', 'min:3', 'max:4'],
+                'cardHolderName' => ['required', 'min:3'],
+            ], [
+                'cardNumber.required' => 'Informe o número do cartão.',
+                'cardNumber.min' => 'Número do cartão inválido.',
+                'cardExpiry.required' => 'Informe a validade.',
+                'cardExpiry.regex' => 'Validade inválida. Use MM/AA.',
+                'cardCvv.required' => 'Informe o CVV.',
+                'cardCvv.min' => 'CVV inválido.',
+                'cardHolderName.required' => 'Informe o nome impresso no cartão.',
+                'cardHolderName.min' => 'Nome inválido.',
+            ]);
+        }
 
         $this->submitting = true;
 
@@ -354,46 +396,76 @@ trait HasPaymentFlow
             return;
         }
 
-        [$expMonth, $expYear] = explode('/', $this->cardExpiry);
-        $expiryYear = strlen($expYear) === 2 ? '20'.$expYear : $expYear;
+        if ($usingSavedCard) {
+            $cardData = [
+                'saved_card_id' => $this->selectedCardId,
+                'ccv' => $this->cardCvv,
+                'cpfCnpj' => $customer->tax_id ?? '',
+                'postalCode' => $this->cardPostalCode ?: ($customer->cep ?? ''),
+                'addressNumber' => $this->cardAddressNumber ?: 'S/N',
+            ];
+        } else {
+            [$expMonth, $expYear] = explode('/', $this->cardExpiry);
+            $expiryYear = strlen($expYear) === 2 ? '20'.$expYear : $expYear;
 
-        $cardData = [
-            'holderName' => $this->cardHolderName,
-            'number' => $this->cardNumber,
-            'expiryMonth' => $expMonth,
-            'expiryYear' => $expiryYear,
-            'ccv' => $this->cardCvv,
-            'cpfCnpj' => $customer->tax_id ?? '',
-            'postalCode' => $this->cardPostalCode ?: ($customer->cep ?? ''),
-            'addressNumber' => $this->cardAddressNumber ?: 'S/N',
-            'token' => $this->cardToken ?: null,
-        ];
+            $cardData = [
+                'holderName' => $this->cardHolderName,
+                'number' => $this->cardNumber,
+                'expiryMonth' => $expMonth,
+                'expiryYear' => $expiryYear,
+                'ccv' => $this->cardCvv,
+                'cpfCnpj' => $customer->tax_id ?? '',
+                'postalCode' => $this->cardPostalCode ?: ($customer->cep ?? ''),
+                'addressNumber' => $this->cardAddressNumber ?: 'S/N',
+            ];
+        }
 
         try {
             $result = app(PaymentOrchestrator::class)->processCreditCard(
                 $order, $customer, $company, $cardData, 1
             );
 
-            $this->cardNumber = '';
-            $this->cardExpiry = '';
-            $this->cardCvv = '';
-            $this->cardHolderName = '';
-            $this->cardPostalCode = '';
-            $this->cardAddressNumber = '';
-            $this->cardToken = null;
-            $this->cardFeeBreakdown = [];
-
             Log::channel('orders')->info('Resultado do cartão recebido no chat', [
                 'order_id' => $order->id,
                 'customer_id' => $this->customerId,
                 'approved' => $result['approved'],
+                'declined' => $result['declined'] ?? false,
             ]);
 
             if ($result['approved']) {
+                $this->cardNumber = '';
+                $this->cardExpiry = '';
+                $this->cardCvv = '';
+                $this->cardHolderName = '';
+                $this->cardPostalCode = '';
+                $this->cardAddressNumber = '';
+                $this->customerCards = [];
+                $this->selectedCardId = null;
+                $this->useNewCard = false;
+                $this->cardFeeBreakdown = [];
+
                 OrderStatusUpdated::dispatch($order->fresh());
                 $this->addMessage('bot', 'Pagamento aprovado! Seu pedido está confirmado.');
                 $this->transitionTo('ORDER_CONFIRMED');
+            } elseif ($result['declined'] ?? false) {
+                // Recusa definitiva da Vindi (não análise assíncrona) — mostra o motivo
+                // real e deixa o cliente corrigir/tentar outro cartão. O cartão nunca é
+                // salvo nesse caminho (PaymentOrchestrator só persiste em cobrança aprovada).
+                $this->cardCvv = '';
+                $this->cardError = $result['decline_reason'] ?? 'Pagamento recusado. Verifique os dados ou tente outro cartão.';
+                $this->submitting = false;
             } else {
+                $this->cardNumber = '';
+                $this->cardExpiry = '';
+                $this->cardCvv = '';
+                $this->cardHolderName = '';
+                $this->cardPostalCode = '';
+                $this->cardAddressNumber = '';
+                $this->customerCards = [];
+                $this->selectedCardId = null;
+                $this->useNewCard = false;
+                $this->cardFeeBreakdown = [];
+
                 $this->addMessage('bot', 'Pagamento em análise. Você será notificado assim que confirmado.');
                 $this->transitionTo('PAYMENT_CARD_AWAITING');
             }
@@ -505,7 +577,9 @@ trait HasPaymentFlow
         $this->cardHolderName = '';
         $this->cardPostalCode = '';
         $this->cardAddressNumber = '';
-        $this->cardToken = null;
+        $this->customerCards = [];
+        $this->selectedCardId = null;
+        $this->useNewCard = false;
         $this->cardFeeBreakdown = [];
 
         $this->addMessage('bot', 'Escolha uma nova forma de pagamento:');

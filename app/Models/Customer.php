@@ -178,6 +178,32 @@ class Customer extends Model
         return $this->hasMany(Order::class);
     }
 
+    public function cards(): HasMany
+    {
+        return $this->hasMany(CustomerCard::class)->latest();
+    }
+
+    /**
+     * Persiste ou atualiza o card_token retornado pela Vindi após uma cobrança
+     * aprovada, para reuso em compras futuras sem re-enviar PAN/CVV. Nunca
+     * armazenamos o PAN — só os 4 últimos dígitos, extraídos do número usado
+     * na cobrança original.
+     */
+    public function saveVindiCardToken(string $token, string $number, string $brand): ?CustomerCard
+    {
+        $digits = preg_replace('/\D/', '', $number);
+        $lastFour = substr($digits, -4);
+
+        if ($lastFour === '' || strlen($lastFour) < 4) {
+            return null;
+        }
+
+        return $this->cards()->updateOrCreate(
+            ['last_four' => $lastFour, 'brand' => $brand],
+            ['vindi_card_token' => $token]
+        );
+    }
+
     public static function findByPhone(string $phone): ?self
     {
         $normalized = preg_replace('/\D/', '', $phone);

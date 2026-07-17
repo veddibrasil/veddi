@@ -2,6 +2,7 @@
 
 use App\DTOs\CreditCardDTO;
 use App\DTOs\CreditCardHolderDTO;
+use App\Enums\CardBrand;
 use App\Models\Branch;
 use App\Models\Company;
 use App\Models\Customer;
@@ -123,6 +124,7 @@ test('VindiService.createCreditCardCharge retorna transaction_token', function (
             city: 'São Paulo',
             state: 'SP',
         ),
+        brand: CardBrand::Visa,
         installments: 1,
     );
 
@@ -300,6 +302,7 @@ test('VindiService.createCreditCardCharge aceita token via additional_data quand
             postalCode: '88360000',
             addressNumber: 'S/N',
         ),
+        brand: CardBrand::Visa,
         installments: 1,
     );
 
@@ -574,6 +577,137 @@ test('PaymentCalculatorService retorna platform_rate e platform_fee_amount separ
     // finalAmount deve refletir só a taxa do cartão (não infla pelo platform rate)
     $expectedFinal = round(120.0 / (1 - 0.028), 2);
     expect($result['final_amount'])->toBe($expectedFinal);
+});
+
+test('processCreditCard salva o cartão do cliente quando a Vindi retorna card_token', function () {
+    config()->set('payments.vindi_token_account', 'tok_test');
+    config()->set('payments.vindi_reseller_token', 'res_test');
+
+    Http::fake([
+        '*/transactions/payment' => Http::response([
+            'data_response' => [
+                'transaction' => [
+                    'token_transaction' => 'vindi_first_charge_token',
+                    'status_name' => 'Aprovada',
+                    'payment' => ['card_token' => 'vindi_card_token_xyz'],
+                ],
+            ],
+            'message_response' => ['message' => 'success'],
+        ], 200),
+    ]);
+
+    $ctx = vindiCardContext();
+
+    app(PaymentOrchestrator::class)->processCreditCard(
+        $ctx['order'], $ctx['customer'], $ctx['company'], [
+            'holderName' => 'Cliente Cartão',
+            'number' => '4111111111111111',
+            'expiryMonth' => '12',
+            'expiryYear' => '2027',
+            'ccv' => '123',
+            'cpfCnpj' => '98765432100',
+            'postalCode' => '01310-100',
+            'addressNumber' => '1',
+        ], 1
+    );
+
+    $savedCard = $ctx['customer']->fresh()->cards()->first();
+
+    expect($savedCard)->not->toBeNull()
+        ->and($savedCard->vindi_card_token)->toBe('vindi_card_token_xyz')
+        ->and($savedCard->last_four)->toBe('1111')
+        ->and($savedCard->brand)->toBe('visa');
+});
+
+test('processCreditCard reusa cartão salvo via card_token sem enviar PAN', function () {
+    config()->set('payments.vindi_token_account', 'tok_test');
+    config()->set('payments.vindi_reseller_token', 'res_test');
+
+    $ctx = vindiCardContext();
+    $savedCard = $ctx['customer']->cards()->create([
+        'vindi_card_token' => 'vindi_card_token_saved',
+        'last_four' => '1111',
+        'brand' => 'visa',
+    ]);
+
+    $capturedPayload = null;
+
+    Http::fake([
+        '*/transactions/payment' => function ($request) use (&$capturedPayload) {
+            $capturedPayload = $request->data();
+
+            return Http::response([
+                'data_response' => [
+                    'transaction' => [
+                        'token_transaction' => 'vindi_reuse_charge_token',
+                        'status_name' => 'Aprovada',
+                        'payment' => ['card_token' => 'vindi_card_token_rotated'],
+                    ],
+                ],
+                'message_response' => ['message' => 'success'],
+            ], 200);
+        },
+    ]);
+
+    $result = app(PaymentOrchestrator::class)->processCreditCard(
+        $ctx['order'], $ctx['customer'], $ctx['company'], [
+            'saved_card_id' => $savedCard->id,
+            'ccv' => '123',
+            'cpfCnpj' => '98765432100',
+            'postalCode' => '01310-100',
+            'addressNumber' => '1',
+        ], 1
+    );
+
+    expect($result['approved'])->toBeTrue();
+
+    assert(is_array($capturedPayload));
+    expect($capturedPayload['payment'])->toHaveKey('card_token', 'vindi_card_token_saved')
+        ->and($capturedPayload['payment'])->not->toHaveKey('card_number')
+        ->and($capturedPayload['payment']['card_cvv'])->toBe('123');
+
+    // Vindi rotaciona o token a cada cobrança — o registro salvo precisa acompanhar.
+    expect($savedCard->fresh()->vindi_card_token)->toBe('vindi_card_token_rotated')
+        ->and($ctx['customer']->fresh()->cards()->count())->toBe(1);
+});
+
+test('processCreditCard sinaliza recusa definitiva com o motivo real e não salva o cartão', function () {
+    config()->set('payments.vindi_token_account', 'tok_test');
+    config()->set('payments.vindi_reseller_token', 'res_test');
+
+    Http::fake([
+        '*/transactions/payment' => Http::response([
+            'data_response' => [
+                'transaction' => [
+                    'token_transaction' => 'vindi_declined_token',
+                    'status_name' => 'Reprovada',
+                    'payment' => ['payment_response' => 'Cartão sem limite disponível'],
+                ],
+            ],
+            'message_response' => ['message' => 'success'],
+        ], 200),
+    ]);
+
+    $ctx = vindiCardContext();
+
+    $result = app(PaymentOrchestrator::class)->processCreditCard(
+        $ctx['order'], $ctx['customer'], $ctx['company'], [
+            'holderName' => 'Cliente Cartão',
+            'number' => '4111111111111111',
+            'expiryMonth' => '12',
+            'expiryYear' => '2027',
+            'ccv' => '123',
+            'cpfCnpj' => '98765432100',
+            'postalCode' => '01310-100',
+            'addressNumber' => '1',
+        ], 1
+    );
+
+    expect($result['approved'])->toBeFalse()
+        ->and($result['declined'])->toBeTrue()
+        ->and($result['decline_reason'])->toBe('Cartão sem limite disponível');
+
+    expect($ctx['customer']->fresh()->cards()->count())->toBe(0);
 });
 
 test('processCreditCard simula aprovação e cria payment quando sem credenciais Vindi', function () {

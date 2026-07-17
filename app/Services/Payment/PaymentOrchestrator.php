@@ -247,7 +247,16 @@ class PaymentOrchestrator
             ]);
         }
 
-        $brand = CardBrand::fromNumber($cardData['number'] ?? '');
+        $savedCard = null;
+        if (! empty($cardData['saved_card_id'])) {
+            $savedCard = $customer->cards()->find($cardData['saved_card_id']);
+
+            if (! $savedCard) {
+                throw new \RuntimeException('Cartão salvo não encontrado.');
+            }
+        }
+
+        $brand = $savedCard ? CardBrand::from($savedCard->brand) : CardBrand::fromNumber($cardData['number'] ?? '');
         $cardRate = $brand->rate();
         $cardFeeAbsorbed = (bool) ($company->card_fee_absorbed_by_company ?? false);
 
@@ -303,12 +312,12 @@ class PaymentOrchestrator
                     amount: $chargeAmount,
                     externalRef: $this->vindiExternalRef($order),
                     card: new CreditCardDTO(
-                        holderName: $cardData['holderName'],
-                        number: $cardData['number'],
-                        expiryMonth: $cardData['expiryMonth'],
-                        expiryYear: $cardData['expiryYear'],
+                        holderName: $savedCard ? ($customer->name ?? '') : $cardData['holderName'],
+                        number: $savedCard ? '' : $cardData['number'],
+                        expiryMonth: $savedCard ? '' : $cardData['expiryMonth'],
+                        expiryYear: $savedCard ? '' : $cardData['expiryYear'],
                         ccv: $cardData['ccv'],
-                        token: $cardData['token'] ?? null,
+                        token: $savedCard?->vindi_card_token,
                     ),
                     holder: new CreditCardHolderDTO(
                         name: $customer->name,
@@ -323,6 +332,7 @@ class PaymentOrchestrator
                         city: $vindiAddress['city'],
                         state: $vindiAddress['state'],
                     ),
+                    brand: $brand,
                     installments: $installments,
                     affiliateEmail: $affiliateEmail,
                     affiliatePercentual: $affiliatePercentual,
@@ -344,6 +354,14 @@ class PaymentOrchestrator
             $transactionToken = $result['transaction_token'];
             $transactionId = $result['transaction_id'] ?? null;
             $approved = ($result['status_name'] ?? '') === 'Aprovada';
+            $cardToken = $result['card_token'] ?? null;
+
+            // Mesmo conjunto de status finais de falha usado pelo webhook
+            // (ProcessVindiWebhook::handlePaymentFailed) — distingue recusa
+            // definitiva de status intermediário (ex: análise antifraude
+            // assíncrona), que ainda aguarda confirmação por webhook.
+            $declined = in_array($result['status_name'] ?? '', ['Cancelada', 'Não Aprovada', 'Reprovada'], true);
+            $declineReason = $result['payment_response'] ?? null;
 
             Log::channel('payments')->info('Cartão Vindi criado', [
                 'order_id' => $order->id,
@@ -351,6 +369,8 @@ class PaymentOrchestrator
                 'charge_amount' => $chargeAmount,
                 'installments' => $installments,
                 'approved' => $approved,
+                'declined' => $declined,
+                'status_name' => $result['status_name'] ?? null,
             ]);
         } else {
             // Modo simulação (sem credenciais Vindi configuradas): aprova
@@ -359,6 +379,9 @@ class PaymentOrchestrator
             $transactionToken = 'sim_vindi_'.uniqid();
             $transactionId = null;
             $approved = true;
+            $cardToken = null;
+            $declined = false;
+            $declineReason = null;
 
             Log::channel('payments')->info('Cartão Vindi simulado (sem credenciais)', [
                 'order_id' => $order->id,
@@ -369,7 +392,7 @@ class PaymentOrchestrator
         $paymentToken = hash('sha256', $order->id.$customer->id.Str::random(32));
 
         try {
-            DB::transaction(function () use ($order, $transactionToken, $transactionId, $chargeAmount, $cardFee, $cardRate, $installments, $paymentToken, $approved) {
+            DB::transaction(function () use ($order, $customer, $cardData, $savedCard, $brand, $cardToken, $transactionToken, $transactionId, $chargeAmount, $cardFee, $cardRate, $installments, $paymentToken, $approved) {
                 $payment = Payment::create([
                     'order_id' => $order->id,
                     'vindi_transaction_token' => $transactionToken,
@@ -390,6 +413,16 @@ class PaymentOrchestrator
                     $fresh = $order->fresh();
                     app(WalletServiceInterface::class)->creditForOrder($fresh, $payment);
                     app(TransactionServiceInterface::class)->createForPayment($fresh, $payment);
+                }
+
+                // Vindi retorna um card_token novo a cada cobrança aprovada (mesmo
+                // reusando um salvo) — atualiza sempre, senão o token salvo expira.
+                if ($approved && $cardToken) {
+                    if ($savedCard) {
+                        $savedCard->update(['vindi_card_token' => $cardToken]);
+                    } else {
+                        $customer->saveVindiCardToken($cardToken, $cardData['number'] ?? '', $brand->value);
+                    }
                 }
             });
         } catch (\Throwable $e) {
@@ -419,6 +452,8 @@ class PaymentOrchestrator
             'status' => $approved ? 'paid' : 'pending',
             'method' => 'credit_card',
             'gateway' => 'vindi',
+            'declined' => $declined,
+            'decline_reason' => $declineReason,
         ];
     }
 
