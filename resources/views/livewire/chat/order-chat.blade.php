@@ -1178,11 +1178,11 @@
                             <button
                                 type="button"
                                 wire:click="selectSavedCard({{ $savedCard['id'] }})"
-                                class="flex items-center gap-2 rounded-lg border {{ $selectedCardId === $savedCard['id'] ? 'border-purple-500 ring-1 ring-purple-500' : 'border-neutral-300 dark:border-neutral-600' }} bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-left"
+                                class="flex items-center gap-2 rounded-lg border {{ $selectedCardId === $savedCard['id'] ? 'mc-border-primary ring-1 ring-(--mc-red)' : 'border-neutral-300 dark:border-neutral-600' }} bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-left"
                             >
                                 <span>{{ $savedCard['label'] }}</span>
                                 @if ($selectedCardId === $savedCard['id'])
-                                    <span class="text-purple-500">✓</span>
+                                    <span class="mc-text-primary">✓</span>
                                 @endif
                             </button>
                         @endforeach
@@ -1198,7 +1198,7 @@
                             inputmode="numeric"
                             type="password"
                             autocomplete="cc-csc"
-                            class="w-full rounded-lg border @error('cardCvv') border-red-400 @else border-neutral-300 dark:border-neutral-600 @enderror bg-white dark:bg-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            class="w-full rounded-lg border @error('cardCvv') border-red-400 @else border-neutral-300 dark:border-neutral-600 @enderror bg-white dark:bg-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-(--mc-red)"
                         />
                         @error('cardCvv')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
                     </div>
@@ -1220,7 +1220,7 @@
                             autocomplete="cc-number"
                             x-data
                             x-mask="9999 9999 9999 9999"
-                            class="w-full rounded-lg border @error('cardNumber') border-red-400 @else border-neutral-300 dark:border-neutral-600 @enderror bg-white dark:bg-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            class="w-full rounded-lg border @error('cardNumber') border-red-400 @else border-neutral-300 dark:border-neutral-600 @enderror bg-white dark:bg-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-(--mc-red)"
                         />
                         @error('cardNumber')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
                     </div>
@@ -1237,7 +1237,7 @@
                                 maxlength="5"
                                 inputmode="numeric"
                                 autocomplete="cc-exp"
-                                class="w-full rounded-lg border @error('cardExpiry') border-red-400 @else border-neutral-300 dark:border-neutral-600 @enderror bg-white dark:bg-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                class="w-full rounded-lg border @error('cardExpiry') border-red-400 @else border-neutral-300 dark:border-neutral-600 @enderror bg-white dark:bg-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-(--mc-red)"
                             />
                             @error('cardExpiry')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
                         </div>
@@ -1250,7 +1250,7 @@
                                 inputmode="numeric"
                                 type="password"
                                 autocomplete="cc-csc"
-                                class="w-full rounded-lg border @error('cardCvv') border-red-400 @else border-neutral-300 dark:border-neutral-600 @enderror bg-white dark:bg-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                class="w-full rounded-lg border @error('cardCvv') border-red-400 @else border-neutral-300 dark:border-neutral-600 @enderror bg-white dark:bg-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-(--mc-red)"
                             />
                             @error('cardCvv')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
                         </div>
@@ -1264,7 +1264,7 @@
                             placeholder="NOME SOBRENOME"
                             autocomplete="cc-name"
                             style="text-transform:uppercase"
-                            class="w-full rounded-lg border @error('cardHolderName') border-red-400 @else border-neutral-300 dark:border-neutral-600 @enderror bg-white dark:bg-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            class="w-full rounded-lg border @error('cardHolderName') border-red-400 @else border-neutral-300 dark:border-neutral-600 @enderror bg-white dark:bg-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-(--mc-red)"
                         />
                         @error('cardHolderName')<p class="mt-1 text-xs text-red-500">{{ $message }}</p>@enderror
                     </div>
