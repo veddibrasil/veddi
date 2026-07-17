@@ -35,6 +35,8 @@ class CompanySettings extends Component
 
     public string $order_prefix = 'ORD';
 
+    public bool $schedulingEnabled = false;
+
     public ?int $scheduleMinAdvanceMinutes = null;
 
     public bool $isFree = false;
@@ -65,6 +67,7 @@ class CompanySettings extends Component
             'order_prefix'
         ));
         $this->chat_highlights = $company->chat_highlights ?? self::DEFAULT_HIGHLIGHTS;
+        $this->schedulingEnabled = $company->schedulingEnabled();
         $this->scheduleMinAdvanceMinutes = $company->schedule_min_advance_minutes;
         $this->isFree = $company->isFree();
         $this->pixFeeAbsorbedByCompany = (bool) $company->pix_fee_absorbed_by_company;
@@ -92,6 +95,7 @@ class CompanySettings extends Component
             'pixFeeAbsorbedByCompany' => ['boolean'],
             'cardFeeAbsorbedByCompany' => ['boolean'],
             'pdvManualDiscountEnabled' => ['boolean'],
+            'schedulingEnabled' => ['boolean'],
             'scheduleMinAdvanceMinutes' => ['nullable', 'integer', 'min:0', 'max:10080'],
             'logo' => ['nullable', 'image', 'max:2048'],
             'chat_highlights' => ['array', 'max:6'],
@@ -116,7 +120,9 @@ class CompanySettings extends Component
         $data['pix_fee_absorbed_by_company'] = $this->pixFeeAbsorbedByCompany;
         $data['card_fee_absorbed_by_company'] = $this->cardFeeAbsorbedByCompany;
         $data['pdv_manual_discount_enabled'] = $this->pdvManualDiscountEnabled;
-        $data['schedule_min_advance_minutes'] = $this->scheduleMinAdvanceMinutes;
+        $data['schedule_min_advance_minutes'] = $this->schedulingEnabled
+            ? ($this->scheduleMinAdvanceMinutes ?: 60)
+            : 0;
 
         if ($this->logo) {
             if ($company->logo_path) {
