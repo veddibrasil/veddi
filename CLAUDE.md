@@ -37,7 +37,8 @@ Tambem ha integracoes de pagamento e webhook:
 - `POST /cadastro`: cria empresa, filial inicial e usuario admin
 - `GET /{company}`: chat publico da empresa para montar pedido
 - `POST /webhooks/asaas`: eventos financeiros do Asaas
-- `POST /webhooks/stark`: eventos financeiros do Stark
+- `POST /webhooks/vindi`: eventos financeiros do Vindi
+- `POST /webhooks/fiscal`: eventos de nota fiscal
 
 ### Painel administrativo da empresa
 

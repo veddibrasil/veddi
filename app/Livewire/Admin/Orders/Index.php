@@ -6,8 +6,7 @@ use App\Events\OrderStatusUpdated;
 use App\Models\Company;
 use App\Models\Order;
 use App\Models\Scopes\CompanyScope;
-use App\Services\Order\OrderCancellationPolicy;
-use App\Services\Order\StockService;
+use App\Services\Order\OrderService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Url;
@@ -119,22 +118,20 @@ class Index extends Component
             ? Order::withoutGlobalScope(CompanyScope::class)->findOrFail($orderId)
             : Order::findOrFail($orderId);
 
+        $previousStatus = $order->status;
+
         try {
             if ($newStatus === 'cancelled') {
-                app(OrderCancellationPolicy::class)->authorizeAdminCancel($order);
+                if ($previousStatus !== 'cancelled') {
+                    app(OrderService::class)->cancelOrderAsAdmin($order, auth()->id());
+                }
+            } else {
+                $order->update(['status' => $newStatus]);
             }
         } catch (\RuntimeException $e) {
             session()->flash('error', $e->getMessage());
 
             return;
-        }
-
-        $previousStatus = $order->status;
-
-        $order->update(['status' => $newStatus]);
-
-        if ($newStatus === 'cancelled' && $previousStatus !== 'cancelled') {
-            app(StockService::class)->restoreForOrder($order);
         }
 
         $order->refresh();

@@ -37,18 +37,6 @@ test('visitante não autenticado é redirecionado ao acessar balance', function 
         ->assertRedirect(route('login'));
 });
 
-test('visitante não autenticado é redirecionado ao tentar saque', function () {
-    makeFinancialCompany();
-
-    $this->postJson(route('api.company.withdraw'), [
-        'amount' => 100,
-        'payout_type' => 'PIX',
-        'pix_key' => 'chave@pix.com',
-        'pix_key_type' => 'EMAIL',
-    ])
-        ->assertUnauthorized();
-});
-
 // ─── Controle de Acesso por Papel ─────────────────────────────────────────────
 
 test('branch_manager recebe 403 ao acessar balance', function () {
@@ -56,19 +44,6 @@ test('branch_manager recebe 403 ao acessar balance', function () {
 
     $this->actingAs($user)
         ->getJson(route('api.company.balance'))
-        ->assertForbidden();
-});
-
-test('branch_manager recebe 403 ao tentar saque', function () {
-    [, $user] = makeFinancialUserWithRole('branch_manager');
-
-    $this->actingAs($user)
-        ->postJson(route('api.company.withdraw'), [
-            'amount' => 100,
-            'payout_type' => 'PIX',
-            'pix_key' => 'chave@pix.com',
-            'pix_key_type' => 'EMAIL',
-        ])
         ->assertForbidden();
 });
 
@@ -104,126 +79,16 @@ test('company_admin acessa forecast com sucesso', function () {
         ->assertJsonPath('data', []);
 });
 
-// ─── Validação de Saque ───────────────────────────────────────────────────────
+// ─── Saque/antecipação desativados ─────────────────────────────────────────────
+// Saldo/saque/antecipação migrou pro portal Vindi (commit a9ba8d2); o endpoint de
+// saque local nunca completava a transferência real (ficava travado em
+// "processing" pra sempre, sem tela de operador pra resolver). Ambos os
+// endpoints foram removidos — as rotas não devem mais existir.
 
-test('saque rejeita amount negativo', function () {
-    [, $user] = makeFinancialUserWithRole('company_admin');
-
-    $this->actingAs($user)
-        ->postJson(route('api.company.withdraw'), [
-            'amount' => -50,
-            'payout_type' => 'PIX',
-            'pix_key' => 'chave@pix.com',
-            'pix_key_type' => 'EMAIL',
-        ])
-        ->assertUnprocessable()
-        ->assertJsonValidationErrors(['amount']);
+test('rota de saque não existe mais', function () {
+    expect(fn () => route('api.company.withdraw'))->toThrow(Exception::class);
 });
 
-test('saque rejeita amount zero', function () {
-    [, $user] = makeFinancialUserWithRole('company_admin');
-
-    $this->actingAs($user)
-        ->postJson(route('api.company.withdraw'), [
-            'amount' => 0,
-            'payout_type' => 'PIX',
-            'pix_key' => 'chave@pix.com',
-            'pix_key_type' => 'EMAIL',
-        ])
-        ->assertUnprocessable()
-        ->assertJsonValidationErrors(['amount']);
-});
-
-test('saque PIX rejeita quando pix_key está ausente', function () {
-    [, $user] = makeFinancialUserWithRole('company_admin');
-
-    $this->actingAs($user)
-        ->postJson(route('api.company.withdraw'), [
-            'amount' => 100,
-            'payout_type' => 'PIX',
-            // pix_key ausente
-        ])
-        ->assertUnprocessable()
-        ->assertJsonValidationErrors(['pix_key']);
-});
-
-test('saque TED rejeita quando bank_code está ausente', function () {
-    [, $user] = makeFinancialUserWithRole('company_admin');
-
-    $this->actingAs($user)
-        ->postJson(route('api.company.withdraw'), [
-            'amount' => 100,
-            'payout_type' => 'TED',
-            // bank_code ausente
-            'bank_agency' => '0001',
-            'bank_account' => '12345',
-            'bank_account_type' => 'CHECKING',
-            'bank_owner_cpf_cnpj' => '529.982.247-25',
-            'bank_owner_name' => 'João Silva',
-        ])
-        ->assertUnprocessable()
-        ->assertJsonValidationErrors(['bank_code']);
-});
-
-test('saque TED rejeita quando bank_owner_cpf_cnpj está ausente', function () {
-    [, $user] = makeFinancialUserWithRole('company_admin');
-
-    $this->actingAs($user)
-        ->postJson(route('api.company.withdraw'), [
-            'amount' => 100,
-            'payout_type' => 'TED',
-            'bank_code' => '001',
-            'bank_agency' => '0001',
-            'bank_account' => '12345',
-            'bank_account_type' => 'CHECKING',
-            'bank_owner_name' => 'João Silva',
-            // bank_owner_cpf_cnpj ausente
-        ])
-        ->assertUnprocessable()
-        ->assertJsonValidationErrors(['bank_owner_cpf_cnpj']);
-});
-
-test('saque rejeita payout_type inválido', function () {
-    [, $user] = makeFinancialUserWithRole('company_admin');
-
-    $this->actingAs($user)
-        ->postJson(route('api.company.withdraw'), [
-            'amount' => 100,
-            'payout_type' => 'BOLETO', // inválido
-        ])
-        ->assertUnprocessable()
-        ->assertJsonValidationErrors(['payout_type']);
-});
-
-// ─── Validação de Antecipação ─────────────────────────────────────────────────
-
-test('antecipação rejeita transaction_ids vazio', function () {
-    [, $user] = makeFinancialUserWithRole('company_admin');
-
-    $this->actingAs($user)
-        ->postJson(route('api.company.anticipate'), [
-            'transaction_ids' => [],
-        ])
-        ->assertUnprocessable()
-        ->assertJsonValidationErrors(['transaction_ids']);
-});
-
-test('antecipação rejeita transaction_ids ausente', function () {
-    [, $user] = makeFinancialUserWithRole('company_admin');
-
-    $this->actingAs($user)
-        ->postJson(route('api.company.anticipate'), [])
-        ->assertUnprocessable()
-        ->assertJsonValidationErrors(['transaction_ids']);
-});
-
-test('antecipação rejeita id não inteiro em transaction_ids', function () {
-    [, $user] = makeFinancialUserWithRole('company_admin');
-
-    $this->actingAs($user)
-        ->postJson(route('api.company.anticipate'), [
-            'transaction_ids' => ['abc', 'xyz'],
-        ])
-        ->assertUnprocessable()
-        ->assertJsonValidationErrors(['transaction_ids.0']);
+test('rota de antecipação não existe mais', function () {
+    expect(fn () => route('api.company.anticipate'))->toThrow(Exception::class);
 });

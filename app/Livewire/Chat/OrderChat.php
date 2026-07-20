@@ -13,6 +13,7 @@ use App\Models\ProductCategory;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 class OrderChat extends Component
@@ -79,6 +80,7 @@ class OrderChat extends Component
 
     public string $orderType = 'delivery'; // 'delivery' | 'pickup'
 
+    #[Locked]
     public float $deliveryFee = 0.0;
 
     public bool $freeDelivery = false;
@@ -119,6 +121,7 @@ class OrderChat extends Component
 
     public string $cardAddressNumber = '';
 
+    #[Locked]
     public array $cardFeeBreakdown = [];
 
     public ?string $cardError = null;
@@ -132,8 +135,10 @@ class OrderChat extends Component
     // --- Coupon ---
     public string $couponInput = '';
 
+    #[Locked]
     public ?array $appliedCoupon = null; // ['code', 'type', 'discount', 'label']
 
+    #[Locked]
     public float $couponDiscount = 0.0;
 
     public ?string $couponError = null;

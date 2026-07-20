@@ -484,6 +484,80 @@ test('calculateDiscount percentual escopo produto com opção variável (qty > 1
     expect($discount)->toBe(17.0); // 50% de R$34
 });
 
+// ─── revalidateForOrder ────────────────────────────────────────────────────────
+
+test('revalidateForOrder retorna cupom válido', function () {
+    setupCouponContext();
+    $coupon = makeCoupon();
+
+    $result = app(CouponService::class)->revalidateForOrder($coupon->id, 1, 100.0);
+
+    expect($result->id)->toBe($coupon->id);
+});
+
+test('revalidateForOrder lança exceção para id inexistente (cupom forjado)', function () {
+    setupCouponContext();
+
+    expect(fn () => app(CouponService::class)->revalidateForOrder(999999, 1, 100.0))
+        ->toThrow(CouponException::class, 'inválido');
+});
+
+test('revalidateForOrder lança exceção para cupom inativo mesmo sem passar por validate()', function () {
+    setupCouponContext();
+    $coupon = makeCoupon(['active' => false]);
+
+    expect(fn () => app(CouponService::class)->revalidateForOrder($coupon->id, 1, 100.0))
+        ->toThrow(CouponException::class, 'inválido');
+});
+
+test('revalidateForOrder lança exceção para cupom expirado', function () {
+    setupCouponContext();
+    $coupon = makeCoupon(['expires_at' => now()->subDay()]);
+
+    expect(fn () => app(CouponService::class)->revalidateForOrder($coupon->id, 1, 100.0))
+        ->toThrow(CouponException::class, 'expirado');
+});
+
+test('revalidateForOrder lança exceção quando limite global de usos já foi atingido', function () {
+    $ctx = setupCouponContext();
+    $coupon = makeCoupon(['max_uses' => 1]);
+    $order = makeCouponOrder($ctx, 1);
+
+    CouponUsage::withoutGlobalScopes()->create([
+        'coupon_id' => $coupon->id,
+        'order_id' => $order->id,
+        'customer_id' => $ctx['customer']->id,
+        'company_id' => $ctx['company']->id,
+        'discount_applied' => 10,
+    ]);
+
+    expect(fn () => app(CouponService::class)->revalidateForOrder($coupon->id, $ctx['customer']->id, 100.0))
+        ->toThrow(CouponException::class, 'Limite');
+});
+
+test('revalidateForOrder não vaza cupom de outra empresa (id forjado cross-tenant)', function () {
+    setupCouponContext();
+
+    $otherCompany = Company::create([
+        'name' => 'Outra Empresa',
+        'slug' => 'outra-empresa',
+        'order_prefix' => 'OUT',
+        'active' => true,
+    ]);
+    $otherCoupon = Coupon::withoutGlobalScopes()->create([
+        'company_id' => $otherCompany->id,
+        'code' => 'FORACUP',
+        'name' => 'Cupom de outra empresa',
+        'type' => 'fixed',
+        'discount_value' => 999,
+        'scope' => 'order',
+        'active' => true,
+    ]);
+
+    expect(fn () => app(CouponService::class)->revalidateForOrder($otherCoupon->id, 1, 100.0))
+        ->toThrow(CouponException::class, 'inválido');
+});
+
 // ─── recordUsage ─────────────────────────────────────────────────────────────
 
 test('recordUsage salva registro de uso do cupom', function () {

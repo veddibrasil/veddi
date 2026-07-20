@@ -58,6 +58,9 @@ class OrderService implements OrderServiceInterface
 
             $discount = 0.0;
             if ($coupon) {
+                // Revalida e trava o cupom aqui dentro, nunca confiar no model resolvido
+                // antes da transação (pode vir de um id forjado client-side).
+                $coupon = app(CouponService::class)->revalidateForOrder($coupon->id, $customerId, $subtotal);
                 $discount = app(CouponService::class)->calculateDiscount($coupon, $cart, $subtotal, $deliveryFee);
                 // Frete grátis: zera o delivery_fee no cálculo do total
                 if ($coupon->type === 'free_delivery') {
@@ -358,6 +361,45 @@ class OrderService implements OrderServiceInterface
                 'customer',
                 $customerId,
                 'customer_request',
+            );
+        }
+    }
+
+    /**
+     * Cancela um pedido pelo admin/staff, restaurando estoque e disparando
+     * reembolso quando o pedido já estava pago (mesma regra do cancelamento
+     * pelo cliente — cancelar não pode deixar um pagamento capturado sem estorno).
+     */
+    public function cancelOrderAsAdmin(Order $order, ?int $adminUserId): void
+    {
+        $policy = app(OrderCancellationPolicy::class);
+        $policy->authorizeAdminCancel($order);
+
+        $order->update(['status' => 'cancelled']);
+
+        app(StockService::class)->restoreForOrder($order);
+
+        Log::channel('orders')->info('Pedido cancelado pelo admin', [
+            'order_id' => $order->id,
+            'admin_id' => $adminUserId,
+        ]);
+
+        if ($policy->requiresRefund($order)) {
+            $payment = $order->payment;
+
+            Log::channel('orders')->info('Cancelamento do admin disparando reembolso', [
+                'order_id' => $order->id,
+                'admin_id' => $adminUserId,
+                'payment_amount' => $payment->amount,
+            ]);
+
+            app(RefundServiceInterface::class)->initiateRefund(
+                $order,
+                $payment,
+                (float) $payment->amount,
+                'admin',
+                $adminUserId,
+                'admin_cancel',
             );
         }
     }

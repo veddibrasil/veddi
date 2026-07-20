@@ -58,6 +58,47 @@ class CouponService
     }
 
     /**
+     * Relock + revalida o cupom no momento da criação do pedido, dentro da transação.
+     * O cupom chega aqui a partir de uma propriedade Livewire pública — não confiar no
+     * model já resolvido antes da transação: ele pode estar expirado, sem uso disponível,
+     * ou (mais grave) ser um id forjado que nunca passou por validate(). O lockForUpdate
+     * também serializa checagens concorrentes de max_uses.
+     *
+     * @throws CouponException
+     */
+    public function revalidateForOrder(int $couponId, int $customerId, float $subtotal): Coupon
+    {
+        $coupon = Coupon::whereKey($couponId)->lockForUpdate()->first();
+
+        if (! $coupon || ! $coupon->active) {
+            throw new CouponException('Cupom inválido ou inativo.');
+        }
+
+        if ($coupon->isExpired()) {
+            throw new CouponException('Cupom expirado ou ainda não está vigente.');
+        }
+
+        if ($coupon->minimum_order_value !== null && $subtotal < $coupon->minimum_order_value) {
+            $min = number_format($coupon->minimum_order_value, 2, ',', '.');
+            throw new CouponException("Pedido mínimo de R$ {$min} para usar este cupom.");
+        }
+
+        if ($coupon->hasReachedMaxUses()) {
+            throw new CouponException('Limite de usos deste cupom foi atingido.');
+        }
+
+        if ($coupon->hasReachedMaxUsesForCustomer($customerId)) {
+            throw new CouponException('Você já utilizou este cupom o número máximo de vezes.');
+        }
+
+        if ($coupon->type === 'free_product' && ! $coupon->free_product_id) {
+            throw new CouponException('Cupom de produto grátis inválido.');
+        }
+
+        return $coupon;
+    }
+
+    /**
      * Calcula o valor de desconto a ser aplicado.
      *
      * @param  array<int, array{qty: int, name: string, price: float}>  $cart

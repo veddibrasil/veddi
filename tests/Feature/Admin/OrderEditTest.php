@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\ProcessRefund;
 use App\Livewire\Admin\Orders\Index as OrdersIndex;
 use App\Livewire\Admin\Orders\Show;
 use App\Models\Branch;
@@ -7,11 +8,15 @@ use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Payment;
+use App\Models\PaymentRefund;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
+use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
@@ -169,6 +174,69 @@ test('order is not editable in terminal statuses', function (string $status) {
     expect($order->isEditable())->toBeFalse();
 })->with(['delivered', 'cancelled', 'refunded']);
 
+test('admin cancelling a paid order via status dropdown triggers refund', function () {
+    Queue::fake();
+    ['admin' => $admin, 'order' => $order] = orderEditContext();
+
+    $order->update(['status' => 'paid']);
+    Payment::create([
+        'order_id' => $order->id,
+        'payment_gateway' => 'vindi',
+        'amount' => 30.00,
+        'status' => 'paid',
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Show::class, ['order' => $order])
+        ->call('updateStatus', 'cancelled')
+        ->assertHasNoErrors();
+
+    expect($order->fresh()->status)->toBe('cancelled');
+    expect(PaymentRefund::where('order_id', $order->id)->where('status', 'requested')->exists())->toBeTrue();
+    Queue::assertPushed(ProcessRefund::class);
+});
+
+test('admin cancelling a paid order via kanban triggers refund', function () {
+    Queue::fake();
+    ['admin' => $admin, 'order' => $order] = orderEditContext();
+
+    $order->update(['status' => 'paid']);
+    Payment::create([
+        'order_id' => $order->id,
+        'payment_gateway' => 'vindi',
+        'amount' => 30.00,
+        'status' => 'paid',
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(OrdersIndex::class)
+        ->call('updateOrderStatus', $order->id, 'cancelled')
+        ->assertHasNoErrors();
+
+    expect($order->fresh()->status)->toBe('cancelled');
+    expect(PaymentRefund::where('order_id', $order->id)->where('status', 'requested')->exists())->toBeTrue();
+    Queue::assertPushed(ProcessRefund::class);
+});
+
+test('admin cancelling an order without confirmed payment does not create a refund', function () {
+    Queue::fake();
+    ['admin' => $admin, 'order' => $order] = orderEditContext();
+
+    $order->update(['status' => 'pending']);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Show::class, ['order' => $order])
+        ->call('updateStatus', 'cancelled')
+        ->assertHasNoErrors();
+
+    expect($order->fresh()->status)->toBe('cancelled');
+    expect(PaymentRefund::where('order_id', $order->id)->exists())->toBeFalse();
+    Queue::assertNotPushed(ProcessRefund::class);
+});
+
 test('kanban status update persists order status', function () {
     ['admin' => $admin, 'order' => $order] = orderEditContext();
 
@@ -307,6 +375,25 @@ test('order total recalculates after item edit', function () {
     expect((float) $order->total)->toBe(30.00);
 });
 
+// ─── canUpdate segue a permissão orders.update (não apenas ter um papel) ──────
+
+test('usuário sem permissão orders.update não pode atualizar status do pedido', function () {
+    ['company' => $company, 'order' => $order] = orderEditContext();
+
+    $viewer = User::factory()->create();
+    $viewer->companies()->attach($company->id, ['role' => 'viewer']);
+
+    $this->actingAs($viewer);
+
+    expect($viewer->hasPermission('orders.update', $company))->toBeFalse();
+
+    Livewire::test(Show::class, ['order' => $order])
+        ->call('updateStatus', 'preparing')
+        ->assertForbidden();
+
+    expect($order->fresh()->status)->toBe('pending');
+});
+
 // ─── Multi-tenancy isolation ──────────────────────────────────────────────────
 
 test('product search only returns products from current company', function () {
@@ -350,4 +437,41 @@ test('product search only returns products from current company', function () {
         $product = Product::withoutGlobalScopes()->find($result['id']);
         expect($product->company_id)->toBe($company->id);
     }
+});
+
+test('swapProductId is locked and rejects client-forged updates', function () {
+    ['admin' => $admin, 'order' => $order] = orderEditContext();
+
+    $otherCompany = Company::create([
+        'name' => 'Outra Empresa Swap',
+        'slug' => 'outra-empresa-swap',
+        'order_prefix' => 'OES',
+        'active' => true,
+    ]);
+    $otherCategory = ProductCategory::withoutGlobalScopes()->create([
+        'company_id' => $otherCompany->id,
+        'name' => 'Pizzas',
+        'active' => true,
+        'sort_order' => 1,
+    ]);
+    $otherProduct = Product::withoutGlobalScopes()->create([
+        'company_id' => $otherCompany->id,
+        'product_category_id' => $otherCategory->id,
+        'name' => 'Pizza de outra empresa',
+        'price' => 25.00,
+        'active' => true,
+        'sort_order' => 1,
+    ]);
+
+    $this->actingAs($admin);
+
+    // Simula um payload forjado tentando setar swapProductId direto (sem passar por
+    // selectSwapProduct), apontando pra um produto de outra empresa com o mesmo preço.
+    expect(function () use ($order, $otherProduct) {
+        Livewire::test(Show::class, ['order' => $order])
+            ->call('startEditItems')
+            ->call('openSwapItem', 0)
+            ->set('swapProductId', $otherProduct->id)
+            ->call('applySwapItem');
+    })->toThrow(CannotUpdateLockedPropertyException::class);
 });

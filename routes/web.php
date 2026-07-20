@@ -158,12 +158,10 @@ Route::middleware(['auth', 'verified', 'company.role:company_admin', 'throttle:6
             ->name('balance');
         Route::get('/balance/forecast', [\App\Http\Controllers\Api\CompanyBalanceController::class, 'forecast'])
             ->name('balance.forecast');
-        Route::post('/withdraw', [\App\Http\Controllers\Api\CompanyBalanceController::class, 'withdraw'])
-            ->middleware('throttle:10,1')
-            ->name('withdraw');
-        Route::post('/anticipate', [\App\Http\Controllers\Api\CompanyBalanceController::class, 'anticipate'])
-            ->middleware('throttle:10,1')
-            ->name('anticipate');
+        // Saque e antecipação foram desativados: saldo/saque/antecipação foi migrado
+        // pro portal Vindi (ver commit a9ba8d2). O endpoint de saque nunca completava
+        // a transferência real (ficava travado em "processing" pra sempre) e não
+        // havia tela de operador pra resolver isso manualmente.
     });
 
 require __DIR__.'/settings.php';

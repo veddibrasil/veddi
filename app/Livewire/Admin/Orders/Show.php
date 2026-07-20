@@ -9,11 +9,12 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Services\Order\FeeCalculator;
-use App\Services\Order\OrderCancellationPolicy;
+use App\Services\Order\OrderService;
 use App\Services\Order\StockService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 class Show extends Component
@@ -50,12 +51,20 @@ class Show extends Component
 
     public bool $editingItems = false;
 
-    /** @var array<int, array{id: int|null, product_id?: int, product_name: string, unit_price: float, quantity: int, subtotal: float, options?: array|null}> */
+    /**
+     * Locked: só é mutado por métodos do componente (addProductToEdit, applySwapItem,
+     * updateItemQuantity, etc), nunca por wire:model. Sem lock, o client poderia injetar
+     * product_id/unit_price arbitrários direto no payload de update do Livewire.
+     *
+     * @var array<int, array{id: int|null, product_id?: int, product_name: string, unit_price: float, quantity: int, subtotal: float, options?: array|null}>
+     */
+    #[Locked]
     public array $editableItems = [];
 
     public string $productSearch = '';
 
     /** @var array<int, array{id: int, name: string, price: float}> */
+    #[Locked]
     public array $productResults = [];
 
     // ── Item swapping (same price) ──────────────────────────────────────────
@@ -67,16 +76,21 @@ class Show extends Component
     public string $swapProductSearch = '';
 
     /** @var array<int, array{id: int, name: string, base_price: float}> */
+    #[Locked]
     public array $swapProductResults = [];
 
+    #[Locked]
     public ?int $swapProductId = null;
 
     /** @var array<int, array{id: int, name: string, total_qty: int, fixed: bool, options: array<int, array{id: int, name: string, additional_price: float, paused: bool}>}> */
+    #[Locked]
     public array $swapGroups = [];
 
     /** @var array<int, array<int, int>> selections[groupId][optionId] = qty */
+    #[Locked]
     public array $swapSelections = [];
 
+    #[Locked]
     public float $swapCalculatedUnitPrice = 0.0;
 
     public ?string $swapError = null;
@@ -99,9 +113,7 @@ class Show extends Component
             $this->canUpdate = true;
         } elseif (app()->bound('current.company')) {
             $company = app('current.company');
-            // Any user with a role in this company can update orders.
-            // Route middleware (company.role) already enforces they belong here.
-            $this->canUpdate = $user->roleForCompany($company) !== null;
+            $this->canUpdate = $user->hasPermission('orders.update', $company);
             $this->canIssueFiscal = $user->hasPermission('fiscal.issue', $company);
         }
     }
@@ -120,9 +132,15 @@ class Show extends Component
             return;
         }
 
+        $previousStatus = $this->order->status;
+
         try {
             if ($status === 'cancelled') {
-                app(OrderCancellationPolicy::class)->authorizeAdminCancel($this->order);
+                if ($previousStatus !== 'cancelled') {
+                    app(OrderService::class)->cancelOrderAsAdmin($this->order, auth()->id());
+                }
+            } else {
+                $this->order->update(['status' => $status]);
             }
         } catch (\RuntimeException $e) {
             session()->flash('error', $e->getMessage());
@@ -130,13 +148,6 @@ class Show extends Component
             return;
         }
 
-        $previousStatus = $this->order->status;
-
-        $this->order->update(['status' => $status]);
-
-        if ($status === 'cancelled' && $previousStatus !== 'cancelled') {
-            app(StockService::class)->restoreForOrder($this->order);
-        }
         $this->order->refresh();
 
         OrderStatusUpdated::dispatch($this->order);
@@ -476,7 +487,7 @@ class Show extends Component
             return;
         }
 
-        $product = Product::withoutGlobalScopes()->find($this->swapProductId);
+        $product = Product::find($this->swapProductId);
         if (! $product) {
             $this->swapCalculatedUnitPrice = 0.0;
 
@@ -586,7 +597,7 @@ class Show extends Component
             return;
         }
 
-        $product = Product::withoutGlobalScopes()->find($this->swapProductId);
+        $product = Product::find($this->swapProductId);
         if (! $product) {
             $this->swapError = 'Produto inválido.';
 
@@ -704,6 +715,16 @@ class Show extends Component
             $this->addError('editableItems', 'Você só pode salvar se o subtotal permanecer igual ao original.');
 
             return;
+        }
+
+        $productIds = collect($this->editableItems)->pluck('product_id')->filter()->unique();
+        if ($productIds->isNotEmpty()) {
+            $validCount = Product::whereIn('id', $productIds)->count();
+            if ($validCount !== $productIds->count()) {
+                $this->addError('editableItems', 'Um ou mais produtos são inválidos para esta empresa.');
+
+                return;
+            }
         }
 
         $currentCompany = app()->bound('current.company') ? app('current.company') : null;
