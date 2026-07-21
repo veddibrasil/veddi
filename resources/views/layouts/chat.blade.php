@@ -8,6 +8,7 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @if(isset($currentCompany))
         <x-company-theme :company="$currentCompany" />
+        <x-company-pixels :company="$currentCompany" />
     @endif
     @livewireStyles
 

@@ -26,11 +26,11 @@ class SecurityHeaders
         $response->headers->set(
             'Content-Security-Policy',
             "default-src 'self'; ".
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://api.mapbox.com{$devSources}; ".
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://api.mapbox.com https://www.googletagmanager.com https://connect.facebook.net{$devSources}; ".
             "style-src 'self' 'unsafe-inline' https://fonts.bunny.net https://unpkg.com https://api.mapbox.com{$devSources}; ".
             "img-src 'self' data: https:; ".
             "font-src 'self' data: https://fonts.bunny.net; ".
-            "connect-src 'self' ws: wss: https://nominatim.openstreetmap.org https://api.mapbox.com https://events.mapbox.com{$devSources}; ".
+            "connect-src 'self' ws: wss: https://nominatim.openstreetmap.org https://api.mapbox.com https://events.mapbox.com https://www.googletagmanager.com https://www.google-analytics.com https://analytics.google.com https://www.facebook.com{$devSources}; ".
             "object-src 'none'; ".
             "base-uri 'self'; ".
             "form-action 'self'; ".

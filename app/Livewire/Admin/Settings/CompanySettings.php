@@ -49,6 +49,12 @@ class CompanySettings extends Component
 
     public array $chat_highlights = [];
 
+    public ?string $facebook_pixel_id = '';
+
+    public ?string $google_analytics_id = '';
+
+    public ?string $google_ads_id = '';
+
     public const DEFAULT_HIGHLIGHTS = [
         ['icon' => '🥟', 'title' => 'Salgados fresquinhos', 'description' => 'Feitos na hora, com ingredientes selecionados'],
         ['icon' => '⚡', 'title' => 'Pedido rápido',        'description' => 'Faça seu pedido em poucos cliques pelo chat'],
@@ -64,7 +70,7 @@ class CompanySettings extends Component
             'name', 'slug', 'tagline', 'footer_text', 'email',
             'primary_color', 'primary_color_dark', 'primary_color_light',
             'secondary_color', 'secondary_color_light', 'accent_color',
-            'order_prefix'
+            'order_prefix', 'facebook_pixel_id', 'google_analytics_id', 'google_ads_id'
         ));
         $this->chat_highlights = $company->chat_highlights ?? self::DEFAULT_HIGHLIGHTS;
         $this->schedulingEnabled = $company->schedulingEnabled();
@@ -102,16 +108,26 @@ class CompanySettings extends Component
             'chat_highlights.*.icon' => ['required', 'string', 'max:10'],
             'chat_highlights.*.title' => ['required', 'string', 'max:60'],
             'chat_highlights.*.description' => ['required', 'string', 'max:120'],
+            'facebook_pixel_id' => ['nullable', 'string', 'regex:/^[0-9]{5,20}$/'],
+            'google_analytics_id' => ['nullable', 'string', 'regex:/^G-[A-Z0-9]{4,12}$/'],
+            'google_ads_id' => ['nullable', 'string', 'regex:/^AW-[0-9]{6,12}$/'],
         ];
     }
 
     public function save(): void
     {
+        $this->facebook_pixel_id = trim((string) $this->facebook_pixel_id) ?: null;
+        $this->google_analytics_id = trim((string) $this->google_analytics_id) ?: null;
+        $this->google_ads_id = trim((string) $this->google_ads_id) ?: null;
+
         $validated = $this->validate($this->rules());
         $company = app('current.company');
 
         if ($company->isFree()) {
-            $data = collect($validated)->only(['name', 'slug', 'tagline', 'footer_text', 'email', 'order_prefix'])->toArray();
+            $data = collect($validated)->only([
+                'name', 'slug', 'tagline', 'footer_text', 'email', 'order_prefix',
+                'facebook_pixel_id', 'google_analytics_id', 'google_ads_id',
+            ])->toArray();
         } else {
             $data = collect($validated)->except(['logo', 'chat_highlights'])->toArray();
             $data['chat_highlights'] = $this->chat_highlights ?: null;

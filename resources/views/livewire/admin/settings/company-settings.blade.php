@@ -66,6 +66,31 @@
         </div>
     </div>
 
+        {{-- Pixels de Rastreamento --}}
+    <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
+        <div>
+            <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Pixels de Rastreamento</h2>
+            <p class="text-xs text-neutral-400 mt-0.5 dark:text-neutral-500">Usados para medir tráfego e conversões no chat público da sua empresa. Deixe em branco o que não usar.</p>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+                <flux:input wire:model="facebook_pixel_id" label="Meta / Facebook Pixel ID" placeholder="123456789012345" />
+                <p class="text-xs text-neutral-400 mt-1 dark:text-neutral-500">Somente números.</p>
+                @error('facebook_pixel_id') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            </div>
+            <div>
+                <flux:input wire:model="google_analytics_id" label="Google Analytics (GA4)" placeholder="G-XXXXXXXXXX" />
+                <p class="text-xs text-neutral-400 mt-1 dark:text-neutral-500">ID de medição, começa com "G-".</p>
+                @error('google_analytics_id') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            </div>
+            <div>
+                <flux:input wire:model="google_ads_id" label="Google Ads" placeholder="AW-XXXXXXXXX" />
+                <p class="text-xs text-neutral-400 mt-1 dark:text-neutral-500">ID de conversão, começa com "AW-".</p>
+                @error('google_ads_id') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            </div>
+        </div>
+    </div>
     {{-- Cores da marca --}}
     <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
         <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Cores da Marca</h2>
@@ -319,6 +344,8 @@
             </div>
         @endif
     </div>
+
+
 
     {{-- Nota Fiscal --}}
     @php $fiscalCompany = app('current.company'); @endphp
