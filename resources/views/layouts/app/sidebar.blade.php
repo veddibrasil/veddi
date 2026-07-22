@@ -61,16 +61,14 @@
                         </flux:sidebar.item>
                     @endif
 
-                     @if( $can('pdv.operate'))
+                    @if($can('pdv.operate') && $company?->pdv_module_enabled)
                         <flux:sidebar.group heading="PDV" class="grid">
-                            @if($can('pdv.operate') && $company?->pdv_module_enabled)
                                 <flux:sidebar.item icon="computer-desktop" :href="route('admin.pdv')" :current="request()->routeIs('admin.pdv')" wire:navigate>
                                     Terminal PDV
                                 </flux:sidebar.item>
                                 <flux:sidebar.item icon="chart-bar" :href="route('admin.pdv.report')" :current="request()->routeIs('admin.pdv.report')" wire:navigate>
                                     Relatório PDV
                                 </flux:sidebar.item>
-                            @endif
                         </flux:sidebar.group>
                     @endif
 

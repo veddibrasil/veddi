@@ -32,6 +32,13 @@ class SetupChecklist extends Component
                 'actionRoute' => route('admin.branches.index'),
             ],
             [
+                'done' => ! empty($company->email),
+                'title' => 'Adicionar o email da empresa cadastrado na Vindi',
+                'description' => 'Informe o email usado no cadastro da sua empresa na Vindi.',
+                'actionLabel' => 'Adicionar email',
+                'actionRoute' => route('admin.settings'),
+            ],
+            [
                 'done' => $company->productCategories()->exists(),
                 'title' => 'Criar uma categoria',
                 'description' => 'Organize seu cardápio criando categorias de produtos.',

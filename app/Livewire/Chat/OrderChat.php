@@ -197,6 +197,13 @@ class OrderChat extends Component
 
         $currentCompanyId = $company->id;
 
+        if (empty($company->email)) {
+            $this->companyId = $currentCompanyId;
+            $this->step = 'UNAVAILABLE';
+
+            return;
+        }
+
         $savedState = session('chat_state');
         if ($savedState && ($savedState['companyId'] ?? null) === $currentCompanyId) {
             foreach ($savedState as $key => $value) {

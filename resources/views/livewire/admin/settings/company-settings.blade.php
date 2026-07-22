@@ -51,7 +51,7 @@
             </div>
             <div>
                 <flux:input wire:model="email" type="email" label="E-mail da empresa" placeholder="empresa@exemplo.com" />
-                <p class="text-xs text-neutral-400 mt-1 dark:text-neutral-500">Necessário para o split de pagamento (afiliado) ser aplicado nos pedidos. Sem e-mail, o repasse fica retido.</p>
+                <p class="text-xs text-neutral-400 mt-1 dark:text-neutral-500">Necessário para o pagamento ser aplicado nos pedidos. Sem e-mail, o repasse fica retido.</p>
                 @error('email') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
         </div>
@@ -61,7 +61,7 @@
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.008v.008H12v-.008ZM21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
             </svg>
             <p class="text-sm font-semibold text-amber-800 dark:text-amber-300">
-                Atenção: o e-mail da empresa precisa ser <u>exatamente igual</u> ao e-mail cadastrado na sua conta Vindi. E-mail divergente quebra o split de pagamento e o repasse fica retido.
+                Atenção: o e-mail da empresa precisa ser <u>exatamente igual</u> ao e-mail cadastrado na sua conta Vindi. O Email é necessário para que o pagamento do pedido caia na sua conta vindi.
             </p>
         </div>
     </div>

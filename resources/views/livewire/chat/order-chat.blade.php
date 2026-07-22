@@ -33,7 +33,10 @@
                     <p class="text-white font-bold text-base leading-tight">{{ $currentCompany->name }}</p>
                 </div>
                 <div class="flex items-center gap-1.5 mt-0.5">
-                    @if ($step === 'CLOSED')
+                    @if ($step === 'UNAVAILABLE')
+                        <span class="w-2 h-2 rounded-full bg-red-400 shadow-sm shadow-red-300"></span>
+                        <p class="text-white/75 text-xs">Indisponível no momento</p>
+                    @elseif ($step === 'CLOSED')
                         <span class="w-2 h-2 rounded-full bg-red-400 shadow-sm shadow-red-300"></span>
                         <p class="text-white/75 text-xs">Fechado no momento</p>
                     @else
@@ -44,7 +47,7 @@
             </div>
 
             {{-- Restart + End chat buttons --}}
-            @if ($step !== 'CLOSED')
+            @if (! in_array($step, ['CLOSED', 'UNAVAILABLE']))
                 <div class="flex items-center gap-1" x-data="{ confirmEnd: false }">
                     {{-- WhatsApp support --}}
                     @if ($selectedBranchId && $this->supportWhatsAppUrl && !in_array($step, ['IDENTIFY_PHONE', 'CLOSED', 'EDIT_PROFILE']))
@@ -1392,6 +1395,18 @@
             </div>
 
 
+
+        {{-- ── UNAVAILABLE ── --}}
+        @elseif ($step === 'UNAVAILABLE')
+            <div class="text-center space-y-3 py-2">
+                <div class="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mx-auto text-3xl">
+                    ⚠️
+                </div>
+                <div>
+                    <p class="font-bold text-gray-700 text-base">Atendimento indisponível</p>
+                    <p class="text-xs text-gray-500 mt-1">Esta loja ainda não concluiu a configuração necessária para receber pedidos. Volte em breve!</p>
+                </div>
+            </div>
 
         {{-- ── CLOSED ── --}}
         @elseif ($step === 'CLOSED')
