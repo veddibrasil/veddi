@@ -57,6 +57,10 @@ Route::post('/api/validate-cpf', function (Request $request) {
 // --- Documentação pública ---
 Route::view('/docs', 'docs')->name('docs');
 
+// --- Termos legais públicos ---
+Route::view('/termos-de-uso', 'legal.terms')->name('legal.terms');
+Route::view('/politica-de-privacidade', 'legal.privacy')->name('legal.privacy');
+
 // --- Chat Público ---
 Route::get('/{company}', \App\Livewire\Chat\OrderChat::class)->name('chat.company');
 

@@ -108,11 +108,11 @@
 
         {{-- Right panel footer --}}
         <div class="px-6 py-4 border-t border-zinc-100 text-center">
-            <p class="text-xs text-zinc-400">
+          <p class="text-center text-xs text-zinc-400">
                 Ao criar sua conta, você concorda com nossos
-                <a href="#" class="text-[#5c0079] hover:underline">Termos de Uso</a>
+                <a href="{{ route('legal.terms') }}" target="_blank" rel="noopener" class="text-[#7A00A3] hover:underline font-medium">Termos de Uso</a>
                 e
-                <a href="#" class="text-[#5c0079] hover:underline">Política de Privacidade</a>.
+                <a href="{{ route('legal.privacy') }}" target="_blank" rel="noopener" class="text-[#7A00A3] hover:underline font-medium">Política de Privacidade</a>.
             </p>
         </div>
     </div>

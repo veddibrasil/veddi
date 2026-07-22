@@ -502,6 +502,13 @@
                 </button>
             </div>
 
+            <p class="text-center text-xs text-zinc-400">
+                Ao criar sua conta, você concorda com nossos
+                <a href="{{ route('legal.terms') }}" target="_blank" rel="noopener" class="text-[#7A00A3] hover:underline font-medium">Termos de Uso</a>
+                e
+                <a href="{{ route('legal.privacy') }}" target="_blank" rel="noopener" class="text-[#7A00A3] hover:underline font-medium">Política de Privacidade</a>.
+            </p>
+
         </div>
     @endif
 
