@@ -7,7 +7,7 @@ use Livewire\Component;
 
 class SetupChecklist extends Component
 {
-    /** @var array<int, array{done: bool, title: string, description: string, actionLabel: string, actionRoute: string}> */
+    /** @var array<int, array{done: bool, title: string, description: string, actionLabel: string, actionRoute: string, helpUrl?: string, helpLabel?: string, descriptionSteps?: array<int, string>}> */
     public array $steps = [];
 
     public int $doneCount = 0;
@@ -34,9 +34,16 @@ class SetupChecklist extends Component
             [
                 'done' => ! empty($company->email),
                 'title' => 'Adicionar o email da empresa cadastrado na Vindi',
-                'description' => 'Informe o email usado no cadastro da sua empresa na Vindi.',
+                'description' => 'Siga os passos abaixo para liberar os pagamentos da sua empresa.',
+                'descriptionSteps' => [
+                    'Acesse pagamentos.vindi.com.br/criar-conta-v2 e crie sua conta.',
+                    'Copie o email usado no cadastro.',
+                    'Informe esse email na tela de configurações da empresa.',
+                ],
                 'actionLabel' => 'Adicionar email',
                 'actionRoute' => route('admin.settings'),
+                'helpUrl' => 'https://pagamentos.vindi.com.br/criar-conta-v2/',
+                'helpLabel' => 'Criar conta na Vindi',
             ],
             [
                 'done' => $company->productCategories()->exists(),

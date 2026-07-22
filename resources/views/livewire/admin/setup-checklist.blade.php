@@ -43,6 +43,21 @@
                     </p>
                     @if(!$step['done'])
                         <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{{ $step['description'] }}</p>
+                        @if(!empty($step['descriptionSteps']))
+                            <ol class="mt-1 grid grid-cols-1 gap-0.5 text-xs text-neutral-500 dark:text-neutral-400 list-decimal list-inside">
+                                @foreach($step['descriptionSteps'] as $line)
+                                    <li>{{ $line }}</li>
+                                @endforeach
+                            </ol>
+                        @endif
+                        @if(!empty($step['helpUrl']))
+                            <a href="{{ $step['helpUrl'] }}"
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               class="inline-block text-xs font-semibold text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300 underline underline-offset-2 mt-1">
+                                {{ $step['helpLabel'] ?? $step['helpUrl'] }} ↗
+                            </a>
+                        @endif
                     @endif
                 </div>
 
