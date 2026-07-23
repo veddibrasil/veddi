@@ -36,7 +36,7 @@
                 @forelse($companies as $company)
                     <tr class="hover:bg-neutral-50 transition dark:hover:bg-zinc-700/50">
                         <td class="px-4 py-3 font-medium text-neutral-800 dark:text-neutral-100">
-                            <div class="flex items-center gap-2">
+                            <a href="{{ route('superadmin.companies.show', $company) }}" class="flex items-center gap-2 hover:text-amber-600 dark:hover:text-amber-400">
                                 @if($company->logo_path)
                                     <img src="{{ $company->logo_url }}" class="w-7 h-7 rounded-full object-cover">
                                 @else
@@ -46,7 +46,7 @@
                                     </div>
                                 @endif
                                 {{ $company->name }}
-                            </div>
+                            </a>
                         </td>
                         <td class="px-4 py-3 text-neutral-500 font-mono text-xs dark:text-neutral-400">{{ $company->slug }}</td>
                         <td class="px-4 py-3 text-center text-neutral-700 dark:text-neutral-300">{{ $company->branches_count }}</td>
@@ -58,6 +58,8 @@
                             </button>
                         </td>
                         <td class="px-4 py-3 text-right">
+                            <a href="{{ route('superadmin.companies.show', $company) }}"
+                                class="text-neutral-500 hover:text-neutral-700 text-xs font-medium mr-3 dark:text-neutral-400 dark:hover:text-neutral-200">Detalhes</a>
                             <a href="{{ route('superadmin.companies.edit', $company) }}"
                                 class="text-amber-600 hover:text-amber-800 text-xs font-medium mr-3 dark:text-amber-400 dark:hover:text-amber-300">Editar</a>
                             <button wire:click="confirmDelete({{ $company->id }})"

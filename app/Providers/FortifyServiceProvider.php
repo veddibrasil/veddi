@@ -25,7 +25,7 @@ class FortifyServiceProvider extends ServiceProvider
             public function toResponse($request)
             {
                 $url = $request->user()?->isSuperAdmin()
-                    ? route('superadmin.companies.index')
+                    ? route('superadmin.dashboard')
                     : route('admin.dashboard');
 
                 return redirect()->intended($url);

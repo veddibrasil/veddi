@@ -7,7 +7,7 @@
     <body class="{{ $bodyClass }} bg-[#f8f8fb] dark:bg-[#0d1825]">
         <flux:sidebar sticky collapsible="mobile" class="veddi-sidebar border-e border-[#5c0079]">
             <flux:sidebar.header>
-                <x-app-logo :sidebar="true" href="{{ auth()->user()?->isSuperAdmin() ? route('superadmin.companies.index') : route('admin.dashboard') }}" wire:navigate />
+                <x-app-logo :sidebar="true" href="{{ auth()->user()?->isSuperAdmin() ? route('superadmin.dashboard') : route('admin.dashboard') }}" wire:navigate />
 
                 @auth
                     @if(!auth()->user()?->isSuperAdmin())
@@ -23,13 +23,12 @@
 
                 @if(auth()->user()?->isSuperAdmin())
                     <flux:sidebar.group heading="Administração" class="grid">
+                        <flux:sidebar.item icon="home" :href="route('superadmin.dashboard')" :current="request()->routeIs('superadmin.dashboard')" wire:navigate>
+                            Dashboard
+                        </flux:sidebar.item>
                         <flux:sidebar.item icon="building-office-2" :href="route('superadmin.companies.index')" :current="request()->routeIs('superadmin.companies.*')" wire:navigate>
                             Empresas
                         </flux:sidebar.item>
-                        <flux:sidebar.item icon="building-storefront" :href="route('admin.branches.index')" :current="request()->routeIs('admin.branches.*')" wire:navigate>
-                            Filiais
-                        </flux:sidebar.item>
-
                     </flux:sidebar.group>
                 @else
                     @php

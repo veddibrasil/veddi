@@ -142,8 +142,10 @@ Route::middleware(['auth', 'verified', 'super.admin'])
     ->prefix('superadmin')
     ->name('superadmin.')
     ->group(function () {
+        Route::get('/dashboard', \App\Livewire\SuperAdmin\Dashboard::class)->name('dashboard');
         Route::get('/companies', \App\Livewire\SuperAdmin\Companies\Index::class)->name('companies.index');
         Route::get('/companies/create', \App\Livewire\SuperAdmin\Companies\Form::class)->name('companies.create');
+        Route::get('/companies/{company}', \App\Livewire\SuperAdmin\Companies\Show::class)->name('companies.show');
         Route::get('/companies/{company}/edit', \App\Livewire\SuperAdmin\Companies\Form::class)->name('companies.edit');
         Route::get('/users', \App\Livewire\SuperAdmin\Users\Index::class)->name('users.index');
         Route::get('/users/{user}/permissions', \App\Livewire\SuperAdmin\Permissions\UserPermissions::class)->name('users.permissions');
