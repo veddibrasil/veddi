@@ -1059,25 +1059,31 @@
                             </div>
                         </div>
 
+                        {{-- Região do meio rola por dentro (overflow-y-auto) e o footer fica FORA
+                             dela — garantia estrutural de que o footer nunca some/desloca por
+                             causa de redimensionamento, sem depender de conta de altura. --}}
+                        <div class="flex-1 min-h-0 overflow-y-auto flex flex-col">
                         @if ($orderMode === 'mesa')
-                            <div class="px-4 py-3 border-b border-neutral-100 dark:border-zinc-800 shrink-0 bg-amber-50/50 dark:bg-amber-900/10 space-y-2">
+                            <div x-ref="mesaSection" class="border-neutral-100 dark:border-zinc-800 shrink-0 bg-amber-50/50 dark:bg-amber-900/10 overflow-y-auto">
                                 @if ($tabMessage)
                                     <div
                                         x-data="{ show: true }"
                                         x-init="setTimeout(() => show = false, 3000)"
                                         x-show="show"
                                         x-transition
-                                        class="rounded-lg bg-green-100 px-3 py-2 text-xs font-semibold text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                                        class="mx-4 mt-3 rounded-lg bg-green-100 px-3 py-2 text-xs font-semibold text-green-800 dark:bg-green-900/30 dark:text-green-300"
                                     >
                                         ✓ {{ $tabMessage }}
                                     </div>
                                 @endif
                                 @error('order')
-                                    <p class="text-xs font-semibold text-red-600 dark:text-red-400">{{ $message }}</p>
+                                    <p class="mx-4 mt-3 text-xs font-semibold text-red-600 dark:text-red-400">{{ $message }}</p>
                                 @enderror
+
                                 @if ($openTabOrderId)
+                                    {{-- Comanda ativa: sempre visível, sem accordion — é o contexto principal da venda --}}
                                     @php $activeTab = $this->openTabs->firstWhere('id', $openTabOrderId); @endphp
-                                    <div class="rounded-lg bg-amber-100 dark:bg-amber-900/30 overflow-hidden">
+                                    <div class="mx-4 my-3 rounded-lg bg-amber-100 dark:bg-amber-900/30 overflow-hidden">
                                         <div class="flex items-center justify-between gap-2 px-3 py-2">
                                             <div class="min-w-0">
                                                 <p class="text-xs font-bold text-amber-800 dark:text-amber-300 truncate">Comanda: {{ $activeTab?->table_label }}</p>
@@ -1106,94 +1112,121 @@
                                         @endif
                                     </div>
                                 @else
-                                    @if (! $this->branchUsesRegisteredTables)
-                                        <div class="rounded-lg border border-amber-300 bg-amber-100/70 px-3 py-2 dark:border-amber-800 dark:bg-amber-900/20">
-                                            <p class="text-xs font-semibold text-amber-800 dark:text-amber-300">
-                                                Esta filial ainda não tem mesas cadastradas.
-                                            </p>
-                                            <p class="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
-                                                @if ($isWaiter)
-                                                    Peça para o responsável pelo caixa cadastrar as mesas antes de abrir uma comanda.
-                                                @else
-                                                    Cadastre ao menos uma mesa abaixo para poder abrir uma comanda.
-                                                @endif
-                                            </p>
-                                        </div>
-                                    @endif
+                                    {{-- Sem comanda selecionada ainda: título fixo + 2 cartões bem delimitados
+                                         (abrir mesa/comanda / comandas já abertas), sempre visíveis — nada
+                                         escondido atrás de clique, é a ação principal desse modo de venda. --}}
+                                    <div class="px-4 pt-3 pb-3 space-y-3">
+                                        <p class="flex items-center gap-1.5 text-xs font-bold text-amber-800 dark:text-amber-300">
+                                            <flux:icon.table-cells class="size-3.5" />
+                                            Abrir mesa / comanda
+                                        </p>
 
-                                    <flux:select wire:model.live="selectedTableId">
-                                        <option value="">Selecione a mesa...</option>
-                                        @foreach ($this->availableTables as $table)
-                                            <option value="{{ $table->id }}">Mesa {{ $table->number }}</option>
-                                        @endforeach
-                                    </flux:select>
-                                    @error('selectedTableId')
-                                        <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
-                                    @enderror
-                                    @if ($this->branchUsesRegisteredTables && $this->availableTables->isEmpty())
-                                        <p class="text-xs text-neutral-500 dark:text-neutral-400">Nenhuma mesa livre no momento.</p>
-                                    @endif
-
-                                    @unless ($isWaiter)
-                                        <div class="flex items-end gap-2">
-                                            <div class="flex-1">
-                                                <flux:input wire:model="newTableNumber" type="number" min="1" placeholder="Nº da mesa" />
-                                                @error('newTableNumber')
-                                                    <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
-                                                @enderror
-                                            </div>
-                                            <flux:button wire:click="registerTable" variant="outline" size="sm">
-                                                Cadastrar mesa
-                                            </flux:button>
-                                        </div>
-                                    @endunless
-
-                                    @if ($this->openTabs->isNotEmpty())
-                                        <div class="space-y-1">
-                                            <p class="text-[10px] uppercase font-bold text-neutral-400 dark:text-neutral-500">Comandas abertas</p>
-                                            <div class="space-y-1 max-h-48 overflow-y-auto pr-0.5">
-                                            @foreach ($this->openTabs as $tab)
-                                                <div class="border rounded-lg dark:border-zinc-700 overflow-hidden">
-                                                    <div
-                                                        role="button"
-                                                        tabindex="0"
-                                                        wire:click="toggleTabItems({{ $tab->id }})"
-                                                        wire:keydown.enter="toggleTabItems({{ $tab->id }})"
-                                                        class="w-full flex items-center justify-between gap-2 px-2 py-1.5 cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
-                                                    >
-                                                        <div class="text-xs min-w-0">
-                                                            <p class="font-semibold text-neutral-800 dark:text-neutral-100 truncate">{{ $tab->table_label }}</p>
-                                                            <p class="text-neutral-400 dark:text-neutral-500">R$ {{ number_format($tab->total, 2, ',', '.') }} · {{ $viewingTabItemsOrderId === $tab->id ? 'ocultar itens' : 'ver itens' }}</p>
-                                                        </div>
-                                                        <div class="flex gap-1 shrink-0">
-                                                            <flux:button wire:click.stop="addItemsToTab({{ $tab->id }})" variant="outline" size="sm" :disabled="empty($cart)">Adicionar</flux:button>
-                                                            @unless ($isWaiter)
-                                                                <flux:button wire:click.stop="proceedToCloseTab({{ $tab->id }})" variant="ghost" size="sm">Fechar</flux:button>
-                                                            @endunless
-                                                        </div>
-                                                    </div>
-                                                    @if ($viewingTabItemsOrderId === $tab->id)
-                                                        <div class="max-h-28 overflow-y-auto divide-y divide-neutral-100 dark:divide-zinc-800 border-t dark:border-zinc-700 bg-neutral-50 dark:bg-zinc-800/50">
-                                                            @forelse ($this->viewingTabItems as $tabItem)
-                                                                <div class="flex items-center justify-between gap-3 px-2 py-1.5 text-xs">
-                                                                    <span class="text-neutral-700 dark:text-neutral-200">{{ $tabItem->quantity }}x {{ $tabItem->product_name }}</span>
-                                                                    <span class="shrink-0 font-semibold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($tabItem->subtotal, 2, ',', '.') }}</span>
-                                                                </div>
-                                                            @empty
-                                                                <p class="px-2 py-1.5 text-xs text-neutral-400 dark:text-neutral-500">Nenhum item lançado ainda.</p>
-                                                            @endforelse
-                                                        </div>
-                                                    @endif
+                                        <div class="rounded-lg border border-amber-200 dark:border-amber-800/60 bg-white dark:bg-zinc-900 p-3 space-y-2">
+                                            @if (! $this->branchUsesRegisteredTables)
+                                                <div class="rounded-lg border border-amber-300 bg-amber-100/70 px-3 py-2 dark:border-amber-800 dark:bg-amber-900/20">
+                                                    <p class="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                                                        Esta filial ainda não tem mesas cadastradas.
+                                                    </p>
+                                                    <p class="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                                                        @if ($isWaiter)
+                                                            Peça para o responsável pelo caixa cadastrar as mesas antes de abrir uma comanda.
+                                                        @else
+                                                            Cadastre ao menos uma mesa abaixo para poder abrir uma comanda.
+                                                        @endif
+                                                    </p>
                                                 </div>
-                                            @endforeach
-                                            </div>
+                                            @endif
+
+                                            <flux:select wire:model.live="selectedTableId">
+                                                <option value="">Selecione a mesa...</option>
+                                                @foreach ($this->availableTables as $table)
+                                                    <option value="{{ $table->id }}">Mesa {{ $table->number }}</option>
+                                                @endforeach
+                                            </flux:select>
+                                            @error('selectedTableId')
+                                                <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                                            @enderror
+                                            @if ($this->branchUsesRegisteredTables && $this->availableTables->isEmpty())
+                                                <p class="text-xs text-neutral-500 dark:text-neutral-400">Nenhuma mesa livre no momento.</p>
+                                            @endif
+
+                                            @unless ($isWaiter)
+                                                <div class="flex items-end gap-2">
+                                                    <div class="flex-1">
+                                                        <flux:input wire:model="newTableNumber" type="number" min="1" placeholder="Nº da mesa" />
+                                                        @error('newTableNumber')
+                                                            <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                                                        @enderror
+                                                    </div>
+                                                    <flux:button wire:click="registerTable" variant="outline" size="sm">
+                                                        Cadastrar mesa
+                                                    </flux:button>
+                                                </div>
+                                            @endunless
                                         </div>
-                                    @endif
+
+                                        @if ($this->openTabs->isNotEmpty())
+                                            <div>
+                                                <p class="flex items-center gap-1.5 text-xs font-bold text-amber-800 dark:text-amber-300 mb-1.5">
+                                                    <flux:icon.clipboard-document-list class="size-3.5" />
+                                                    Comandas abertas
+                                                    <span class="font-normal text-amber-600 dark:text-amber-500">({{ $this->openTabs->count() }})</span>
+                                                </p>
+                                                <div class="rounded-lg border border-amber-200 dark:border-amber-800/60 bg-white dark:bg-zinc-900 divide-y divide-amber-100 dark:divide-amber-900/40 max-h-48 overflow-y-auto">
+                                                @foreach ($this->openTabs as $tab)
+                                                    <div>
+                                                        <div
+                                                            role="button"
+                                                            tabindex="0"
+                                                            wire:click="toggleTabItems({{ $tab->id }})"
+                                                            wire:keydown.enter="toggleTabItems({{ $tab->id }})"
+                                                            class="w-full flex items-center justify-between gap-2 px-3 py-2 cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
+                                                        >
+                                                            <div class="text-xs min-w-0">
+                                                                <p class="font-semibold text-neutral-800 dark:text-neutral-100 truncate">{{ $tab->table_label }}</p>
+                                                                <p class="text-neutral-400 dark:text-neutral-500">R$ {{ number_format($tab->total, 2, ',', '.') }} · {{ $viewingTabItemsOrderId === $tab->id ? 'ocultar itens' : 'ver itens' }}</p>
+                                                            </div>
+                                                            <div class="flex gap-1 shrink-0">
+                                                                <flux:button wire:click.stop="addItemsToTab({{ $tab->id }})" variant="outline" size="sm" :disabled="empty($cart)">Adicionar</flux:button>
+                                                                @unless ($isWaiter)
+                                                                    <flux:button wire:click.stop="proceedToCloseTab({{ $tab->id }})" variant="ghost" size="sm">Fechar</flux:button>
+                                                                @endunless
+                                                            </div>
+                                                        </div>
+                                                        @if ($viewingTabItemsOrderId === $tab->id)
+                                                            <div class="max-h-28 overflow-y-auto divide-y divide-neutral-100 dark:divide-zinc-800 border-t border-amber-100 dark:border-amber-900/40 bg-neutral-50 dark:bg-zinc-800/50">
+                                                                @forelse ($this->viewingTabItems as $tabItem)
+                                                                    <div class="flex items-center justify-between gap-3 px-3 py-1.5 text-xs">
+                                                                        <span class="text-neutral-700 dark:text-neutral-200">{{ $tabItem->quantity }}x {{ $tabItem->product_name }}</span>
+                                                                        <span class="shrink-0 font-semibold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($tabItem->subtotal, 2, ',', '.') }}</span>
+                                                                    </div>
+                                                                @empty
+                                                                    <p class="px-3 py-1.5 text-xs text-neutral-400 dark:text-neutral-500">Nenhum item lançado ainda.</p>
+                                                                @endforelse
+                                                            </div>
+                                                        @endif
+                                                    </div>
+                                                @endforeach
+                                                </div>
+                                            </div>
+                                        @endif
+                                    </div>
                                 @endif
+                            </div>
+                            {{-- Alça de arrasto (QA): puxa pra redimensionar a seção acima e testar responsividade --}}
+                            <div
+                                class="h-2.5 shrink-0 cursor-row-resize flex items-center justify-center bg-neutral-200/70 hover:bg-amber-400 dark:bg-zinc-700 dark:hover:bg-amber-500 transition-colors touch-none"
+                                @pointerdown="startResize($refs.mesaSection, $event)"
+                                title="Arraste para redimensionar"
+                            >
+                                <div class="w-8 h-1 rounded-full bg-neutral-400/70 dark:bg-neutral-500"></div>
                             </div>
                         @endif
 
-                        <div class="flex-1 overflow-y-auto divide-y divide-neutral-100 bg-white dark:divide-zinc-800 dark:bg-zinc-900">
+                        <div class="px-4 pt-2.5 pb-1 shrink-0 bg-white dark:bg-zinc-900">
+                            <p class="text-[10px] font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">Itens do pedido</p>
+                        </div>
+                        <div x-ref="itemsSection" class="flex-1 overflow-y-auto divide-y divide-neutral-100 bg-white dark:divide-zinc-800 dark:bg-zinc-900">
                             @forelse ($cart as $cartKey => $item)
                                 @php
                                     $cartItemOptionsExtra = 0.0;
@@ -1257,6 +1290,16 @@
                                 </div>
                             @endforelse
                         </div>
+                        {{-- Alça de arrasto (QA): puxa pra redimensionar a lista de itens acima --}}
+                        <div
+                            class="h-2.5 shrink-0 cursor-row-resize flex items-center justify-center bg-neutral-200/70 hover:bg-amber-400 dark:bg-zinc-700 dark:hover:bg-amber-500 transition-colors touch-none"
+                            @pointerdown="startResize($refs.itemsSection, $event)"
+                            title="Arraste para redimensionar"
+                        >
+                            <div class="w-8 h-1 rounded-full bg-neutral-400/70 dark:bg-neutral-500"></div>
+                        </div>
+                        </div>
+                        {{-- fim da região rolável do meio --}}
 
                         @if (!empty($cart))
                             <div class="border-t border-neutral-100 px-4 py-4 space-y-3 bg-zinc-50 dark:border-zinc-800 dark:bg-[#0f1926]/70 shrink-0">

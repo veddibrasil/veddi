@@ -20,6 +20,66 @@ Alpine.data('pdvApp', () => ({
         window.addEventListener('pdv-barcode-processed', () => this._focusBarcode());
     },
 
+    // Alça de arrasto genérica pra redimensionar uma seção do carrinho (QA/teste de
+    // responsividade) — troca a seção pra altura fixa em px e segue o ponteiro/dedo.
+    // O footer é protegido de forma ESTRUTURAL (fica fora da região rolável no blade),
+    // não por conta de altura — uma versão anterior calculava um teto a partir da altura
+    // "atual" dos irmãos, mas um dos irmãos é flex-1 (preenche o espaço que sobra), então
+    // esse teto sempre dava ≈ a própria altura de partida: dava pra encolher mas nunca
+    // crescer de novo (ou vice-versa, dependendo da seção) — travava numa direção só.
+    // Sem teto calculado, isso não existe mais: a região do meio tem overflow-y-auto e
+    // absorve qualquer excesso rolando por dentro.
+    //
+    // Tenta Pointer Capture (mouse/touch soltos fora da janela nunca disparam mouseup, o
+    // listener de mousemove fica grudado pra sempre e qualquer movimento depois mexe na
+    // seção de novo — trava o carrinho). Mas setPointerCapture pode lançar exceção em
+    // alguns navegadores/pointerId; sem o try/catch a função abortava ANTES de anexar
+    // pointermove/pointerup — a seção ficava travada logo após o 1º solto, sem mais reagir
+    // a nada. Guard de reentrância evita 2 arrastos simultâneos na mesma seção.
+    startResize(el, event) {
+        if (el._resizing) return;
+        event.preventDefault();
+
+        const handle = event.currentTarget;
+        const pointerY = event.clientY;
+        const startHeight = el.offsetHeight;
+        el.style.flex = 'none';
+        el._resizing = true;
+
+        let captured = false;
+        try {
+            handle.setPointerCapture(event.pointerId);
+            captured = true;
+        } catch (e) {
+            captured = false;
+        }
+        const target = captured ? handle : window;
+
+        const move = (e) => {
+            const desired = startHeight + (e.clientY - pointerY);
+            el.style.height = Math.max(48, desired) + 'px';
+        };
+        const stop = () => {
+            el._resizing = false;
+            if (captured) {
+                try {
+                    handle.releasePointerCapture(event.pointerId);
+                } catch (e) {
+                    // já liberado (ex.: pointercancel) — ignora
+                }
+            }
+            target.removeEventListener('pointermove', move);
+            target.removeEventListener('pointerup', stop);
+            target.removeEventListener('pointercancel', stop);
+            target.removeEventListener('lostpointercapture', stop);
+        };
+
+        target.addEventListener('pointermove', move);
+        target.addEventListener('pointerup', stop);
+        target.addEventListener('pointercancel', stop);
+        target.addEventListener('lostpointercapture', stop);
+    },
+
     toggleSidebar() {
         this.sidebarHidden = !this.sidebarHidden;
         localStorage.setItem('pdv_sidebar_hidden', this.sidebarHidden ? '1' : '0');

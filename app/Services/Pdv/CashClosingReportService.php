@@ -34,7 +34,7 @@ class CashClosingReportService
         ];
     }
 
-    private function breakdown(PdvCashSession $session): array
+    public function breakdown(PdvCashSession $session): array
     {
         $cashSales = (float) DB::table('orders')
             ->join('payments', 'payments.order_id', '=', 'orders.id')
