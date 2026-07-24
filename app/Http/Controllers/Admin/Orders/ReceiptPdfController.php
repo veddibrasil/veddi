@@ -24,7 +24,7 @@ class ReceiptPdfController extends Controller
 
         abort_unless($canView, 403);
 
-        $order->load(['items', 'customer', 'branch', 'payment', 'coupon']);
+        $order->load(['items', 'customer', 'branch', 'payment', 'coupon', 'deliveryAddressRecord']);
 
         $company = app()->bound('current.company') ? app('current.company') : null;
 

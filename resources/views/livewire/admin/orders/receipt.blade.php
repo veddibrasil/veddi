@@ -103,7 +103,7 @@
                 <td>Frete</td>
                 <td class="right">R$ {{ number_format($order->delivery_fee, 2, ',', '.') }}</td>
             </tr>
-        @elseif ($order->order_type === 'delivery')
+        @elseif ($order->order_type === 'delivery' || $order->delivery_address_id)
             <tr>
                 <td>Frete</td>
                 <td class="right">Gratis</td>
@@ -169,17 +169,17 @@
     @else
         <div class="muted sm">Cliente balcao</div>
     @endif
-    @if ($order->order_type === 'delivery')
+    @if ($order->delivery_address_id)
         <div class="address-bar">
             <div class="bold" style="font-size: 8px; letter-spacing: 1px;">ENDERECO DE ENTREGA</div>
             <div style="margin-top: 1px;">
-                {{ $order->customer->address }}{{ $order->customer->number ? ', '.$order->customer->number : '' }}
+                {{ $order->delivery_address }}{{ $order->delivery_number ? ', '.$order->delivery_number : '' }}
             </div>
-            @if ($order->customer->complement)
-                <div>{{ $order->customer->complement }}</div>
+            @if ($order->delivery_complement)
+                <div>{{ $order->delivery_complement }}</div>
             @endif
             <div>
-                {{ $order->customer->neighborhood }}{{ $order->customer->city ? ' - '.$order->customer->city : '' }}
+                {{ $order->delivery_neighborhood }}{{ $order->delivery_city ? ' - '.$order->delivery_city : '' }}
             </div>
         </div>
     @endif
