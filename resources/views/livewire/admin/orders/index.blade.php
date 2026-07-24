@@ -66,7 +66,10 @@
                                 <p class="text-xs font-medium text-amber-600 dark:text-amber-400">{{ $order->company->name }}</p>
                             @endif
                             <p class="text-sm text-neutral-600 dark:text-neutral-400">{{ $order->customer->name ?? '—' }}</p>
-                            <p class="text-xs text-neutral-400 dark:text-neutral-500">{{ $order->branch->name ?? '—' }} · {{ $order->created_at->format('d/m H:i') }}</p>
+                            <p class="text-xs text-neutral-400 dark:text-neutral-500">
+                                {{ $order->branch->name ?? '—' }} · {{ $order->created_at->format('d/m H:i') }}
+                                <span class="ml-1 px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-500 dark:bg-zinc-700 dark:text-neutral-400">{{ $order->origin_label }}</span>
+                            </p>
                             @if ($order->scheduled_at)
                                 <p class="text-xs text-amber-600 dark:text-amber-400 font-medium">🕐 Agendado: {{ $order->scheduled_at->setTimezone(config('app.timezone'))->format('d/m H:i') }}</p>
                             @endif
@@ -173,6 +176,7 @@
                         </a>
                     </div>
                     <p class="text-sm text-neutral-700 dark:text-neutral-300 truncate">{{ $order->customer->name ?? '—' }}</p>
+                    <span class="inline-block text-xs px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-500 dark:bg-zinc-700 dark:text-neutral-400">{{ $order->origin_label }}</span>
                     <div class="flex items-center justify-between mt-2">
                         <p class="text-xs text-neutral-400 dark:text-neutral-500">{{ $order->created_at->format('d/m H:i') }}</p>
                         <p class="text-sm font-bold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($order->total, 2, ',', '.') }}</p>

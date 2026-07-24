@@ -109,6 +109,18 @@
                 <td class="right">Gratis</td>
             </tr>
         @endif
+        @if ($order->service_fee > 0)
+            <tr>
+                <td>Taxa de servico</td>
+                <td class="right">R$ {{ number_format($order->service_fee, 2, ',', '.') }}</td>
+            </tr>
+        @endif
+        @if ($order->couvert_fee > 0)
+            <tr>
+                <td>Couvert artistico</td>
+                <td class="right">R$ {{ number_format($order->couvert_fee, 2, ',', '.') }}</td>
+            </tr>
+        @endif
         @if ($order->discount > 0)
             <tr>
                 <td>Desconto{{ $order->coupon ? ' ('.$order->coupon->code.')' : '' }}</td>

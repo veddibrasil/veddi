@@ -11,10 +11,12 @@ use App\Models\Order;
 use App\Models\Payment;
 use App\Models\PdvAuditLog;
 use App\Models\PdvCashSession;
+use App\Models\Permission;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\RestaurantTable;
 use App\Models\User;
+use App\Models\UserPermission;
 use App\Services\Payment\PaymentOrchestrator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
@@ -80,6 +82,31 @@ function pdvContext(): array
     ]);
 
     return compact('company', 'branch', 'category', 'product', 'admin');
+}
+
+/** Usuário com papel garçom: só `pdv.waiter_operate`, sem `pdv.operate`, restrito à filial informada. */
+function makeWaiter(Company $company, Branch $branch): User
+{
+    $permission = Permission::firstOrCreate(
+        ['name' => 'pdv.waiter_operate'],
+        ['group' => 'pdv', 'label' => 'Operar PDV (garçom — mesas e comandas)']
+    );
+
+    $waiter = User::factory()->create();
+
+    $waiter->companies()->attach($company->id, [
+        'role' => 'garcom',
+        'branch_id' => $branch->id,
+    ]);
+
+    UserPermission::create([
+        'user_id' => $waiter->id,
+        'company_id' => $company->id,
+        'permission_id' => $permission->id,
+        'granted' => true,
+    ]);
+
+    return $waiter;
 }
 
 // ─── Acesso ───────────────────────────────────────────────────────────────────
@@ -1132,6 +1159,41 @@ test('fechar comanda com dinheiro cobra e marca como paga', function () {
     expect($payment->status)->toBe('paid');
 });
 
+test('fechar comanda vinculando cliente informado pelo mesário salva o cliente no pedido', function () {
+    ['admin' => $admin, 'product' => $product, 'company' => $company] = pdvContext();
+
+    $customer = Customer::create([
+        'company_id' => $company->id,
+        'name' => 'Maria Cliente',
+        'phone' => '11999998888',
+    ]);
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->set('orderMode', 'mesa')
+        ->call('addProduct', $product->id)
+        ->set('tableLabel', 'Mesa 5')
+        ->call('openTab');
+
+    $orderId = Order::withoutGlobalScopes()->first()->id;
+
+    // Comanda abre sem cliente vinculado (guest); o mesário só identifica o cliente no fechamento.
+    expect(Order::withoutGlobalScopes()->find($orderId)->customer->phone)->toBe('pdv-guest');
+
+    $component
+        ->call('proceedToCloseTab', $orderId)
+        ->assertSet('step', 'payment')
+        ->call('selectCustomer', $customer->id)
+        ->set('paymentMethod', 'cash')
+        ->set('cashReceivedInput', '10.00')
+        ->call('processOrder')
+        ->assertSet('step', 'success');
+
+    $order = Order::withoutGlobalScopes()->find($orderId);
+    expect($order->customer_id)->toBe($customer->id);
+});
+
 test('fechar comanda com dinheiro dispara emissão automática de nota fiscal', function () {
     ['admin' => $admin, 'product' => $product, 'company' => $company] = pdvContext();
 
@@ -1438,4 +1500,220 @@ test('operador remove taxa de serviço só na hora de fechar a comanda, sem afet
     expect((float) $order->service_fee)->toBe(0.0);
     expect((float) $order->couvert_fee)->toBe(0.0);
     expect((float) $order->total)->toBe(8.0);
+});
+
+// ─── Garçom ───────────────────────────────────────────────────────────────────
+
+test('garçom carrega terminal sem sessão de caixa, direto no catálogo em modo mesa', function () {
+    ['company' => $company, 'branch' => $branch] = pdvContext();
+    $waiter = makeWaiter($company, $branch);
+
+    Livewire::actingAs($waiter)
+        ->test(Terminal::class)
+        ->assertSet('isWaiter', true)
+        ->assertSet('step', 'catalog')
+        ->assertSet('orderMode', 'mesa')
+        ->assertSet('cashSessionId', null);
+});
+
+test('garçom abre comanda e lança itens sem precisar de caixa', function () {
+    ['company' => $company, 'branch' => $branch, 'product' => $product] = pdvContext();
+    $waiter = makeWaiter($company, $branch);
+
+    Livewire::actingAs($waiter)
+        ->test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->set('tableLabel', 'Mesa 7')
+        ->call('openTab')
+        ->assertHasNoErrors();
+
+    $order = Order::withoutGlobalScopes()->first();
+    expect($order->table_label)->toBe('Mesa 7');
+    expect($order->is_open_tab)->toBeTrue();
+    expect($order->pdv_cash_session_id)->toBeNull();
+});
+
+test('garçom vê comanda aberta por outro operador da mesma filial', function () {
+    ['company' => $company, 'branch' => $branch, 'product' => $product, 'admin' => $admin] = pdvContext();
+    $waiter = makeWaiter($company, $branch);
+
+    // Caixa (admin) abre uma comanda na própria sessão.
+    Livewire::actingAs($admin)
+        ->test(Terminal::class)
+        ->set('orderMode', 'mesa')
+        ->call('addProduct', $product->id)
+        ->set('tableLabel', 'Mesa 2')
+        ->call('openTab')
+        ->assertHasNoErrors();
+
+    $tabs = Livewire::actingAs($waiter)
+        ->test(Terminal::class)
+        ->get('openTabs');
+
+    expect($tabs)->toHaveCount(1);
+    expect($tabs->first()->table_label)->toBe('Mesa 2');
+});
+
+test('caixa fecha e paga comanda aberta pelo garçom, e o valor entra na conferência do caixa', function () {
+    ['company' => $company, 'branch' => $branch, 'product' => $product, 'admin' => $admin] = pdvContext();
+    $waiter = makeWaiter($company, $branch);
+
+    Livewire::actingAs($waiter)
+        ->test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->set('tableLabel', 'Mesa 8')
+        ->call('openTab')
+        ->assertHasNoErrors();
+
+    $orderId = Order::withoutGlobalScopes()->first()->id;
+
+    $cashier = Livewire::actingAs($admin)->test(Terminal::class);
+    $cashSessionId = $cashier->get('cashSessionId');
+
+    $cashier
+        ->call('proceedToCloseTab', $orderId)
+        ->assertSet('step', 'payment')
+        ->set('paymentMethod', 'cash')
+        ->set('cashReceivedInput', '10.00')
+        ->call('processOrder')
+        ->assertSet('step', 'success');
+
+    $order = Order::withoutGlobalScopes()->find($orderId);
+    expect($order->status)->toBe('paid');
+    expect($order->is_open_tab)->toBeFalse();
+    expect($order->pdv_cash_session_id)->toBe($cashSessionId);
+
+    $session = PdvCashSession::withoutGlobalScopes()->find($cashSessionId);
+    expect($cashier->instance()->cashSessionExpected($session))->toBe(8.0);
+});
+
+test('garçom não consegue abrir nem fechar caixa', function () {
+    ['company' => $company, 'branch' => $branch] = pdvContext();
+    $waiter = makeWaiter($company, $branch);
+
+    Livewire::actingAs($waiter)
+        ->test(Terminal::class)
+        ->call('openCashSession')
+        ->assertForbidden();
+
+    Livewire::actingAs($waiter)
+        ->test(Terminal::class)
+        ->call('proceedToCloseCash')
+        ->assertForbidden();
+
+    Livewire::actingAs($waiter)
+        ->test(Terminal::class)
+        ->call('closeCashSession')
+        ->assertForbidden();
+});
+
+test('garçom não consegue registrar movimentação de caixa', function () {
+    ['company' => $company, 'branch' => $branch] = pdvContext();
+    $waiter = makeWaiter($company, $branch);
+
+    Livewire::actingAs($waiter)
+        ->test(Terminal::class)
+        ->call('toggleCashMovementForm', 'supply')
+        ->assertForbidden();
+
+    Livewire::actingAs($waiter)
+        ->test(Terminal::class)
+        ->call('registerCashMovement')
+        ->assertForbidden();
+});
+
+test('garçom não consegue aplicar desconto manual', function () {
+    ['company' => $company, 'branch' => $branch] = pdvContext();
+    $company->update(['pdv_manual_discount_enabled' => true]);
+    $waiter = makeWaiter($company, $branch);
+
+    // set() já dispara updatedManualDiscountInput() -> applyManualDiscount() internamente.
+    Livewire::actingAs($waiter)
+        ->test(Terminal::class)
+        ->set('manualDiscountInput', '2,00')
+        ->assertForbidden();
+});
+
+test('garçom não consegue ir para pagamento nem processar venda direta', function () {
+    ['company' => $company, 'branch' => $branch, 'product' => $product] = pdvContext();
+    $waiter = makeWaiter($company, $branch);
+
+    Livewire::actingAs($waiter)
+        ->test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->assertForbidden();
+
+    Livewire::actingAs($waiter)
+        ->test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('processOrder')
+        ->assertForbidden();
+});
+
+test('garçom não consegue fechar comanda', function () {
+    ['company' => $company, 'branch' => $branch, 'product' => $product] = pdvContext();
+    $waiter = makeWaiter($company, $branch);
+
+    $component = Livewire::actingAs($waiter)
+        ->test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->set('tableLabel', 'Mesa 6')
+        ->call('openTab')
+        ->assertHasNoErrors();
+
+    $orderId = Order::withoutGlobalScopes()->first()->id;
+
+    $component->call('proceedToCloseTab', $orderId)->assertForbidden();
+});
+
+test('garçom não consegue cancelar pedido nem acessar relatórios de fechamento', function () {
+    ['company' => $company, 'branch' => $branch] = pdvContext();
+    $waiter = makeWaiter($company, $branch);
+
+    Livewire::actingAs($waiter)
+        ->test(Terminal::class)
+        ->call('cancelPdvOrder', 1)
+        ->assertForbidden();
+
+    Livewire::actingAs($waiter)
+        ->test(Terminal::class)
+        ->call('openClosingReports')
+        ->assertForbidden();
+});
+
+test('usuário com papel sem permissão de PDV recebe 403 ao acessar o terminal', function () {
+    ['company' => $company, 'branch' => $branch] = pdvContext();
+
+    // Papel "cozinha" (seedado por migration) só tem orders.view/orders.update — sem pdv.operate
+    // nem pdv.waiter_operate.
+    $userSemPermissao = User::factory()->create();
+    $userSemPermissao->companies()->attach($company->id, ['role' => 'cozinha', 'branch_id' => $branch->id]);
+
+    Livewire::actingAs($userSemPermissao)
+        ->test(Terminal::class)
+        ->assertForbidden();
+});
+
+test('sidebar do garçom mostra só o terminal PDV, sem dashboard nem resto do painel', function () {
+    ['company' => $company, 'branch' => $branch] = pdvContext();
+    $waiter = makeWaiter($company, $branch);
+
+    $this->actingAs($waiter)
+        ->get(route('admin.pdv'))
+        ->assertOk()
+        ->assertSee('Terminal PDV')
+        ->assertDontSee('Dashboard')
+        ->assertDontSee('Relatório PDV')
+        ->assertDontSee('Cardápio');
+});
+
+test('sidebar do caixa continua mostrando dashboard e painel completo', function () {
+    ['admin' => $admin] = pdvContext();
+
+    $this->actingAs($admin)
+        ->get(route('admin.pdv'))
+        ->assertOk()
+        ->assertSee('Terminal PDV')
+        ->assertSee('Dashboard');
 });

@@ -349,10 +349,28 @@
                                     <span>R$ {{ number_format($order->delivery_fee, 2, ',', '.') }}</span>
                                 </div>
                             @endif
+                            @if ($order->service_fee > 0)
+                                <div class="flex items-center justify-between text-sm text-neutral-500 dark:text-neutral-400">
+                                    <span>Taxa de serviço</span>
+                                    <span>R$ {{ number_format($order->service_fee, 2, ',', '.') }}</span>
+                                </div>
+                            @endif
+                            @if ($order->couvert_fee > 0)
+                                <div class="flex items-center justify-between text-sm text-neutral-500 dark:text-neutral-400">
+                                    <span>Couvert artístico</span>
+                                    <span>R$ {{ number_format($order->couvert_fee, 2, ',', '.') }}</span>
+                                </div>
+                            @endif
                             @if ($order->discount > 0)
                                 <div class="flex items-center justify-between text-sm text-green-600 dark:text-green-400">
                                     <span>Desconto</span>
                                     <span>− R$ {{ number_format($order->discount, 2, ',', '.') }}</span>
+                                </div>
+                            @endif
+                            @if ($order->manual_discount > 0)
+                                <div class="flex items-center justify-between text-sm text-green-600 dark:text-green-400">
+                                    <span>Desconto manual</span>
+                                    <span>− R$ {{ number_format($order->manual_discount, 2, ',', '.') }}</span>
                                 </div>
                             @endif
                             <div class="flex items-center justify-between pt-1 border-t dark:border-zinc-600">
@@ -415,10 +433,28 @@
                                     <span class="text-green-600 dark:text-green-400">Grátis</span>
                                 </div>
                             @endif
+                            @if ($order->service_fee > 0)
+                                <div class="flex items-center justify-between text-sm text-neutral-500 dark:text-neutral-400">
+                                    <span>Taxa de serviço</span>
+                                    <span>R$ {{ number_format($order->service_fee, 2, ',', '.') }}</span>
+                                </div>
+                            @endif
+                            @if ($order->couvert_fee > 0)
+                                <div class="flex items-center justify-between text-sm text-neutral-500 dark:text-neutral-400">
+                                    <span>Couvert artístico</span>
+                                    <span>R$ {{ number_format($order->couvert_fee, 2, ',', '.') }}</span>
+                                </div>
+                            @endif
                             @if ($order->discount > 0)
                                 <div class="flex items-center justify-between text-sm text-green-600 dark:text-green-400">
                                     <span>Desconto</span>
                                     <span>− R$ {{ number_format($order->discount, 2, ',', '.') }}</span>
+                                </div>
+                            @endif
+                            @if ($order->manual_discount > 0)
+                                <div class="flex items-center justify-between text-sm text-green-600 dark:text-green-400">
+                                    <span>Desconto manual</span>
+                                    <span>− R$ {{ number_format($order->manual_discount, 2, ',', '.') }}</span>
                                 </div>
                             @endif
                             <div class="flex items-center justify-between pt-1 border-t dark:border-zinc-600">

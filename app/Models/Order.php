@@ -263,4 +263,26 @@ class Order extends Model
             default => $this->status,
         };
     }
+
+    /** Human-readable label for the order's origin/channel (chat, PDV balcão, mesa/comanda, delivery via PDV). */
+    public function getOriginLabelAttribute(): string
+    {
+        if ($this->order_type === 'pdv') {
+            if ($this->is_open_tab) {
+                return $this->restaurant_table_id ? 'Mesa' : 'Comanda';
+            }
+
+            if ($this->delivery_address_id) {
+                return 'Entrega (PDV)';
+            }
+
+            return 'Balcão';
+        }
+
+        return match ($this->order_type) {
+            'delivery' => 'Delivery (Chat)',
+            'pickup' => 'Retirada (Chat)',
+            default => 'Chat',
+        };
+    }
 }
