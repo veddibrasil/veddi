@@ -147,15 +147,13 @@ class Terminal extends Component
     // ── Tipo de venda / Mesa-Comanda ───────────────────────────────────────────
     public string $orderMode = 'impressao'; // 'impressao' | 'mesa'
 
-    public string $tableLabel = '';
-
     public ?int $selectedTableId = null;
 
-    public bool $showBulkTabsForm = false;
-
-    public string $bulkTableLabels = '';
+    public string $newTableNumber = '';
 
     public ?int $openTabOrderId = null;
+
+    public ?string $tabMessage = null;
 
     public ?int $closingTabOrderId = null;
 
@@ -775,19 +773,18 @@ class Terminal extends Component
             $this->orderMode = 'mesa';
         }
 
-        $this->cart = [];
-        $this->tableLabel = '';
+        // Carrinho não é limpo aqui: trocar de modo é navegação, não deve derrubar
+        // itens que o operador já selecionou — só some com remoção explícita ou
+        // ao finalizar (adicionar à comanda / concluir pedido).
         $this->selectedTableId = null;
         $this->openTabOrderId = null;
         $this->viewingTabItemsOrderId = null;
-        $this->showBulkTabsForm = false;
-        $this->bulkTableLabels = '';
     }
 
     public function selectOpenTab(int $orderId): void
     {
         $this->openTabOrderId = $orderId;
-        $this->cart = [];
+        $this->tabMessage = null;
     }
 
     public function toggleTabItems(int $orderId): void
@@ -798,88 +795,50 @@ class Terminal extends Component
     public function deselectOpenTab(): void
     {
         $this->openTabOrderId = null;
-        $this->cart = [];
-        $this->tableLabel = '';
         $this->selectedTableId = null;
     }
 
-    public function toggleBulkTabsForm(): void
+    /** Cadastro rápido de mesa direto do terminal, sem sair pra tela de configurações da filial. */
+    public function registerTable(): void
     {
-        $this->showBulkTabsForm = ! $this->showBulkTabsForm;
-        $this->bulkTableLabels = '';
-        $this->resetValidation('bulk_table_labels');
-    }
+        abort_unless(! $this->isWaiter, 403);
 
-    public function openMultipleTabs(): void
-    {
-        $this->resetValidation('bulk_table_labels');
+        $this->resetValidation('newTableNumber');
 
         if (! $this->selectedBranchId) {
             return;
         }
 
-        $labels = collect(preg_split('/[,\n]/', $this->bulkTableLabels))
-            ->map(fn ($label) => trim($label))
-            ->filter()
-            ->unique()
-            ->values();
+        $number = (int) $this->newTableNumber;
 
-        if ($labels->isEmpty()) {
-            $this->addError('bulk_table_labels', 'Informe ao menos uma identificação de comanda.');
+        if ($number <= 0) {
+            $this->addError('newTableNumber', 'Informe um número de mesa válido.');
 
             return;
         }
 
-        $duplicate = $labels->first(fn ($label) => $this->isTableLabelOpen($label));
+        $exists = RestaurantTable::where('branch_id', $this->selectedBranchId)
+            ->where('number', $number)
+            ->exists();
 
-        if ($duplicate) {
-            $this->addError('bulk_table_labels', "Já existe uma comanda aberta com o nome \"{$duplicate}\".");
+        if ($exists) {
+            $this->addError('newTableNumber', "Mesa {$number} já está cadastrada.");
 
             return;
         }
 
         $company = app('current.company');
-        $customerId = $this->resolveCustomerId($company);
 
-        foreach ($labels as $label) {
-            DB::beginTransaction();
-            try {
-                $order = app(OrderService::class)->createOrder(
-                    customerId: $customerId,
-                    branchId: $this->selectedBranchId,
-                    cart: [],
-                    notes: '',
-                    paymentMethod: '',
-                    orderType: 'pdv',
-                    status: 'pending',
-                    serviceFee: $this->serviceFeeAmount,
-                    couvertFee: $this->couvertFeeAmount,
-                );
+        $table = RestaurantTable::create([
+            'company_id' => $company->id,
+            'branch_id' => $this->selectedBranchId,
+            'number' => $number,
+            'active' => true,
+        ]);
 
-                $order->update([
-                    'pdv_cash_session_id' => $this->cashSessionId,
-                    'is_open_tab' => true,
-                    'table_label' => $label,
-                ]);
-
-                DB::commit();
-            } catch (\Throwable $e) {
-                DB::rollBack();
-                $this->addError('bulk_table_labels', "Erro ao abrir comanda \"{$label}\": {$e->getMessage()}");
-
-                return;
-            }
-
-            $this->audit('tab_opened', [
-                'order_id' => $order->id,
-                'amount' => 0.0,
-                'reason' => $label,
-            ]);
-        }
-
-        $this->bulkTableLabels = '';
-        $this->showBulkTabsForm = false;
-        unset($this->openTabs);
+        $this->newTableNumber = '';
+        $this->selectedTableId = $table->id;
+        unset($this->availableTables);
     }
 
     public function openTab(): void
@@ -888,35 +847,17 @@ class Terminal extends Component
             return;
         }
 
-        $this->resetValidation(['table_label', 'selectedTableId']);
+        $this->resetValidation('selectedTableId');
 
-        if ($this->branchUsesRegisteredTables) {
-            $table = $this->availableTables->firstWhere('id', $this->selectedTableId);
+        $table = $this->availableTables->firstWhere('id', $this->selectedTableId);
 
-            if (! $table) {
-                $this->addError('selectedTableId', 'Selecione uma mesa disponível.');
+        if (! $table) {
+            $this->addError('selectedTableId', 'Selecione uma mesa disponível.');
 
-                return;
-            }
-
-            $label = 'Mesa '.$table->number;
-        } else {
-            $label = trim($this->tableLabel);
-
-            if (blank($label)) {
-                $this->addError('table_label', 'Informe a identificação da comanda.');
-
-                return;
-            }
-
-            if ($this->isTableLabelOpen($label)) {
-                $this->addError('table_label', "Já existe uma comanda aberta com o nome \"{$label}\".");
-
-                return;
-            }
-
-            $table = null;
+            return;
         }
+
+        $label = 'Mesa '.$table->number;
 
         $company = app('current.company');
         $customerId = $this->resolveCustomerId($company);
@@ -957,22 +898,30 @@ class Terminal extends Component
         ]);
 
         $this->cart = [];
-        $this->tableLabel = '';
         $this->selectedTableId = null;
         $this->openTabOrderId = null;
         unset($this->openTabs);
         unset($this->availableTables);
     }
 
-    public function addItemsToTab(): void
+    /** Chamado tanto pelo botão "Adicionar" direto na lista de comandas (orderId explícito) quanto por "Enviar itens" na comanda ativa (usa $openTabOrderId). */
+    public function addItemsToTab(?int $orderId = null): void
     {
-        if (empty($this->cart) || ! $this->openTabOrderId) {
+        $orderId ??= $this->openTabOrderId;
+
+        if (! $orderId) {
+            return;
+        }
+
+        if (empty($this->cart)) {
+            $this->addError('order', 'Selecione ao menos um item no catálogo antes de adicionar à comanda.');
+
             return;
         }
 
         $order = Order::withoutGlobalScopes()
             ->where('is_open_tab', true)
-            ->find($this->openTabOrderId);
+            ->find($orderId);
 
         if (! $order) {
             $this->addError('order', 'Comanda não encontrada ou já fechada.');
@@ -994,6 +943,8 @@ class Terminal extends Component
         ]);
 
         $this->cart = [];
+        $this->tabMessage = "Itens adicionados à comanda \"{$order->table_label}\".";
+        unset($this->openTabs);
     }
 
     public function proceedToCloseTab(int $orderId): void
@@ -1316,10 +1267,9 @@ class Terminal extends Component
         $this->step = 'catalog';
         $this->showSessionHistory = false;
         $this->orderMode = $this->isWaiter ? 'mesa' : 'impressao';
-        $this->tableLabel = '';
-        $this->showBulkTabsForm = false;
-        $this->bulkTableLabels = '';
+        $this->selectedTableId = null;
         $this->openTabOrderId = null;
+        $this->tabMessage = null;
         $this->closingTabOrderId = null;
         $this->resetPaymentState();
     }
@@ -1845,7 +1795,7 @@ class Terminal extends Component
             ->get();
     }
 
-    /** Filial optou por mesas pré-numeradas (tem ao menos uma cadastrada) — muda a UI de "digitar nome" para "selecionar número". */
+    /** Filial já tem ao menos uma mesa cadastrada — abrir mesa/comanda exige mesa pré-cadastrada. */
     #[Computed]
     public function branchUsesRegisteredTables(): bool
     {
@@ -2071,13 +2021,6 @@ class Terminal extends Component
             'withdrawals' => $withdrawals,
             'expected' => round((float) $session->opening_amount + $cashSales + $supplies - $withdrawals, 2),
         ];
-    }
-
-    private function isTableLabelOpen(string $label): bool
-    {
-        return $this->openTabs->contains(
-            fn ($tab) => mb_strtolower((string) $tab->table_label) === mb_strtolower($label)
-        );
     }
 
     private function resolveCustomerId(\App\Models\Company $company): int

@@ -1061,6 +1061,20 @@
 
                         @if ($orderMode === 'mesa')
                             <div class="px-4 py-3 border-b border-neutral-100 dark:border-zinc-800 shrink-0 bg-amber-50/50 dark:bg-amber-900/10 space-y-2">
+                                @if ($tabMessage)
+                                    <div
+                                        x-data="{ show: true }"
+                                        x-init="setTimeout(() => show = false, 3000)"
+                                        x-show="show"
+                                        x-transition
+                                        class="rounded-lg bg-green-100 px-3 py-2 text-xs font-semibold text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                                    >
+                                        ✓ {{ $tabMessage }}
+                                    </div>
+                                @endif
+                                @error('order')
+                                    <p class="text-xs font-semibold text-red-600 dark:text-red-400">{{ $message }}</p>
+                                @enderror
                                 @if ($openTabOrderId)
                                     @php $activeTab = $this->openTabs->firstWhere('id', $openTabOrderId); @endphp
                                     <div class="rounded-lg bg-amber-100 dark:bg-amber-900/30 overflow-hidden">
@@ -1092,49 +1106,47 @@
                                         @endif
                                     </div>
                                 @else
-                                    @if ($this->branchUsesRegisteredTables)
-                                        <flux:select wire:model.live="selectedTableId">
-                                            <option value="">Selecione a mesa...</option>
-                                            @foreach ($this->availableTables as $table)
-                                                <option value="{{ $table->id }}">Mesa {{ $table->number }}</option>
-                                            @endforeach
-                                        </flux:select>
-                                        @error('selectedTableId')
-                                            <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
-                                        @enderror
-                                        @if ($this->availableTables->isEmpty())
-                                            <p class="text-xs text-neutral-500 dark:text-neutral-400">Nenhuma mesa livre no momento.</p>
-                                        @endif
-                                    @else
-                                        <flux:input wire:model.live.debounce.300ms="tableLabel" placeholder="Identificação (ex: Mesa 5)" />
-                                        @error('table_label')
-                                            <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
-                                        @enderror
+                                    @if (! $this->branchUsesRegisteredTables)
+                                        <div class="rounded-lg border border-amber-300 bg-amber-100/70 px-3 py-2 dark:border-amber-800 dark:bg-amber-900/20">
+                                            <p class="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                                                Esta filial ainda não tem mesas cadastradas.
+                                            </p>
+                                            <p class="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                                                @if ($isWaiter)
+                                                    Peça para o responsável pelo caixa cadastrar as mesas antes de abrir uma comanda.
+                                                @else
+                                                    Cadastre ao menos uma mesa abaixo para poder abrir uma comanda.
+                                                @endif
+                                            </p>
+                                        </div>
+                                    @endif
 
-                                        <button
-                                            type="button"
-                                            wire:click="toggleBulkTabsForm"
-                                            class="text-xs font-semibold text-amber-700 hover:underline dark:text-amber-400"
-                                        >
-                                            {{ $showBulkTabsForm ? 'Cancelar' : 'Abrir várias comandas de uma vez' }}
-                                        </button>
+                                    <flux:select wire:model.live="selectedTableId">
+                                        <option value="">Selecione a mesa...</option>
+                                        @foreach ($this->availableTables as $table)
+                                            <option value="{{ $table->id }}">Mesa {{ $table->number }}</option>
+                                        @endforeach
+                                    </flux:select>
+                                    @error('selectedTableId')
+                                        <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                                    @enderror
+                                    @if ($this->branchUsesRegisteredTables && $this->availableTables->isEmpty())
+                                        <p class="text-xs text-neutral-500 dark:text-neutral-400">Nenhuma mesa livre no momento.</p>
+                                    @endif
 
-                                        @if ($showBulkTabsForm)
-                                            <div class="space-y-1.5 rounded-lg border border-amber-200 bg-white p-2.5 dark:border-amber-900/40 dark:bg-zinc-900">
-                                                <flux:textarea
-                                                    wire:model="bulkTableLabels"
-                                                    rows="2"
-                                                    placeholder="Uma comanda por linha ou separada por vírgula. Ex: Mesa 1, Mesa 2, Mesa 3"
-                                                />
-                                                @error('bulk_table_labels')
+                                    @unless ($isWaiter)
+                                        <div class="flex items-end gap-2">
+                                            <div class="flex-1">
+                                                <flux:input wire:model="newTableNumber" type="number" min="1" placeholder="Nº da mesa" />
+                                                @error('newTableNumber')
                                                     <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
                                                 @enderror
-                                                <flux:button wire:click="openMultipleTabs" variant="primary" size="sm" class="w-full">
-                                                    Criar comandas
-                                                </flux:button>
                                             </div>
-                                        @endif
-                                    @endif
+                                            <flux:button wire:click="registerTable" variant="outline" size="sm">
+                                                Cadastrar mesa
+                                            </flux:button>
+                                        </div>
+                                    @endunless
 
                                     @if ($this->openTabs->isNotEmpty())
                                         <div class="space-y-1">
@@ -1154,7 +1166,7 @@
                                                             <p class="text-neutral-400 dark:text-neutral-500">R$ {{ number_format($tab->total, 2, ',', '.') }} · {{ $viewingTabItemsOrderId === $tab->id ? 'ocultar itens' : 'ver itens' }}</p>
                                                         </div>
                                                         <div class="flex gap-1 shrink-0">
-                                                            <flux:button wire:click.stop="selectOpenTab({{ $tab->id }})" variant="outline" size="sm">Adicionar</flux:button>
+                                                            <flux:button wire:click.stop="addItemsToTab({{ $tab->id }})" variant="outline" size="sm" :disabled="empty($cart)">Adicionar</flux:button>
                                                             @unless ($isWaiter)
                                                                 <flux:button wire:click.stop="proceedToCloseTab({{ $tab->id }})" variant="ghost" size="sm">Fechar</flux:button>
                                                             @endunless
@@ -1285,7 +1297,7 @@
                                         </flux:button>
                                     @else
                                         <flux:button wire:click="openTab" variant="primary" size="base" class="w-full"
-                                            :disabled="$this->branchUsesRegisteredTables ? blank($selectedTableId) : blank($tableLabel)">
+                                            :disabled="blank($selectedTableId)">
                                             Abrir comanda
                                         </flux:button>
                                     @endif
