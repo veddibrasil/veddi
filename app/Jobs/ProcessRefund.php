@@ -135,7 +135,7 @@ class ProcessRefund implements ShouldBeUnique, ShouldQueue
                 $refundService->markFailed(
                     $this->refund,
                     'GATEWAY_REJECTED',
-                    'Gateway rejeitou o estorno: '.json_encode($result['raw'] ?? [])
+                    'Gateway rejeitou o estorno: '.$this->extractGatewayErrorMessage($result['raw'] ?? [])
                 );
             }
         } catch (AsaasCircuitOpenException $e) {
@@ -148,5 +148,26 @@ class ProcessRefund implements ShouldBeUnique, ShouldQueue
             $refundService->markFailed($this->refund, 'EXCEPTION', $e->getMessage());
             throw $e;
         }
+    }
+
+    private function extractGatewayErrorMessage(array $raw): string
+    {
+        $vindiErrors = $raw['error_response']['general_errors'] ?? null;
+        if (is_array($vindiErrors) && $vindiErrors !== []) {
+            $messages = array_filter(array_column($vindiErrors, 'message'));
+            if ($messages !== []) {
+                return implode('; ', $messages);
+            }
+        }
+
+        $asaasErrors = $raw['errors'] ?? null;
+        if (is_array($asaasErrors) && $asaasErrors !== []) {
+            $messages = array_filter(array_column($asaasErrors, 'description'));
+            if ($messages !== []) {
+                return implode('; ', $messages);
+            }
+        }
+
+        return json_encode($raw);
     }
 }
