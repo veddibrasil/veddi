@@ -195,6 +195,11 @@ class Branch extends Model
         return $this->hasOne(BranchPrinter::class);
     }
 
+    public function restaurantTables(): HasMany
+    {
+        return $this->hasMany(RestaurantTable::class);
+    }
+
     public function serviceCharge(): HasOne
     {
         return $this->hasOne(BranchServiceCharge::class);

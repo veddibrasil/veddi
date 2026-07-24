@@ -22,6 +22,7 @@ class Order extends Model
         'pdv_cash_session_id',
         'table_label',
         'is_open_tab',
+        'restaurant_table_id',
     ];
 
     protected $casts = [
@@ -140,6 +141,11 @@ class Order extends Model
     public function deliveryAddressRecord(): BelongsTo
     {
         return $this->belongsTo(Address::class, 'delivery_address_id');
+    }
+
+    public function restaurantTable(): BelongsTo
+    {
+        return $this->belongsTo(RestaurantTable::class);
     }
 
     // --- Virtual accessors/mutators for delivery snapshot fields ---
