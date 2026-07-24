@@ -8,10 +8,12 @@ use App\Models\Branch;
 use App\Models\BranchServiceCharge;
 use App\Models\Customer;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\PdvAuditLog;
 use App\Models\PdvCashSession;
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Models\RestaurantTable;
 use App\Services\Order\DeliveryService;
 use App\Services\Order\GeocodingService;
 use App\Services\Order\OrderCancellationPolicy;
@@ -94,6 +96,8 @@ class Terminal extends Component
 
     public ?string $deliveryFeeError = null;
 
+    public string $deliveryPaymentStatus = 'paid'; // 'paid' | 'on_delivery' — só relevante quando deliveryType === 'entrega'
+
     // ── Observação ────────────────────────────────────────────────────────────
     public string $notes = '';
 
@@ -145,6 +149,8 @@ class Terminal extends Component
 
     public string $tableLabel = '';
 
+    public ?int $selectedTableId = null;
+
     public bool $showBulkTabsForm = false;
 
     public string $bulkTableLabels = '';
@@ -152,6 +158,8 @@ class Terminal extends Component
     public ?int $openTabOrderId = null;
 
     public ?int $closingTabOrderId = null;
+
+    public ?int $viewingTabItemsOrderId = null;
 
     // ── Relatórios de fechamento ──────────────────────────────────────────────
     public bool $showClosingReports = false;
@@ -386,6 +394,11 @@ class Terminal extends Component
 
     // ── Cliente ───────────────────────────────────────────────────────────────
 
+    public function updatedCustomerQuery(): void
+    {
+        $this->lookupCustomer();
+    }
+
     public function lookupCustomer(): void
     {
         $this->customerFound = false;
@@ -411,7 +424,7 @@ class Terminal extends Component
                 }
             })
             ->limit(5)
-            ->get(['id', 'name', 'phone', 'tax_id']);
+            ->get(['id', 'name', 'phone', 'tax_id', 'address_id']);
 
         if ($results->isEmpty()) {
             return;
@@ -422,6 +435,7 @@ class Terminal extends Component
             $this->customerId = $customer->id;
             $this->customerName = $customer->name ?? '';
             $this->customerFound = true;
+            $this->fillDeliveryAddressFromCustomer($customer);
 
             return;
         }
@@ -449,6 +463,24 @@ class Terminal extends Component
         $this->customerFound = true;
         $this->customerResults = [];
         $this->customerQuery = $customer->name ?? '';
+        $this->fillDeliveryAddressFromCustomer($customer);
+    }
+
+    /** Preenche os campos de entrega com o endereço cadastrado do cliente, quando houver. */
+    private function fillDeliveryAddressFromCustomer(Customer $customer): void
+    {
+        if ($this->deliveryType !== 'entrega' || blank($customer->address)) {
+            return;
+        }
+
+        $this->deliveryAddress = $customer->address ?? '';
+        $this->deliveryNumber = $customer->number ?? '';
+        $this->deliveryComplement = $customer->complement ?? '';
+        $this->deliveryNeighborhood = $customer->neighborhood ?? '';
+        $this->deliveryCity = $customer->city ?? '';
+        $this->deliveryCep = $customer->cep ?? '';
+
+        $this->maybeAutoCalculateDeliveryFee();
     }
 
     public function showCreateCustomerForm(): void
@@ -515,6 +547,30 @@ class Terminal extends Component
 
     // ── Desconto manual ───────────────────────────────────────────────────────
 
+    public function updatedManualDiscountInput(): void
+    {
+        $this->applyOrRemoveManualDiscount();
+    }
+
+    public function updatedManualDiscountType(): void
+    {
+        $this->applyOrRemoveManualDiscount();
+    }
+
+    private function applyOrRemoveManualDiscount(): void
+    {
+        $value = (float) str_replace(',', '.', $this->manualDiscountInput ?: '0');
+
+        if (blank($this->manualDiscountInput) || $value <= 0) {
+            $this->manualDiscountAmount = 0.0;
+            $this->resetValidation('manual_discount');
+
+            return;
+        }
+
+        $this->applyManualDiscount();
+    }
+
     public function applyManualDiscount(): void
     {
         $this->resetValidation('manual_discount');
@@ -570,11 +626,9 @@ class Terminal extends Component
 
     // ── Entrega ───────────────────────────────────────────────────────────────
 
-    public function calculateDeliveryFee(): void
+    /** @return array<int, string> */
+    private function deliveryAddressErrors(): array
     {
-        $this->deliveryFeeError = null;
-        $this->deliveryFeeAmount = 0.0;
-
         $errors = [];
         if (mb_strlen(trim($this->deliveryAddress)) < 5) {
             $errors[] = 'Endereço é obrigatório.';
@@ -591,6 +645,54 @@ class Terminal extends Component
         if (! preg_match('/^\d{5}-?\d{3}$/', $this->deliveryCep)) {
             $errors[] = 'CEP inválido.';
         }
+
+        return $errors;
+    }
+
+    public function updatedDeliveryCep(): void
+    {
+        $this->maybeAutoCalculateDeliveryFee();
+    }
+
+    public function updatedDeliveryAddress(): void
+    {
+        $this->maybeAutoCalculateDeliveryFee();
+    }
+
+    public function updatedDeliveryNumber(): void
+    {
+        $this->maybeAutoCalculateDeliveryFee();
+    }
+
+    public function updatedDeliveryNeighborhood(): void
+    {
+        $this->maybeAutoCalculateDeliveryFee();
+    }
+
+    public function updatedDeliveryCity(): void
+    {
+        $this->maybeAutoCalculateDeliveryFee();
+    }
+
+    /** Recalcula a taxa em silêncio enquanto o operador ainda preenche o endereço — só mostra erro quando os campos já estão completos. */
+    private function maybeAutoCalculateDeliveryFee(): void
+    {
+        if ($this->deliveryAddressErrors() !== []) {
+            $this->deliveryFeeAmount = 0.0;
+            $this->deliveryFeeError = null;
+
+            return;
+        }
+
+        $this->calculateDeliveryFee();
+    }
+
+    public function calculateDeliveryFee(): void
+    {
+        $this->deliveryFeeError = null;
+        $this->deliveryFeeAmount = 0.0;
+
+        $errors = $this->deliveryAddressErrors();
 
         if ($errors !== []) {
             $this->deliveryFeeError = implode(' ', $errors);
@@ -644,7 +746,9 @@ class Terminal extends Component
     {
         $this->cart = [];
         $this->tableLabel = '';
+        $this->selectedTableId = null;
         $this->openTabOrderId = null;
+        $this->viewingTabItemsOrderId = null;
         $this->showBulkTabsForm = false;
         $this->bulkTableLabels = '';
     }
@@ -655,11 +759,17 @@ class Terminal extends Component
         $this->cart = [];
     }
 
+    public function toggleTabItems(int $orderId): void
+    {
+        $this->viewingTabItemsOrderId = $this->viewingTabItemsOrderId === $orderId ? null : $orderId;
+    }
+
     public function deselectOpenTab(): void
     {
         $this->openTabOrderId = null;
         $this->cart = [];
         $this->tableLabel = '';
+        $this->selectedTableId = null;
     }
 
     public function toggleBulkTabsForm(): void
@@ -747,19 +857,34 @@ class Terminal extends Component
             return;
         }
 
-        $this->resetValidation('table_label');
-        $label = trim($this->tableLabel);
+        $this->resetValidation(['table_label', 'selectedTableId']);
 
-        if (blank($label)) {
-            $this->addError('table_label', 'Informe a identificação da comanda.');
+        if ($this->branchUsesRegisteredTables) {
+            $table = $this->availableTables->firstWhere('id', $this->selectedTableId);
 
-            return;
-        }
+            if (! $table) {
+                $this->addError('selectedTableId', 'Selecione uma mesa disponível.');
 
-        if ($this->isTableLabelOpen($label)) {
-            $this->addError('table_label', "Já existe uma comanda aberta com o nome \"{$label}\".");
+                return;
+            }
 
-            return;
+            $label = 'Mesa '.$table->number;
+        } else {
+            $label = trim($this->tableLabel);
+
+            if (blank($label)) {
+                $this->addError('table_label', 'Informe a identificação da comanda.');
+
+                return;
+            }
+
+            if ($this->isTableLabelOpen($label)) {
+                $this->addError('table_label', "Já existe uma comanda aberta com o nome \"{$label}\".");
+
+                return;
+            }
+
+            $table = null;
         }
 
         $company = app('current.company');
@@ -783,6 +908,7 @@ class Terminal extends Component
                 'pdv_cash_session_id' => $this->cashSessionId,
                 'is_open_tab' => true,
                 'table_label' => $label,
+                'restaurant_table_id' => $table?->id,
             ]);
 
             DB::commit();
@@ -801,8 +927,10 @@ class Terminal extends Component
 
         $this->cart = [];
         $this->tableLabel = '';
-        $this->openTabOrderId = $order->id;
+        $this->selectedTableId = null;
+        $this->openTabOrderId = null;
         unset($this->openTabs);
+        unset($this->availableTables);
     }
 
     public function addItemsToTab(): void
@@ -957,6 +1085,16 @@ class Terminal extends Component
             return;
         }
 
+        if ($this->deliveryType === 'entrega') {
+            $errors = $this->deliveryAddressErrors();
+
+            if ($errors !== []) {
+                $this->addError('order', implode(' ', $errors));
+
+                return;
+            }
+        }
+
         $company = app('current.company');
         $customerId = $this->resolveCustomerId($company);
 
@@ -964,7 +1102,8 @@ class Terminal extends Component
 
         DB::beginTransaction();
         try {
-            $isPaidOnCreate = in_array($this->paymentMethod, ['cash', 'credit_card', 'pix']);
+            $isPaidOnCreate = in_array($this->paymentMethod, ['cash', 'credit_card', 'pix'])
+                && ! ($this->deliveryType === 'entrega' && $this->deliveryPaymentStatus === 'on_delivery');
 
             $order = app(OrderService::class)->createOrder(
                 customerId: $customerId,
@@ -996,18 +1135,20 @@ class Terminal extends Component
                 $order->save();
             }
 
-            if ($this->paymentMethod === 'cash') {
-                $cashReceived = (float) str_replace(',', '.', $this->cashReceivedInput ?: $order->total);
-                $order->cash_received = $cashReceived;
-                $order->cash_change = max(0.0, round($cashReceived - (float) $order->total, 2));
-                $order->save();
+            if ($isPaidOnCreate) {
+                if ($this->paymentMethod === 'cash') {
+                    $cashReceived = (float) str_replace(',', '.', $this->cashReceivedInput ?: $order->total);
+                    $order->cash_received = $cashReceived;
+                    $order->cash_change = max(0.0, round($cashReceived - (float) $order->total, 2));
+                    $order->save();
 
-                $result = app(PaymentOrchestrator::class)->processCash($order);
-                $this->changeAmount = $result['change'];
-            } elseif ($this->paymentMethod === 'credit_card') {
-                app(PaymentOrchestrator::class)->processCardMachine($order);
-            } elseif ($this->paymentMethod === 'pix') {
-                app(PaymentOrchestrator::class)->processPixManual($order);
+                    $result = app(PaymentOrchestrator::class)->processCash($order);
+                    $this->changeAmount = $result['change'];
+                } elseif ($this->paymentMethod === 'credit_card') {
+                    app(PaymentOrchestrator::class)->processCardMachine($order);
+                } elseif ($this->paymentMethod === 'pix') {
+                    app(PaymentOrchestrator::class)->processPixManual($order);
+                }
             }
 
             DB::commit();
@@ -1361,6 +1502,10 @@ class Terminal extends Component
             return (float) (Order::withoutGlobalScopes()->find($this->closingTabOrderId)?->service_fee ?? 0.0);
         }
 
+        if ($this->deliveryType === 'entrega') {
+            return 0.0;
+        }
+
         return $this->branchServiceCharge?->calculateServiceFee($this->cartTotal) ?? 0.0;
     }
 
@@ -1369,6 +1514,10 @@ class Terminal extends Component
     {
         if ($this->closingTabOrderId) {
             return (float) (Order::withoutGlobalScopes()->find($this->closingTabOrderId)?->couvert_fee ?? 0.0);
+        }
+
+        if ($this->deliveryType === 'entrega') {
+            return 0.0;
         }
 
         return $this->branchServiceCharge?->calculateCouvert($this->cartTotal) ?? 0.0;
@@ -1580,7 +1729,66 @@ class Terminal extends Component
             ->where('pdv_cash_session_id', $this->cashSessionId)
             ->where('is_open_tab', true)
             ->latest()
-            ->get(['id', 'order_number', 'table_label', 'total']);
+            ->get(['id', 'order_number', 'table_label', 'total', 'restaurant_table_id']);
+    }
+
+    #[Computed]
+    public function viewingTabItems(): Collection
+    {
+        if (! $this->viewingTabItemsOrderId) {
+            return collect();
+        }
+
+        return OrderItem::where('order_id', $this->viewingTabItemsOrderId)->get();
+    }
+
+    /** Itens da comanda atualmente selecionada — exibidos sem precisar de clique extra. */
+    #[Computed]
+    public function activeTabItems(): Collection
+    {
+        if (! $this->openTabOrderId) {
+            return collect();
+        }
+
+        return OrderItem::where('order_id', $this->openTabOrderId)->get();
+    }
+
+    #[Computed]
+    public function closingTabItems(): Collection
+    {
+        if (! $this->closingTabOrderId) {
+            return collect();
+        }
+
+        return OrderItem::where('order_id', $this->closingTabOrderId)->get();
+    }
+
+    /** Mesas pré-cadastradas da filial que a empresa optou por usar (não estão ocupadas por comanda aberta). */
+    #[Computed]
+    public function availableTables(): Collection
+    {
+        if (! $this->selectedBranchId) {
+            return collect();
+        }
+
+        $occupiedIds = $this->openTabs->pluck('restaurant_table_id')->filter()->all();
+
+        return RestaurantTable::where('branch_id', $this->selectedBranchId)
+            ->where('active', true)
+            ->whereNotIn('id', $occupiedIds)
+            ->orderBy('number')
+            ->get();
+    }
+
+    /** Filial optou por mesas pré-numeradas (tem ao menos uma cadastrada) — muda a UI de "digitar nome" para "selecionar número". */
+    #[Computed]
+    public function branchUsesRegisteredTables(): bool
+    {
+        if (! $this->selectedBranchId) {
+            return false;
+        }
+
+        return RestaurantTable::where('branch_id', $this->selectedBranchId)->exists();
     }
 
     #[Computed]
@@ -1853,6 +2061,7 @@ class Terminal extends Component
         $this->deliveryCep = '';
         $this->deliveryFeeAmount = 0.0;
         $this->deliveryFeeError = null;
+        $this->deliveryPaymentStatus = 'paid';
     }
 
     private function audit(string $action, array $data = []): void

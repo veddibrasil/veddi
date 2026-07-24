@@ -581,23 +581,7 @@
                             icon="magnifying-glass"
                             class="flex-1"
                         />
-                        <div class="relative" x-data="{ focused: false }">
-                            <input
-                                id="pdv-barcode-input"
-                                wire:model="barcodeInput"
-                                wire:keydown.enter.prevent="lookupByBarcode"
-                                @focus="focused = true"
-                                @blur="focused = false"
-                                placeholder="Cód. barras"
-                                class="h-9 w-full lg:w-36 text-sm border rounded-lg px-3 bg-neutral-50 dark:bg-zinc-800 dark:border-zinc-700 dark:text-neutral-100 focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none transition"
-                                :class="focused ? 'border-amber-400 lg:w-40' : 'border-neutral-300'"
-                            />
-                            @error('barcode')
-                                <div class="absolute top-full mt-1 left-0 z-20 bg-red-50 border border-red-200 rounded-lg px-2 py-1 text-xs text-red-700 whitespace-nowrap dark:bg-red-900/30 dark:border-red-700 dark:text-red-300">
-                                    {{ $message }}
-                                </div>
-                            @enderror
-                        </div>
+                    
                     </div>
                 </div>
 
@@ -955,63 +939,110 @@
                             <div class="px-4 py-3 border-b border-neutral-100 dark:border-zinc-800 shrink-0 bg-amber-50/50 dark:bg-amber-900/10 space-y-2">
                                 @if ($openTabOrderId)
                                     @php $activeTab = $this->openTabs->firstWhere('id', $openTabOrderId); @endphp
-                                    <div class="flex items-center justify-between gap-2 bg-amber-100 rounded-lg px-3 py-2 dark:bg-amber-900/30">
-                                        <div class="min-w-0">
-                                            <p class="text-xs font-bold text-amber-800 dark:text-amber-300 truncate">Comanda: {{ $activeTab?->table_label }}</p>
-                                            <p class="text-xs text-amber-700 dark:text-amber-400">Total atual: R$ {{ number_format($activeTab?->total ?? 0, 2, ',', '.') }}</p>
+                                    <div class="rounded-lg bg-amber-100 dark:bg-amber-900/30 overflow-hidden">
+                                        <div class="flex items-center justify-between gap-2 px-3 py-2">
+                                            <div class="min-w-0">
+                                                <p class="text-xs font-bold text-amber-800 dark:text-amber-300 truncate">Comanda: {{ $activeTab?->table_label }}</p>
+                                                <p class="text-xs text-amber-700 dark:text-amber-400">Total atual: R$ {{ number_format($activeTab?->total ?? 0, 2, ',', '.') }}</p>
+                                            </div>
+                                            <div class="flex gap-1 shrink-0">
+                                                <flux:button wire:click="deselectOpenTab" variant="ghost" size="sm">
+                                                    Nova comanda
+                                                </flux:button>
+                                                <flux:button wire:click="proceedToCloseTab({{ $openTabOrderId }})" variant="outline" size="sm">
+                                                    Fechar
+                                                </flux:button>
+                                            </div>
                                         </div>
-                                        <div class="flex gap-1 shrink-0">
-                                            <flux:button wire:click="deselectOpenTab" variant="ghost" size="sm">
-                                                Nova comanda
-                                            </flux:button>
-                                            <flux:button wire:click="proceedToCloseTab({{ $openTabOrderId }})" variant="outline" size="sm">
-                                                Fechar
-                                            </flux:button>
-                                        </div>
+                                        @if ($this->activeTabItems->isNotEmpty())
+                                            <div class="max-h-28 overflow-y-auto divide-y divide-amber-200/70 dark:divide-amber-800/50 border-t border-amber-200/70 dark:border-amber-800/50">
+                                                @foreach ($this->activeTabItems as $tabItem)
+                                                    <div class="flex items-center justify-between gap-3 px-3 py-1.5 text-xs">
+                                                        <span class="text-amber-900 dark:text-amber-200">{{ $tabItem->quantity }}x {{ $tabItem->product_name }}</span>
+                                                        <span class="shrink-0 font-semibold text-amber-900 dark:text-amber-200">R$ {{ number_format($tabItem->subtotal, 2, ',', '.') }}</span>
+                                                    </div>
+                                                @endforeach
+                                            </div>
+                                        @endif
                                     </div>
                                 @else
-                                    <flux:input wire:model.live.debounce.300ms="tableLabel" placeholder="Identificação (ex: Mesa 5)" />
-                                    @error('table_label')
-                                        <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
-                                    @enderror
+                                    @if ($this->branchUsesRegisteredTables)
+                                        <flux:select wire:model.live="selectedTableId">
+                                            <option value="">Selecione a mesa...</option>
+                                            @foreach ($this->availableTables as $table)
+                                                <option value="{{ $table->id }}">Mesa {{ $table->number }}</option>
+                                            @endforeach
+                                        </flux:select>
+                                        @error('selectedTableId')
+                                            <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                                        @enderror
+                                        @if ($this->availableTables->isEmpty())
+                                            <p class="text-xs text-neutral-500 dark:text-neutral-400">Nenhuma mesa livre no momento.</p>
+                                        @endif
+                                    @else
+                                        <flux:input wire:model.live.debounce.300ms="tableLabel" placeholder="Identificação (ex: Mesa 5)" />
+                                        @error('table_label')
+                                            <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                                        @enderror
 
-                                    <button
-                                        type="button"
-                                        wire:click="toggleBulkTabsForm"
-                                        class="text-xs font-semibold text-amber-700 hover:underline dark:text-amber-400"
-                                    >
-                                        {{ $showBulkTabsForm ? 'Cancelar' : 'Abrir várias comandas de uma vez' }}
-                                    </button>
+                                        <button
+                                            type="button"
+                                            wire:click="toggleBulkTabsForm"
+                                            class="text-xs font-semibold text-amber-700 hover:underline dark:text-amber-400"
+                                        >
+                                            {{ $showBulkTabsForm ? 'Cancelar' : 'Abrir várias comandas de uma vez' }}
+                                        </button>
 
-                                    @if ($showBulkTabsForm)
-                                        <div class="space-y-1.5 rounded-lg border border-amber-200 bg-white p-2.5 dark:border-amber-900/40 dark:bg-zinc-900">
-                                            <flux:textarea
-                                                wire:model="bulkTableLabels"
-                                                rows="2"
-                                                placeholder="Uma comanda por linha ou separada por vírgula. Ex: Mesa 1, Mesa 2, Mesa 3"
-                                            />
-                                            @error('bulk_table_labels')
-                                                <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
-                                            @enderror
-                                            <flux:button wire:click="openMultipleTabs" variant="primary" size="sm" class="w-full">
-                                                Criar comandas
-                                            </flux:button>
-                                        </div>
+                                        @if ($showBulkTabsForm)
+                                            <div class="space-y-1.5 rounded-lg border border-amber-200 bg-white p-2.5 dark:border-amber-900/40 dark:bg-zinc-900">
+                                                <flux:textarea
+                                                    wire:model="bulkTableLabels"
+                                                    rows="2"
+                                                    placeholder="Uma comanda por linha ou separada por vírgula. Ex: Mesa 1, Mesa 2, Mesa 3"
+                                                />
+                                                @error('bulk_table_labels')
+                                                    <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                                                @enderror
+                                                <flux:button wire:click="openMultipleTabs" variant="primary" size="sm" class="w-full">
+                                                    Criar comandas
+                                                </flux:button>
+                                            </div>
+                                        @endif
                                     @endif
 
                                     @if ($this->openTabs->isNotEmpty())
                                         <div class="space-y-1">
                                             <p class="text-[10px] uppercase font-bold text-neutral-400 dark:text-neutral-500">Comandas abertas</p>
                                             @foreach ($this->openTabs as $tab)
-                                                <div class="flex items-center justify-between gap-2 border rounded-lg px-2 py-1.5 dark:border-zinc-700">
-                                                    <div class="text-xs min-w-0">
-                                                        <p class="font-semibold text-neutral-800 dark:text-neutral-100 truncate">{{ $tab->table_label }}</p>
-                                                        <p class="text-neutral-400 dark:text-neutral-500">R$ {{ number_format($tab->total, 2, ',', '.') }}</p>
+                                                <div class="border rounded-lg dark:border-zinc-700 overflow-hidden">
+                                                    <div
+                                                        role="button"
+                                                        tabindex="0"
+                                                        wire:click="toggleTabItems({{ $tab->id }})"
+                                                        wire:keydown.enter="toggleTabItems({{ $tab->id }})"
+                                                        class="w-full flex items-center justify-between gap-2 px-2 py-1.5 cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
+                                                    >
+                                                        <div class="text-xs min-w-0">
+                                                            <p class="font-semibold text-neutral-800 dark:text-neutral-100 truncate">{{ $tab->table_label }}</p>
+                                                            <p class="text-neutral-400 dark:text-neutral-500">R$ {{ number_format($tab->total, 2, ',', '.') }} · {{ $viewingTabItemsOrderId === $tab->id ? 'ocultar itens' : 'ver itens' }}</p>
+                                                        </div>
+                                                        <div class="flex gap-1 shrink-0">
+                                                            <flux:button wire:click.stop="selectOpenTab({{ $tab->id }})" variant="outline" size="sm">Adicionar</flux:button>
+                                                            <flux:button wire:click.stop="proceedToCloseTab({{ $tab->id }})" variant="ghost" size="sm">Fechar</flux:button>
+                                                        </div>
                                                     </div>
-                                                    <div class="flex gap-1 shrink-0">
-                                                        <flux:button wire:click="selectOpenTab({{ $tab->id }})" variant="outline" size="sm">Adicionar</flux:button>
-                                                        <flux:button wire:click="proceedToCloseTab({{ $tab->id }})" variant="ghost" size="sm">Fechar</flux:button>
-                                                    </div>
+                                                    @if ($viewingTabItemsOrderId === $tab->id)
+                                                        <div class="max-h-28 overflow-y-auto divide-y divide-neutral-100 dark:divide-zinc-800 border-t dark:border-zinc-700 bg-neutral-50 dark:bg-zinc-800/50">
+                                                            @forelse ($this->viewingTabItems as $tabItem)
+                                                                <div class="flex items-center justify-between gap-3 px-2 py-1.5 text-xs">
+                                                                    <span class="text-neutral-700 dark:text-neutral-200">{{ $tabItem->quantity }}x {{ $tabItem->product_name }}</span>
+                                                                    <span class="shrink-0 font-semibold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($tabItem->subtotal, 2, ',', '.') }}</span>
+                                                                </div>
+                                                            @empty
+                                                                <p class="px-2 py-1.5 text-xs text-neutral-400 dark:text-neutral-500">Nenhum item lançado ainda.</p>
+                                                            @endforelse
+                                                        </div>
+                                                    @endif
                                                 </div>
                                             @endforeach
                                         </div>
@@ -1123,7 +1154,8 @@
                                             Enviar itens
                                         </flux:button>
                                     @else
-                                        <flux:button wire:click="openTab" variant="primary" size="base" class="w-full" :disabled="blank($tableLabel)">
+                                        <flux:button wire:click="openTab" variant="primary" size="base" class="w-full"
+                                            :disabled="$this->branchUsesRegisteredTables ? blank($selectedTableId) : blank($tableLabel)">
                                             Abrir comanda
                                         </flux:button>
                                     @endif
@@ -1165,7 +1197,7 @@
 
             @if ($step === 'payment')
                 <div class="absolute inset-0 z-30 flex items-center justify-center bg-amber-950/45 p-3 lg:p-6">
-                    <div class="flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900">
+                    <div class="flex max-h-full w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900">
                         <div class="shrink-0 border-b border-neutral-100 px-4 py-3 dark:border-zinc-800">
                             <div class="flex items-center justify-between gap-3">
                                 <div class="flex items-center gap-3 min-w-0">
@@ -1190,7 +1222,7 @@
                             </div>
                         </div>
 
-                        <div class="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-[minmax(0,1fr)_22rem]">
+                        <div class="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto xl:grid-cols-[minmax(0,1fr)_22rem]">
                             <div class="space-y-5 p-4 lg:p-5">
                                 <div class="grid gap-4 md:grid-cols-2">
                                     @unless ($closingTabOrderId)
@@ -1215,20 +1247,18 @@
                                                 </div>
                                             @else
                                                 <div class="flex gap-2">
-                                                    <flux:select wire:model="manualDiscountType" class="w-16 shrink-0">
+                                                    <flux:select wire:model.live="manualDiscountType" class="w-16 shrink-0">
                                                         <flux:select.option value="fixed">R$</flux:select.option>
                                                         <flux:select.option value="percent">%</flux:select.option>
                                                     </flux:select>
                                                     <flux:input
-                                                        wire:model="manualDiscountInput"
-                                                        wire:keydown.enter="applyManualDiscount"
+                                                        wire:model.live.debounce.500ms="manualDiscountInput"
                                                         placeholder="{{ $manualDiscountType === 'percent' ? '10' : '5,00' }}"
                                                         type="number"
                                                         step="0.01"
                                                         min="0"
                                                         class="flex-1"
                                                     />
-                                                    <flux:button wire:click="applyManualDiscount" variant="outline" size="sm">Aplicar</flux:button>
                                                 </div>
                                                 @error('manual_discount')
                                                     <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
@@ -1266,21 +1296,56 @@
                                 @endif
 
                                 @if ($deliveryType === 'entrega')
-                                    <div class="space-y-3 border rounded-xl p-3 dark:border-zinc-700">
-                                        <div class="grid gap-3 md:grid-cols-3">
-                                            <flux:input wire:model="deliveryCep" placeholder="CEP" />
-                                            <flux:input wire:model="deliveryAddress" placeholder="Endereço" class="md:col-span-2" />
-                                            <flux:input wire:model="deliveryNumber" placeholder="Número" />
-                                            <flux:input wire:model="deliveryComplement" placeholder="Complemento (opcional)" />
-                                            <flux:input wire:model="deliveryNeighborhood" placeholder="Bairro" />
-                                            <flux:input wire:model="deliveryCity" placeholder="Cidade" />
+                                    <div class="space-y-1.5">
+                                        @include('livewire.admin.pdv._customer-search')
+                                    </div>
+                                @endif
+
+                                @if ($deliveryType === 'entrega')
+                                    <div class="space-y-3 border rounded-xl p-3 dark:border-zinc-700"
+                                         x-data="{
+                                             cepLoading: false,
+                                             formatCep(v) {
+                                                 v = v.replace(/\D/g, '').slice(0, 8);
+                                                 return v.length > 5 ? v.slice(0, 5) + '-' + v.slice(5) : v;
+                                             },
+                                             async fetchCep(val) {
+                                                 const digits = val.replace(/\D/g, '');
+                                                 if (digits.length !== 8) return;
+                                                 this.cepLoading = true;
+                                                 try {
+                                                     const res = await fetch('https://viacep.com.br/ws/' + digits + '/json/');
+                                                     const d = await res.json();
+                                                     if (!d.erro) {
+                                                         if (d.logradouro) $wire.set('deliveryAddress', d.logradouro);
+                                                         if (d.bairro)     $wire.set('deliveryNeighborhood', d.bairro);
+                                                         if (d.localidade) $wire.set('deliveryCity', d.localidade);
+                                                     }
+                                                 } catch(e) {}
+                                                 this.cepLoading = false;
+                                             }
+                                         }">
+                                        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                                            <div class="relative">
+                                                <flux:input wire:model.live.debounce.500ms="deliveryCep" placeholder="CEP" maxlength="9"
+                                                    x-on:input="
+                                                        $event.target.value = formatCep($event.target.value);
+                                                        if ($event.target.value.replace(/\D/g,'').length === 8) fetchCep($event.target.value);
+                                                    " />
+                                                <span x-show="cepLoading"
+                                                      class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-neutral-400">
+                                                    Buscando...
+                                                </span>
+                                            </div>
+                                            <flux:input wire:model.live.debounce.500ms="deliveryAddress" placeholder="Endereço" class="col-span-2 sm:col-span-3" />
+                                            <flux:input wire:model.live.debounce.500ms="deliveryNumber" placeholder="Número" />
+                                            <flux:input wire:model="deliveryComplement" placeholder="Complemento" />
+                                            <flux:input wire:model.live.debounce.500ms="deliveryNeighborhood" placeholder="Bairro" />
+                                            <flux:input wire:model.live.debounce.500ms="deliveryCity" placeholder="Cidade" />
                                         </div>
-                                        <div class="flex items-center justify-between gap-3">
-                                            <flux:button wire:click="calculateDeliveryFee" variant="outline" size="sm">Calcular taxa de entrega</flux:button>
-                                            @if ($deliveryFeeAmount > 0)
-                                                <span class="text-sm font-semibold text-green-600 dark:text-green-400">Taxa: R$ {{ number_format($deliveryFeeAmount, 2, ',', '.') }}</span>
-                                            @endif
-                                        </div>
+                                        @if ($deliveryFeeAmount > 0)
+                                            <p class="text-sm font-semibold text-green-600 dark:text-green-400">Taxa de entrega: R$ {{ number_format($deliveryFeeAmount, 2, ',', '.') }}</p>
+                                        @endif
                                         @if ($deliveryFeeError)
                                             <p class="text-xs text-red-600 dark:text-red-400">{{ $deliveryFeeError }}</p>
                                         @endif
@@ -1288,60 +1353,19 @@
                                 @endif
 
                                 <div class="grid gap-4 md:grid-cols-2">
-                                    <div class="space-y-1.5">
-                                        <flux:label class="text-xs font-semibold">
-                                            Cliente {{ $deliveryType === 'entrega' ? '(obrigatório para entrega)' : '(opcional)' }}
-                                        </flux:label>
-                                        @if ($this->needsCustomerForDelivery)
-                                            <p class="text-xs text-red-600 dark:text-red-400">Selecione ou cadastre um cliente para entrega.</p>
-                                        @endif
-                                        <div class="flex gap-2">
-                                            <flux:input
-                                                wire:model="customerQuery"
-                                                wire:keydown.enter="lookupCustomer"
-                                                placeholder="Nome, telefone ou CPF..."
-                                                class="flex-1"
-                                            />
-                                            <flux:button wire:click="lookupCustomer" variant="outline" icon="magnifying-glass" size="sm" />
+                                    @if ($deliveryType === 'entrega')
+                                        <div class="space-y-1.5">
+                                            <flux:label class="text-xs font-semibold">Pagamento na entrega</flux:label>
+                                            <flux:radio.group wire:model.live="deliveryPaymentStatus" variant="segmented" class="w-full">
+                                                <flux:radio value="paid" label="Já está pago" />
+                                                <flux:radio value="on_delivery" label="Receber na entrega" />
+                                            </flux:radio.group>
                                         </div>
-                                        @if ($customerFound)
-                                            <p class="text-xs text-green-600 dark:text-green-400">✓ {{ $customerName }}</p>
-                                        @elseif (!empty($customerResults))
-                                            <div class="border rounded-xl overflow-hidden dark:border-zinc-600 max-h-32 overflow-y-auto">
-                                                @foreach ($customerResults as $result)
-                                                    <button
-                                                        wire:click="selectCustomer({{ $result['id'] }})"
-                                                        class="w-full flex items-center justify-between px-3 py-2 text-left text-xs hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors border-b last:border-b-0 dark:border-zinc-600"
-                                                    >
-                                                        <span class="font-medium text-neutral-800 dark:text-neutral-100">{{ $result['name'] }}</span>
-                                                        <span class="text-neutral-400 dark:text-neutral-500 shrink-0 ml-2">{{ $result['phone'] }}</span>
-                                                    </button>
-                                                @endforeach
-                                            </div>
-                                        @elseif (filled($customerQuery) && !$customerFound)
-                                            @if ($showCreateCustomer)
-                                                <div class="space-y-2 border rounded-xl p-3 dark:border-zinc-600">
-                                                    <p class="text-[10px] font-semibold text-neutral-600 dark:text-neutral-300">Novo cliente</p>
-                                                    <flux:input wire:model="newCustomerName" placeholder="Nome completo" />
-                                                    <flux:input wire:model="newCustomerPhone" wire:keydown.enter="createCustomer" placeholder="Telefone (somente números)" />
-                                                    @if ($createCustomerError)
-                                                        <p class="text-xs text-red-600 dark:text-red-400">{{ $createCustomerError }}</p>
-                                                    @endif
-                                                    <div class="flex gap-2">
-                                                        <flux:button wire:click="cancelCreateCustomer" variant="ghost" size="sm">Cancelar</flux:button>
-                                                        <flux:button wire:click="createCustomer" variant="primary" size="sm" class="flex-1">Cadastrar</flux:button>
-                                                    </div>
-                                                </div>
-                                            @else
-                                                <div class="flex items-center justify-between gap-3">
-                                                    <p class="text-xs text-neutral-500 dark:text-neutral-400">Cliente não encontrado; pedido como balcão.</p>
-                                                    <flux:button wire:click="showCreateCustomerForm" variant="ghost" size="sm" icon="user-plus" class="shrink-0">
-                                                        Criar
-                                                    </flux:button>
-                                                </div>
-                                            @endif
-                                        @endif
-                                    </div>
+                                    @else
+                                        <div class="space-y-1.5">
+                                            @include('livewire.admin.pdv._customer-search')
+                                        </div>
+                                    @endif
 
                                     <div class="space-y-1.5">
                                         <flux:label class="text-xs font-semibold">Método de pagamento</flux:label>
@@ -1389,13 +1413,13 @@
                                 @enderror
                             </div>
 
-                            <div class="border-t border-neutral-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-[#0f1926]/70 lg:border-l lg:border-t-0">
+                            <div class="border-t border-neutral-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-[#0f1926]/70 xl:border-l xl:border-t-0">
                                 <div class="flex h-full flex-col gap-4">
                                     <div>
                                         <p class="text-[11px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Resumo do pedido</p>
                                         <div class="mt-3 max-h-64 overflow-y-auto rounded-xl border border-neutral-200 bg-white divide-y divide-neutral-100 dark:border-zinc-800 dark:bg-zinc-900 dark:divide-zinc-800">
                                             @if ($closingTabOrderId)
-                                                @foreach (\App\Models\OrderItem::where('order_id', $closingTabOrderId)->get() as $tabItem)
+                                                @foreach ($this->closingTabItems as $tabItem)
                                                     <div class="px-3 py-2">
                                                         <div class="flex items-start justify-between gap-3 text-sm">
                                                             <span class="font-medium text-neutral-800 dark:text-neutral-100">{{ $tabItem->quantity }}x {{ $tabItem->product_name }}</span>

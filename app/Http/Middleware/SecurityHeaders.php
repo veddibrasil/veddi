@@ -30,7 +30,7 @@ class SecurityHeaders
             "style-src 'self' 'unsafe-inline' https://fonts.bunny.net https://unpkg.com https://api.mapbox.com{$devSources}; ".
             "img-src 'self' data: https:; ".
             "font-src 'self' data: https://fonts.bunny.net; ".
-            "connect-src 'self' ws: wss: https://nominatim.openstreetmap.org https://api.mapbox.com https://events.mapbox.com https://www.googletagmanager.com https://www.google-analytics.com https://analytics.google.com https://www.facebook.com{$devSources}; ".
+            "connect-src 'self' ws: wss: https://nominatim.openstreetmap.org https://viacep.com.br https://api.mapbox.com https://events.mapbox.com https://www.googletagmanager.com https://www.google-analytics.com https://analytics.google.com https://www.facebook.com{$devSources}; ".
             "object-src 'none'; ".
             "base-uri 'self'; ".
             "form-action 'self'; ".

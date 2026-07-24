@@ -13,6 +13,7 @@ use App\Models\PdvAuditLog;
 use App\Models\PdvCashSession;
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Models\RestaurantTable;
 use App\Models\User;
 use App\Services\Payment\PaymentOrchestrator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -306,6 +307,72 @@ test('pedido PDV com PIX é apenas informativo: marca como pago direto sem gerar
     expect($payment->payment_gateway)->toBe('pix_manual');
 });
 
+// ─── Busca de cliente ─────────────────────────────────────────────────────────
+
+test('busca de cliente lista resultados automaticamente conforme o operador digita', function () {
+    ['admin' => $admin, 'company' => $company] = pdvContext();
+
+    Customer::withoutGlobalScopes()->create(['company_id' => $company->id, 'name' => 'Maria Souza', 'phone' => '11911112222']);
+    Customer::withoutGlobalScopes()->create(['company_id' => $company->id, 'name' => 'Marcos Lima', 'phone' => '11933334444']);
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->set('customerQuery', 'Mar');
+
+    expect($component->get('customerResults'))->toHaveCount(2);
+    expect($component->get('customerFound'))->toBeFalse();
+});
+
+test('selecionar cliente com entrega preenche o endereço a partir do cadastro dele', function () {
+    ['admin' => $admin, 'product' => $product, 'company' => $company] = pdvContext();
+
+    $address = \App\Models\Address::create([
+        'line1' => 'Av. Brasil',
+        'number' => '500',
+        'complement' => 'Fundos',
+        'neighborhood' => 'Zona 7',
+        'city' => 'Maringá',
+        'state' => 'PR',
+        'cep' => '87050-000',
+    ]);
+
+    $customer = Customer::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Cliente Cadastrado',
+        'phone' => '11955556666',
+        'address_id' => $address->id,
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('deliveryType', 'entrega')
+        ->call('selectCustomer', $customer->id)
+        ->assertSet('customerId', $customer->id)
+        ->assertSet('deliveryAddress', 'Av. Brasil')
+        ->assertSet('deliveryNumber', '500')
+        ->assertSet('deliveryComplement', 'Fundos')
+        ->assertSet('deliveryNeighborhood', 'Zona 7')
+        ->assertSet('deliveryCity', 'Maringá')
+        ->assertSet('deliveryCep', '87050-000');
+});
+
+test('busca de cliente seleciona automaticamente quando só há uma correspondência', function () {
+    ['admin' => $admin, 'company' => $company] = pdvContext();
+
+    $customer = Customer::withoutGlobalScopes()->create(['company_id' => $company->id, 'name' => 'Maria Souza', 'phone' => '11911112222']);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->set('customerQuery', 'Maria Souza')
+        ->assertSet('customerId', $customer->id)
+        ->assertSet('customerFound', true);
+});
+
 // ─── Cliente anônimo ──────────────────────────────────────────────────────────
 
 test('pedido PDV sem cliente cria ou reusa cliente balcão', function () {
@@ -490,6 +557,42 @@ test('pedido PDV de entrega salva endereço e taxa na order', function () {
     expect($order->delivery_neighborhood)->toBe('Centro');
 });
 
+test('taxa de entrega é calculada automaticamente conforme o endereço é preenchido, sem botão manual', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+
+    \App\Models\DeliverySetting::create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'fee_type' => 'flat',
+        'flat_fee' => 5.00,
+        'active' => true,
+    ]);
+
+    $customer = Customer::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Cliente Entrega',
+        'phone' => '11999990000',
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('customerId', $customer->id)
+        ->set('deliveryType', 'entrega')
+        ->assertSet('deliveryFeeAmount', 0.0)
+        ->set('deliveryAddress', 'Rua das Flores')
+        ->assertSet('deliveryFeeAmount', 0.0)
+        ->assertSet('deliveryFeeError', null)
+        ->set('deliveryNumber', '123')
+        ->set('deliveryNeighborhood', 'Centro')
+        ->set('deliveryCity', 'São Paulo')
+        ->set('deliveryCep', '01000-000')
+        ->assertSet('deliveryFeeError', null)
+        ->assertSet('deliveryFeeAmount', 5.0);
+});
+
 test('pedido PDV de entrega exige cliente selecionado', function () {
     ['admin' => $admin, 'product' => $product] = pdvContext();
 
@@ -499,6 +602,34 @@ test('pedido PDV de entrega exige cliente selecionado', function () {
         ->call('addProduct', $product->id)
         ->call('proceedToPayment')
         ->set('deliveryType', 'entrega')
+        ->set('paymentMethod', 'cash')
+        ->call('processOrder')
+        ->assertHasErrors('order');
+
+    expect(Order::withoutGlobalScopes()->count())->toBe(0);
+});
+
+test('pedido PDV de entrega rejeita CEP inválido', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $customer = Customer::withoutGlobalScopes()->create([
+        'company_id' => Company::first()->id,
+        'name' => 'Cliente Entrega',
+        'phone' => '11999990000',
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('customerId', $customer->id)
+        ->set('deliveryType', 'entrega')
+        ->set('deliveryAddress', 'Rua das Flores')
+        ->set('deliveryNumber', '123')
+        ->set('deliveryNeighborhood', 'Centro')
+        ->set('deliveryCity', 'São Paulo')
+        ->set('deliveryCep', '123')
         ->set('paymentMethod', 'cash')
         ->call('processOrder')
         ->assertHasErrors('order');
@@ -757,6 +888,145 @@ test('abrir comanda rejeita nome já usado por comanda aberta', function () {
     expect(Order::withoutGlobalScopes()->count())->toBe(1);
 });
 
+test('filial com mesas pré-cadastradas: atendente seleciona número em vez de digitar nome', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+
+    $table5 = RestaurantTable::create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'number' => 5,
+        'active' => true,
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->set('orderMode', 'mesa')
+        ->call('addProduct', $product->id)
+        ->assertSet('branchUsesRegisteredTables', true)
+        ->set('selectedTableId', $table5->id)
+        ->call('openTab')
+        ->assertHasNoErrors()
+        ->assertSet('cart', []);
+
+    $order = Order::withoutGlobalScopes()->first();
+    expect($order->table_label)->toBe('Mesa 5');
+    expect($order->restaurant_table_id)->toBe($table5->id);
+});
+
+test('mesa ocupada some da lista de mesas disponíveis e não pode ser reaberta', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+
+    $table5 = RestaurantTable::create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'number' => 5,
+        'active' => true,
+    ]);
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->set('orderMode', 'mesa')
+        ->call('addProduct', $product->id)
+        ->set('selectedTableId', $table5->id)
+        ->call('openTab')
+        ->assertHasNoErrors();
+
+    expect($component->get('availableTables'))->toHaveCount(0);
+
+    $component
+        ->call('deselectOpenTab')
+        ->call('addProduct', $product->id)
+        ->set('selectedTableId', $table5->id)
+        ->call('openTab')
+        ->assertHasErrors('selectedTableId');
+
+    expect(Order::withoutGlobalScopes()->count())->toBe(1);
+});
+
+test('mesa desativada não aparece disponível no PDV', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+
+    RestaurantTable::create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'number' => 5,
+        'active' => false,
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->set('orderMode', 'mesa')
+        ->call('addProduct', $product->id)
+        ->assertSet('branchUsesRegisteredTables', true)
+        ->assertCount('availableTables', 0);
+});
+
+test('abrir comanda volta para a lista de comandas abertas em vez de manter selecionada', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->set('orderMode', 'mesa')
+        ->call('addProduct', $product->id)
+        ->set('tableLabel', 'Mesa 5')
+        ->call('openTab')
+        ->assertHasNoErrors()
+        ->assertSet('openTabOrderId', null);
+});
+
+test('itens da comanda selecionada aparecem automaticamente, sem precisar clicar', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->set('orderMode', 'mesa')
+        ->call('addProduct', $product->id)
+        ->set('tableLabel', 'Mesa 5')
+        ->call('openTab')
+        ->assertHasNoErrors();
+
+    $orderId = Order::withoutGlobalScopes()->first()->id;
+
+    $component->call('selectOpenTab', $orderId);
+
+    $items = $component->get('activeTabItems');
+    expect($items)->toHaveCount(1);
+    expect($items->first()->product_name)->toBe('Coxinha');
+});
+
+test('atendente alterna visualização de itens de uma comanda na lista com um clique', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->set('orderMode', 'mesa')
+        ->call('addProduct', $product->id)
+        ->set('tableLabel', 'Mesa 5')
+        ->call('openTab')
+        ->call('deselectOpenTab')
+        ->assertHasNoErrors();
+
+    $order = Order::withoutGlobalScopes()->first();
+
+    $component
+        ->call('toggleTabItems', $order->id)
+        ->assertSet('viewingTabItemsOrderId', $order->id);
+
+    $items = $component->get('viewingTabItems');
+    expect($items)->toHaveCount(1);
+    expect($items->first()->product_name)->toBe('Coxinha');
+
+    $component
+        ->call('toggleTabItems', $order->id)
+        ->assertSet('viewingTabItemsOrderId', null);
+});
+
 test('abrir várias comandas de uma vez cria um pedido pendente por identificação', function () {
     ['admin' => $admin] = pdvContext();
 
@@ -814,9 +1084,10 @@ test('somar rodada de itens na comanda soma total e deduz estoque de novo', func
         ->call('openTab');
 
     $orderId = Order::withoutGlobalScopes()->first()->id;
-    expect($component->get('openTabOrderId'))->toBe($orderId);
+    expect($component->get('openTabOrderId'))->toBeNull();
 
     $component
+        ->call('selectOpenTab', $orderId)
         ->call('addProduct', $product->id)
         ->call('addItemsToTab')
         ->assertHasNoErrors()
@@ -924,6 +1195,7 @@ test('cancelar comanda aberta restaura estoque das duas rodadas', function () {
     $orderId = Order::withoutGlobalScopes()->first()->id;
 
     $component
+        ->call('selectOpenTab', $orderId)
         ->call('addProduct', $product->id)
         ->call('addItemsToTab');
 
@@ -990,6 +1262,69 @@ test('taxa de serviço e couvert da filial são aplicados automaticamente no ped
     expect((float) $order->net_value)->toBe(13.72);
 });
 
+test('taxa de serviço e couvert não são cobrados em pedido de entrega', function () {
+    ['company' => $company, 'admin' => $admin, 'product' => $product, 'branch' => $branch] = pdvContext();
+
+    BranchServiceCharge::create([
+        'branch_id' => $branch->id,
+        'company_id' => $company->id,
+        'service_fee_enabled' => true,
+        'service_fee_type' => 'percent',
+        'service_fee_value' => 10,
+        'couvert_enabled' => true,
+        'couvert_type' => 'fixed',
+        'couvert_value' => 5,
+    ]);
+
+    $customer = Customer::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Cliente Entrega',
+        'phone' => '11999990000',
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->assertSet('rawServiceFeeAmount', 0.8)
+        ->assertSet('rawCouvertFeeAmount', 5.0)
+        ->set('customerId', $customer->id)
+        ->set('deliveryType', 'entrega')
+        ->assertSet('rawServiceFeeAmount', 0.0)
+        ->assertSet('rawCouvertFeeAmount', 0.0)
+        ->set('deliveryAddress', 'Rua das Flores')
+        ->set('deliveryNumber', '123')
+        ->set('deliveryNeighborhood', 'Centro')
+        ->set('deliveryCity', 'São Paulo')
+        ->set('deliveryCep', '01000-000')
+        ->set('paymentMethod', 'cash')
+        ->call('processOrder')
+        ->assertHasNoErrors();
+
+    $order = Order::withoutGlobalScopes()->first();
+    expect((float) $order->service_fee)->toBe(0.0);
+    expect((float) $order->couvert_fee)->toBe(0.0);
+});
+
+test('desconto manual é aplicado e removido automaticamente conforme o operador digita', function () {
+    ['admin' => $admin, 'product' => $product, 'company' => $company] = pdvContext();
+
+    $company->update(['pdv_manual_discount_enabled' => true]);
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('manualDiscountInput', '2,00')
+        ->assertSet('manualDiscountAmount', 2.0);
+
+    $component
+        ->set('manualDiscountInput', '')
+        ->assertSet('manualDiscountAmount', 0.0);
+});
+
 test('taxa de serviço e couvert acompanham comanda de mesa ao longo de novas rodadas', function () {
     ['admin' => $admin, 'product' => $product, 'branch' => $branch] = pdvContext();
 
@@ -1020,7 +1355,8 @@ test('taxa de serviço e couvert acompanham comanda de mesa ao longo de novas ro
     expect((float) $order->couvert_fee)->toBe(5.0);
     expect((float) $order->total)->toBe(13.8);
 
-    $component->call('addProduct', $product->id)
+    $component->call('selectOpenTab', $orderId)
+        ->call('addProduct', $product->id)
         ->call('addItemsToTab')
         ->assertHasNoErrors();
 
