@@ -11,6 +11,7 @@ use App\Models\Product;
 use App\Services\Order\FeeCalculator;
 use App\Services\Order\OrderService;
 use App\Services\Order\StockService;
+use App\Services\Payment\PaymentOrchestrator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Computed;
@@ -160,6 +161,41 @@ class Show extends Component
         ]);
 
         session()->flash('status', 'Status atualizado.');
+    }
+
+    /**
+     * Confirma pagamento coletado na entrega (PDV "receber na entrega"). Restrito a pedidos
+     * do PDV pra não abranger pedidos online aguardando webhook Vindi/Asaas (mesmo status
+     * 'awaiting_payment' é usado nesse fluxo, mas ali quem confirma é o gateway, não o admin).
+     */
+    public function confirmPayment(): void
+    {
+        abort_unless($this->canUpdate, 403);
+
+        if ($this->order->order_type !== 'pdv' || $this->order->status !== 'awaiting_payment') {
+            $this->addError('status', 'Este pedido não está aguardando confirmação de pagamento na entrega.');
+
+            return;
+        }
+
+        if ($this->order->payment()->exists()) {
+            $this->addError('status', 'Já existe um pagamento registrado para este pedido.');
+
+            return;
+        }
+
+        app(PaymentOrchestrator::class)->confirmDeliveryPayment($this->order);
+
+        $this->order->refresh();
+
+        OrderStatusUpdated::dispatch($this->order);
+
+        Log::channel('orders')->info('Pagamento na entrega confirmado pelo admin', [
+            'order_id' => $this->order->id,
+            'admin_id' => auth()->id(),
+        ]);
+
+        session()->flash('status', 'Pagamento confirmado.');
     }
 
     // ── Address editing ──────────────────────────────────────────────────────

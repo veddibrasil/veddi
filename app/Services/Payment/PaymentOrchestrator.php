@@ -492,6 +492,44 @@ class PaymentOrchestrator
         ];
     }
 
+    /**
+     * Confirma pagamento coletado no ato da entrega (PDV "receber na entrega").
+     * O pedido nasceu 'awaiting_payment' sem Payment; aqui cria o Payment e marca 'paid'.
+     */
+    public function confirmDeliveryPayment(Order $order): array
+    {
+        $gateway = match ($order->payment_method) {
+            'cash' => 'cash',
+            'credit_card' => 'card_machine',
+            'pix' => 'pix_manual',
+            default => $order->payment_method,
+        };
+
+        $payment = Payment::create([
+            'order_id' => $order->id,
+            'payment_gateway' => $gateway,
+            'amount' => (float) $order->total,
+            'pix_fee' => 0.0,
+            'status' => 'paid',
+            'paid_at' => now(),
+            'payment_token' => hash('sha256', 'delivery'.$order->id.now()->timestamp),
+        ]);
+
+        $order->update(['status' => 'paid']);
+
+        Log::channel('payments')->info('Pagamento na entrega confirmado (PDV)', [
+            'order_id' => $order->id,
+            'amount' => $order->total,
+            'gateway' => $gateway,
+        ]);
+
+        return [
+            'id' => $payment->id,
+            'status' => 'paid',
+            'gateway' => $gateway,
+        ];
+    }
+
     private function vindiAddressFromOrder(Order $order, Customer $customer): array
     {
         $branch = $order->branch;

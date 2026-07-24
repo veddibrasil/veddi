@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\Order;
 use App\Models\Scopes\CompanyScope;
 use App\Services\Order\OrderService;
+use App\Services\Payment\PaymentOrchestrator;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Url;
@@ -143,6 +144,35 @@ class Index extends Component
             'admin_id' => auth()->id(),
             'status_anterior' => $previousStatus,
             'status_novo' => $newStatus,
+        ]);
+    }
+
+    /**
+     * Confirma pagamento coletado na entrega (PDV "receber na entrega"). Restrito a pedidos
+     * do PDV pra não abranger pedidos online aguardando webhook Vindi/Asaas (mesmo status
+     * 'awaiting_payment' é usado nesse fluxo, mas ali quem confirma é o gateway, não o admin).
+     */
+    public function confirmPayment(int $orderId): void
+    {
+        abort_unless($this->canUpdate, 403);
+
+        $order = $this->isSuperAdmin
+            ? Order::withoutGlobalScope(CompanyScope::class)->findOrFail($orderId)
+            : Order::findOrFail($orderId);
+
+        if ($order->order_type !== 'pdv' || $order->status !== 'awaiting_payment' || $order->payment()->exists()) {
+            return;
+        }
+
+        app(PaymentOrchestrator::class)->confirmDeliveryPayment($order);
+
+        $order->refresh();
+
+        OrderStatusUpdated::dispatch($order);
+
+        Log::channel('orders')->info('Pagamento na entrega confirmado pelo admin via kanban', [
+            'order_id' => $order->id,
+            'admin_id' => auth()->id(),
         ]);
     }
 

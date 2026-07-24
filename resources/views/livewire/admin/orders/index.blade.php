@@ -183,6 +183,13 @@
                     @if ($order->scheduled_at)
                         <p class="text-xs text-amber-600 dark:text-amber-400 font-medium mt-1">🕐 {{ $order->scheduled_at->setTimezone(config('app.timezone'))->format('d/m H:i') }}</p>
                     @endif
+                    @if ($canUpdate && $order->order_type === 'pdv' && $order->status === 'awaiting_payment')
+                        <button wire:click.stop="confirmPayment({{ $order->id }})"
+                                wire:confirm="Confirmar que o pagamento foi recebido na entrega?"
+                                class="w-full mt-2 py-1 text-xs font-medium rounded-lg bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 transition-colors">
+                            Confirmar pagamento
+                        </button>
+                    @endif
                 </div>
                 @empty
                 <div class="flex items-center justify-center h-16 text-xs text-neutral-400 dark:text-neutral-500">
