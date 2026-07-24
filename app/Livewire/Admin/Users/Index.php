@@ -20,7 +20,7 @@ class Index extends Component
 {
     use WithPagination;
 
-    private const BRANCH_SCOPED_ROLES = ['branch_manager', 'cozinha', 'caixa'];
+    private const BRANCH_SCOPED_ROLES = ['branch_manager', 'cozinha', 'caixa', 'garcom'];
 
     public string $search = '';
 

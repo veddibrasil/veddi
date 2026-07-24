@@ -4,10 +4,17 @@
     <head>
         @include('partials.head')
     </head>
+    @php
+        $company = app()->bound('current.company') ? app('current.company') : null;
+        $user = auth()->user();
+        $can = fn(string $perm) => $company && $user?->hasPermission($perm, $company);
+        // Garçom só opera mesas/comandas — sem acesso ao dashboard nem ao resto do painel.
+        $isWaiterOnly = $can('pdv.waiter_operate') && !$can('pdv.operate');
+    @endphp
     <body class="{{ $bodyClass }} bg-[#f8f8fb] dark:bg-[#0d1825]">
         <flux:sidebar sticky collapsible="mobile" class="veddi-sidebar border-e border-[#5c0079]">
             <flux:sidebar.header>
-                <x-app-logo :sidebar="true" href="{{ auth()->user()?->isSuperAdmin() ? route('superadmin.dashboard') : route('admin.dashboard') }}" wire:navigate />
+                <x-app-logo :sidebar="true" href="{{ auth()->user()?->isSuperAdmin() ? route('superadmin.dashboard') : ($isWaiterOnly ? route('admin.pdv') : route('admin.dashboard')) }}" wire:navigate />
 
                 @auth
                     @if(!auth()->user()?->isSuperAdmin())
@@ -31,11 +38,13 @@
                         </flux:sidebar.item>
                     </flux:sidebar.group>
                 @else
-                    @php
-                        $company = app()->bound('current.company') ? app('current.company') : null;
-                        $user = auth()->user();
-                        $can = fn(string $perm) => $company && $user?->hasPermission($perm, $company);
-                    @endphp
+                    @if($isWaiterOnly)
+                        <flux:sidebar.group heading="PDV" class="grid">
+                            <flux:sidebar.item icon="computer-desktop" :href="route('admin.pdv')" :current="request()->routeIs('admin.pdv')" wire:navigate>
+                                Terminal PDV
+                            </flux:sidebar.item>
+                        </flux:sidebar.group>
+                    @else
 
                     <flux:sidebar.group :heading="__('Plataforma')" class="grid">
                         <flux:sidebar.item icon="home" :href="route('admin.dashboard')" :current="request()->routeIs('admin.dashboard')" wire:navigate>
@@ -162,6 +171,8 @@
                                 WhatsApp
                             </flux:sidebar.item> --}}
                         </flux:sidebar.group>
+                    @endif
+
                     @endif
                 @endif
             </flux:sidebar.nav>

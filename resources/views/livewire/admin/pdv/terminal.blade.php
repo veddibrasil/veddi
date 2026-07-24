@@ -37,7 +37,9 @@
                 </span>
             @endif
 
-            <flux:button wire:click="openClosingReports" variant="outline" size="sm" icon="document-text" class="hidden sm:flex" title="Relatórios de fechamento" />
+            @unless ($isWaiter)
+                <flux:button wire:click="openClosingReports" variant="outline" size="sm" icon="document-text" class="hidden sm:flex" title="Relatórios de fechamento" />
+            @endunless
 
             @if ($cashSessionId && !in_array($step, ['open_cash', 'close_cash']))
                 <flux:button wire:click="proceedToCloseCash" variant="outline" size="sm" icon="lock-closed" class="hover:text-red-600">
@@ -565,10 +567,17 @@
 
                 {{-- Tipo de venda --}}
                 <div class="px-4 py-3 shrink-0 border-b border-neutral-100 bg-white dark:bg-zinc-900 dark:border-zinc-800">
-                    <flux:radio.group wire:model.live="orderMode" variant="segmented" class="w-full max-w-xs">
-                        <flux:radio value="impressao" label="Impressão" />
-                        <flux:radio value="mesa" label="Mesa/Comanda" />
-                    </flux:radio.group>
+                    @if ($isWaiter)
+                        <span class="inline-flex items-center gap-1.5 text-sm font-semibold text-amber-700 dark:text-amber-400">
+                            <flux:icon.table-cells class="size-4" />
+                            Mesa/Comanda
+                        </span>
+                    @else
+                        <flux:radio.group wire:model.live="orderMode" variant="segmented" class="w-full max-w-xs">
+                            <flux:radio value="impressao" label="Impressão" />
+                            <flux:radio value="mesa" label="Mesa/Comanda" />
+                        </flux:radio.group>
+                    @endif
                 </div>
 
                 {{-- Busca e código de barras --}}
@@ -593,7 +602,122 @@
                             <p class="text-sm">Nenhum produto disponível</p>
                         </div>
                     @else
-                        <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-3 gap-4">
+                        {{-- Mobile: lista em tabela (mais fácil de ler/tocar em tela estreita) --}}
+                        <div class="sm:hidden overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+                            <table class="w-full table-fixed text-sm">
+                                <thead class="bg-neutral-50 text-left text-[11px] uppercase tracking-wider text-neutral-400 dark:bg-zinc-800/60 dark:text-neutral-500">
+                                    <tr>
+                                        <th class="w-20 px-3 py-2 font-semibold"></th>
+                                        <th class="px-1 py-2 font-semibold">Produto</th>
+                                        <th class="w-28 px-3 py-2 font-semibold text-right">Qtd</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-neutral-100 dark:divide-zinc-800">
+                                    @foreach ($this->products as $product)
+                                        @php
+                                            $productData = $this->buildProductDataForSidebar($product);
+                                            $hasOptions = $productData !== null;
+                                            $pdvCartQty = 0;
+                                            foreach ($cart as $__key => $__item) {
+                                                $__pid = (int) ($__item['product_id'] ?? (int) explode('_', (string) $__key)[0]);
+                                                if ($__pid === $product->id) {
+                                                    $pdvCartQty += $__item['qty'];
+                                                }
+                                            }
+                                            $stockQty = $this->productStocks[$product->id] ?? null;
+                                            $stockOut = $stockQty !== null && $pdvCartQty >= $stockQty;
+                                        @endphp
+                                        <tr>
+                                            <td class="py-3 pl-3 pr-0">
+                                                <button
+                                                    type="button"
+                                                    @if (!$stockOut)
+                                                        @if ($hasOptions)
+                                                            @click="addOrOpenOptionSelector(@js($productData), $wire)"
+                                                        @else
+                                                            wire:click="addProduct({{ $product->id }})"
+                                                        @endif
+                                                    @endif
+                                                    {{ $stockOut ? 'disabled' : '' }}
+                                                    class="block shrink-0 disabled:cursor-not-allowed"
+                                                >
+                                                    @if ($product->image_path)
+                                                        <img
+                                                            src="{{ $product->image_url }}"
+                                                            alt="{{ $product->name }}"
+                                                            class="size-16 rounded-lg object-cover bg-neutral-100 dark:bg-zinc-800"
+                                                        />
+                                                    @else
+                                                        <div class="size-16 rounded-lg bg-neutral-100 flex items-center justify-center dark:bg-zinc-800">
+                                                            <flux:icon.shopping-bag class="size-7 text-neutral-300 dark:text-zinc-500" />
+                                                        </div>
+                                                    @endif
+                                                </button>
+                                            </td>
+                                            <td class="px-1 py-3">
+                                                <button
+                                                    type="button"
+                                                    @if (!$stockOut)
+                                                        @if ($hasOptions)
+                                                            @click="addOrOpenOptionSelector(@js($productData), $wire)"
+                                                        @else
+                                                            wire:click="addProduct({{ $product->id }})"
+                                                        @endif
+                                                    @endif
+                                                    {{ $stockOut ? 'disabled' : '' }}
+                                                    class="text-left w-full disabled:cursor-not-allowed"
+                                                >
+                                                    <span class="block font-medium leading-snug text-neutral-800 dark:text-neutral-100">
+                                                        {{ $product->name }}
+                                                    </span>
+                                                    <span class="block font-semibold text-amber-600 dark:text-amber-400">
+                                                        R$ {{ number_format($product->effective_price, 2, ',', '.') }}
+                                                    </span>
+                                                    @if ($stockOut)
+                                                        <span class="block text-[11px] font-semibold text-red-600 dark:text-red-400">Sem estoque</span>
+                                                    @elseif ($stockQty !== null && $stockQty <= 5)
+                                                        <span class="block text-[11px] font-semibold text-amber-600 dark:text-amber-400">Restam {{ $stockQty }}</span>
+                                                    @endif
+                                                </button>
+                                            </td>
+                                            <td class="px-3 py-3">
+                                                <div class="flex items-center justify-end gap-1.5">
+                                                    @if ($pdvCartQty > 0)
+                                                        <button
+                                                            @if ($hasOptions)
+                                                                wire:click.stop="decrementProductFromCart({{ $product->id }})"
+                                                            @else
+                                                                wire:click.stop="updateCartQty('{{ $product->id }}', {{ $pdvCartQty - 1 }})"
+                                                            @endif
+                                                            class="size-7 rounded-full border flex items-center justify-center text-neutral-500 hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition-colors dark:border-zinc-600"
+                                                        >
+                                                            <span class="text-sm font-bold leading-none">−</span>
+                                                        </button>
+                                                        <span class="w-5 text-center text-sm font-semibold text-neutral-800 dark:text-neutral-100">{{ $pdvCartQty }}</span>
+                                                    @endif
+                                                    <button
+                                                        @if (!$stockOut)
+                                                            @if ($hasOptions)
+                                                                @click.stop="addOrOpenOptionSelector(@js($productData), $wire)"
+                                                            @else
+                                                                wire:click.stop="addProduct({{ $product->id }})"
+                                                            @endif
+                                                        @endif
+                                                        {{ $stockOut ? 'disabled' : '' }}
+                                                        class="size-7 rounded-full text-white flex items-center justify-center transition-colors {{ $stockOut ? 'bg-neutral-300 cursor-not-allowed dark:bg-zinc-600' : 'bg-amber-500 hover:bg-amber-600 active:scale-90' }}"
+                                                    >
+                                                        <span class="text-sm font-bold leading-none">+</span>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {{-- sm e acima: grade de cartões --}}
+                        <div class="hidden sm:grid sm:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-3 gap-4">
                             @foreach ($this->products as $product)
                                 @php
                                     $productData = $this->buildProductDataForSidebar($product);
@@ -949,9 +1073,11 @@
                                                 <flux:button wire:click="deselectOpenTab" variant="ghost" size="sm">
                                                     Nova comanda
                                                 </flux:button>
-                                                <flux:button wire:click="proceedToCloseTab({{ $openTabOrderId }})" variant="outline" size="sm">
-                                                    Fechar
-                                                </flux:button>
+                                                @unless ($isWaiter)
+                                                    <flux:button wire:click="proceedToCloseTab({{ $openTabOrderId }})" variant="outline" size="sm">
+                                                        Fechar
+                                                    </flux:button>
+                                                @endunless
                                             </div>
                                         </div>
                                         @if ($this->activeTabItems->isNotEmpty())
@@ -1013,6 +1139,7 @@
                                     @if ($this->openTabs->isNotEmpty())
                                         <div class="space-y-1">
                                             <p class="text-[10px] uppercase font-bold text-neutral-400 dark:text-neutral-500">Comandas abertas</p>
+                                            <div class="space-y-1 max-h-48 overflow-y-auto pr-0.5">
                                             @foreach ($this->openTabs as $tab)
                                                 <div class="border rounded-lg dark:border-zinc-700 overflow-hidden">
                                                     <div
@@ -1028,7 +1155,9 @@
                                                         </div>
                                                         <div class="flex gap-1 shrink-0">
                                                             <flux:button wire:click.stop="selectOpenTab({{ $tab->id }})" variant="outline" size="sm">Adicionar</flux:button>
-                                                            <flux:button wire:click.stop="proceedToCloseTab({{ $tab->id }})" variant="ghost" size="sm">Fechar</flux:button>
+                                                            @unless ($isWaiter)
+                                                                <flux:button wire:click.stop="proceedToCloseTab({{ $tab->id }})" variant="ghost" size="sm">Fechar</flux:button>
+                                                            @endunless
                                                         </div>
                                                     </div>
                                                     @if ($viewingTabItemsOrderId === $tab->id)
@@ -1045,6 +1174,7 @@
                                                     @endif
                                                 </div>
                                             @endforeach
+                                            </div>
                                         </div>
                                     @endif
                                 @endif

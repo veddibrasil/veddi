@@ -87,7 +87,7 @@ class User extends Authenticatable
 
     public function isBranchScoped(Company $company): bool
     {
-        return in_array($this->roleForCompany($company), ['branch_manager', 'cozinha', 'caixa']);
+        return in_array($this->roleForCompany($company), ['branch_manager', 'cozinha', 'caixa', 'garcom']);
     }
 
     public function hasPermission(string $permission, Company $company): bool

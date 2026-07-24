@@ -169,6 +169,9 @@ class Terminal extends Component
     // ── Permissões ────────────────────────────────────────────────────────────
     public bool $canOperate = false;
 
+    // Garçom: só abre mesa/comanda e lança itens — sem caixa, pagamento, desconto ou cancelamento.
+    public bool $isWaiter = false;
+
     public function mount(): void
     {
         $company = app()->bound('current.company') ? app('current.company') : null;
@@ -176,17 +179,32 @@ class Terminal extends Component
 
         abort_unless($company, 403);
         abort_unless($company->pdv_module_enabled, 403, 'Módulo PDV não está habilitado para esta empresa.');
-        abort_unless($user?->hasPermission('pdv.operate', $company), 403);
+
+        $canFullyOperate = (bool) $user?->hasPermission('pdv.operate', $company);
+        $canWaiterOperate = (bool) $user?->hasPermission('pdv.waiter_operate', $company);
+
+        abort_unless($canFullyOperate || $canWaiterOperate, 403);
 
         $this->canOperate = true;
+        $this->isWaiter = ! $canFullyOperate && $canWaiterOperate;
         $this->manualDiscountAllowed = (bool) $company->pdv_manual_discount_enabled;
 
-        $branch = Branch::where('company_id', $company->id)
-            ->where('active', true)
-            ->orderBy('id')
-            ->first();
+        $branch = $this->isWaiter && $user->branchIdForCompany($company)
+            ? Branch::where('company_id', $company->id)->find($user->branchIdForCompany($company))
+            : Branch::where('company_id', $company->id)
+                ->where('active', true)
+                ->orderBy('id')
+                ->first();
 
         $this->selectedBranchId = $branch?->id;
+
+        if ($this->isWaiter) {
+            $this->orderMode = 'mesa';
+            $this->step = 'catalog';
+
+            return;
+        }
+
         $this->syncCashSession();
     }
 
@@ -199,6 +217,13 @@ class Terminal extends Component
         $this->search = '';
         $this->openTabOrderId = null;
         unset($this->branchServiceCharge);
+
+        if ($this->isWaiter) {
+            $this->step = 'catalog';
+
+            return;
+        }
+
         $this->syncCashSession();
     }
 
@@ -573,6 +598,8 @@ class Terminal extends Component
 
     public function applyManualDiscount(): void
     {
+        abort_unless(! $this->isWaiter, 403);
+
         $this->resetValidation('manual_discount');
 
         if (! $this->manualDiscountAllowed) {
@@ -744,6 +771,10 @@ class Terminal extends Component
 
     public function updatedOrderMode(): void
     {
+        if ($this->isWaiter) {
+            $this->orderMode = 'mesa';
+        }
+
         $this->cart = [];
         $this->tableLabel = '';
         $this->selectedTableId = null;
@@ -967,6 +998,8 @@ class Terminal extends Component
 
     public function proceedToCloseTab(int $orderId): void
     {
+        abort_unless(! $this->isWaiter, 403);
+
         $this->closingTabOrderId = $orderId;
         $this->step = 'payment';
         $this->resetPaymentState();
@@ -974,8 +1007,10 @@ class Terminal extends Component
 
     private function closeTab(): void
     {
+        abort_unless(! $this->isWaiter, 403);
+
         $order = Order::withoutGlobalScopes()
-            ->where('pdv_cash_session_id', $this->cashSessionId)
+            ->where('branch_id', $this->selectedBranchId)
             ->where('is_open_tab', true)
             ->find($this->closingTabOrderId);
 
@@ -1002,6 +1037,14 @@ class Terminal extends Component
                 'status' => $isPaidOnCreate ? 'paid' : 'awaiting_payment',
                 'is_open_tab' => false,
                 'notes' => $this->notes,
+                // Reatribui à sessão de quem está fechando/recebendo agora — a comanda pode ter
+                // sido aberta sem sessão (garçom) ou por outro operador; sem isso o dinheiro
+                // recebido não entra na conferência de caixa de quem realmente fechou.
+                'pdv_cash_session_id' => $this->cashSessionId,
+                // Comanda geralmente abre sem cliente vinculado (guest); se o mesário identificar
+                // o cliente só agora no fechamento, precisa gravar — senão a busca/seleção feita
+                // na tela de pagamento é descartada e o pedido fica com "Cliente Balcão".
+                ...($this->customerId ? ['customer_id' => $this->customerId] : []),
             ]);
 
             if ($this->paymentMethod === 'cash') {
@@ -1051,6 +1094,8 @@ class Terminal extends Component
 
     public function proceedToPayment(): void
     {
+        abort_unless(! $this->isWaiter, 403);
+
         if (empty($this->cart) || ! $this->selectedBranchId) {
             return;
         }
@@ -1074,6 +1119,8 @@ class Terminal extends Component
 
             return;
         }
+
+        abort_unless(! $this->isWaiter, 403);
 
         if (empty($this->cart) || ! $this->selectedBranchId) {
             return;
@@ -1193,6 +1240,8 @@ class Terminal extends Component
 
     public function cancelPdvOrder(int $orderId): void
     {
+        abort_unless(! $this->isWaiter, 403);
+
         $company = app('current.company');
 
         $order = Order::withoutGlobalScopes()
@@ -1266,7 +1315,7 @@ class Terminal extends Component
         $this->notes = '';
         $this->step = 'catalog';
         $this->showSessionHistory = false;
-        $this->orderMode = 'impressao';
+        $this->orderMode = $this->isWaiter ? 'mesa' : 'impressao';
         $this->tableLabel = '';
         $this->showBulkTabsForm = false;
         $this->bulkTableLabels = '';
@@ -1279,6 +1328,8 @@ class Terminal extends Component
 
     public function showSessionHistory(): void
     {
+        abort_unless(! $this->isWaiter, 403);
+
         $this->showSessionHistory = true;
         $this->confirmingCancelSessionOrderId = null;
     }
@@ -1293,6 +1344,8 @@ class Terminal extends Component
 
     public function openClosingReports(): void
     {
+        abort_unless(! $this->isWaiter, 403);
+
         $this->showClosingReports = true;
         $this->viewingClosedSessionId = null;
     }
@@ -1317,6 +1370,8 @@ class Terminal extends Component
 
     public function openCashSession(): void
     {
+        abort_unless(! $this->isWaiter, 403);
+
         $amount = (float) str_replace(',', '.', $this->openingAmountInput ?: '0');
         $company = app('current.company');
         $terminalName = trim($this->terminalName) ?: null;
@@ -1341,6 +1396,8 @@ class Terminal extends Component
 
     public function proceedToCloseCash(): void
     {
+        abort_unless(! $this->isWaiter, 403);
+
         $this->closingAmountInput = '';
         $this->reconciliationNotes = '';
         $this->showCashMovementForm = false;
@@ -1349,6 +1406,8 @@ class Terminal extends Component
 
     public function toggleCashMovementForm(string $type = 'supply'): void
     {
+        abort_unless(! $this->isWaiter, 403);
+
         $this->showCashMovementForm = ! $this->showCashMovementForm || $this->cashMovementType !== $type;
         $this->cashMovementType = in_array($type, ['supply', 'withdrawal'], true) ? $type : 'supply';
         $this->cashMovementAmountInput = '';
@@ -1358,6 +1417,8 @@ class Terminal extends Component
 
     public function registerCashMovement(): void
     {
+        abort_unless(! $this->isWaiter, 403);
+
         if (! $this->cashSessionId || ! $this->selectedBranchId) {
             return;
         }
@@ -1391,6 +1452,8 @@ class Terminal extends Component
 
     public function closeCashSession(): void
     {
+        abort_unless(! $this->isWaiter, 403);
+
         if (! $this->cashSessionId) {
             $this->step = 'catalog';
 
@@ -1721,12 +1784,14 @@ class Terminal extends Component
     #[Computed]
     public function openTabs(): Collection
     {
-        if (! $this->cashSessionId) {
+        if (! $this->selectedBranchId) {
             return collect();
         }
 
+        // Escopo por filial (não por sessão de caixa): comandas abertas precisam ficar visíveis
+        // pra qualquer operador da filial — garçom sem sessão abre, caixa de outra sessão fecha.
         return Order::withoutGlobalScopes()
-            ->where('pdv_cash_session_id', $this->cashSessionId)
+            ->where('branch_id', $this->selectedBranchId)
             ->where('is_open_tab', true)
             ->latest()
             ->get(['id', 'order_number', 'table_label', 'total', 'restaurant_table_id']);
