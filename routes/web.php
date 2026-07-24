@@ -11,11 +11,17 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    if (config('app.env') === 'local') {
-        return redirect()->route('admin.dashboard');
-    }
+    if (auth()->check()) {
+        if (auth()->user()->isSuperAdmin()) {
+            return redirect()->route('superadmin.dashboard');
+        }
 
-    return redirect('https://veddi.com.br');
+        if (auth()->user()->company) {
+            return redirect()->route('admin.dashboard');
+        }
+    }
+    return redirect()->route('admin.dashboard');
+
 });
 
 Route::get('/health', \App\Http\Controllers\HealthController::class)->name('health');

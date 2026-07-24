@@ -229,11 +229,7 @@
                     <flux:menu.separator />
 
                     <flux:menu.radio.group>
-                        <flux:modal.trigger name="profile-modal">
-                            <flux:menu.item icon="user-circle">
-                                {{ __('Meu perfil') }}
-                            </flux:menu.item>
-                        </flux:modal.trigger>
+            
                         <flux:menu.item :href="route('profile.edit')" icon="cog" wire:navigate>
                             {{ __('Configurações') }}
                         </flux:menu.item>
