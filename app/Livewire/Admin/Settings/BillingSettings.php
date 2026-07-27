@@ -103,6 +103,24 @@ class BillingSettings extends Component
 
     public bool $fiscalSuccess = false;
 
+    // Módulo Garçom (cobrado junto com a assinatura do plano, mesma fatura — mesmo padrão do PDV/Fiscal).
+    // Exige o módulo PDV já ativo, pois o garçom só opera dentro de mesas/comandas do PDV.
+    public bool $waiterModuleEnabled = false;
+
+    public float $waiterAddonAmount = 99.00;
+
+    public bool $confirmingWaiterActivation = false;
+
+    public bool $confirmingWaiterCancellation = false;
+
+    public bool $waiterAcceptedTerms = false;
+
+    public bool $waiterProcessing = false;
+
+    public ?string $waiterError = null;
+
+    public bool $waiterSuccess = false;
+
     public function mount(AsaasServiceInterface $asaasService): void
     {
         $company = app('current.company');
@@ -115,9 +133,11 @@ class BillingSettings extends Component
         $this->pdvAddonAmount = (float) config('pdv.addon_monthly_price', 99.00);
         $this->fiscalModuleEnabled = (bool) $company->fiscal_notes_enabled;
         $this->fiscalAddonAmount = (float) config('fiscal.addon_monthly_price', 149.00);
+        $this->waiterModuleEnabled = (bool) $company->waiter_module_enabled;
+        $this->waiterAddonAmount = (float) config('waiter.addon_monthly_price', 99.00);
         $this->savedCardLabel = $company->savedAsaasCardLabel();
         $this->combinedMonthlyAmount = ($company->plan?->monthlyPrice() ?? 0.0)
-            + $this->combinedAddonExtra($this->pdvModuleEnabled, $this->fiscalModuleEnabled)['amount'];
+            + $this->combinedAddonExtra($this->pdvModuleEnabled, $this->fiscalModuleEnabled, $this->waiterModuleEnabled)['amount'];
 
         /** @var Subscription|null $subscription */
         $subscription = $company->subscriptions()->latest()->first();
@@ -194,9 +214,9 @@ class BillingSettings extends Component
                 'asaas_subscription_id' => null,
             ]);
 
-            // Módulos PDV e Fiscal são plano-independentes: se algum estava ativo, recria a
+            // Módulos PDV, Fiscal e Garçom são plano-independentes: se algum estava ativo, recria a
             // cobrança (agora só dos módulos, já que o plano gratuito não tem mensalidade).
-            if ($company->pdv_module_enabled || $company->fiscal_notes_enabled) {
+            if ($company->pdv_module_enabled || $company->fiscal_notes_enabled || $company->waiter_module_enabled) {
                 CreateAsaasSubscription::dispatch($company->fresh());
             }
 
@@ -207,7 +227,7 @@ class BillingSettings extends Component
             $this->nextDueDate = null;
             $this->lastPaymentAt = null;
             $this->payments = [];
-            $this->combinedMonthlyAmount = $this->combinedAddonExtra($company->pdv_module_enabled, $company->fiscal_notes_enabled)['amount'];
+            $this->combinedMonthlyAmount = $this->combinedAddonExtra($company->pdv_module_enabled, $company->fiscal_notes_enabled, $company->waiter_module_enabled)['amount'];
         } else {
             // Upgrade or cross-grade to a paid plan (Essencial or PRO)
             if (! $company->asaas_customer_id) {
@@ -260,7 +280,7 @@ class BillingSettings extends Component
                 // After webhook confirms, ProcessAsaasWebhook will apply pending_plan and create subscription
                 // (CreateAsaasSubscription já soma os módulos automaticamente a partir do 2º mês).
                 $setupFee = $targetPlan->setupFee();
-                $extra = $this->combinedAddonExtra($company->pdv_module_enabled, $company->fiscal_notes_enabled);
+                $extra = $this->combinedAddonExtra($company->pdv_module_enabled, $company->fiscal_notes_enabled, $company->waiter_module_enabled);
                 $firstAmount = $setupFee + $targetPlan->monthlyPrice() + $extra['amount'];
                 $description = "Taxa de ativação + 1º mês ({$targetPlan->label()}) — {$company->name}";
                 if ($extra['amount'] > 0) {
@@ -386,8 +406,8 @@ class BillingSettings extends Component
             // Upgrade from free includes setup fee; cross-grade between paid plans does not
             $isFromFree = $company->plan === Plan::Free;
             $setupFee = $isFromFree ? $targetPlan->setupFee() : 0.0;
-            // Módulos PDV/Fiscal são cobrados na mesma fatura do plano, não como assinatura separada.
-            $extra = $this->combinedAddonExtra($company->pdv_module_enabled, $company->fiscal_notes_enabled);
+            // Módulos PDV/Fiscal/Garçom são cobrados na mesma fatura do plano, não como assinatura separada.
+            $extra = $this->combinedAddonExtra($company->pdv_module_enabled, $company->fiscal_notes_enabled, $company->waiter_module_enabled);
             $chargeAmount = $setupFee + $targetPlan->monthlyPrice() + $extra['amount'];
             $description = $isFromFree
                 ? "Taxa de ativação + 1º mês ({$targetPlan->label()}) — {$company->name}"
@@ -614,7 +634,7 @@ class BillingSettings extends Component
 
             // Módulo PDV entra na MESMA fatura da assinatura do plano — não é uma assinatura separada.
             // Por isso a assinatura atual é cancelada e recriada já com o valor combinado.
-            $extra = $this->combinedAddonExtra(true, $this->fiscalModuleEnabled);
+            $extra = $this->combinedAddonExtra(true, $this->fiscalModuleEnabled, $this->waiterModuleEnabled);
             $combinedAmount = $plan->monthlyPrice() + $extra['amount'];
             $description = "{$plan->asaasDescription()} + {$extra['description']} — {$company->name}";
 
@@ -710,7 +730,9 @@ class BillingSettings extends Component
     {
         $company = app('current.company');
         $plan = $company->plan;
-        $extra = $this->combinedAddonExtra(false, $this->fiscalModuleEnabled);
+        // Garçom depende do PDV — se o PDV sai, o garçom vai junto (senão fica um addon
+        // cobrado sem função, já que ele só existe pra operar dentro do PDV).
+        $extra = $this->combinedAddonExtra(false, $this->fiscalModuleEnabled, false);
         $planAmount = $plan->monthlyPrice() + $extra['amount'];
 
         try {
@@ -758,15 +780,19 @@ class BillingSettings extends Component
             return;
         }
 
-        $company->update(['pdv_module_enabled' => false]);
+        $company->update([
+            'pdv_module_enabled' => false,
+            'waiter_module_enabled' => false,
+        ]);
 
         UserPermissionService::revokePdvPermissions($company->fresh());
 
         $this->pdvModuleEnabled = false;
+        $this->waiterModuleEnabled = false;
         $this->combinedMonthlyAmount = $planAmount;
         $this->confirmingPdvCancellation = false;
 
-        session()->flash('status', 'Módulo PDV cancelado. O valor foi debitado da sua assinatura a partir do próximo vencimento.');
+        session()->flash('status', 'Módulo PDV cancelado (o módulo Garçom, que depende dele, também foi cancelado). O valor foi debitado da sua assinatura a partir do próximo vencimento.');
     }
 
     public function confirmFiscalActivation(): void
@@ -886,7 +912,7 @@ class BillingSettings extends Component
             }
 
             // Módulo Fiscal entra na MESMA fatura da assinatura do plano — mesmo padrão do PDV.
-            $extra = $this->combinedAddonExtra($this->pdvModuleEnabled, true);
+            $extra = $this->combinedAddonExtra($this->pdvModuleEnabled, true, $this->waiterModuleEnabled);
             $combinedAmount = $plan->monthlyPrice() + $extra['amount'];
             $description = "{$plan->asaasDescription()} + {$extra['description']} — {$company->name}";
 
@@ -980,7 +1006,7 @@ class BillingSettings extends Component
     {
         $company = app('current.company');
         $plan = $company->plan;
-        $extra = $this->combinedAddonExtra($this->pdvModuleEnabled, false);
+        $extra = $this->combinedAddonExtra($this->pdvModuleEnabled, false, $this->waiterModuleEnabled);
         $planAmount = $plan->monthlyPrice() + $extra['amount'];
 
         try {
@@ -1033,10 +1059,288 @@ class BillingSettings extends Component
         session()->flash('status', 'Módulo Fiscal cancelado. O valor foi debitado da sua assinatura a partir do próximo vencimento.');
     }
 
+    public function confirmWaiterActivation(): void
+    {
+        $company = app('current.company');
+
+        if (! $company->pdv_module_enabled) {
+            session()->flash('error', 'Ative o módulo PDV antes de ativar o módulo Garçom.');
+
+            return;
+        }
+
+        $this->waiterError = null;
+        $this->waiterSuccess = false;
+        $this->waiterAcceptedTerms = false;
+        $this->confirmingWaiterActivation = true;
+    }
+
+    public function cancelWaiterActivation(): void
+    {
+        $this->confirmingWaiterActivation = false;
+        $this->waiterAcceptedTerms = false;
+    }
+
+    public function confirmWaiterCancellation(): void
+    {
+        $this->waiterError = null;
+        $this->confirmingWaiterCancellation = true;
+    }
+
+    public function cancelWaiterCancellation(): void
+    {
+        $this->confirmingWaiterCancellation = false;
+    }
+
+    public function proceedToWaiterCardModal(): void
+    {
+        if (! $this->waiterAcceptedTerms) {
+            session()->flash('error', 'Você precisa aceitar os Termos de Responsabilidade para continuar.');
+
+            return;
+        }
+
+        $this->useSavedCard = app('current.company')->hasSavedAsaasCard();
+        $this->confirmingWaiterActivation = false;
+        $this->dispatch('open-waiter-card-modal');
+    }
+
+    public function activateWaiterModule(AsaasServiceInterface $asaasService): void
+    {
+        $company = app('current.company');
+
+        if (! $company->pdv_module_enabled) {
+            $this->waiterError = 'Ative o módulo PDV antes de ativar o módulo Garçom.';
+
+            return;
+        }
+
+        $useSavedCard = $this->useSavedCard && $company->hasSavedAsaasCard();
+
+        if (! $useSavedCard) {
+            $this->validate([
+                'cardNumber' => ['required', 'string', 'min:13'],
+                'cardExpiry' => ['required', 'regex:/^\d{2}\/\d{2}$/', function ($attr, $value, $fail) {
+                    [$month, $year] = explode('/', $value);
+                    $month = (int) $month;
+                    $year = (int) ('20'.$year);
+                    if ($month < 1 || $month > 12) {
+                        $fail('Mês de validade inválido.');
+
+                        return;
+                    }
+                    if ($year < now()->year || ($year === now()->year && $month < now()->month)) {
+                        $fail('Cartão vencido.');
+                    }
+                }],
+                'cardCvv' => ['required', 'digits_between:3,4'],
+                'cardHolderName' => ['required', 'string', 'min:3'],
+                'cardCpfCnpj' => ['required', 'string', function ($attr, $value, $fail) {
+                    $digits = preg_replace('/\D/', '', $value);
+                    if (strlen($digits) !== 11 && strlen($digits) !== 14) {
+                        $fail('CPF deve ter 11 dígitos e CNPJ 14 dígitos.');
+                    }
+                }],
+                'cardPostalCode' => ['required', 'string', 'min:8'],
+                'cardAddressNumber' => ['required', 'string'],
+            ]);
+        }
+
+        $this->waiterProcessing = true;
+        $this->waiterError = null;
+
+        try {
+            if (! $company->asaas_customer_id) {
+                $this->waiterError = 'Esta empresa não possui cadastro no Asaas. Entre em contato com o suporte.';
+                $this->waiterProcessing = false;
+
+                return;
+            }
+
+            $plan = $company->plan;
+            $creditCard = null;
+            $holderInfo = null;
+            $creditCardToken = null;
+
+            if ($useSavedCard) {
+                $creditCardToken = $company->asaas_credit_card_token;
+            } else {
+                $admin = $company->users()->first();
+                $phone = preg_replace('/\D/', '', $company->branches()->withoutGlobalScopes()->value('phone') ?? '');
+
+                [$month, $year] = explode('/', $this->cardExpiry);
+
+                $creditCard = new CreditCardDTO(
+                    holderName: $this->cardHolderName,
+                    number: $this->cardNumber,
+                    expiryMonth: $month,
+                    expiryYear: '20'.$year,
+                    ccv: $this->cardCvv,
+                );
+
+                $holderInfo = new CreditCardHolderDTO(
+                    name: $admin?->name ?? $this->cardHolderName,
+                    email: $admin?->email ?? '',
+                    cpfCnpj: $this->cardCpfCnpj,
+                    postalCode: $this->cardPostalCode,
+                    addressNumber: $this->cardAddressNumber,
+                    mobilePhone: $phone,
+                    phone: $phone,
+                );
+            }
+
+            // Módulo Garçom entra na MESMA fatura da assinatura do plano — mesmo padrão do PDV/Fiscal.
+            $extra = $this->combinedAddonExtra($this->pdvModuleEnabled, $this->fiscalModuleEnabled, true);
+            $combinedAmount = $plan->monthlyPrice() + $extra['amount'];
+            $description = "{$plan->asaasDescription()} + {$extra['description']} — {$company->name}";
+
+            $charge = $asaasService->createCreditCardCharge(
+                customerId: $company->asaas_customer_id,
+                amount: $combinedAmount,
+                description: $description,
+                externalReference: "waiter_module_activation_{$company->id}",
+                creditCard: $creditCard,
+                holderInfo: $holderInfo,
+                creditCardToken: $creditCardToken,
+            );
+
+            if (($charge['status'] ?? '') !== 'CONFIRMED') {
+                $reason = $charge['creditCard']['declineReason']
+                    ?? $charge['failReason']
+                    ?? 'verifique os dados e tente novamente';
+
+                $this->waiterError = "Pagamento recusado: {$reason}.";
+                $this->waiterProcessing = false;
+
+                return;
+            }
+
+            $company->saveAsaasCreditCardFromCharge($charge);
+            $creditCardToken ??= $charge['creditCard']['creditCardToken'] ?? null;
+
+            if ($company->asaas_subscription_id) {
+                $asaasService->cancelSubscription($company->asaas_subscription_id);
+
+                Subscription::where('company_id', $company->id)
+                    ->where('asaas_subscription_id', $company->asaas_subscription_id)
+                    ->whereIn('status', ['active', 'pending'])
+                    ->update(['status' => 'cancelled']);
+            }
+
+            $result = $asaasService->createSubscription(
+                customerId: $company->asaas_customer_id,
+                plan: $plan,
+                billingType: 'CREDIT_CARD',
+                creditCard: $creditCardToken ? null : $creditCard,
+                holderInfo: $creditCardToken ? null : $holderInfo,
+                nextDueDate: now()->addMonth()->toDateString(),
+                extraAmount: $extra['amount'],
+                extraDescription: $extra['description'],
+                creditCardToken: $creditCardToken,
+            );
+
+            Subscription::create([
+                'company_id' => $company->id,
+                'asaas_subscription_id' => $result['id'],
+                'plan' => $plan->value,
+                'status' => 'active',
+                'amount' => $result['value'],
+                'billing_cycle' => 'MONTHLY',
+                'next_due_date' => $result['nextDueDate'],
+            ]);
+
+            $company->update([
+                'waiter_module_enabled' => true,
+                'asaas_subscription_id' => $result['id'],
+                'subscription_payment_method' => 'CREDIT_CARD',
+            ]);
+
+            $this->persistTermsAcceptance($company);
+
+            $this->waiterModuleEnabled = true;
+            $this->asaasSubscriptionId = $result['id'];
+            $this->amount = $result['value'];
+            $this->nextDueDate = now()->addMonth()->format('d/m/Y');
+            $this->lastPaymentAt = now()->format('d/m/Y');
+            $this->combinedMonthlyAmount = $result['value'];
+            $this->payments = [];
+            $this->waiterSuccess = true;
+            $this->waiterProcessing = false;
+
+            $this->cardNumber = '';
+            $this->cardExpiry = '';
+            $this->cardCvv = '';
+            $this->cardHolderName = '';
+            $this->cardCpfCnpj = '';
+            $this->cardPostalCode = '';
+            $this->cardAddressNumber = '';
+        } catch (\Throwable $e) {
+            $this->waiterError = 'Erro ao processar pagamento. Por favor, tente novamente.';
+            $this->waiterProcessing = false;
+        }
+    }
+
+    public function cancelWaiterModule(AsaasServiceInterface $asaasService): void
+    {
+        $company = app('current.company');
+        $plan = $company->plan;
+        $extra = $this->combinedAddonExtra($this->pdvModuleEnabled, $this->fiscalModuleEnabled, false);
+        $planAmount = $plan->monthlyPrice() + $extra['amount'];
+
+        try {
+            if ($company->asaas_subscription_id) {
+                if ($planAmount > 0) {
+                    $description = $extra['description'] !== ''
+                        ? "{$plan->asaasDescription()} + {$extra['description']}"
+                        : $plan->asaasDescription();
+
+                    $result = $asaasService->updateSubscriptionValue(
+                        $company->asaas_subscription_id,
+                        $planAmount,
+                        $description,
+                    );
+
+                    Subscription::where('company_id', $company->id)
+                        ->where('asaas_subscription_id', $company->asaas_subscription_id)
+                        ->whereIn('status', ['active', 'pending'])
+                        ->update(['amount' => $result['value'] ?? $planAmount]);
+
+                    $this->amount = $result['value'] ?? $planAmount;
+                } else {
+                    // Plano atual não tem mensalidade e nenhum outro módulo ativo — cancela de fato.
+                    $asaasService->cancelSubscription($company->asaas_subscription_id);
+
+                    Subscription::where('company_id', $company->id)
+                        ->where('asaas_subscription_id', $company->asaas_subscription_id)
+                        ->whereIn('status', ['active', 'pending'])
+                        ->update(['status' => 'cancelled']);
+
+                    $company->update(['asaas_subscription_id' => null]);
+                    $this->asaasSubscriptionId = null;
+                    $this->amount = null;
+                }
+            } else {
+                $this->amount = null;
+            }
+        } catch (\Throwable $e) {
+            $this->waiterError = 'Erro ao cancelar o módulo no Asaas. Tente novamente em alguns instantes.';
+
+            return;
+        }
+
+        $company->update(['waiter_module_enabled' => false]);
+
+        $this->waiterModuleEnabled = false;
+        $this->combinedMonthlyAmount = $planAmount;
+        $this->confirmingWaiterCancellation = false;
+
+        session()->flash('status', 'Módulo Garçom cancelado. O valor foi debitado da sua assinatura a partir do próximo vencimento.');
+    }
+
     /**
      * @return array{amount: float, description: string}
      */
-    private function combinedAddonExtra(bool $pdvEnabled, bool $fiscalEnabled): array
+    private function combinedAddonExtra(bool $pdvEnabled, bool $fiscalEnabled, bool $waiterEnabled): array
     {
         $amount = 0.0;
         $parts = [];
@@ -1049,6 +1353,11 @@ class BillingSettings extends Component
         if ($fiscalEnabled) {
             $amount += $this->fiscalAddonAmount;
             $parts[] = 'Módulo Fiscal';
+        }
+
+        if ($waiterEnabled) {
+            $amount += $this->waiterAddonAmount;
+            $parts[] = 'Módulo Garçom';
         }
 
         return ['amount' => $amount, 'description' => implode(' + ', $parts)];

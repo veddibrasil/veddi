@@ -13,6 +13,9 @@ use App\Livewire\Admin\Pdv\Concerns\HasProductLookup;
 use App\Models\Branch;
 use App\Models\PdvAuditLog;
 use App\Models\Product;
+use App\Models\User;
+use App\Services\Company\UserCreationService;
+use Livewire\Attributes\Computed;
 use Livewire\Component;
 
 /** Mesa/comanda. Venda direta/balcão fica em {@see Terminal}. */
@@ -124,6 +127,21 @@ class TabTerminal extends Component
     // Garçom: só abre mesa/comanda e lança itens — sem caixa, pagamento, desconto ou cancelamento.
     public bool $isWaiter = false;
 
+    // ── Atalho: adicionar garçom (só pra quem gerencia usuários, com o módulo Garçom ativo) ──
+    public bool $canManageUsers = false;
+
+    public bool $waiterModuleEnabled = false;
+
+    public bool $showQuickWaiterForm = false;
+
+    public string $quickWaiterName = '';
+
+    public string $quickWaiterEmail = '';
+
+    public int $quickWaiterBranchId = 0;
+
+    public ?string $waiterCreatedMessage = null;
+
     public function mount(): void
     {
         $company = app()->bound('current.company') ? app('current.company') : null;
@@ -133,13 +151,16 @@ class TabTerminal extends Component
         abort_unless($company->pdv_module_enabled, 403, 'Módulo PDV não está habilitado para esta empresa.');
 
         $canFullyOperate = (bool) $user?->hasPermission('pdv.operate', $company);
-        $canWaiterOperate = (bool) $user?->hasPermission('pdv.waiter_operate', $company);
+        $canWaiterOperate = (bool) $user?->hasPermission('pdv.waiter_operate', $company)
+            && $company->waiter_module_enabled;
 
-        abort_unless($canFullyOperate || $canWaiterOperate, 403);
+        abort_unless($canFullyOperate || $canWaiterOperate, 403, 'Módulo Garçom não está habilitado para esta empresa.');
 
         $this->canOperate = true;
         $this->isWaiter = ! $canFullyOperate && $canWaiterOperate;
         $this->manualDiscountAllowed = (bool) $company->pdv_manual_discount_enabled;
+        $this->canManageUsers = ! $this->isWaiter && (bool) $user?->hasPermission('users.manage', $company);
+        $this->waiterModuleEnabled = (bool) $company->waiter_module_enabled;
 
         $branch = $this->isWaiter && $user->branchIdForCompany($company)
             ? Branch::where('company_id', $company->id)->find($user->branchIdForCompany($company))
@@ -245,6 +266,55 @@ class TabTerminal extends Component
         if ($this->getErrorBag()->isEmpty()) {
             $this->dispatch('product-added-to-cart', name: $product->name);
         }
+    }
+
+    public function quickCreateWaiter(): void
+    {
+        $company = app('current.company')->fresh();
+        $user = auth()->user();
+
+        abort_unless($company, 403);
+        abort_unless($company->waiter_module_enabled, 403, 'Módulo Garçom não está habilitado para esta empresa.');
+        abort_unless($user?->hasPermission('users.manage', $company), 403);
+
+        $this->validate([
+            'quickWaiterName' => 'required|string|max:255',
+            'quickWaiterEmail' => 'required|email|unique:users,email',
+        ], [
+            'quickWaiterName.required' => 'Informe o nome.',
+            'quickWaiterEmail.required' => 'Informe o e-mail.',
+            'quickWaiterEmail.unique' => 'Este e-mail já está em uso.',
+        ]);
+
+        $waiter = UserCreationService::create($company, $this->quickWaiterName, $this->quickWaiterEmail, 'garcom', $this->quickWaiterBranchId);
+
+        $this->reset(['quickWaiterName', 'quickWaiterEmail', 'quickWaiterBranchId', 'showQuickWaiterForm']);
+        $this->waiterCreatedMessage = "Garçom {$waiter->name} criado e e-mail de boas-vindas enviado.";
+        unset($this->waiters);
+    }
+
+    #[Computed]
+    public function waiters(): \Illuminate\Support\Collection
+    {
+        $company = app()->bound('current.company') ? app('current.company') : null;
+
+        if (! $company) {
+            return collect();
+        }
+
+        return User::whereHas('companies', fn ($q) => $q
+            ->where('companies.id', $company->id)
+            ->where('company_user.role', 'garcom')
+        )
+            ->with(['companies' => fn ($q) => $q->where('companies.id', $company->id)])
+            ->orderBy('name')
+            ->get()
+            ->map(fn (User $waiter) => [
+                'id' => $waiter->id,
+                'name' => $waiter->name,
+                'email' => $waiter->email,
+                'branch_id' => $waiter->companies->first()?->pivot->branch_id,
+            ]);
     }
 
     public function backToCatalog(): void

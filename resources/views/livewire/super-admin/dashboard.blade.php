@@ -70,6 +70,10 @@
                         <span class="text-neutral-500 dark:text-neutral-400">Módulo PDV</span>
                         <span class="font-semibold text-neutral-700 dark:text-neutral-200">R$ {{ number_format($mrrPdvAddon, 2, ',', '.') }}</span>
                     </div>
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-neutral-500 dark:text-neutral-400">Módulo Garçom</span>
+                        <span class="font-semibold text-neutral-700 dark:text-neutral-200">R$ {{ number_format($mrrWaiterAddon, 2, ',', '.') }}</span>
+                    </div>
                 </div>
             </div>
             <div class="bg-white border rounded-xl p-4 shadow-sm dark:bg-zinc-800 dark:border-zinc-700">

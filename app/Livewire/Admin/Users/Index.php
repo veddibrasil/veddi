@@ -2,15 +2,12 @@
 
 namespace App\Livewire\Admin\Users;
 
-use App\Mail\WelcomeUser;
 use App\Models\Branch;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\UserPermission;
+use App\Services\Company\UserCreationService;
 use App\Services\Company\UserPermissionService;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -91,33 +88,7 @@ class Index extends Component
             'newRole.required' => 'Selecione o tipo de usuário.',
         ]);
 
-        $company = app('current.company');
-        $temporaryPassword = 'password';
-
-        $user = User::create([
-            'name' => $this->newName,
-            'email' => $this->newEmail,
-            'password' => Hash::make($temporaryPassword),
-        ]);
-
-        $user->companies()->attach($company->id, [
-            'role' => $this->newRole,
-            'branch_id' => in_array($this->newRole, self::BRANCH_SCOPED_ROLES) && $this->newBranchId
-                ? $this->newBranchId
-                : null,
-        ]);
-
-        UserPermissionService::assignRolePermissions($user, $company, $this->newRole);
-
-        try {
-            Mail::to($user->email)->send(new WelcomeUser($user, $company, $temporaryPassword));
-        } catch (\Throwable $e) {
-            Log::warning('Falha ao enviar email de boas-vindas ao novo usuário', [
-                'user_id' => $user->id,
-                'email' => $user->email,
-                'error' => $e->getMessage(),
-            ]);
-        }
+        UserCreationService::create(app('current.company'), $this->newName, $this->newEmail, $this->newRole, $this->newBranchId);
 
         $this->reset(['newName', 'newEmail', 'newRole', 'newBranchId', 'showCreateForm']);
         session()->flash('status', 'Usuário criado e e-mail de boas-vindas enviado.');

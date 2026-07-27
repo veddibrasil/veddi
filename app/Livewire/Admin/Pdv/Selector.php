@@ -16,9 +16,10 @@ class Selector extends Component
         abort_unless($company->pdv_module_enabled, 403, 'Módulo PDV não está habilitado para esta empresa.');
 
         $canFullyOperate = (bool) $user?->hasPermission('pdv.operate', $company);
-        $canWaiterOperate = (bool) $user?->hasPermission('pdv.waiter_operate', $company);
+        $canWaiterOperate = (bool) $user?->hasPermission('pdv.waiter_operate', $company)
+            && $company->waiter_module_enabled;
 
-        abort_unless($canFullyOperate || $canWaiterOperate, 403);
+        abort_unless($canFullyOperate || $canWaiterOperate, 403, 'Módulo Garçom não está habilitado para esta empresa.');
 
         // Garçom só tem uma opção válida — não faz sentido mostrar o seletor pra ele.
         if (! $canFullyOperate && $canWaiterOperate) {

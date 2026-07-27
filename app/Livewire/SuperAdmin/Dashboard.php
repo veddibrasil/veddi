@@ -42,7 +42,10 @@ class Dashboard extends Component
             $activeWithPdv = Company::where('active', true)->where('pdv_module_enabled', true)->count();
             $mrrPdvAddon = $activeWithPdv * (float) config('pdv.addon_monthly_price');
 
-            $mrr = $mrrPlans + $mrrFiscalAddon + $mrrPdvAddon;
+            $activeWithWaiter = Company::where('active', true)->where('waiter_module_enabled', true)->count();
+            $mrrWaiterAddon = $activeWithWaiter * (float) config('waiter.addon_monthly_price');
+
+            $mrr = $mrrPlans + $mrrFiscalAddon + $mrrPdvAddon + $mrrWaiterAddon;
 
             $paidStatuses = ['paid', 'preparing', 'ready', 'delivered'];
 
@@ -102,7 +105,7 @@ class Dashboard extends Component
 
             return compact(
                 'totalCompanies', 'activeCompanies', 'pendingPaymentCompanies', 'blockedCompanies',
-                'newCompaniesThisMonth', 'companiesByPlan', 'mrr', 'mrrPlans', 'mrrFiscalAddon', 'mrrPdvAddon',
+                'newCompaniesThisMonth', 'companiesByPlan', 'mrr', 'mrrPlans', 'mrrFiscalAddon', 'mrrPdvAddon', 'mrrWaiterAddon',
                 'totalOrders', 'ordersToday', 'ordersThisMonth',
                 'totalRevenue', 'revenueThisMonth', 'platformFeeThisMonth', 'totalPlatformFee',
                 'planFeeThisMonth', 'totalPlanFee', 'pixPlatformFeeThisMonth', 'totalPixPlatformFee',

@@ -1,4 +1,5 @@
-<div class="flex flex-col flex-1 min-h-0 bg-zinc-50 text-neutral-900 dark:bg-[#0f1926] dark:text-neutral-100" x-data="pdvApp()" x-effect="watchPdvStep($wire.step)">
+<div class="flex flex-col flex-1 min-h-0 bg-zinc-50 text-neutral-900 dark:bg-[#0f1926] dark:text-neutral-100" x-data="pdvApp()" x-effect="watchPdvStep($wire.step)"
+     x-init="$watch(() => $wire.showQuickWaiterForm, val => val ? $flux.modal('quick-waiter-form').show() : $flux.modal('quick-waiter-form').close())">
 
     {{-- ══ Toast: produto adicionado ══ --}}
     <div
@@ -8,6 +9,12 @@
         class="fixed top-4 right-4 z-50 rounded-lg bg-neutral-900 text-white text-sm font-semibold px-4 py-2.5 shadow-lg dark:bg-amber-500 dark:text-white"
         style="display: none;"
     ></div>
+
+    @if ($waiterCreatedMessage)
+        <div class="fixed top-4 right-4 z-50 rounded-lg bg-green-600 text-white text-sm font-semibold px-4 py-2.5 shadow-lg">
+            {{ $waiterCreatedMessage }}
+        </div>
+    @endif
 
     {{-- ══ Header ══ --}}
     <div class="flex items-center justify-between gap-4 px-5 py-3 bg-white border-b border-neutral-200 shadow-sm dark:bg-zinc-900 dark:border-zinc-800 shrink-0">
@@ -44,6 +51,15 @@
                 <span class="text-sm text-neutral-500 dark:text-neutral-400">
                     {{ $this->branches->first()?->name ?? '—' }}
                 </span>
+            @endif
+
+            @if ($canManageUsers && $waiterModuleEnabled)
+                <button
+                    wire:click="$set('showQuickWaiterForm', true)"
+                    class="inline-flex items-center gap-1 text-sm font-medium px-3 py-2 rounded-lg border border-amber-500 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
+                >
+                    🙋 <span class="hidden sm:inline">+ Adicionar Garçom</span>
+                </button>
             @endif
 
             <button
@@ -917,5 +933,71 @@
 
         </div>
         {{-- fim 3 colunas --}}
+
+    {{-- Modal: Adicionar Garçom (só quando o módulo Garçom está ativo) --}}
+    <flux:modal name="quick-waiter-form" class="max-w-2xl">
+        <div class="space-y-6">
+            <div>
+                <flux:heading size="lg">🙋 Adicionar Garçom</flux:heading>
+                <flux:subheading class="mt-1">Cria o acesso e envia o e-mail de boas-vindas com a senha temporária.</flux:subheading>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <flux:input wire:model="quickWaiterName" label="Nome" placeholder="Nome completo" />
+                    @error('quickWaiterName') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                </div>
+                <div>
+                    <flux:input wire:model="quickWaiterEmail" label="E-mail" type="email" placeholder="garcom@empresa.com" />
+                    @error('quickWaiterEmail') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                </div>
+                <div>
+                    <flux:select wire:model="quickWaiterBranchId" label="Filial">
+                        <flux:select.option value="0">Todas as filiais</flux:select.option>
+                        @foreach ($this->branches as $branch)
+                            <flux:select.option value="{{ $branch->id }}">{{ $branch->name }}</flux:select.option>
+                        @endforeach
+                    </flux:select>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-1">
+                <flux:modal.close>
+                    <flux:button variant="ghost" wire:click="$set('showQuickWaiterForm', false)">Cancelar</flux:button>
+                </flux:modal.close>
+                <flux:button
+                    wire:click="quickCreateWaiter"
+                    wire:loading.attr="disabled"
+                    variant="primary">
+                    <span wire:loading.remove wire:target="quickCreateWaiter">Adicionar Garçom</span>
+                    <span wire:loading wire:target="quickCreateWaiter">Criando...</span>
+                </flux:button>
+            </div>
+
+            <div class="border-t border-neutral-200 dark:border-zinc-700 pt-4">
+                <p class="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-2">
+                    Garçons cadastrados ({{ $this->waiters->count() }})
+                </p>
+
+                @if ($this->waiters->isEmpty())
+                    <p class="text-sm text-neutral-400 dark:text-neutral-500">Nenhum garçom cadastrado ainda.</p>
+                @else
+                    <div class="max-h-56 overflow-y-auto divide-y divide-neutral-100 dark:divide-zinc-700 rounded-lg border border-neutral-200 dark:border-zinc-700">
+                        @foreach ($this->waiters as $waiter)
+                            <div class="flex items-center justify-between gap-3 px-3 py-2">
+                                <div class="min-w-0">
+                                    <p class="text-sm font-medium text-neutral-800 dark:text-neutral-100 truncate">{{ $waiter['name'] }}</p>
+                                    <p class="text-xs text-neutral-400 dark:text-neutral-500 truncate">{{ $waiter['email'] }}</p>
+                                </div>
+                                <span class="shrink-0 text-xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 dark:bg-zinc-700 dark:text-neutral-300">
+                                    {{ $this->branches->firstWhere('id', $waiter['branch_id'])?->name ?? 'Todas as filiais' }}
+                                </span>
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
+            </div>
+        </div>
+    </flux:modal>
 
 </div>

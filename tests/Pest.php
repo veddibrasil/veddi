@@ -66,6 +66,7 @@ function pdvContext(): array
         'active' => true,
         'plan' => 'pro',
         'pdv_module_enabled' => true,
+        'waiter_module_enabled' => true,
     ]);
 
     app()->instance('current.company', $company);

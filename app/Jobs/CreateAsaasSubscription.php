@@ -63,6 +63,11 @@ class CreateAsaasSubscription implements ShouldBeUnique, ShouldQueue
             $extraParts[] = 'Módulo Fiscal';
         }
 
+        if ($this->company->waiter_module_enabled) {
+            $extraAmount += (float) config('waiter.addon_monthly_price', 99.00);
+            $extraParts[] = 'Módulo Garçom';
+        }
+
         $extraDescription = implode(' + ', $extraParts);
 
         try {
