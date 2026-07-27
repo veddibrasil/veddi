@@ -20,6 +20,7 @@ Route::get('/', function () {
             return redirect()->route('admin.dashboard');
         }
     }
+
     return redirect()->route('admin.dashboard');
 
 });
@@ -29,7 +30,6 @@ Route::get('/health', \App\Http\Controllers\HealthController::class)->name('heal
 // --- Onboarding público ---
 Route::get('/cadastro', [RegisterCompanyController::class, 'create'])->name('register.create');
 Route::post('/cadastro', [RegisterCompanyController::class, 'store'])->middleware('throttle:5,1')->name('register.store');
-Route::get('/cadastro/pendente', \App\Livewire\Onboarding\PendingPayment::class)->name('register.pending');
 
 // --- Simulação de pagamento Asaas (somente APP_DEBUG=true) ---
 Route::post('/dev/simulate/asaas-payment', AsaasSimulatePaymentController::class)->name('dev.simulate.asaas-payment');

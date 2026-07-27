@@ -9,6 +9,7 @@ use App\DTOs\OnboardingDTO;
 use App\Enums\Plan;
 use App\Helpers\Validation;
 use App\Models\Company;
+use App\Models\Subscription;
 use App\Rules\ReservedSlug;
 use App\Services\Company\CompanyService;
 use App\Services\Company\OnboardingService;
@@ -442,8 +443,6 @@ class RegisterForm extends Component
             }
 
             // Paid plans: wait for setup fee payment
-            session(['pending_company_id' => $company->id]);
-
             if ($this->paymentMethod === 'CREDIT_CARD') {
                 $this->pendingCompanyId = $company->id;
                 $this->cardCpfCnpj = $this->asaasCpfCnpj;
@@ -453,7 +452,7 @@ class RegisterForm extends Component
                 return;
             }
 
-            $this->redirectRoute('register.pending');
+            $this->redirectRoute('login');
         } catch (\Throwable $e) {
             $this->submitting = false;
             $this->errorMessage = 'Ocorreu um erro ao criar sua conta. Por favor, tente novamente.';
@@ -520,27 +519,33 @@ class RegisterForm extends Component
 
             [$month, $year] = explode('/', $this->cardExpiry);
 
-            $charge = app(AsaasServiceInterface::class)->createCreditCardCharge(
+            $creditCard = new CreditCardDTO(
+                holderName: $this->cardHolderName,
+                number: $this->cardNumber,
+                expiryMonth: $month,
+                expiryYear: '20'.$year,
+                ccv: $this->cardCvv,
+            );
+
+            $holderInfo = new CreditCardHolderDTO(
+                name: $admin?->name ?? $this->cardHolderName,
+                email: $admin?->email ?? '',
+                cpfCnpj: $this->cardCpfCnpj,
+                postalCode: $this->cardPostalCode,
+                addressNumber: $this->cardAddressNumber,
+                mobilePhone: $phone,
+                phone: $phone,
+            );
+
+            $asaasService = app(AsaasServiceInterface::class);
+
+            $charge = $asaasService->createCreditCardCharge(
                 customerId: $company->asaas_customer_id,
                 amount: $firstAmount,
                 description: $description,
                 externalReference: "setup_fee_{$company->id}",
-                creditCard: new CreditCardDTO(
-                    holderName: $this->cardHolderName,
-                    number: $this->cardNumber,
-                    expiryMonth: $month,
-                    expiryYear: '20'.$year,
-                    ccv: $this->cardCvv,
-                ),
-                holderInfo: new CreditCardHolderDTO(
-                    name: $admin?->name ?? $this->cardHolderName,
-                    email: $admin?->email ?? '',
-                    cpfCnpj: $this->cardCpfCnpj,
-                    postalCode: $this->cardPostalCode,
-                    addressNumber: $this->cardAddressNumber,
-                    mobilePhone: $phone,
-                    phone: $phone,
-                ),
+                creditCard: $creditCard,
+                holderInfo: $holderInfo,
             );
 
             if (($charge['status'] ?? '') !== 'CONFIRMED') {
@@ -560,9 +565,37 @@ class RegisterForm extends Component
             ]);
             $company->saveAsaasCreditCardFromCharge($charge);
 
+            if ($plan?->hasMonthlySubscription()) {
+                $creditCardToken = $charge['creditCard']['creditCardToken'] ?? null;
+
+                $result = $asaasService->createSubscription(
+                    customerId: $company->asaas_customer_id,
+                    plan: $plan,
+                    billingType: 'CREDIT_CARD',
+                    creditCard: $creditCardToken ? null : $creditCard,
+                    holderInfo: $creditCardToken ? null : $holderInfo,
+                    nextDueDate: now()->addMonth()->toDateString(),
+                    creditCardToken: $creditCardToken,
+                );
+
+                Subscription::create([
+                    'company_id' => $company->id,
+                    'asaas_subscription_id' => $result['id'],
+                    'plan' => $plan->value,
+                    'status' => 'active',
+                    'amount' => $result['value'],
+                    'billing_cycle' => 'MONTHLY',
+                    'next_due_date' => $result['nextDueDate'],
+                ]);
+
+                $company->update([
+                    'asaas_subscription_id' => $result['id'],
+                    'subscription_payment_method' => 'CREDIT_CARD',
+                ]);
+            }
+
             app(CompanyService::class)->activate($company);
 
-            session()->forget('pending_company_id');
             $this->cardSuccess = true;
             $this->cardProcessing = false;
 

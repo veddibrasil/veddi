@@ -19,14 +19,11 @@ class RegisterCompanyController extends Controller
         RegisterCompanyRequest $request,
         OnboardingService $onboardingService,
     ): RedirectResponse {
-        $company = $onboardingService->handle(
+        $onboardingService->handle(
             OnboardingDTO::fromArray($request->validated())
         );
 
-        // All plans start as PENDING_PAYMENT (setup fee required)
-        session(['pending_company_id' => $company->id]);
-
-        return redirect()->route('register.pending')
-            ->with('info', 'Sua conta foi criada. Aguardando confirmação do pagamento da taxa de ativação.');
+        return redirect()->route('login')
+            ->with('status', 'Sua conta foi criada. Faça login para continuar.');
     }
 }

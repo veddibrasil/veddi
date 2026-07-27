@@ -16,10 +16,6 @@ class EnsureCompanyIsActive
             return $next($request);
         }
 
-        if ($company->isBlocked()) {
-            return redirect()->route('admin.billing');
-        }
-
-        return redirect()->route('register.pending');
+        return redirect()->route('admin.billing');
     }
 }
