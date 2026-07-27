@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Exceptions\AsaasCircuitOpenException;
+use App\Models\CompanyNotification;
 use App\Models\PaymentRefund;
 use App\Services\Finance\RefundCoverageService;
 use App\Services\Refund\RefundService;
@@ -132,11 +133,9 @@ class ProcessRefund implements ShouldBeUnique, ShouldQueue
                     'external_refund_id' => $result['external_refund_id'] ?? null,
                 ]);
             } else {
-                $refundService->markFailed(
-                    $this->refund,
-                    'GATEWAY_REJECTED',
-                    'Gateway rejeitou o estorno: '.$this->extractGatewayErrorMessage($result['raw'] ?? [])
-                );
+                $message = 'Gateway rejeitou o estorno: '.$this->extractGatewayErrorMessage($result['raw'] ?? []);
+                $refundService->markFailed($this->refund, 'GATEWAY_REJECTED', $message);
+                $this->notifyCompany($message);
             }
         } catch (AsaasCircuitOpenException $e) {
             Log::channel('payments')->warning('Circuit aberto — ProcessRefund adiado 15 min', [
@@ -169,5 +168,27 @@ class ProcessRefund implements ShouldBeUnique, ShouldQueue
         }
 
         return json_encode($raw);
+    }
+
+    public function failed(\Throwable $exception): void
+    {
+        $this->refund->refresh();
+
+        if (in_array($this->refund->status, ['succeeded', 'canceled'])) {
+            return;
+        }
+
+        $this->notifyCompany($exception->getMessage());
+    }
+
+    private function notifyCompany(string $message): void
+    {
+        CompanyNotification::create([
+            'company_id' => $this->refund->company_id,
+            'type' => 'refund_failed',
+            'title' => 'Estorno falhou',
+            'subtitle' => $message,
+            'link' => route('admin.orders.show', $this->refund->order_id),
+        ]);
     }
 }

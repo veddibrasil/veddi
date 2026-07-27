@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Exceptions\FiscalNoteAlreadyIssuedException;
+use App\Models\CompanyNotification;
 use App\Models\FiscalNote;
 use App\Models\Order;
 use App\Services\Fiscal\FiscalNoteService;
@@ -62,5 +63,17 @@ class IssueFiscalNote implements ShouldQueue
         FiscalNote::where('order_id', $this->orderId)
             ->where('status', 'pending')
             ->update(['status' => 'error', 'data->error_message' => $exception->getMessage()]);
+
+        $companyId = Order::withoutGlobalScopes()->find($this->orderId)?->company_id;
+
+        if ($companyId) {
+            CompanyNotification::create([
+                'company_id' => $companyId,
+                'type' => 'fiscal_note_failed',
+                'title' => 'Falha ao emitir nota fiscal',
+                'subtitle' => $exception->getMessage(),
+                'link' => route('admin.orders.show', $this->orderId),
+            ]);
+        }
     }
 }

@@ -2,9 +2,11 @@
 
 use App\Contracts\FiscalNoteProviderInterface;
 use App\DTOs\FiscalNoteResult;
+use App\Jobs\IssueFiscalNote;
 use App\Models\Branch;
 use App\Models\Company;
 use App\Models\CompanyFiscalConfig;
+use App\Models\CompanyNotification;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -359,4 +361,19 @@ test('CompanyFiscalConfig::tokenFor retorna o token do ambiente certo e cai para
 
     expect($config->tokenFor('producao'))->toBe('tok-legado');
     expect($config->tokenFor('homologacao'))->toBe('tok-legado');
+});
+
+test('IssueFiscalNote cria CompanyNotification quando o job falha definitivamente', function () {
+    ['order' => $order, 'company' => $company] = fiscalTestContext();
+
+    $job = new IssueFiscalNote($order->id);
+    $job->failed(new RuntimeException('Focus NFe indisponível'));
+
+    $notification = CompanyNotification::where('company_id', $company->id)
+        ->where('type', 'fiscal_note_failed')
+        ->first();
+
+    expect($notification)->not->toBeNull()
+        ->and($notification->subtitle)->toBe('Focus NFe indisponível')
+        ->and($notification->link)->toBe(route('admin.orders.show', $order->id));
 });

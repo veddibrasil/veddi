@@ -4,6 +4,7 @@ namespace App\Livewire\Chat\Concerns;
 
 use App\Contracts\OrderServiceInterface;
 use App\Events\OrderStatusUpdated;
+use App\Models\CompanyNotification;
 use App\Models\Coupon;
 use App\Models\Customer;
 use App\Models\Order;
@@ -138,6 +139,16 @@ trait HasPaymentFlow
                 'order_type' => $this->orderType,
                 'error' => $e->getMessage(),
             ]);
+
+            if ($company = $this->currentCompany()) {
+                CompanyNotification::create([
+                    'company_id' => $company->id,
+                    'type' => 'order_failed',
+                    'title' => 'Falha ao criar pedido',
+                    'subtitle' => $e->getMessage(),
+                ]);
+            }
+
             $this->addMessage('bot', 'Não foi possível criar o pedido: '.$e->getMessage());
             $this->submitting = false;
             $this->isLoading = false;

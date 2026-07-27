@@ -92,14 +92,20 @@
                         'hover:bg-blue-50 dark:hover:bg-blue-900/20' => ! $notif->isRead(),
                     ])>
                         {{-- Icon --}}
+                        @php($isError = in_array($notif->type, ['refund_failed', 'fiscal_note_failed', 'order_failed'], true))
                         <div @class([
                             'w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5',
                             'bg-green-100 dark:bg-green-900/40' => $notif->type === 'order',
-                            'bg-neutral-100 dark:bg-zinc-700/60' => $notif->type !== 'order',
+                            'bg-red-100 dark:bg-red-900/40' => $isError,
+                            'bg-neutral-100 dark:bg-zinc-700/60' => $notif->type !== 'order' && ! $isError,
                         ])>
                             @if($notif->type === 'order')
                                 <svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 11H4L5 9z"/>
+                                </svg>
+                            @elseif($isError)
+                                <svg class="w-4 h-4 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
                                 </svg>
                             @else
                                 <svg class="w-4 h-4 text-neutral-600 dark:text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">

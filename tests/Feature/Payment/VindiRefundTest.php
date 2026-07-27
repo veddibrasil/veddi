@@ -4,6 +4,7 @@ use App\Contracts\WalletServiceInterface;
 use App\Jobs\ProcessRefund;
 use App\Models\Branch;
 use App\Models\Company;
+use App\Models\CompanyNotification;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Payment;
@@ -359,4 +360,97 @@ test('ProcessRefund simula estorno de pagamento Vindi simulado sem chamar API', 
     expect($refund->status)->toBe('succeeded')
         ->and($refund->external_refund_id)->toBe('sim_refund_'.$refund->id);
     Http::assertNothingSent();
+});
+
+test('ProcessRefund cria CompanyNotification quando gateway rejeita o estorno', function () {
+    $ctx = vindiRefundContext();
+
+    $refund = PaymentRefund::create([
+        'company_id' => $ctx['company']->id,
+        'order_id' => $ctx['order']->id,
+        'payment_id' => $ctx['payment']->id,
+        'gateway' => 'vindi',
+        'amount' => 80.00,
+        'status' => 'requested',
+        'reason' => 'customer_request',
+        'requested_by_type' => 'system',
+        'requested_at' => now(),
+    ]);
+
+    config()->set('payments.vindi_token_account', 'tok_test');
+    config()->set('payments.vindi_reseller_token', 'res_test');
+
+    Http::fake([
+        '*/authorizations/access_token' => Http::response([
+            'data_response' => ['authorization' => ['access_token' => 'test_access_token']],
+        ], 200),
+        '*/transactions/cancel' => Http::response([
+            'message_response' => ['message' => 'error'],
+            'error_response' => ['general_errors' => [['code' => '001', 'message' => 'Token inválido']]],
+        ], 422),
+    ]);
+
+    $job = new ProcessRefund($refund);
+    $job->handle(app(RefundService::class));
+
+    $refund->refresh();
+    expect($refund->status)->toBe('failed');
+
+    $notification = CompanyNotification::where('company_id', $ctx['company']->id)
+        ->where('type', 'refund_failed')
+        ->first();
+
+    expect($notification)->not->toBeNull()
+        ->and($notification->subtitle)->toContain('Token inválido')
+        ->and($notification->link)->toBe(route('admin.orders.show', $ctx['order']->id));
+});
+
+test('ProcessRefund cria CompanyNotification em failed() quando refund ainda não foi resolvido', function () {
+    $ctx = vindiRefundContext();
+
+    $refund = PaymentRefund::create([
+        'company_id' => $ctx['company']->id,
+        'order_id' => $ctx['order']->id,
+        'payment_id' => $ctx['payment']->id,
+        'gateway' => 'vindi',
+        'amount' => 80.00,
+        'status' => 'in_progress',
+        'reason' => 'customer_request',
+        'requested_by_type' => 'system',
+        'requested_at' => now(),
+    ]);
+
+    $job = new ProcessRefund($refund);
+    $job->failed(new RuntimeException('Timeout ao conectar no gateway'));
+
+    $notification = CompanyNotification::where('company_id', $ctx['company']->id)
+        ->where('type', 'refund_failed')
+        ->first();
+
+    expect($notification)->not->toBeNull()
+        ->and($notification->subtitle)->toBe('Timeout ao conectar no gateway');
+});
+
+test('ProcessRefund não cria CompanyNotification em failed() quando refund já foi concluído', function () {
+    $ctx = vindiRefundContext();
+
+    $refund = PaymentRefund::create([
+        'company_id' => $ctx['company']->id,
+        'order_id' => $ctx['order']->id,
+        'payment_id' => $ctx['payment']->id,
+        'gateway' => 'vindi',
+        'amount' => 80.00,
+        'status' => 'succeeded',
+        'reason' => 'customer_request',
+        'requested_by_type' => 'system',
+        'requested_at' => now(),
+        'processed_at' => now(),
+    ]);
+
+    $job = new ProcessRefund($refund);
+    $job->failed(new RuntimeException('Timeout ao conectar no gateway'));
+
+    expect(CompanyNotification::where('company_id', $ctx['company']->id)
+        ->where('type', 'refund_failed')
+        ->exists())->toBeFalse();
 });
