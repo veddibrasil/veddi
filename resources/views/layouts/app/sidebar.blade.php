@@ -14,7 +14,7 @@
     <body class="{{ $bodyClass }} bg-[#f8f8fb] dark:bg-[#0d1825]">
         <flux:sidebar sticky collapsible="mobile" class="veddi-sidebar border-e border-[#5c0079]">
             <flux:sidebar.header>
-                <x-app-logo :sidebar="true" href="{{ auth()->user()?->isSuperAdmin() ? route('superadmin.dashboard') : ($isWaiterOnly ? route('admin.pdv') : route('admin.dashboard')) }}" wire:navigate />
+                <x-app-logo :sidebar="true" href="{{ auth()->user()?->isSuperAdmin() ? route('superadmin.dashboard') : ($isWaiterOnly ? route('admin.pdv.tabs') : route('admin.dashboard')) }}" wire:navigate />
 
                 @auth
                     @if(!auth()->user()?->isSuperAdmin())
@@ -40,8 +40,8 @@
                 @else
                     @if($isWaiterOnly)
                         <flux:sidebar.group heading="PDV" class="grid">
-                            <flux:sidebar.item icon="computer-desktop" :href="route('admin.pdv')" :current="request()->routeIs('admin.pdv')" wire:navigate>
-                                Terminal PDV
+                            <flux:sidebar.item icon="table-cells" :href="route('admin.pdv.tabs')" :current="request()->routeIs('admin.pdv.tabs')" wire:navigate>
+                                Mesas / Comandas
                             </flux:sidebar.item>
                         </flux:sidebar.group>
                     @else
@@ -71,7 +71,7 @@
 
                     @if($can('pdv.operate') && $company?->pdv_module_enabled)
                         <flux:sidebar.group heading="PDV" class="grid">
-                                <flux:sidebar.item icon="computer-desktop" :href="route('admin.pdv')" :current="request()->routeIs('admin.pdv')" wire:navigate>
+                                <flux:sidebar.item icon="computer-desktop" :href="route('admin.pdv')" :current="request()->routeIs('admin.pdv') || request()->routeIs('admin.pdv.checkout') || request()->routeIs('admin.pdv.tabs')" wire:navigate>
                                     Terminal PDV
                                 </flux:sidebar.item>
                                 <flux:sidebar.item icon="chart-bar" :href="route('admin.pdv.report')" :current="request()->routeIs('admin.pdv.report')" wire:navigate>

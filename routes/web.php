@@ -137,8 +137,10 @@ Route::middleware(['auth', 'verified', 'company.active'])
 
         Route::get('/coupons', \App\Livewire\Admin\Coupons\Index::class)->name('coupons.index');
 
-        // PDV — exige módulo PDV habilitado + permissão pdv.operate (verificado no componente)
-        Route::get('/pdv', \App\Livewire\Admin\Pdv\Terminal::class)->name('pdv');
+        // PDV — exige módulo PDV habilitado + permissão pdv.operate/pdv.waiter_operate (verificado no componente)
+        Route::get('/pdv', \App\Livewire\Admin\Pdv\Selector::class)->name('pdv');
+        Route::get('/pdv/impressao', \App\Livewire\Admin\Pdv\Terminal::class)->name('pdv.checkout');
+        Route::get('/pdv/comandas', \App\Livewire\Admin\Pdv\TabTerminal::class)->name('pdv.tabs');
         Route::get('/pdv/report', \App\Livewire\Admin\Pdv\Report::class)->name('pdv.report');
         Route::get('/pdv/cash-sessions/{cashSession}/print', \App\Http\Controllers\Admin\Pdv\CashClosingReportController::class)->name('pdv.cash-session.print');
 

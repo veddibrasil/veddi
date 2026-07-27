@@ -2,40 +2,33 @@
 
 namespace App\Livewire\Admin\Pdv;
 
-use App\Livewire\Admin\Pdv\Concerns\HasCartManagement;
 use App\Livewire\Admin\Pdv\Concerns\HasCashSession;
 use App\Livewire\Admin\Pdv\Concerns\HasCatalog;
-use App\Livewire\Admin\Pdv\Concerns\HasClosingReports;
 use App\Livewire\Admin\Pdv\Concerns\HasCustomerManagement;
-use App\Livewire\Admin\Pdv\Concerns\HasDeliveryFee;
 use App\Livewire\Admin\Pdv\Concerns\HasManualDiscount;
-use App\Livewire\Admin\Pdv\Concerns\HasOrderCancellation;
+use App\Livewire\Admin\Pdv\Concerns\HasOpenTabs;
 use App\Livewire\Admin\Pdv\Concerns\HasOrderTotals;
-use App\Livewire\Admin\Pdv\Concerns\HasPaymentFlow;
 use App\Livewire\Admin\Pdv\Concerns\HasPaymentState;
 use App\Livewire\Admin\Pdv\Concerns\HasProductLookup;
 use App\Models\Branch;
 use App\Models\PdvAuditLog;
+use App\Models\Product;
 use Livewire\Component;
 
-/** Venda direta / balcão. Fluxo de mesa/comanda fica em {@see TabTerminal}. */
-class Terminal extends Component
+/** Mesa/comanda. Venda direta/balcão fica em {@see Terminal}. */
+class TabTerminal extends Component
 {
-    use HasCartManagement;
     use HasCashSession;
     use HasCatalog;
-    use HasClosingReports;
     use HasCustomerManagement;
-    use HasDeliveryFee;
     use HasManualDiscount;
-    use HasOrderCancellation;
+    use HasOpenTabs;
     use HasOrderTotals;
-    use HasPaymentFlow;
     use HasPaymentState;
     use HasProductLookup;
 
     // ── Estado da interface ──────────────────────────────────────────────────
-    public string $step = 'catalog'; // open_cash | catalog | payment | pix | success | close_cash
+    public string $step = 'catalog'; // open_cash | catalog | payment | pix | success
 
     public bool $showSessionHistory = false;
 
@@ -50,8 +43,14 @@ class Terminal extends Component
     // ── Leitor de código de barras ────────────────────────────────────────────
     public string $barcodeInput = '';
 
-    // ── Carrinho: [cartKey => [product_id, name, price, qty, options?]] ──────
+    // ── Sempre vazio: comanda não usa carrinho pendente, o clique já lança
+    //    direto na order (sendProductToComanda). Propriedade existe só porque
+    //    HasProductLookup/HasOrderTotals são compartilhadas com o Terminal. ────
     public array $cart = [];
+
+    // ── Sempre 'balcao': mesa/comanda não tem fluxo de entrega. Propriedade
+    //    existe só porque HasCustomerManagement é compartilhada com o Terminal. ─
+    public string $deliveryType = 'balcao';
 
     // ── Cliente (opcional) ───────────────────────────────────────────────────
     public string $customerQuery = '';
@@ -64,7 +63,7 @@ class Terminal extends Component
 
     public array $customerResults = [];
 
-    // ── Pagamento ─────────────────────────────────────────────────────────────
+    // ── Pagamento (fechamento de comanda) ────────────────────────────────────
     public string $paymentMethod = 'cash';
 
     public string $cashReceivedInput = '';
@@ -82,27 +81,6 @@ class Terminal extends Component
 
     public bool $couvertFeeWaived = false;
 
-    // ── Entrega ───────────────────────────────────────────────────────────────
-    public string $deliveryType = 'balcao'; // 'balcao' | 'entrega'
-
-    public string $deliveryAddress = '';
-
-    public string $deliveryNumber = '';
-
-    public string $deliveryComplement = '';
-
-    public string $deliveryNeighborhood = '';
-
-    public string $deliveryCity = '';
-
-    public string $deliveryCep = '';
-
-    public float $deliveryFeeAmount = 0.0;
-
-    public ?string $deliveryFeeError = null;
-
-    public string $deliveryPaymentStatus = 'paid'; // 'paid' | 'on_delivery' — só relevante quando deliveryType === 'entrega'
-
     // ── Observação ────────────────────────────────────────────────────────────
     public string $notes = '';
 
@@ -114,8 +92,6 @@ class Terminal extends Component
     public ?float $lastOrderTotal = null;
 
     public ?int $lastOrderId = null;
-
-    public bool $confirmingCancelOrder = false;
 
     // ── Cliente novo (criação inline) ─────────────────────────────────────────
     public bool $showCreateCustomer = false;
@@ -129,43 +105,23 @@ class Terminal extends Component
     // ── Caixa (sessão PDV) ────────────────────────────────────────────────────
     public ?int $cashSessionId = null;
 
-    public string $openingAmountInput = '';
-
     public string $terminalName = '';
 
-    public string $closingAmountInput = '';
+    // ── Mesa / Comanda ───────────────────────────────────────────────────────
+    public ?int $selectedTableId = null;
 
-    public string $reconciliationNotes = '';
+    public string $newTableNumber = '';
 
-    // ── Movimentação manual do caixa ─────────────────────────────────────────
-    public string $cashMovementType = 'supply'; // supply | withdrawal
+    public ?int $openTabOrderId = null;
 
-    public string $cashMovementAmountInput = '';
-
-    public string $cashMovementReason = '';
-
-    public bool $showCashMovementForm = false;
-
-    // ── Histórico de sessão ───────────────────────────────────────────────────
-    public ?int $confirmingCancelSessionOrderId = null;
-
-    // ── Fechamento de comanda (sempre null aqui — Terminal não abre mesa/comanda,
-    //    só TabTerminal. Fica declarado porque HasOrderTotals bifurca nele pra
-    //    reaproveitar os mesmos cálculos de total/taxa do wizard de pagamento) ──
     public ?int $closingTabOrderId = null;
 
-    // ── Relatórios de fechamento ──────────────────────────────────────────────
-    public bool $showClosingReports = false;
-
-    public ?int $viewingClosedSessionId = null;
+    public ?int $viewingTabItemsOrderId = null;
 
     // ── Permissões ────────────────────────────────────────────────────────────
     public bool $canOperate = false;
 
-    // Sempre false no Terminal: garçom (pdv.waiter_operate sem pdv.operate) é redirecionado pro
-    // TabTerminal (mesa/comanda) já no Selector, antes de chegar aqui. Propriedade continua
-    // existindo porque traits compartilhadas com TabTerminal (HasCashSession, HasManualDiscount,
-    // HasOrderCancellation, HasClosingReports) checam `$this->isWaiter` internamente.
+    // Garçom: só abre mesa/comanda e lança itens — sem caixa, pagamento, desconto ou cancelamento.
     public bool $isWaiter = false;
 
     public function mount(): void
@@ -177,37 +133,135 @@ class Terminal extends Component
         abort_unless($company->pdv_module_enabled, 403, 'Módulo PDV não está habilitado para esta empresa.');
 
         $canFullyOperate = (bool) $user?->hasPermission('pdv.operate', $company);
+        $canWaiterOperate = (bool) $user?->hasPermission('pdv.waiter_operate', $company);
 
-        abort_unless($canFullyOperate, 403);
+        abort_unless($canFullyOperate || $canWaiterOperate, 403);
 
         $this->canOperate = true;
+        $this->isWaiter = ! $canFullyOperate && $canWaiterOperate;
         $this->manualDiscountAllowed = (bool) $company->pdv_manual_discount_enabled;
 
-        $branch = Branch::where('company_id', $company->id)
-            ->where('active', true)
-            ->orderBy('id')
-            ->first();
+        $branch = $this->isWaiter && $user->branchIdForCompany($company)
+            ? Branch::where('company_id', $company->id)->find($user->branchIdForCompany($company))
+            : Branch::where('company_id', $company->id)
+                ->where('active', true)
+                ->orderBy('id')
+                ->first();
 
         $this->selectedBranchId = $branch?->id;
 
+        if ($this->isWaiter) {
+            $this->step = 'catalog';
+
+            return;
+        }
+
+        // Não-garçom precisa de caixa aberto pra fechar comanda (a cobrança entra na conferência
+        // dele) — mas quem abre/fecha caixa é só o Terminal (venda direta). Sem sessão, manda
+        // abrir lá primeiro em vez de duplicar a UI de abertura de caixa aqui.
         $this->syncCashSession();
+
+        if (! $this->cashSessionId) {
+            $this->redirect(route('admin.pdv.checkout'));
+
+            return;
+        }
+
+        $this->step = 'catalog';
     }
 
     // ── Filial ───────────────────────────────────────────────────────────────
 
     public function updatedSelectedBranchId(): void
     {
-        $this->cart = [];
         $this->activeCategoryId = null;
         $this->search = '';
+        $this->openTabOrderId = null;
+        $this->selectedTableId = null;
         unset($this->branchServiceCharge);
 
+        if ($this->isWaiter) {
+            $this->step = 'catalog';
+
+            return;
+        }
+
         $this->syncCashSession();
+
+        if (! $this->cashSessionId) {
+            $this->redirect(route('admin.pdv.checkout'));
+        }
+    }
+
+    /** Lançamento direto na comanda — sem carrinho pendente, ao contrário do Terminal. */
+    public function addProduct(int $productId): void
+    {
+        if (! $this->selectedBranchId) {
+            return;
+        }
+
+        $product = Product::withoutGlobalScopes()
+            ->whereHas('branches', fn ($q) => $q
+                ->where('branches.id', $this->selectedBranchId)
+                ->where('branch_product.available', true)
+            )
+            ->where('active', true)
+            ->where('available_in_pdv', true)
+            ->find($productId);
+
+        if (! $product || ! $this->checkStockBeforeAdd($productId, $product->name)) {
+            return;
+        }
+
+        $this->sendProductToComanda($product);
+
+        if ($this->getErrorBag()->isEmpty()) {
+            $this->dispatch('product-added-to-cart', name: $product->name);
+        }
+    }
+
+    public function addProductWithOptions(int $productId, array $optionSelections): void
+    {
+        if (! $this->selectedBranchId) {
+            return;
+        }
+
+        $product = Product::withoutGlobalScopes()
+            ->with('optionGroups')
+            ->whereHas('branches', fn ($q) => $q
+                ->where('branches.id', $this->selectedBranchId)
+                ->where('branch_product.available', true)
+            )
+            ->where('active', true)
+            ->where('available_in_pdv', true)
+            ->find($productId);
+
+        if (! $product || ! $this->checkStockBeforeAdd($productId, $product->name)) {
+            return;
+        }
+
+        $this->sendProductToComanda($product, $optionSelections);
+
+        if ($this->getErrorBag()->isEmpty()) {
+            $this->dispatch('product-added-to-cart', name: $product->name);
+        }
+    }
+
+    public function backToCatalog(): void
+    {
+        $this->closingTabOrderId = null;
+        $this->step = 'catalog';
+        $this->resetPaymentState();
+    }
+
+    /** Confirma o fechamento da comanda em pagamento — wrapper público pro closeTab() privado de HasOpenTabs. */
+    public function confirmCloseTab(): void
+    {
+        $this->closeTab();
     }
 
     public function resetTerminal(): void
     {
-        $this->cart = [];
         $this->customerQuery = '';
         $this->customerName = '';
         $this->customerId = null;
@@ -216,13 +270,14 @@ class Terminal extends Component
         $this->lastOrderNumber = null;
         $this->lastOrderTotal = null;
         $this->lastOrderId = null;
-        $this->confirmingCancelOrder = false;
         $this->changeAmount = 0.0;
         $this->notes = '';
         $this->step = 'catalog';
         $this->showSessionHistory = false;
+        $this->selectedTableId = null;
+        $this->openTabOrderId = null;
+        $this->closingTabOrderId = null;
         $this->resetPaymentState();
-        $this->resetDeliveryState();
     }
 
     private function audit(string $action, array $data = []): void
@@ -248,7 +303,7 @@ class Terminal extends Component
 
     public function render()
     {
-        return view('livewire.admin.pdv.terminal')
+        return view('livewire.admin.pdv.tab-terminal')
             ->layout('layouts.app.pdv');
     }
 }

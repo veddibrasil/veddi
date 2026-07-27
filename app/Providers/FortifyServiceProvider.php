@@ -37,7 +37,7 @@ class FortifyServiceProvider extends ServiceProvider
 
                 // Garçom só tem acesso ao PDV — pular o dashboard evita 403 logo após o login.
                 if ($company && $user?->roleForCompany($company) === 'garcom') {
-                    return redirect()->intended(route('admin.pdv'));
+                    return redirect()->intended(route('admin.pdv.tabs'));
                 }
 
                 return redirect()->intended(route('admin.dashboard'));

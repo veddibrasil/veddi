@@ -17,26 +17,20 @@ trait HasPaymentFlow
             return;
         }
 
-        $this->closingTabOrderId = null;
         $this->step = 'payment';
         $this->resetPaymentState();
+        $this->resetDeliveryState();
     }
 
     public function backToCatalog(): void
     {
-        $this->closingTabOrderId = null;
         $this->step = 'catalog';
         $this->resetPaymentState();
+        $this->resetDeliveryState();
     }
 
     public function processOrder(): void
     {
-        if ($this->closingTabOrderId) {
-            $this->closeTab();
-
-            return;
-        }
-
         abort_unless(! $this->isWaiter, 403);
 
         if (empty($this->cart) || ! $this->selectedBranchId) {
@@ -143,17 +137,5 @@ trait HasPaymentFlow
         $this->lastOrderNumber = $order->order_number;
         $this->lastOrderId = $order->id;
         $this->step = 'success';
-    }
-
-    private function resetPaymentState(): void
-    {
-        $this->paymentMethod = 'cash';
-        $this->cashReceivedInput = '';
-        $this->manualDiscountAmount = 0.0;
-        $this->manualDiscountInput = '';
-        $this->manualDiscountType = 'fixed';
-        $this->serviceFeeWaived = false;
-        $this->couvertFeeWaived = false;
-        $this->resetDeliveryState();
     }
 }

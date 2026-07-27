@@ -31,7 +31,7 @@ function loginRedirectContext(): array
     return compact('company', 'branch');
 }
 
-test('garçom é redirecionado direto para o PDV após o login', function () {
+test('garçom é redirecionado direto para mesas/comandas após o login', function () {
     ['company' => $company, 'branch' => $branch] = loginRedirectContext();
 
     $waiter = User::factory()->create(['email' => 'garcom@teste.com']);
@@ -40,7 +40,7 @@ test('garçom é redirecionado direto para o PDV após o login', function () {
     $this->post(route('login.store'), [
         'email' => 'garcom@teste.com',
         'password' => 'password',
-    ])->assertRedirect(route('admin.pdv', absolute: false));
+    ])->assertRedirect(route('admin.pdv.tabs', absolute: false));
 
     $this->assertAuthenticatedAs($waiter);
 });

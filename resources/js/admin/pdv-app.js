@@ -4,6 +4,8 @@ Alpine.data('pdvApp', () => ({
     sidebarHidden: false,
     mobileCartOpen: false,
     _prevPdvStep: null,
+    toastMessage: '',
+    _toastTimer: null,
 
     // Barcode scanner state
     _barcodeBuffer: '',
@@ -18,6 +20,13 @@ Alpine.data('pdvApp', () => ({
         this._initShortcuts();
         this._focusBarcode();
         window.addEventListener('pdv-barcode-processed', () => this._focusBarcode());
+        window.addEventListener('product-added-to-cart', (e) => this.showToast(`${e.detail.name} adicionado ao carrinho`));
+    },
+
+    showToast(message) {
+        this.toastMessage = message;
+        clearTimeout(this._toastTimer);
+        this._toastTimer = setTimeout(() => { this.toastMessage = ''; }, 2200);
     },
 
     // Alça de arrasto genérica pra redimensionar uma seção do carrinho (QA/teste de
