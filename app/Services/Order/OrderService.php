@@ -196,47 +196,101 @@ class OrderService implements OrderServiceInterface
     }
 
     /**
-     * Adiciona uma nova rodada de itens a um pedido já existente (comanda aberta no PDV).
-     * Reaplica a mesma resolução de preço/opções de createOrder() e recalcula os totais do pedido.
-     *
-     * @param  array<int, array{qty: int, options?: array}>  $cart
+     * Lança um único produto direto na comanda (clique no catálogo = já entra na comanda). Se já existir
+     * um item do mesmo produto com as mesmas opções, soma a quantidade nele em vez de criar outra linha.
      */
-    public function addItemsToOrder(Order $order, array $cart): Order
+    public function addOrIncrementItem(Order $order, Product $product, array $optionSelections = []): Order
     {
-        $products = $this->resolveProducts($cart, $order->branch_id, 'available_in_pdv');
-
-        return DB::transaction(function () use ($order, $cart, $products) {
+        return DB::transaction(function () use ($order, $product, $optionSelections) {
             $optionPricing = app(CartOptionPricing::class);
-            $newItems = collect();
+            $resolved = $optionPricing->resolve($product, ['options' => $optionSelections]);
+            $optionsExtra = (float) $resolved['extra'];
+            $unitPrice = (float) $product->effective_price + $optionsExtra;
+            $normalizedOptions = $resolved['options'] !== [] ? $resolved['options'] : null;
 
-            foreach ($cart as $cartKey => $item) {
-                $pid = (int) ($item['product_id'] ?? explode('_', (string) $cartKey)[0]);
-                $product = $products[$pid];
-                $resolved = $optionPricing->resolve($product, is_array($item) ? $item : []);
-                $optionsExtra = (float) $resolved['extra'];
-                $unitPrice = (float) $product->effective_price + $optionsExtra;
-                $quantity = (int) ($item['qty'] ?? 0);
+            $existing = $order->items()
+                ->where('product_id', $product->id)
+                ->get()
+                ->first(fn (OrderItem $i) => json_encode($i->options) === json_encode($normalizedOptions));
 
-                $newItems->push(OrderItem::create([
+            app(StockService::class)->deductQuantity($order, $product->id, 1);
+
+            if ($existing) {
+                $existing->quantity += 1;
+                $existing->subtotal = $unitPrice * $existing->quantity;
+                $existing->save();
+            } else {
+                OrderItem::create([
                     'order_id' => $order->id,
-                    'product_id' => $pid,
+                    'product_id' => $product->id,
                     'product_name' => $product->name,
                     'unit_price' => $unitPrice,
-                    'quantity' => $quantity,
-                    'subtotal' => $unitPrice * $quantity,
-                    'options' => $resolved['options'] !== [] ? $resolved['options'] : null,
-                ]));
+                    'quantity' => 1,
+                    'subtotal' => $unitPrice,
+                    'options' => $normalizedOptions,
+                ]);
             }
-
-            app(StockService::class)->deductForItems($newItems, $order);
 
             $this->recalculateOrderTotals($order);
 
-            Log::channel('orders')->info('Itens adicionados à comanda', [
+            return $order->fresh();
+        });
+    }
+
+    /**
+     * Remove um item já lançado de uma comanda aberta, restaura o estoque deduzido e recalcula os totais.
+     */
+    public function removeItemFromOrder(Order $order, OrderItem $item): Order
+    {
+        return DB::transaction(function () use ($order, $item) {
+            app(StockService::class)->restoreQuantity($order, $item->product_id, $item->quantity);
+
+            $item->delete();
+
+            $this->recalculateOrderTotals($order);
+
+            Log::channel('orders')->info('Item removido da comanda', [
                 'order_id' => $order->id,
                 'order_number' => $order->order_number,
-                'subtotal' => $order->subtotal,
-                'total' => $order->total,
+                'product_name' => $item->product_name,
+            ]);
+
+            return $order->fresh();
+        });
+    }
+
+    /**
+     * Altera a quantidade de um item já lançado numa comanda aberta, ajustando o estoque pela
+     * diferença (deduz se aumentou, restaura se diminuiu) e recalcula os totais. Quantidade <= 0
+     * remove o item.
+     */
+    public function updateOrderItemQuantity(Order $order, OrderItem $item, int $quantity): Order
+    {
+        if ($quantity <= 0) {
+            return $this->removeItemFromOrder($order, $item);
+        }
+
+        return DB::transaction(function () use ($order, $item, $quantity) {
+            $delta = $quantity - $item->quantity;
+
+            if ($delta > 0) {
+                app(StockService::class)->deductQuantity($order, $item->product_id, $delta);
+            } elseif ($delta < 0) {
+                app(StockService::class)->restoreQuantity($order, $item->product_id, -$delta);
+            }
+
+            $item->update([
+                'quantity' => $quantity,
+                'subtotal' => $item->unit_price * $quantity,
+            ]);
+
+            $this->recalculateOrderTotals($order);
+
+            Log::channel('orders')->info('Quantidade de item ajustada na comanda', [
+                'order_id' => $order->id,
+                'order_number' => $order->order_number,
+                'product_name' => $item->product_name,
+                'quantity' => $quantity,
             ]);
 
             return $order->fresh();

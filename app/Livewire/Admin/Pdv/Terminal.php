@@ -153,8 +153,6 @@ class Terminal extends Component
 
     public ?int $openTabOrderId = null;
 
-    public ?string $tabMessage = null;
-
     public ?int $closingTabOrderId = null;
 
     public ?int $viewingTabItemsOrderId = null;
@@ -244,7 +242,6 @@ class Terminal extends Component
         $this->orderMode = $this->isWaiter ? 'mesa' : 'impressao';
         $this->selectedTableId = null;
         $this->openTabOrderId = null;
-        $this->tabMessage = null;
         $this->closingTabOrderId = null;
         $this->resetPaymentState();
     }

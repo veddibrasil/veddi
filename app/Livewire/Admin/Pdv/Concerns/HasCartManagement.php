@@ -65,6 +65,13 @@ trait HasCartManagement
             return;
         }
 
+        // Modo mesa: o clique já lança o item direto na comanda, sem passar por carrinho pendente.
+        if ($this->orderMode === 'mesa') {
+            $this->sendProductToComanda($product);
+
+            return;
+        }
+
         $cartKey = (string) $productId;
 
         if (isset($this->cart[$cartKey])) {
@@ -102,6 +109,13 @@ trait HasCartManagement
         }
 
         if (! $this->checkStockBeforeAdd($productId, $product->name)) {
+            return;
+        }
+
+        // Modo mesa: o clique já lança o item direto na comanda, sem passar por carrinho pendente.
+        if ($this->orderMode === 'mesa') {
+            $this->sendProductToComanda($product, $optionSelections);
+
             return;
         }
 

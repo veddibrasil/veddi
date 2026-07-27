@@ -131,6 +131,102 @@ class StockService
     }
 
     /**
+     * Deduz uma quantidade avulsa de um produto (ex: aumento de quantidade de um item já lançado
+     * numa comanda aberta). Deve ser chamado dentro de um DB::transaction existente.
+     */
+    public function deductQuantity(Order $order, int $productId, int $quantity): void
+    {
+        if ($quantity <= 0) {
+            return;
+        }
+
+        $pivot = DB::table('branch_product')
+            ->where('branch_id', $order->branch_id)
+            ->where('product_id', $productId)
+            ->lockForUpdate()
+            ->first();
+
+        if (! $pivot || ! $pivot->track_stock) {
+            return;
+        }
+
+        if ($pivot->quantity < $quantity) {
+            throw new InsufficientStockException(
+                Product::withoutGlobalScopes()->findOrFail($productId),
+                $pivot->quantity,
+                $quantity
+            );
+        }
+
+        $newQty = $pivot->quantity - $quantity;
+
+        DB::table('branch_product')
+            ->where('branch_id', $order->branch_id)
+            ->where('product_id', $productId)
+            ->update([
+                'quantity' => $newQty,
+                'available' => $newQty > 0,
+            ]);
+
+        StockMovement::withoutGlobalScopes()->create([
+            'company_id' => $order->company_id,
+            'branch_id' => $order->branch_id,
+            'product_id' => $productId,
+            'order_id' => $order->id,
+            'user_id' => null,
+            'quantity' => -$quantity,
+            'quantity_before' => $pivot->quantity,
+            'quantity_after' => $newQty,
+            'type' => StockMovement::TYPE_ORDER_DEDUCTION,
+            'notes' => "Pedido {$order->order_number}",
+        ]);
+    }
+
+    /**
+     * Restaura uma quantidade avulsa de um produto (ex: remoção de item ou redução de quantidade
+     * de um item já lançado numa comanda aberta). Deve ser chamado dentro de um DB::transaction existente.
+     */
+    public function restoreQuantity(Order $order, int $productId, int $quantity): void
+    {
+        if ($quantity <= 0) {
+            return;
+        }
+
+        $pivot = DB::table('branch_product')
+            ->where('branch_id', $order->branch_id)
+            ->where('product_id', $productId)
+            ->lockForUpdate()
+            ->first();
+
+        if (! $pivot || ! $pivot->track_stock) {
+            return;
+        }
+
+        $newQty = $pivot->quantity + $quantity;
+
+        DB::table('branch_product')
+            ->where('branch_id', $order->branch_id)
+            ->where('product_id', $productId)
+            ->update([
+                'quantity' => $newQty,
+                'available' => true,
+            ]);
+
+        StockMovement::withoutGlobalScopes()->create([
+            'company_id' => $order->company_id,
+            'branch_id' => $order->branch_id,
+            'product_id' => $productId,
+            'order_id' => $order->id,
+            'user_id' => null,
+            'quantity' => $quantity,
+            'quantity_before' => $pivot->quantity,
+            'quantity_after' => $newQty,
+            'type' => StockMovement::TYPE_ORDER_RESTORE,
+            'notes' => "Ajuste de item na comanda {$order->order_number}",
+        ]);
+    }
+
+    /**
      * Ajuste manual: delta positivo (entrada) ou negativo (saída).
      */
     public function adjust(

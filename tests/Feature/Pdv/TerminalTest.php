@@ -903,10 +903,9 @@ test('abrir comanda cria pedido pendente sem pagamento e deduz estoque', functio
 
     Livewire::test(Terminal::class)
         ->set('orderMode', 'mesa')
-        ->call('addProduct', $product->id)
         ->assertSet('branchUsesRegisteredTables', true)
         ->set('selectedTableId', $table->id)
-        ->call('openTab')
+        ->call('addProduct', $product->id)
         ->assertHasNoErrors()
         ->assertSet('cart', []);
 
@@ -929,10 +928,9 @@ test('filial sem mesas cadastradas não permite abrir comanda', function () {
 
     Livewire::test(Terminal::class)
         ->set('orderMode', 'mesa')
-        ->call('addProduct', $product->id)
         ->assertSet('branchUsesRegisteredTables', false)
         ->assertCount('availableTables', 0)
-        ->call('openTab')
+        ->call('addProduct', $product->id)
         ->assertHasErrors('selectedTableId');
 
     expect(Order::withoutGlobalScopes()->count())->toBe(0);
@@ -957,7 +955,6 @@ test('operador cadastra mesa direto do terminal e já consegue selecioná-la', f
 
     $component
         ->call('addProduct', $product->id)
-        ->call('openTab')
         ->assertHasNoErrors();
 
     $order = Order::withoutGlobalScopes()->first();
@@ -1007,18 +1004,16 @@ test('mesa ocupada some da lista de mesas disponíveis e não pode ser reaberta'
 
     $component = Livewire::test(Terminal::class)
         ->set('orderMode', 'mesa')
-        ->call('addProduct', $product->id)
         ->set('selectedTableId', $table5->id)
-        ->call('openTab')
+        ->call('addProduct', $product->id)
         ->assertHasNoErrors();
 
     expect($component->get('availableTables'))->toHaveCount(0);
 
     $component
         ->call('deselectOpenTab')
-        ->call('addProduct', $product->id)
         ->set('selectedTableId', $table5->id)
-        ->call('openTab')
+        ->call('addProduct', $product->id)
         ->assertHasErrors('selectedTableId');
 
     expect(Order::withoutGlobalScopes()->count())->toBe(1);
@@ -1043,19 +1038,20 @@ test('mesa desativada não aparece disponível no PDV', function () {
         ->assertCount('availableTables', 0);
 });
 
-test('abrir comanda volta para a lista de comandas abertas em vez de manter selecionada', function () {
+test('primeiro clique num produto já abre a comanda e mantém selecionada pra continuar lançando itens', function () {
     ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
     $table = openTable($company, $branch);
 
     $this->actingAs($admin);
 
-    Livewire::test(Terminal::class)
+    $component = Livewire::test(Terminal::class)
         ->set('orderMode', 'mesa')
-        ->call('addProduct', $product->id)
         ->set('selectedTableId', $table->id)
-        ->call('openTab')
-        ->assertHasNoErrors()
-        ->assertSet('openTabOrderId', null);
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    $orderId = Order::withoutGlobalScopes()->first()->id;
+    $component->assertSet('openTabOrderId', $orderId);
 });
 
 test('itens da comanda selecionada aparecem automaticamente, sem precisar clicar', function () {
@@ -1066,14 +1062,9 @@ test('itens da comanda selecionada aparecem automaticamente, sem precisar clicar
 
     $component = Livewire::test(Terminal::class)
         ->set('orderMode', 'mesa')
-        ->call('addProduct', $product->id)
         ->set('selectedTableId', $table->id)
-        ->call('openTab')
+        ->call('addProduct', $product->id)
         ->assertHasNoErrors();
-
-    $orderId = Order::withoutGlobalScopes()->first()->id;
-
-    $component->call('selectOpenTab', $orderId);
 
     $items = $component->get('activeTabItems');
     expect($items)->toHaveCount(1);
@@ -1088,9 +1079,8 @@ test('atendente alterna visualização de itens de uma comanda na lista com um c
 
     $component = Livewire::test(Terminal::class)
         ->set('orderMode', 'mesa')
-        ->call('addProduct', $product->id)
         ->set('selectedTableId', $table->id)
-        ->call('openTab')
+        ->call('addProduct', $product->id)
         ->call('deselectOpenTab')
         ->assertHasNoErrors();
 
@@ -1109,7 +1099,7 @@ test('atendente alterna visualização de itens de uma comanda na lista com um c
         ->assertSet('viewingTabItemsOrderId', null);
 });
 
-test('somar rodada de itens na comanda soma total e deduz estoque de novo', function () {
+test('clicar de novo no mesmo produto soma na mesma linha da comanda e deduz estoque de novo', function () {
     ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
     $table = openTable($company, $branch);
 
@@ -1122,80 +1112,192 @@ test('somar rodada de itens na comanda soma total e deduz estoque de novo', func
 
     $component = Livewire::test(Terminal::class)
         ->set('orderMode', 'mesa')
-        ->call('addProduct', $product->id)
         ->set('selectedTableId', $table->id)
-        ->call('openTab');
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
 
     $orderId = Order::withoutGlobalScopes()->first()->id;
-    expect($component->get('openTabOrderId'))->toBeNull();
+    $component->assertSet('openTabOrderId', $orderId);
 
     $component
-        ->call('selectOpenTab', $orderId)
         ->call('addProduct', $product->id)
-        ->call('addItemsToTab')
         ->assertHasNoErrors()
-        ->assertSet('cart', [])
-        ->assertSet('openTabOrderId', $orderId)
-        ->assertSet('tabMessage', 'Itens adicionados à comanda "Mesa 5".');
+        ->assertSet('openTabOrderId', $orderId);
 
     $order = Order::withoutGlobalScopes()->find($orderId);
     expect((float) $order->total)->toBe(16.0);
-    expect($order->items()->count())->toBe(2);
+    expect($order->items()->count())->toBe(1);
+    expect((int) $order->items()->first()->quantity)->toBe(2);
 
     $stock = DB::table('branch_product')->where('product_id', $product->id)->first();
     expect((int) $stock->quantity)->toBe(8);
 });
 
-test('botão Adicionar na lista de comandas soma itens direto, sem entrar na comanda', function () {
+test('operador aumenta e diminui quantidade de um item já lançado na comanda, ajustando estoque e total', function () {
     ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
     $table = openTable($company, $branch);
+
+    DB::table('branch_product')
+        ->where('branch_id', $branch->id)
+        ->where('product_id', $product->id)
+        ->update(['track_stock' => true, 'quantity' => 10]);
 
     $this->actingAs($admin);
 
     $component = Livewire::test(Terminal::class)
         ->set('orderMode', 'mesa')
-        ->call('addProduct', $product->id)
         ->set('selectedTableId', $table->id)
-        ->call('openTab');
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
 
     $orderId = Order::withoutGlobalScopes()->first()->id;
+    $item = Order::withoutGlobalScopes()->find($orderId)->items()->first();
 
     $component
-        ->call('addProduct', $product->id)
-        ->call('addItemsToTab', $orderId)
-        ->assertHasNoErrors()
-        ->assertSet('cart', [])
-        ->assertSet('openTabOrderId', null)
-        ->assertSet('tabMessage', 'Itens adicionados à comanda "Mesa 5".');
+        ->call('updateTabItemQuantity', $item->id, 3)
+        ->assertHasNoErrors();
 
     $order = Order::withoutGlobalScopes()->find($orderId);
-    expect((float) $order->total)->toBe(16.0);
-    expect($order->items()->count())->toBe(2);
+    expect((float) $order->total)->toBe(24.0);
+    expect($order->items()->count())->toBe(1);
+
+    $stock = DB::table('branch_product')->where('product_id', $product->id)->first();
+    expect((int) $stock->quantity)->toBe(7);
+
+    $component->call('updateTabItemQuantity', $item->id, 1)->assertHasNoErrors();
+
+    $order = Order::withoutGlobalScopes()->find($orderId);
+    expect((float) $order->total)->toBe(8.0);
+
+    $stock = DB::table('branch_product')->where('product_id', $product->id)->first();
+    expect((int) $stock->quantity)->toBe(9);
 });
 
-test('clicar Adicionar sem itens no carrinho não faz nada e avisa o operador', function () {
+test('operador remove um item da comanda, restaura estoque e recalcula o total', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+    $table = openTable($company, $branch);
+
+    DB::table('branch_product')
+        ->where('branch_id', $branch->id)
+        ->where('product_id', $product->id)
+        ->update(['track_stock' => true, 'quantity' => 10]);
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->set('orderMode', 'mesa')
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    $orderId = Order::withoutGlobalScopes()->first()->id;
+    $item = Order::withoutGlobalScopes()->find($orderId)->items()->first();
+
+    $component
+        ->call('removeTabItem', $item->id)
+        ->assertHasNoErrors();
+
+    $order = Order::withoutGlobalScopes()->find($orderId);
+    expect($order->items()->count())->toBe(0);
+    expect((float) $order->total)->toBe(0.0);
+
+    $stock = DB::table('branch_product')->where('product_id', $product->id)->first();
+    expect((int) $stock->quantity)->toBe(10);
+});
+
+test('reduzir quantidade a zero remove o item da comanda', function () {
     ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
     $table = openTable($company, $branch);
 
     $this->actingAs($admin);
 
-    // openTab exige carrinho não vazio; ao concluir, ele já limpa o carrinho sozinho.
     $component = Livewire::test(Terminal::class)
         ->set('orderMode', 'mesa')
-        ->call('addProduct', $product->id)
         ->set('selectedTableId', $table->id)
-        ->call('openTab')
-        ->assertSet('cart', []);
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
 
     $orderId = Order::withoutGlobalScopes()->first()->id;
-    $itemsBefore = Order::withoutGlobalScopes()->find($orderId)->items()->count();
+    $item = Order::withoutGlobalScopes()->find($orderId)->items()->first();
 
     $component
-        ->call('addItemsToTab', $orderId)
+        ->call('updateTabItemQuantity', $item->id, 0)
+        ->assertHasNoErrors();
+
+    $order = Order::withoutGlobalScopes()->find($orderId);
+    expect($order->items()->count())->toBe(0);
+});
+
+test('garçom edita quantidade e remove item de uma comanda aberta, sem precisar do caixa', function () {
+    ['company' => $company, 'branch' => $branch, 'product' => $product] = pdvContext();
+    $waiter = makeWaiter($company, $branch);
+    $table = openTable($company, $branch, 9);
+
+    $product2 = Product::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'product_category_id' => $product->product_category_id,
+        'name' => 'Refrigerante',
+        'price' => 6.00,
+        'active' => true,
+        'sort_order' => 2,
+    ]);
+    DB::table('branch_product')->insert([
+        'branch_id' => $branch->id,
+        'product_id' => $product2->id,
+        'available' => 1,
+    ]);
+
+    $component = Livewire::actingAs($waiter)
+        ->test(Terminal::class)
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->call('addProduct', $product2->id)
+        ->assertHasNoErrors();
+
+    $orderId = Order::withoutGlobalScopes()->first()->id;
+    $items = Order::withoutGlobalScopes()->find($orderId)->items;
+
+    $component
+        ->call('updateTabItemQuantity', $items[0]->id, 5)
+        ->assertHasNoErrors()
+        ->call('removeTabItem', $items[1]->id)
+        ->assertHasNoErrors();
+
+    $order = Order::withoutGlobalScopes()->find($orderId);
+    expect($order->items()->count())->toBe(1);
+    expect((int) $order->items()->first()->quantity)->toBe(5);
+});
+
+test('editar item de comanda já fechada não é permitido', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+    $table = openTable($company, $branch);
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->set('orderMode', 'mesa')
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    $orderId = Order::withoutGlobalScopes()->first()->id;
+    $item = Order::withoutGlobalScopes()->find($orderId)->items()->first();
+
+    $component
+        ->call('proceedToCloseTab', $orderId)
+        ->set('paymentMethod', 'cash')
+        ->set('cashReceivedInput', '10.00')
+        ->call('processOrder')
+        ->assertSet('step', 'success');
+
+    Livewire::test(Terminal::class)
+        ->set('openTabOrderId', $orderId)
+        ->call('updateTabItemQuantity', $item->id, 5)
         ->assertHasErrors('order');
 
     $order = Order::withoutGlobalScopes()->find($orderId);
-    expect($order->items()->count())->toBe($itemsBefore);
+    expect((int) $order->items()->first()->quantity)->toBe(1);
 });
 
 test('fechar comanda com dinheiro cobra e marca como paga', function () {
@@ -1206,9 +1308,9 @@ test('fechar comanda com dinheiro cobra e marca como paga', function () {
 
     $component = Livewire::test(Terminal::class)
         ->set('orderMode', 'mesa')
-        ->call('addProduct', $product->id)
         ->set('selectedTableId', $table->id)
-        ->call('openTab');
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
 
     $orderId = Order::withoutGlobalScopes()->first()->id;
 
@@ -1244,9 +1346,9 @@ test('fechar comanda vinculando cliente informado pelo mesário salva o cliente 
 
     $component = Livewire::test(Terminal::class)
         ->set('orderMode', 'mesa')
-        ->call('addProduct', $product->id)
         ->set('selectedTableId', $table->id)
-        ->call('openTab');
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
 
     $orderId = Order::withoutGlobalScopes()->first()->id;
 
@@ -1277,9 +1379,9 @@ test('fechar comanda com dinheiro dispara emissão automática de nota fiscal', 
 
     $component = Livewire::test(Terminal::class)
         ->set('orderMode', 'mesa')
-        ->call('addProduct', $product->id)
         ->set('selectedTableId', $table->id)
-        ->call('openTab');
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
 
     $orderId = Order::withoutGlobalScopes()->first()->id;
 
@@ -1303,9 +1405,9 @@ test('comanda aberta não aparece em shiftStats nem sessionOrders', function () 
 
     $component = Livewire::test(Terminal::class)
         ->set('orderMode', 'mesa')
-        ->call('addProduct', $product->id)
         ->set('selectedTableId', $table->id)
-        ->call('openTab');
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
 
     expect($component->instance()->shiftStats()['orders'])->toBe(0);
     expect($component->instance()->sessionOrders()->count())->toBe(0);
@@ -1325,16 +1427,13 @@ test('cancelar comanda aberta restaura estoque das duas rodadas', function () {
 
     $component = Livewire::test(Terminal::class)
         ->set('orderMode', 'mesa')
-        ->call('addProduct', $product->id)
         ->set('selectedTableId', $table->id)
-        ->call('openTab');
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
 
     $orderId = Order::withoutGlobalScopes()->first()->id;
 
-    $component
-        ->call('selectOpenTab', $orderId)
-        ->call('addProduct', $product->id)
-        ->call('addItemsToTab');
+    $component->call('addProduct', $product->id)->assertHasNoErrors();
 
     $component->call('cancelPdvOrder', $orderId);
 
@@ -1354,9 +1453,8 @@ test('comanda aberta individualmente aparece no painel de comandas com o total c
     $component = Livewire::test(Terminal::class)
         ->call('openCashSession')
         ->set('orderMode', 'mesa')
-        ->call('addProduct', $product->id)
         ->set('selectedTableId', $table->id)
-        ->call('openTab')
+        ->call('addProduct', $product->id)
         ->assertHasNoErrors();
 
     $tabs = $component->get('openTabs');
@@ -1483,9 +1581,8 @@ test('taxa de serviço e couvert acompanham comanda de mesa ao longo de novas ro
     $component = Livewire::test(Terminal::class)
         ->call('openCashSession')
         ->set('orderMode', 'mesa')
-        ->call('addProduct', $product->id)
         ->set('selectedTableId', $table->id)
-        ->call('openTab')
+        ->call('addProduct', $product->id)
         ->assertHasNoErrors();
 
     $orderId = Order::withoutGlobalScopes()->first()->id;
@@ -1494,9 +1591,8 @@ test('taxa de serviço e couvert acompanham comanda de mesa ao longo de novas ro
     expect((float) $order->couvert_fee)->toBe(5.0);
     expect((float) $order->total)->toBe(13.8);
 
-    $component->call('selectOpenTab', $orderId)
+    $component
         ->call('addProduct', $product->id)
-        ->call('addItemsToTab')
         ->assertHasNoErrors();
 
     $order = Order::withoutGlobalScopes()->find($orderId);
@@ -1558,9 +1654,8 @@ test('operador remove taxa de serviço só na hora de fechar a comanda, sem afet
     $component = Livewire::test(Terminal::class)
         ->call('openCashSession')
         ->set('orderMode', 'mesa')
-        ->call('addProduct', $product->id)
         ->set('selectedTableId', $table->id)
-        ->call('openTab')
+        ->call('addProduct', $product->id)
         ->assertHasNoErrors();
 
     $orderId = Order::withoutGlobalScopes()->first()->id;
@@ -1601,9 +1696,8 @@ test('garçom abre comanda e lança itens sem precisar de caixa', function () {
 
     Livewire::actingAs($waiter)
         ->test(Terminal::class)
-        ->call('addProduct', $product->id)
         ->set('selectedTableId', $table->id)
-        ->call('openTab')
+        ->call('addProduct', $product->id)
         ->assertHasNoErrors();
 
     $order = Order::withoutGlobalScopes()->first();
@@ -1621,9 +1715,8 @@ test('garçom vê comanda aberta por outro operador da mesma filial', function (
     Livewire::actingAs($admin)
         ->test(Terminal::class)
         ->set('orderMode', 'mesa')
-        ->call('addProduct', $product->id)
         ->set('selectedTableId', $table->id)
-        ->call('openTab')
+        ->call('addProduct', $product->id)
         ->assertHasNoErrors();
 
     $tabs = Livewire::actingAs($waiter)
@@ -1641,9 +1734,8 @@ test('caixa fecha e paga comanda aberta pelo garçom, e o valor entra na confer�
 
     Livewire::actingAs($waiter)
         ->test(Terminal::class)
-        ->call('addProduct', $product->id)
         ->set('selectedTableId', $table->id)
-        ->call('openTab')
+        ->call('addProduct', $product->id)
         ->assertHasNoErrors();
 
     $orderId = Order::withoutGlobalScopes()->first()->id;
@@ -1739,9 +1831,8 @@ test('garçom não consegue fechar comanda', function () {
 
     $component = Livewire::actingAs($waiter)
         ->test(Terminal::class)
-        ->call('addProduct', $product->id)
         ->set('selectedTableId', $table->id)
-        ->call('openTab')
+        ->call('addProduct', $product->id)
         ->assertHasNoErrors();
 
     $orderId = Order::withoutGlobalScopes()->first()->id;

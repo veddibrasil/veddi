@@ -539,6 +539,103 @@
                 </div>
             @endif
 
+            @php
+                $mesaNotCommitted = $orderMode === 'mesa' && ! $openTabOrderId && ! $selectedTableId;
+            @endphp
+
+            @if ($mesaNotCommitted)
+                {{-- ── Seleção de comanda: painel de cards, um clique entra na mesa/comanda ── --}}
+                <div class="flex-1 overflow-y-auto p-4">
+                    <div class="w-full space-y-6">
+                        <div class="text-center">
+                            <div class="mx-auto size-14 rounded-full bg-amber-100 flex items-center justify-center dark:bg-amber-900/40 mb-3">
+                                <flux:icon.table-cells class="size-7 text-amber-500 dark:text-amber-400" />
+                            </div>
+                            <h2 class="text-lg font-bold text-neutral-800 dark:text-neutral-100">Selecione a comanda</h2>
+                            <p class="text-sm text-neutral-500 dark:text-neutral-400 mt-1">Toque na mesa antes de lançar os produtos.</p>
+                        </div>
+
+                        @error('order')
+                            <p class="text-xs font-semibold text-red-600 dark:text-red-400 text-center">{{ $message }}</p>
+                        @enderror
+                        @error('selectedTableId')
+                            <p class="text-xs font-semibold text-red-600 dark:text-red-400 text-center">{{ $message }}</p>
+                        @enderror
+
+                        @if (! $this->branchUsesRegisteredTables)
+                            <div class="rounded-lg border border-amber-300 bg-amber-100/70 px-3 py-2 dark:border-amber-800 dark:bg-amber-900/20">
+                                <p class="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                                    Esta filial ainda não tem mesas cadastradas.
+                                </p>
+                                <p class="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                                    @if ($isWaiter)
+                                        Peça para o responsável pelo caixa cadastrar as mesas antes de abrir uma comanda.
+                                    @else
+                                        Cadastre ao menos uma mesa abaixo para poder abrir uma comanda.
+                                    @endif
+                                </p>
+                            </div>
+                        @endif
+
+                        @if ($this->openTabs->isNotEmpty())
+                            <div>
+                                <p class="flex items-center gap-1.5 text-xs font-bold text-amber-800 dark:text-amber-300 mb-2">
+                                    <flux:icon.clipboard-document-list class="size-3.5" />
+                                    Comandas abertas
+                                    <span class="font-normal text-amber-600 dark:text-amber-500">({{ $this->openTabs->count() }})</span>
+                                </p>
+                                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+                                    @foreach ($this->openTabs as $tab)
+                                        <div
+                                            role="button"
+                                            tabindex="0"
+                                            wire:click="selectOpenTab({{ $tab->id }})"
+                                            wire:keydown.enter="selectOpenTab({{ $tab->id }})"
+                                            class="group text-left rounded-xl border-2 border-amber-200 dark:border-amber-800/60 bg-white dark:bg-zinc-900 p-3 cursor-pointer hover:border-amber-400 hover:shadow-md transition-all flex flex-col gap-1"
+                                        >
+                                            <span class="font-bold text-sm text-neutral-800 dark:text-neutral-100 truncate">{{ $tab->table_label }}</span>
+                                            <span class="text-xs font-semibold text-amber-600 dark:text-amber-400">R$ {{ number_format($tab->total, 2, ',', '.') }}</span>
+                                            @unless ($isWaiter)
+                                                <button
+                                                    type="button"
+                                                    wire:click.stop="proceedToCloseTab({{ $tab->id }})"
+                                                    class="mt-1 self-start text-xs text-neutral-400 hover:text-red-600 dark:hover:text-red-400"
+                                                >
+                                                    Fechar
+                                                </button>
+                                            @endunless
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </div>
+                        @endif
+
+                        @if ($this->availableTables->isNotEmpty())
+                            <div>
+                                <p class="flex items-center gap-1.5 text-xs font-bold text-amber-800 dark:text-amber-300 mb-2">
+                                    <flux:icon.plus-circle class="size-3.5" />
+                                    Nova comanda
+                                </p>
+                                <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+                                    @foreach ($this->availableTables as $table)
+                                        <button
+                                            type="button"
+                                            wire:click="$set('selectedTableId', {{ $table->id }})"
+                                            class="rounded-xl border-2 border-neutral-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 py-4 text-center hover:border-amber-400 hover:shadow-md transition-all"
+                                        >
+                                            <span class="block text-[10px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Mesa</span>
+                                            <span class="block text-xl font-black text-neutral-800 dark:text-neutral-100">{{ $table->number }}</span>
+                                        </button>
+                                    @endforeach
+                                </div>
+                            </div>
+                        @elseif ($this->branchUsesRegisteredTables)
+                            <p class="text-xs text-neutral-500 dark:text-neutral-400 text-center">Nenhuma mesa livre no momento.</p>
+                        @endif
+                    </div>
+                </div>
+            @else
+
             {{-- ── Categorias: chips horizontais no mobile, coluna fixa no desktop ── --}}
             <div class="flex w-full lg:w-48 shrink-0 flex-col rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900 overflow-hidden">
                 <div class="hidden lg:block px-3 py-3 border-b border-neutral-100 dark:border-zinc-800 shrink-0">
@@ -802,9 +899,9 @@
                                                     @else
                                                         wire:click.stop="updateCartQty('{{ $product->id }}', {{ $pdvCartQty - 1 }})"
                                                     @endif
-                                                    class="size-8 rounded-full border flex items-center justify-center text-neutral-500 hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition-colors dark:border-zinc-600"
+                                                    class="size-11 rounded-full border flex items-center justify-center text-neutral-500 hover:bg-red-50 hover:text-red-600 hover:border-red-300 active:scale-90 transition-colors dark:border-zinc-600"
                                                 >
-                                                    <span class="text-base font-bold leading-none">−</span>
+                                                    <span class="text-lg font-bold leading-none">−</span>
                                                 </button>
                                                 <span class="w-7 text-center text-base font-semibold text-neutral-800 dark:text-neutral-100">{{ $pdvCartQty }}</span>
                                             @endif
@@ -817,9 +914,9 @@
                                                     @endif
                                                 @endif
                                                 {{ $stockOut ? 'disabled' : '' }}
-                                                class="size-8 rounded-full text-white flex items-center justify-center transition-colors {{ $stockOut ? 'bg-neutral-300 cursor-not-allowed dark:bg-zinc-600' : 'bg-amber-500 hover:bg-amber-600 active:scale-90' }}"
+                                                class="size-11 rounded-full text-white flex items-center justify-center transition-colors {{ $stockOut ? 'bg-neutral-300 cursor-not-allowed dark:bg-zinc-600' : 'bg-amber-500 hover:bg-amber-600 active:scale-90' }}"
                                             >
-                                                <span class="text-base font-bold leading-none">+</span>
+                                                <span class="text-lg font-bold leading-none">+</span>
                                             </button>
                                         </div>
                                     </div>
@@ -962,7 +1059,9 @@
                 </div>
             </div>
             {{-- fim coluna central --}}
+            @endif
 
+            @unless ($mesaNotCommitted)
             {{-- ── Coluna direita: Carrinho / Pagamento / Sucesso / PIX ── --}}
             <div
                 class="shrink-0 flex-col rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900 overflow-hidden lg:flex lg:w-[22rem] xl:w-[24rem]"
@@ -1043,15 +1142,19 @@
                                     </button>
                                     <div class="min-w-0">
                                         <p class="text-[11px] font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">Pedido atual</p>
-                                        <h2 class="font-bold text-neutral-900 dark:text-neutral-100 truncate">
-                                            Carrinho
-                                            @if ($this->cartCount > 0)
-                                                <span class="ml-1 text-xs font-normal text-neutral-500">({{ $this->cartCount }} itens)</span>
-                                            @endif
-                                        </h2>
+                                        @if ($orderMode === 'mesa')
+                                            <h2 class="font-bold text-neutral-900 dark:text-neutral-100 truncate">Comanda</h2>
+                                        @else
+                                            <h2 class="font-bold text-neutral-900 dark:text-neutral-100 truncate">
+                                                Carrinho
+                                                @if ($this->cartCount > 0)
+                                                    <span class="ml-1 text-xs font-normal text-neutral-500">({{ $this->cartCount }} itens)</span>
+                                                @endif
+                                            </h2>
+                                        @endif
                                     </div>
                                 </div>
-                                @if ($this->cartCount > 0)
+                                @if ($orderMode !== 'mesa' && $this->cartCount > 0)
                                     <span class="inline-flex size-9 items-center justify-center rounded-lg bg-amber-500 text-sm font-bold text-white shadow-sm shadow-amber-500/20 dark:bg-amber-400 dark:text-white shrink-0">
                                         {{ $this->cartCount }}
                                     </span>
@@ -1064,164 +1167,82 @@
                              causa de redimensionamento, sem depender de conta de altura. --}}
                         <div class="flex-1 min-h-0 overflow-y-auto flex flex-col">
                         @if ($orderMode === 'mesa')
-                            <div x-ref="mesaSection" class="border-neutral-100 dark:border-zinc-800 shrink-0 bg-amber-50/50 dark:bg-amber-900/10 overflow-y-auto">
-                                @if ($tabMessage)
-                                    <div
-                                        x-data="{ show: true }"
-                                        x-init="setTimeout(() => show = false, 3000)"
-                                        x-show="show"
-                                        x-transition
-                                        class="mx-4 mt-3 rounded-lg bg-green-100 px-3 py-2 text-xs font-semibold text-green-800 dark:bg-green-900/30 dark:text-green-300"
-                                    >
-                                        ✓ {{ $tabMessage }}
-                                    </div>
-                                @endif
-                                @error('order')
-                                    <p class="mx-4 mt-3 text-xs font-semibold text-red-600 dark:text-red-400">{{ $message }}</p>
-                                @enderror
+                            {{-- Modo mesa: clicar no produto já lança direto na comanda — sem carrinho
+                                 pendente nem botão de "enviar". A lista abaixo já é o pedido real. --}}
+                            <div class="px-4 pt-3 pb-2 shrink-0 bg-white dark:bg-zinc-900 border-b border-neutral-100 dark:border-zinc-800 flex items-center justify-between gap-2">
+                                <div class="min-w-0">
+                                    <p class="text-[10px] font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">Itens do pedido</p>
+                                    <p class="text-xs font-semibold text-amber-700 dark:text-amber-400 truncate">
+                                        @if ($openTabOrderId)
+                                            {{ $this->openTabs->firstWhere('id', $openTabOrderId)?->table_label }}
+                                        @elseif ($selectedTableId)
+                                            Mesa {{ $this->availableTables->firstWhere('id', $selectedTableId)?->number }} · aguardando itens
+                                        @endif
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    wire:click="deselectOpenTab"
+                                    class="shrink-0 min-h-11 px-3 rounded-lg text-xs font-semibold text-amber-600 hover:bg-amber-50 hover:text-amber-800 dark:text-amber-400 dark:hover:bg-amber-900/20 dark:hover:text-amber-200 transition-colors"
+                                >
+                                    Nova comanda
+                                </button>
+                            </div>
 
-                                @if ($openTabOrderId)
-                                    {{-- Comanda ativa: sempre visível, sem accordion — é o contexto principal da venda --}}
-                                    @php $activeTab = $this->openTabs->firstWhere('id', $openTabOrderId); @endphp
-                                    <div class="mx-4 my-3 rounded-lg bg-amber-100 dark:bg-amber-900/30 overflow-hidden">
-                                        <div class="flex items-center justify-between gap-2 px-3 py-2">
-                                            <div class="min-w-0">
-                                                <p class="text-xs font-bold text-amber-800 dark:text-amber-300 truncate">Comanda: {{ $activeTab?->table_label }}</p>
-                                                <p class="text-xs text-amber-700 dark:text-amber-400">Total atual: R$ {{ number_format($activeTab?->total ?? 0, 2, ',', '.') }}</p>
+                            @error('order')
+                                <p class="mx-4 mt-3 text-xs font-semibold text-red-600 dark:text-red-400">{{ $message }}</p>
+                            @enderror
+                            @error('stock')
+                                <p class="mx-4 mt-3 text-xs font-semibold text-red-600 dark:text-red-400">{{ $message }}</p>
+                            @enderror
+
+                            <div x-ref="itemsSection" class="flex-1 overflow-y-auto divide-y divide-neutral-100 bg-white dark:divide-zinc-800 dark:bg-zinc-900">
+                                @forelse ($this->activeTabItems as $tabItem)
+                                    <div class="px-3 py-2.5 text-sm hover:bg-neutral-50 dark:hover:bg-zinc-800/60 transition-colors">
+                                        <p class="text-neutral-800 dark:text-neutral-100 font-medium leading-snug mb-1.5">{{ $tabItem->product_name }}</p>
+                                        <div class="flex items-center justify-between gap-2">
+                                            <div class="flex items-center gap-1 shrink-0">
+                                                <button
+                                                    type="button"
+                                                    wire:click="updateTabItemQuantity({{ $tabItem->id }}, {{ $tabItem->quantity - 1 }})"
+                                                    class="size-11 rounded-full border flex items-center justify-center text-neutral-500 hover:bg-red-50 hover:text-red-600 hover:border-red-300 active:scale-90 transition-colors dark:border-zinc-600"
+                                                >
+                                                    <span class="text-lg font-bold leading-none">−</span>
+                                                </button>
+                                                <span class="w-6 text-center font-semibold text-neutral-800 dark:text-neutral-100">{{ $tabItem->quantity }}</span>
+                                                <button
+                                                    type="button"
+                                                    wire:click="updateTabItemQuantity({{ $tabItem->id }}, {{ $tabItem->quantity + 1 }})"
+                                                    class="size-11 rounded-full border flex items-center justify-center text-neutral-500 hover:bg-green-50 hover:text-green-600 hover:border-green-300 active:scale-90 transition-colors dark:border-zinc-600"
+                                                >
+                                                    <span class="text-lg font-bold leading-none">+</span>
+                                                </button>
                                             </div>
-                                            <div class="flex gap-1 shrink-0">
-                                                <flux:button wire:click="deselectOpenTab" variant="ghost" size="sm">
-                                                    Nova comanda
-                                                </flux:button>
-                                                @unless ($isWaiter)
-                                                    <flux:button wire:click="proceedToCloseTab({{ $openTabOrderId }})" variant="outline" size="sm">
-                                                        Fechar
-                                                    </flux:button>
-                                                @endunless
+                                            <div class="flex items-center gap-2 shrink-0">
+                                                <span class="text-right font-semibold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($tabItem->subtotal, 2, ',', '.') }}</span>
+                                                <button
+                                                    type="button"
+                                                    wire:click="removeTabItem({{ $tabItem->id }})"
+                                                    wire:confirm="Remover {{ $tabItem->product_name }} da comanda?"
+                                                    class="size-11 rounded-full flex items-center justify-center text-neutral-300 hover:bg-red-50 hover:text-red-600 dark:text-neutral-600 dark:hover:bg-red-900/20 dark:hover:text-red-400 transition-colors"
+                                                    title="Remover item"
+                                                >
+                                                    <flux:icon.x-mark class="size-5" />
+                                                </button>
                                             </div>
                                         </div>
-                                        @if ($this->activeTabItems->isNotEmpty())
-                                            <div class="max-h-28 overflow-y-auto divide-y divide-amber-200/70 dark:divide-amber-800/50 border-t border-amber-200/70 dark:border-amber-800/50">
-                                                @foreach ($this->activeTabItems as $tabItem)
-                                                    <div class="flex items-center justify-between gap-3 px-3 py-1.5 text-xs">
-                                                        <span class="text-amber-900 dark:text-amber-200">{{ $tabItem->quantity }}x {{ $tabItem->product_name }}</span>
-                                                        <span class="shrink-0 font-semibold text-amber-900 dark:text-amber-200">R$ {{ number_format($tabItem->subtotal, 2, ',', '.') }}</span>
-                                                    </div>
-                                                @endforeach
-                                            </div>
-                                        @endif
                                     </div>
-                                @else
-                                    {{-- Sem comanda selecionada ainda: título fixo + 2 cartões bem delimitados
-                                         (abrir mesa/comanda / comandas já abertas), sempre visíveis — nada
-                                         escondido atrás de clique, é a ação principal desse modo de venda. --}}
-                                    <div class="px-4 pt-3 pb-3 space-y-3">
-                                        <p class="flex items-center gap-1.5 text-xs font-bold text-amber-800 dark:text-amber-300">
-                                            <flux:icon.table-cells class="size-3.5" />
-                                            Abrir mesa / comanda
-                                        </p>
-
-                                        <div class="rounded-lg border border-amber-200 dark:border-amber-800/60 bg-white dark:bg-zinc-900 p-3 space-y-2">
-                                            @if (! $this->branchUsesRegisteredTables)
-                                                <div class="rounded-lg border border-amber-300 bg-amber-100/70 px-3 py-2 dark:border-amber-800 dark:bg-amber-900/20">
-                                                    <p class="text-xs font-semibold text-amber-800 dark:text-amber-300">
-                                                        Esta filial ainda não tem mesas cadastradas.
-                                                    </p>
-                                                    <p class="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
-                                                        @if ($isWaiter)
-                                                            Peça para o responsável pelo caixa cadastrar as mesas antes de abrir uma comanda.
-                                                        @else
-                                                            Cadastre ao menos uma mesa abaixo para poder abrir uma comanda.
-                                                        @endif
-                                                    </p>
-                                                </div>
-                                            @endif
-
-                                            <flux:select wire:model.live="selectedTableId">
-                                                <option value="">Selecione a mesa...</option>
-                                                @foreach ($this->availableTables as $table)
-                                                    <option value="{{ $table->id }}">Mesa {{ $table->number }}</option>
-                                                @endforeach
-                                            </flux:select>
-                                            @error('selectedTableId')
-                                                <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
-                                            @enderror
-                                            @if ($this->branchUsesRegisteredTables && $this->availableTables->isEmpty())
-                                                <p class="text-xs text-neutral-500 dark:text-neutral-400">Nenhuma mesa livre no momento.</p>
-                                            @endif
-
-                                            @unless ($isWaiter)
-                                                <div class="flex items-end gap-2">
-                                                    <div class="flex-1">
-                                                        <flux:input wire:model="newTableNumber" type="number" min="1" placeholder="Nº da mesa" />
-                                                        @error('newTableNumber')
-                                                            <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
-                                                        @enderror
-                                                    </div>
-                                                    <flux:button wire:click="registerTable" variant="outline" size="sm">
-                                                        Cadastrar mesa
-                                                    </flux:button>
-                                                </div>
-                                            @endunless
+                                @empty
+                                    <div class="flex-1 flex items-center justify-center py-16 text-neutral-400 dark:text-neutral-500 bg-zinc-50 dark:bg-[#0f1926]/40">
+                                        <div class="text-center">
+                                            <flux:icon.shopping-cart class="size-10 mx-auto mb-2 opacity-40" />
+                                            <p class="text-sm">Nenhum item ainda</p>
+                                            <p class="text-xs mt-1 text-neutral-300 dark:text-neutral-600">Toque num produto do catálogo pra lançar na comanda</p>
                                         </div>
-
-                                        @if ($this->openTabs->isNotEmpty())
-                                            <div>
-                                                <p class="flex items-center gap-1.5 text-xs font-bold text-amber-800 dark:text-amber-300 mb-1.5">
-                                                    <flux:icon.clipboard-document-list class="size-3.5" />
-                                                    Comandas abertas
-                                                    <span class="font-normal text-amber-600 dark:text-amber-500">({{ $this->openTabs->count() }})</span>
-                                                </p>
-                                                <div class="rounded-lg border border-amber-200 dark:border-amber-800/60 bg-white dark:bg-zinc-900 divide-y divide-amber-100 dark:divide-amber-900/40 max-h-48 overflow-y-auto">
-                                                @foreach ($this->openTabs as $tab)
-                                                    <div>
-                                                        <div
-                                                            role="button"
-                                                            tabindex="0"
-                                                            wire:click="toggleTabItems({{ $tab->id }})"
-                                                            wire:keydown.enter="toggleTabItems({{ $tab->id }})"
-                                                            class="w-full flex items-center justify-between gap-2 px-3 py-2 cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
-                                                        >
-                                                            <div class="text-xs min-w-0">
-                                                                <p class="font-semibold text-neutral-800 dark:text-neutral-100 truncate">{{ $tab->table_label }}</p>
-                                                                <p class="text-neutral-400 dark:text-neutral-500">R$ {{ number_format($tab->total, 2, ',', '.') }} · {{ $viewingTabItemsOrderId === $tab->id ? 'ocultar itens' : 'ver itens' }}</p>
-                                                            </div>
-                                                            <div class="flex gap-1 shrink-0">
-                                                                <flux:button wire:click.stop="addItemsToTab({{ $tab->id }})" variant="outline" size="sm" :disabled="empty($cart)">Adicionar</flux:button>
-                                                                @unless ($isWaiter)
-                                                                    <flux:button wire:click.stop="proceedToCloseTab({{ $tab->id }})" variant="ghost" size="sm">Fechar</flux:button>
-                                                                @endunless
-                                                            </div>
-                                                        </div>
-                                                        @if ($viewingTabItemsOrderId === $tab->id)
-                                                            <div class="max-h-28 overflow-y-auto divide-y divide-neutral-100 dark:divide-zinc-800 border-t border-amber-100 dark:border-amber-900/40 bg-neutral-50 dark:bg-zinc-800/50">
-                                                                @forelse ($this->viewingTabItems as $tabItem)
-                                                                    <div class="flex items-center justify-between gap-3 px-3 py-1.5 text-xs">
-                                                                        <span class="text-neutral-700 dark:text-neutral-200">{{ $tabItem->quantity }}x {{ $tabItem->product_name }}</span>
-                                                                        <span class="shrink-0 font-semibold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($tabItem->subtotal, 2, ',', '.') }}</span>
-                                                                    </div>
-                                                                @empty
-                                                                    <p class="px-3 py-1.5 text-xs text-neutral-400 dark:text-neutral-500">Nenhum item lançado ainda.</p>
-                                                                @endforelse
-                                                            </div>
-                                                        @endif
-                                                    </div>
-                                                @endforeach
-                                                </div>
-                                            </div>
-                                        @endif
                                     </div>
-                                @endif
+                                @endforelse
                             </div>
-                            {{-- Alça de arrasto (QA): puxa pra redimensionar a seção acima e testar responsividade --}}
-                            <div
-                                class="h-2.5 shrink-0 cursor-row-resize flex items-center justify-center bg-neutral-200/70 hover:bg-amber-400 dark:bg-zinc-700 dark:hover:bg-amber-500 transition-colors touch-none"
-                                @pointerdown="startResize($refs.mesaSection, $event)"
-                                title="Arraste para redimensionar"
-                            >
-                                <div class="w-8 h-1 rounded-full bg-neutral-400/70 dark:bg-neutral-500"></div>
-                            </div>
-                        @endif
+                        @else
 
                         <div class="px-4 pt-2.5 pb-1 shrink-0 bg-white dark:bg-zinc-900">
                             <p class="text-[10px] font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">Itens do pedido</p>
@@ -1237,45 +1258,43 @@
                                     }
                                     $cartItemUnitPrice = (float) $item['price'] + $cartItemOptionsExtra;
                                 @endphp
-                                <div class="px-4 py-3 hover:bg-neutral-50 dark:hover:bg-zinc-800/60 transition-colors">
-                                    <div class="flex items-start gap-3">
-                                        <div class="flex-1 min-w-0">
-                                            <p class="text-sm font-medium text-neutral-800 dark:text-neutral-100 truncate">
-                                                {{ $item['name'] }}
-                                            </p>
-                                            @if (!empty($item['options']))
-                                                @foreach ($item['options'] as $group)
-                                                    <p class="text-xs font-medium text-neutral-500 mt-0.5">{{ $group['group_name'] }}:</p>
-                                                    @foreach ($group['selections'] as $sel)
-                                                        <p class="text-xs text-neutral-400 leading-tight">
-                                                            {{ $sel['qty'] }}× {{ $sel['name'] }}@if (($sel['additional_price'] ?? 0) > 0) <span class="text-amber-500">(+R$ {{ number_format($sel['additional_price'], 2, ',', '.') }})</span>@endif
-                                                        </p>
-                                                    @endforeach
-                                                @endforeach
-                                            @else
-                                                <p class="text-xs text-neutral-500 dark:text-neutral-400">
-                                                    R$ {{ number_format($cartItemUnitPrice, 2, ',', '.') }} cada
+                                <div class="px-3 py-2.5 hover:bg-neutral-50 dark:hover:bg-zinc-800/60 transition-colors">
+                                    <p class="text-sm font-medium text-neutral-800 dark:text-neutral-100 leading-snug mb-1">
+                                        {{ $item['name'] }}
+                                    </p>
+                                    @if (!empty($item['options']))
+                                        @foreach ($item['options'] as $group)
+                                            <p class="text-xs font-medium text-neutral-500 mt-0.5">{{ $group['group_name'] }}:</p>
+                                            @foreach ($group['selections'] as $sel)
+                                                <p class="text-xs text-neutral-400 leading-tight">
+                                                    {{ $sel['qty'] }}× {{ $sel['name'] }}@if (($sel['additional_price'] ?? 0) > 0) <span class="text-amber-500">(+R$ {{ number_format($sel['additional_price'], 2, ',', '.') }})</span>@endif
                                                 </p>
-                                            @endif
-                                        </div>
+                                            @endforeach
+                                        @endforeach
+                                    @else
+                                        <p class="text-xs text-neutral-500 dark:text-neutral-400 mb-1.5">
+                                            R$ {{ number_format($cartItemUnitPrice, 2, ',', '.') }} cada
+                                        </p>
+                                    @endif
+                                    <div class="flex items-center justify-between gap-2">
                                         <div class="flex items-center gap-1 shrink-0">
                                             <button
                                                 wire:click="updateCartQty('{{ $cartKey }}', {{ $item['qty'] - 1 }})"
-                                                class="size-6 rounded-full border flex items-center justify-center text-neutral-500 hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition-colors dark:border-zinc-600"
+                                                class="size-11 rounded-full border flex items-center justify-center text-neutral-500 hover:bg-red-50 hover:text-red-600 hover:border-red-300 active:scale-90 transition-colors dark:border-zinc-600"
                                             >
-                                                <span class="text-sm font-bold leading-none">−</span>
+                                                <span class="text-lg font-bold leading-none">−</span>
                                             </button>
                                             <span class="w-6 text-center text-sm font-semibold text-neutral-800 dark:text-neutral-100">
                                                 {{ $item['qty'] }}
                                             </span>
                                             <button
                                                 wire:click="updateCartQty('{{ $cartKey }}', {{ $item['qty'] + 1 }})"
-                                                class="size-6 rounded-full border flex items-center justify-center text-neutral-500 hover:bg-green-50 hover:text-green-600 hover:border-green-300 transition-colors dark:border-zinc-600"
+                                                class="size-11 rounded-full border flex items-center justify-center text-neutral-500 hover:bg-green-50 hover:text-green-600 hover:border-green-300 active:scale-90 transition-colors dark:border-zinc-600"
                                             >
-                                                <span class="text-sm font-bold leading-none">+</span>
+                                                <span class="text-lg font-bold leading-none">+</span>
                                             </button>
                                         </div>
-                                        <p class="w-16 text-right text-sm font-semibold text-neutral-800 dark:text-neutral-100 shrink-0">
+                                        <p class="text-right text-sm font-semibold text-neutral-800 dark:text-neutral-100 shrink-0">
                                             R$ {{ number_format($cartItemUnitPrice * $item['qty'], 2, ',', '.') }}
                                         </p>
                                     </div>
@@ -1298,57 +1317,88 @@
                         >
                             <div class="w-8 h-1 rounded-full bg-neutral-400/70 dark:bg-neutral-500"></div>
                         </div>
+                        @endif
                         </div>
                         {{-- fim da região rolável do meio --}}
 
-                        @if (!empty($cart))
+                        @if ($orderMode === 'mesa')
+                            @if ($openTabOrderId)
+                                @php $activeTabOrder = $this->openTabs->firstWhere('id', $openTabOrderId); @endphp
+                                <div class="border-t border-neutral-100 px-4 py-4 space-y-3 bg-zinc-50 dark:border-zinc-800 dark:bg-[#0f1926]/70 shrink-0">
+                                    @if ($activeTabOrder)
+                                        <div class="space-y-1 text-sm">
+                                            <div class="flex justify-between items-center text-neutral-500 dark:text-neutral-400">
+                                                <span>Subtotal</span>
+                                                <span>R$ {{ number_format($activeTabOrder->subtotal, 2, ',', '.') }}</span>
+                                            </div>
+                                            @if ($activeTabOrder->service_fee > 0)
+                                                <div class="flex justify-between items-center text-neutral-500 dark:text-neutral-400">
+                                                    <span>Taxa de serviço</span>
+                                                    <span>+ R$ {{ number_format($activeTabOrder->service_fee, 2, ',', '.') }}</span>
+                                                </div>
+                                            @endif
+                                            @if ($activeTabOrder->couvert_fee > 0)
+                                                <div class="flex justify-between items-center text-neutral-500 dark:text-neutral-400">
+                                                    <span>Couvert artístico</span>
+                                                    <span>+ R$ {{ number_format($activeTabOrder->couvert_fee, 2, ',', '.') }}</span>
+                                                </div>
+                                            @endif
+                                            @if ($activeTabOrder->manual_discount > 0)
+                                                <div class="flex justify-between items-center text-green-600 dark:text-green-400">
+                                                    <span>Desc. manual</span>
+                                                    <span>− R$ {{ number_format($activeTabOrder->manual_discount, 2, ',', '.') }}</span>
+                                                </div>
+                                            @endif
+                                        </div>
+                                    @endif
+                                    <div class="flex justify-between items-end rounded-xl bg-white border border-neutral-200 px-3 py-3 dark:bg-zinc-900 dark:border-zinc-800">
+                                        <span class="text-sm font-semibold text-neutral-500 dark:text-neutral-400">Total da comanda</span>
+                                        <span class="text-2xl font-black text-neutral-900 dark:text-neutral-100">
+                                            R$ {{ number_format($activeTabOrder?->total ?? 0, 2, ',', '.') }}
+                                        </span>
+                                    </div>
+                                    @unless ($isWaiter)
+                                        <flux:button wire:click="proceedToCloseTab({{ $openTabOrderId }})" variant="primary" size="base" class="w-full h-14 text-base">
+                                            Fechar comanda
+                                        </flux:button>
+                                    @endunless
+                                </div>
+                            @endif
+                        @elseif (!empty($cart))
                             <div class="border-t border-neutral-100 px-4 py-4 space-y-3 bg-zinc-50 dark:border-zinc-800 dark:bg-[#0f1926]/70 shrink-0">
-                                @if ($manualDiscountAmount > 0 || $this->serviceFeeAmount > 0 || $this->couvertFeeAmount > 0)
-                                    <div class="flex justify-between items-center text-xs text-neutral-400 dark:text-neutral-500">
+                                <div class="space-y-1 text-sm">
+                                    <div class="flex justify-between items-center text-neutral-500 dark:text-neutral-400">
                                         <span>Subtotal</span>
                                         <span>R$ {{ number_format($this->cartTotal, 2, ',', '.') }}</span>
                                     </div>
                                     @if ($this->serviceFeeAmount > 0)
-                                        <div class="flex justify-between items-center text-xs text-neutral-400 dark:text-neutral-500">
+                                        <div class="flex justify-between items-center text-neutral-500 dark:text-neutral-400">
                                             <span>Taxa de serviço</span>
                                             <span>+ R$ {{ number_format($this->serviceFeeAmount, 2, ',', '.') }}</span>
                                         </div>
                                     @endif
                                     @if ($this->couvertFeeAmount > 0)
-                                        <div class="flex justify-between items-center text-xs text-neutral-400 dark:text-neutral-500">
+                                        <div class="flex justify-between items-center text-neutral-500 dark:text-neutral-400">
                                             <span>Couvert artístico</span>
                                             <span>+ R$ {{ number_format($this->couvertFeeAmount, 2, ',', '.') }}</span>
                                         </div>
                                     @endif
                                     @if ($manualDiscountAmount > 0)
-                                        <div class="flex justify-between items-center text-xs text-green-600 dark:text-green-400">
+                                        <div class="flex justify-between items-center text-green-600 dark:text-green-400">
                                             <span>Desc. manual</span>
                                             <span>− R$ {{ number_format($manualDiscountAmount, 2, ',', '.') }}</span>
                                         </div>
                                     @endif
-                                @endif
+                                </div>
                                 <div class="flex justify-between items-end rounded-xl bg-white border border-neutral-200 px-3 py-3 dark:bg-zinc-900 dark:border-zinc-800">
                                     <span class="text-sm font-semibold text-neutral-500 dark:text-neutral-400">Total</span>
                                     <span class="text-2xl font-black text-neutral-900 dark:text-neutral-100">
                                         R$ {{ number_format($this->cartTotalAfterDiscount, 2, ',', '.') }}
                                     </span>
                                 </div>
-                                @if ($orderMode === 'mesa')
-                                    @if ($openTabOrderId)
-                                        <flux:button wire:click="addItemsToTab" variant="primary" size="base" class="w-full">
-                                            Enviar itens
-                                        </flux:button>
-                                    @else
-                                        <flux:button wire:click="openTab" variant="primary" size="base" class="w-full"
-                                            :disabled="blank($selectedTableId)">
-                                            Abrir comanda
-                                        </flux:button>
-                                    @endif
-                                @else
-                                    <flux:button wire:click="proceedToPayment" variant="primary" size="base" class="w-full">
-                                        Ir para pagamento
-                                    </flux:button>
-                                @endif
+                                <flux:button wire:click="proceedToPayment" variant="primary" size="base" class="w-full">
+                                    Ir para pagamento
+                                </flux:button>
                                 <flux:button wire:click="clearCart" variant="ghost" size="sm" class="w-full text-red-500 hover:text-red-700">
                                     Limpar carrinho
                                 </flux:button>
@@ -1359,23 +1409,35 @@
                 {{-- fim painel direito --}}
 
             </div>
+            @endunless
 
             {{-- ── Barra flutuante do carrinho (mobile) ── --}}
-            @if (!empty($cart) && $step !== 'payment')
+            @if ($step !== 'payment' && (!empty($cart) || ($orderMode === 'mesa' && ($openTabOrderId || $selectedTableId))))
                 <div
                     x-show="!mobileCartOpen"
                     class="lg:hidden fixed inset-x-3 bottom-3 z-20 flex items-center justify-between gap-3 rounded-xl bg-amber-500 px-4 py-3 text-white shadow-lg shadow-amber-500/30 dark:bg-amber-400"
                 >
-                    <div class="min-w-0">
-                        <p class="text-xs font-semibold text-white/80">{{ $this->cartCount }} {{ $this->cartCount === 1 ? 'item' : 'itens' }}</p>
-                        <p class="text-lg font-black leading-none">R$ {{ number_format($this->cartTotalAfterDiscount, 2, ',', '.') }}</p>
-                    </div>
+                    @if ($orderMode === 'mesa')
+                        <div class="min-w-0">
+                            <p class="text-xs font-semibold text-white/80 truncate">
+                                {{ $openTabOrderId ? $this->openTabs->firstWhere('id', $openTabOrderId)?->table_label : 'Mesa '.$this->availableTables->firstWhere('id', $selectedTableId)?->number }}
+                            </p>
+                            <p class="text-lg font-black leading-none">
+                                R$ {{ number_format($openTabOrderId ? ($this->openTabs->firstWhere('id', $openTabOrderId)?->total ?? 0) : 0, 2, ',', '.') }}
+                            </p>
+                        </div>
+                    @else
+                        <div class="min-w-0">
+                            <p class="text-xs font-semibold text-white/80">{{ $this->cartCount }} {{ $this->cartCount === 1 ? 'item' : 'itens' }}</p>
+                            <p class="text-lg font-black leading-none">R$ {{ number_format($this->cartTotalAfterDiscount, 2, ',', '.') }}</p>
+                        </div>
+                    @endif
                     <button
                         @click="mobileCartOpen = true"
                         class="shrink-0 inline-flex items-center gap-2 rounded-lg bg-white/15 px-4 py-2.5 text-sm font-bold hover:bg-white/25 transition-colors"
                     >
                         <flux:icon.shopping-cart class="size-4" />
-                        Ver carrinho
+                        Ver comanda
                     </button>
                 </div>
             @endif

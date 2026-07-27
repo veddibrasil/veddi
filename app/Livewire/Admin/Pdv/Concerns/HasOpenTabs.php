@@ -5,6 +5,7 @@ namespace App\Livewire\Admin\Pdv\Concerns;
 use App\Events\OrderStatusUpdated;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Product;
 use App\Models\RestaurantTable;
 use App\Services\Order\OrderService;
 use App\Services\Payment\PaymentOrchestrator;
@@ -31,7 +32,6 @@ trait HasOpenTabs
     public function selectOpenTab(int $orderId): void
     {
         $this->openTabOrderId = $orderId;
-        $this->tabMessage = null;
     }
 
     public function toggleTabItems(int $orderId): void
@@ -88,87 +88,91 @@ trait HasOpenTabs
         unset($this->availableTables);
     }
 
-    public function openTab(): void
+    /**
+     * Lança um produto direto na comanda — chamado no clique do catálogo quando o modo é 'mesa'.
+     * Sem mesa/comanda aberta ainda, cria a comanda já com esse primeiro item (e mantém selecionada,
+     * diferente de openTab(), pra continuar recebendo cliques direto no catálogo).
+     */
+    public function sendProductToComanda(Product $product, array $optionSelections = []): void
     {
-        if (empty($this->cart) || ! $this->selectedBranchId) {
+        if (! $this->selectedBranchId) {
             return;
         }
 
-        $this->resetValidation('selectedTableId');
-
-        $table = $this->availableTables->firstWhere('id', $this->selectedTableId);
-
-        if (! $table) {
-            $this->addError('selectedTableId', 'Selecione uma mesa disponível.');
-
-            return;
-        }
-
-        $label = 'Mesa '.$table->number;
-
-        $company = app('current.company');
-        $customerId = $this->resolveCustomerId($company);
-
-        DB::beginTransaction();
         try {
-            $order = app(OrderService::class)->createOrder(
-                customerId: $customerId,
-                branchId: $this->selectedBranchId,
-                cart: $this->buildOrderCart(),
-                notes: $this->notes,
-                paymentMethod: '',
-                orderType: 'pdv',
-                status: 'pending',
-                serviceFee: $this->serviceFeeAmount,
-                couvertFee: $this->couvertFeeAmount,
-            );
+            if ($this->openTabOrderId) {
+                $order = Order::withoutGlobalScopes()
+                    ->where('is_open_tab', true)
+                    ->find($this->openTabOrderId);
 
-            $order->update([
-                'pdv_cash_session_id' => $this->cashSessionId,
-                'is_open_tab' => true,
-                'table_label' => $label,
-                'restaurant_table_id' => $table?->id,
-            ]);
+                if (! $order) {
+                    $this->addError('order', 'Comanda não encontrada ou já fechada.');
 
-            DB::commit();
+                    return;
+                }
+
+                app(OrderService::class)->addOrIncrementItem($order, $product, $optionSelections);
+            } else {
+                $table = $this->availableTables->firstWhere('id', $this->selectedTableId);
+
+                if (! $table) {
+                    $this->addError('selectedTableId', 'Selecione uma mesa disponível.');
+
+                    return;
+                }
+
+                $company = app('current.company');
+                $customerId = $this->resolveCustomerId($company);
+
+                $order = app(OrderService::class)->createOrder(
+                    customerId: $customerId,
+                    branchId: $this->selectedBranchId,
+                    cart: [(string) $product->id => ['product_id' => $product->id, 'qty' => 1, 'options' => $optionSelections]],
+                    notes: $this->notes,
+                    paymentMethod: '',
+                    orderType: 'pdv',
+                    status: 'pending',
+                );
+
+                $order->update([
+                    'pdv_cash_session_id' => $this->cashSessionId,
+                    'is_open_tab' => true,
+                    'table_label' => 'Mesa '.$table->number,
+                    'restaurant_table_id' => $table->id,
+                ]);
+
+                // Preços já sobem sem taxa de serviço/couvert em createOrder() acima — recalcula
+                // a partir do item real recém-criado pra aplicar a taxa da filial corretamente.
+                app(OrderService::class)->applyManualDiscountToOrder($order, 0.0);
+
+                $this->openTabOrderId = $order->id;
+
+                $this->audit('tab_opened', [
+                    'order_id' => $order->id,
+                    'amount' => (float) $order->total,
+                    'reason' => $order->table_label,
+                ]);
+            }
         } catch (\Throwable $e) {
-            DB::rollBack();
-            $this->addError('order', $e->getMessage());
+            $this->addError('stock', $e->getMessage());
 
             return;
         }
 
-        $this->audit('tab_opened', [
-            'order_id' => $order->id,
-            'amount' => (float) $order->total,
-            'reason' => $label,
-        ]);
-
-        $this->cart = [];
-        $this->selectedTableId = null;
-        $this->openTabOrderId = null;
         unset($this->openTabs);
         unset($this->availableTables);
     }
 
-    /** Chamado tanto pelo botão "Adicionar" direto na lista de comandas (orderId explícito) quanto por "Enviar itens" na comanda ativa (usa $openTabOrderId). */
-    public function addItemsToTab(?int $orderId = null): void
+    /** Remove um item já lançado da comanda ativa. Disponível para garçom e caixa. */
+    public function removeTabItem(int $orderItemId): void
     {
-        $orderId ??= $this->openTabOrderId;
-
-        if (! $orderId) {
-            return;
-        }
-
-        if (empty($this->cart)) {
-            $this->addError('order', 'Selecione ao menos um item no catálogo antes de adicionar à comanda.');
-
+        if (! $this->openTabOrderId) {
             return;
         }
 
         $order = Order::withoutGlobalScopes()
             ->where('is_open_tab', true)
-            ->find($orderId);
+            ->find($this->openTabOrderId);
 
         if (! $order) {
             $this->addError('order', 'Comanda não encontrada ou já fechada.');
@@ -176,21 +180,59 @@ trait HasOpenTabs
             return;
         }
 
+        $item = OrderItem::where('order_id', $order->id)->find($orderItemId);
+
+        if (! $item) {
+            return;
+        }
+
         try {
-            $order = app(OrderService::class)->addItemsToOrder($order, $this->buildOrderCart());
+            app(OrderService::class)->removeItemFromOrder($order, $item);
         } catch (\Throwable $e) {
             $this->addError('order', $e->getMessage());
 
             return;
         }
 
-        $this->audit('tab_items_added', [
+        $this->audit('tab_item_removed', [
             'order_id' => $order->id,
-            'amount' => (float) $order->total,
+            'reason' => $item->product_name,
         ]);
 
-        $this->cart = [];
-        $this->tabMessage = "Itens adicionados à comanda \"{$order->table_label}\".";
+        unset($this->openTabs);
+    }
+
+    /** Ajusta a quantidade de um item já lançado na comanda ativa. Disponível para garçom e caixa. */
+    public function updateTabItemQuantity(int $orderItemId, int $quantity): void
+    {
+        if (! $this->openTabOrderId) {
+            return;
+        }
+
+        $order = Order::withoutGlobalScopes()
+            ->where('is_open_tab', true)
+            ->find($this->openTabOrderId);
+
+        if (! $order) {
+            $this->addError('order', 'Comanda não encontrada ou já fechada.');
+
+            return;
+        }
+
+        $item = OrderItem::where('order_id', $order->id)->find($orderItemId);
+
+        if (! $item) {
+            return;
+        }
+
+        try {
+            app(OrderService::class)->updateOrderItemQuantity($order, $item, $quantity);
+        } catch (\Throwable $e) {
+            $this->addError('order', $e->getMessage());
+
+            return;
+        }
+
         unset($this->openTabs);
     }
 
@@ -314,7 +356,7 @@ trait HasOpenTabs
             ->where('branch_id', $this->selectedBranchId)
             ->where('is_open_tab', true)
             ->latest()
-            ->get(['id', 'order_number', 'table_label', 'total', 'restaurant_table_id']);
+            ->get(['id', 'order_number', 'table_label', 'subtotal', 'service_fee', 'couvert_fee', 'manual_discount', 'total', 'restaurant_table_id']);
     }
 
     #[Computed]
