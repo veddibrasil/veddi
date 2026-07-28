@@ -211,7 +211,7 @@
                                             <path stroke-linecap="round" stroke-linejoin="round" d="M13 7a4 4 0 11-8 0 4 4 0 018 0zM9 14a6 6 0 00-6 6v1h12v-1a6 6 0 00-6-6zm7-4h6" />
                                         </svg>
                                     </button>
-                                    <span class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded bg-neutral-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 dark:bg-zinc-600">Remover</span>
+                                    <span class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded bg-neutral-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 dark:bg-zinc-600">Excluir</span>
                                 </div>
                             </div>
                         </td>
@@ -239,8 +239,8 @@
                     </svg>
                 </div>
                 <div>
-                    <flux:heading size="lg">Remover usuário?</flux:heading>
-                    <flux:subheading>O usuário perderá acesso à empresa. Sua conta não será excluída.</flux:subheading>
+                    <flux:heading size="lg">Excluir usuário?</flux:heading>
+                    <flux:subheading>A conta será excluída da plataforma, incluindo o acesso a todas as empresas vinculadas. Esta ação não pode ser desfeita pela tela.</flux:subheading>
                 </div>
             </div>
             <div class="flex justify-end gap-3">
@@ -248,7 +248,7 @@
                     <flux:button wire:click="cancelRemove" variant="ghost">Cancelar</flux:button>
                 </flux:modal.close>
                 <flux:modal.close>
-                    <flux:button wire:click="removeUser" variant="danger">Remover</flux:button>
+                    <flux:button wire:click="removeUser" variant="danger">Excluir</flux:button>
                 </flux:modal.close>
             </div>
         </div>

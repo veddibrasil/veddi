@@ -7,6 +7,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Models\UserPermission;
 use App\Services\Company\UserCreationService;
+use App\Services\Company\UserDeletionService;
 use App\Services\Company\UserPermissionService;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -186,15 +187,14 @@ class Index extends Component
     public function removeUser(): void
     {
         abort_unless($this->canManage, 403);
+        abort_if($this->removingUserId === auth()->id(), 403);
 
-        $company = app('current.company');
         $user = User::findOrFail($this->removingUserId);
-        User::clearPermissionCache($this->removingUserId, $company->id);
 
-        $user->companies()->detach($company->id);
+        UserDeletionService::delete($user);
 
         $this->removingUserId = null;
-        session()->flash('status', 'Usuário removido da empresa.');
+        session()->flash('status', 'Usuário excluído da plataforma.');
     }
 
     public function render()
