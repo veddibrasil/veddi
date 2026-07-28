@@ -814,7 +814,7 @@
             {{-- ── Barra flutuante do carrinho (mobile) ── --}}
             @if ($step !== 'payment' && ($openTabOrderId || $selectedTableId))
                 <div
-                    x-show="!mobileCartOpen"
+                    x-show="!mobileCartOpen && selectingProduct === null"
                     class="lg:hidden fixed inset-x-3 bottom-3 z-20 flex items-center justify-between gap-3 rounded-xl bg-amber-500 px-4 py-3 text-white shadow-lg shadow-amber-500/30 dark:bg-amber-400"
                 >
                     <div class="min-w-0">
