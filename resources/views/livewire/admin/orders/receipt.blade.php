@@ -201,6 +201,18 @@
         <div class="sm"><span class="bold">Obs: </span>{{ $order->notes }}</div>
     @endif
 
+    @if ($company?->canUseFiscalNotes() && $order->activeFiscalNote)
+        <div class="divider"></div>
+        <div class="center sm">
+            @if ($order->activeFiscalNote->status === 'authorized')
+                <div class="bold brand">NFC-e autorizada</div>
+                <div class="muted" style="word-break: break-all;">{{ chunk_split($order->activeFiscalNote->access_key, 4, ' ') }}</div>
+            @else
+                <div class="muted">NFC-e em processamento</div>
+            @endif
+        </div>
+    @endif
+
     <div class="divider"></div>
 
     <div class="footer">Obrigado pela preferencia!</div>

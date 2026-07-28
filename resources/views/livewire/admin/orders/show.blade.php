@@ -827,7 +827,7 @@
     </div>
 
     {{-- Fiscal Note Section --}}
-    {{-- @php
+    @php
         $activeFiscalNote = $order->activeFiscalNote;
         $fiscalCompany = app()->bound('current.company') ? app('current.company') : null;
         $fiscalEnabled = $fiscalCompany?->canUseFiscalNotes();
@@ -877,7 +877,7 @@
                 @endif
             </x-admin.form-card>
         </div>
-    @endif --}}
+    @endif
 
     {{-- Fiscal Note Modal --}}
     @if($showFiscalModal)

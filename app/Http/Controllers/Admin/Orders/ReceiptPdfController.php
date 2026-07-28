@@ -28,7 +28,7 @@ class ReceiptPdfController extends Controller
             abort_unless(in_array($station, ['cozinha', 'bar', 'entrega']), 404);
         }
 
-        $order->load(['items.product.category', 'customer', 'branch', 'payment', 'coupon', 'deliveryAddressRecord']);
+        $order->load(['items.product.category', 'customer', 'branch', 'payment', 'coupon', 'deliveryAddressRecord', 'activeFiscalNote']);
 
         $company = app()->bound('current.company') ? app('current.company') : null;
 
