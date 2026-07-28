@@ -1822,6 +1822,9 @@
                                         <div>
                                             <p class="font-bold text-sm text-gray-800" x-text="group.name"></p>
                                             <p class="text-xs text-gray-400 mt-0.5">
+                                                <template x-if="group.min_qty > 0">
+                                                    <span>Mín. <span class="font-semibold" x-text="group.min_qty"></span> ·</span>
+                                                </template>
                                                 Máximo <span class="font-semibold" x-text="group.total_qty"></span> unidades
                                             </p>
                                         </div>
@@ -1829,7 +1832,7 @@
                                     <span class="text-xs font-bold px-2 py-1 rounded-full"
                                         :class="getGroupTotal(group.id) > group.total_qty
                                             ? 'bg-red-100 text-red-700'
-                                            : getGroupTotal(group.id) === group.total_qty
+                                            : getGroupTotal(group.id) >= (group.min_qty || 0)
                                                 ? 'bg-green-100 text-green-700'
                                                 : 'bg-gray-100 text-gray-500'">
                                         <span x-text="getGroupTotal(group.id)"></span>/<span x-text="group.total_qty"></span>
@@ -1880,9 +1883,9 @@
                                                         <span class="w-7 text-center text-sm font-bold text-gray-800"
                                                             x-text="pendingSelections[group.id]?.[option.id] || 0"></span>
                                                         <button
-                                                            @click="if (getGroupTotal(group.id) < group.total_qty) { if (!pendingSelections[group.id]) pendingSelections[group.id] = {}; pendingSelections[group.id][option.id] = (pendingSelections[group.id]?.[option.id] || 0) + 1 }"
-                                                            :disabled="getGroupTotal(group.id) >= group.total_qty"
-                                                            :class="getGroupTotal(group.id) >= group.total_qty ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white'"
+                                                            @click="if (getGroupTotal(group.id) < group.total_qty && (!option.max_qty || (pendingSelections[group.id]?.[option.id] || 0) < option.max_qty)) { if (!pendingSelections[group.id]) pendingSelections[group.id] = {}; pendingSelections[group.id][option.id] = (pendingSelections[group.id]?.[option.id] || 0) + 1 }"
+                                                            :disabled="getGroupTotal(group.id) >= group.total_qty || (option.max_qty && (pendingSelections[group.id]?.[option.id] || 0) >= option.max_qty)"
+                                                            :class="(getGroupTotal(group.id) >= group.total_qty || (option.max_qty && (pendingSelections[group.id]?.[option.id] || 0) >= option.max_qty)) ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white'"
                                                             class="w-7 h-7 rounded-full font-bold text-base flex items-center justify-center">+</button>
                                                     </div>
                                                 </template>

@@ -7,12 +7,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ProductOption extends Model
 {
-    protected $fillable = ['product_option_group_id', 'name', 'image_path', 'active', 'description', 'additional_price', 'default_qty', 'sort_order'];
+    protected $fillable = ['product_option_group_id', 'name', 'image_path', 'active', 'description', 'additional_price', 'default_qty', 'max_qty', 'sort_order'];
 
     protected $casts = [
         'active' => 'boolean',
         'additional_price' => 'decimal:2',
         'default_qty' => 'integer',
+        'max_qty' => 'integer',
         'sort_order' => 'integer',
     ];
 

@@ -85,6 +85,10 @@ class CartOptionPricing
                     continue;
                 }
 
+                if (! $group->fixed && $opt->max_qty !== null && $qty > $opt->max_qty) {
+                    throw new RuntimeException("Quantidade da opção #{$optionId} excede o máximo permitido ({$opt->max_qty}).");
+                }
+
                 $additional = ($isVariantPriceGroup || ! $group->fixed)
                     ? (float) $opt->additional_price
                     : 0.0;
@@ -96,6 +100,16 @@ class CartOptionPricing
                 $selNorm['qty'] = $qty;
                 $selNorm['additional_price'] = $additional;
                 $normSelections[$optionId] = $selNorm;
+            }
+
+            if (! $group->fixed) {
+                $groupQty = array_sum(array_column($normSelections, 'qty'));
+                if ($groupQty > $group->total_qty) {
+                    throw new RuntimeException("Quantidade selecionada no grupo \"{$group->name}\" excede o máximo ({$group->total_qty}).");
+                }
+                if ($groupQty < $group->min_qty) {
+                    throw new RuntimeException("Quantidade selecionada no grupo \"{$group->name}\" é menor que o mínimo ({$group->min_qty}).");
+                }
             }
 
             $groupNormalized['selections'] = $normSelections;

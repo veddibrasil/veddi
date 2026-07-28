@@ -159,9 +159,11 @@
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
-                    <div class="pb-1">
-                        <flux:checkbox wire:model="available_in_pdv" label="Disponível no PDV" />
-                    </div>
+                    @if ($this->pdvEnabled)
+                        <div class="pb-1">
+                            <flux:checkbox wire:model="available_in_pdv" label="Disponível no PDV" />
+                        </div>
+                    @endif
                     <div class="pb-1">
                         <flux:checkbox wire:model="available_in_delivery" label="Disponível no Delivery" />
                     </div>
@@ -330,13 +332,27 @@
                                 <div>
                                     <flux:input wire:model="optionGroups.{{ $gi }}.total_qty"
                                         type="number" min="1"
-                                        label="Quantidade total"
+                                        label="Quantidade máxima"
                                         placeholder="Ex: 100"
                                         x-on:input="$dispatch('fixedqtytotal{{ $gi }}', { qty: parseInt($event.target.value) || 0 })" />
                                     @error("optionGroups.{$gi}.total_qty")
                                         <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
                                     @enderror
                                 </div>
+                                @if (empty($group['fixed']))
+                                <div>
+                                    <flux:input wire:model="optionGroups.{{ $gi }}.min_qty"
+                                        type="number" min="0"
+                                        label="Quantidade mínima"
+                                        placeholder="Ex: 0" />
+                                    @error("optionGroups.{$gi}.min_qty")
+                                        <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                                    @enderror
+                                    <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
+                                        O cliente pode distribuir livremente entre as opções, contanto que a soma fique entre o mínimo e o máximo.
+                                    </p>
+                                </div>
+                                @endif
                                 <div class="sm:col-span-2 flex items-start gap-2 pt-1">
                                     <flux:checkbox wire:model.live="optionGroups.{{ $gi }}.fixed"
                                         id="fixed-{{ $gi }}" class="mt-0.5" />
@@ -551,6 +567,17 @@
                                                 label="{{ $isVariant && $gi === 0 ? 'Preço (R$)' : 'Acréscimo (R$)' }}"
                                                 placeholder="0,00" />
                                             @error("optionGroups.{$gi}.options.{$oi}.additional_price")
+                                                <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                                            @enderror
+                                        </div>
+                                        @endif
+                                        @if (empty($group['fixed']))
+                                        <div class="w-20 shrink-0">
+                                            <flux:input wire:model="optionGroups.{{ $gi }}.options.{{ $oi }}.max_qty"
+                                                type="number" min="1"
+                                                label="Máx. opção"
+                                                placeholder="Livre" />
+                                            @error("optionGroups.{$gi}.options.{$oi}.max_qty")
                                                 <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
                                             @enderror
                                         </div>

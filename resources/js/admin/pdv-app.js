@@ -248,9 +248,12 @@ Alpine.data('pdvApp', () => ({
 
     canConfirm() {
         if (!this.selectingProduct) return false;
-        return this.selectingProduct.groups.every(
-            group => group.fixed || this.getGroupTotal(group.id) <= group.total_qty
-        );
+        return this.selectingProduct.groups.every(group => {
+            if (group.fixed) return true;
+            const total = this.getGroupTotal(group.id);
+
+            return total <= group.total_qty && total >= (group.min_qty || 0);
+        });
     },
 
     getTotalWithOptions() {

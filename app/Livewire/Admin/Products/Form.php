@@ -101,6 +101,7 @@ class Form extends Component
             'optionGroups' => ['array'],
             'optionGroups.*.name' => ['required_with:optionGroups.*', 'string', 'max:150'],
             'optionGroups.*.total_qty' => ['required_with:optionGroups.*', 'integer', 'min:1'],
+            'optionGroups.*.min_qty' => ['required_with:optionGroups.*', 'integer', 'min:0'],
             'optionGroups.*.fixed' => ['boolean'],
             'optionGroups.*.options' => ['array'],
             'optionGroups.*.options.*.name' => ['required_with:optionGroups.*.options.*', 'string', 'max:150'],
@@ -108,6 +109,7 @@ class Form extends Component
             'optionGroups.*.options.*.description' => ['nullable', 'string', 'max:255'],
             'optionGroups.*.options.*.additional_price' => ['required_with:optionGroups.*.options.*', 'numeric', 'min:0'],
             'optionGroups.*.options.*.default_qty' => ['required_with:optionGroups.*.options.*', 'integer', 'min:0'],
+            'optionGroups.*.options.*.max_qty' => ['nullable', 'integer', 'min:1'],
             'groupImages.*' => ['nullable', 'image', 'max:2048'],
             'optionImages.*' => ['nullable', 'image', 'max:2048'],
         ];
@@ -134,10 +136,20 @@ class Form extends Component
             'optionGroups.*.name.required_with' => 'O nome do grupo é obrigatório.',
             'optionGroups.*.total_qty.required_with' => 'A quantidade total é obrigatória.',
             'optionGroups.*.total_qty.min' => 'A quantidade total deve ser pelo menos 1.',
+            'optionGroups.*.min_qty.required_with' => 'A quantidade mínima é obrigatória.',
             'optionGroups.*.options.*.name.required_with' => 'O nome da opção é obrigatório.',
             'optionGroups.*.options.*.additional_price.numeric' => 'O acréscimo deve ser um valor numérico.',
             'optionGroups.*.options.*.additional_price.min' => 'O acréscimo não pode ser negativo.',
         ];
+    }
+
+    public function getPdvEnabledProperty(): bool
+    {
+        if ($this->isSuperAdmin) {
+            return (bool) Company::find($this->company_id)?->pdv_module_enabled;
+        }
+
+        return app()->bound('current.company') ? (bool) app('current.company')->pdv_module_enabled : false;
     }
 
     public function mount(?Product $product = null): void
@@ -184,6 +196,7 @@ class Form extends Component
                     'image_path' => $group->image_path,
                     'image_url' => $group->image_url,
                     'total_qty' => (string) $group->total_qty,
+                    'min_qty' => (string) $group->min_qty,
                     'fixed' => (bool) $group->fixed,
                     'sort_order' => $group->pivot->sort_order,
                     'options' => $group->options->map(fn ($opt) => [
@@ -196,6 +209,7 @@ class Form extends Component
                         'description' => $opt->description ?? '',
                         'additional_price' => number_format((float) $opt->additional_price, 2, '.', ''),
                         'default_qty' => (string) $opt->default_qty,
+                        'max_qty' => $opt->max_qty !== null ? (string) $opt->max_qty : '',
                         'sort_order' => $opt->sort_order,
                     ])->toArray(),
                 ];
@@ -282,6 +296,7 @@ class Form extends Component
             'image_path' => null,
             'image_url' => null,
             'total_qty' => '100',
+            'min_qty' => '0',
             'fixed' => false,
             'sort_order' => count($this->optionGroups),
             'options' => [],
@@ -310,6 +325,7 @@ class Form extends Component
             'image_path' => $group->image_path,
             'image_url' => $group->image_url,
             'total_qty' => (string) $group->total_qty,
+            'min_qty' => (string) $group->min_qty,
             'fixed' => (bool) $group->fixed,
             'sort_order' => count($this->optionGroups),
             'options' => $group->options->map(fn ($opt) => [
@@ -322,6 +338,7 @@ class Form extends Component
                 'description' => $opt->description ?? '',
                 'additional_price' => number_format((float) $opt->additional_price, 2, '.', ''),
                 'default_qty' => (string) $opt->default_qty,
+                'max_qty' => $opt->max_qty !== null ? (string) $opt->max_qty : '',
                 'sort_order' => $opt->sort_order,
             ])->toArray(),
         ];
@@ -354,6 +371,7 @@ class Form extends Component
             'description' => '',
             'additional_price' => '0.00',
             'default_qty' => '0',
+            'max_qty' => '',
             'sort_order' => count($this->optionGroups[$groupIndex]['options']),
         ];
     }
@@ -490,13 +508,22 @@ class Form extends Component
         $validated = $this->validate($this->rules(), $this->messages());
 
         foreach ($validated['optionGroups'] ?? [] as $gi => $groupData) {
-            if (empty($groupData['fixed'])) {
+            $totalQty = (int) $groupData['total_qty'];
+
+            if (! empty($groupData['fixed'])) {
+                $usedQty = collect($groupData['options'] ?? [])->sum(fn ($o) => (int) ($o['default_qty'] ?? 0));
+                if ($usedQty > $totalQty) {
+                    $this->addError("optionGroups.{$gi}.total_qty", "A soma das qtds. fixas ({$usedQty}) ultrapassa a quantidade total ({$totalQty}).");
+
+                    return;
+                }
+
                 continue;
             }
-            $totalQty = (int) $groupData['total_qty'];
-            $usedQty = collect($groupData['options'] ?? [])->sum(fn ($o) => (int) ($o['default_qty'] ?? 0));
-            if ($usedQty > $totalQty) {
-                $this->addError("optionGroups.{$gi}.total_qty", "A soma das qtds. fixas ({$usedQty}) ultrapassa a quantidade total ({$totalQty}).");
+
+            $minQty = (int) ($groupData['min_qty'] ?? 0);
+            if ($minQty > $totalQty) {
+                $this->addError("optionGroups.{$gi}.min_qty", "A quantidade mínima ({$minQty}) não pode ser maior que a máxima ({$totalQty}).");
 
                 return;
             }
@@ -528,7 +555,7 @@ class Form extends Component
             'promo_price_type' => (! $isVariantProduct && $validated['promo_price_enabled']) ? $validated['promo_price_type'] : 'fixed',
             'promo_price_value' => (! $isVariantProduct && $validated['promo_price_enabled']) ? $validated['promo_price_value'] : null,
             'active' => $validated['active'],
-            'available_in_pdv' => $validated['available_in_pdv'],
+            'available_in_pdv' => $this->pdvEnabled ? $validated['available_in_pdv'] : false,
             'available_in_delivery' => $validated['available_in_delivery'],
             'sort_order' => $validated['sort_order'],
             'image_path' => $imagePath,
@@ -642,6 +669,7 @@ class Form extends Component
                 'name' => $groupData['name'],
                 'image_path' => $groupImagePath,
                 'total_qty' => (int) $groupData['total_qty'],
+                'min_qty' => (int) ($groupData['min_qty'] ?? 0),
                 'fixed' => (bool) ($groupData['fixed'] ?? false),
                 'sort_order' => $i,
             ]);
@@ -688,6 +716,7 @@ class Form extends Component
                     'description' => $optData['description'] ?: null,
                     'additional_price' => ($isVariantPriceGroup || ! $groupFixed) ? (float) $optData['additional_price'] : 0.0,
                     'default_qty' => (int) ($optData['default_qty'] ?? 0),
+                    'max_qty' => ($optData['max_qty'] ?? '') !== '' ? (int) $optData['max_qty'] : null,
                     'sort_order' => $optData['sort_order'],
                 ])->save();
             }

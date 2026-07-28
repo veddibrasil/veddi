@@ -70,6 +70,7 @@ trait HasProductLookup
                     'name' => $g->name,
                     'image_url' => $g->image_url,
                     'total_qty' => $g->total_qty,
+                    'min_qty' => $g->min_qty,
                     'fixed' => (bool) $g->fixed,
                     'options' => [
                         ...$g->options->map(fn ($o) => [
@@ -78,6 +79,7 @@ trait HasProductLookup
                             'image_url' => $o->image_url,
                             'description' => $o->description,
                             'additional_price' => $resolvePrice($o),
+                            'max_qty' => $o->max_qty,
                             'paused' => false,
                             'prefilledQty' => $g->fixed
                                 ? (int) $o->default_qty
