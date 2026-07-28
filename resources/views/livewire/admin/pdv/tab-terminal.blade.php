@@ -233,7 +233,8 @@
                             <p class="text-sm">Nenhum produto disponível</p>
                         </div>
                     @else
-                        <div class="overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+                        {{-- Mobile: tabela --}}
+                        <div class="md:hidden overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
                             <table class="w-full table-fixed text-sm">
                                 <thead class="bg-neutral-50 text-left text-[11px] uppercase tracking-wider text-neutral-400 dark:bg-zinc-800/60 dark:text-neutral-500">
                                     <tr>
@@ -346,6 +347,104 @@
                             </table>
                         </div>
 
+                        {{-- Desktop/tablet: cards --}}
+                        <div class="hidden md:grid grid-cols-4 gap-2">
+                            @foreach ($this->products as $product)
+                                @php
+                                    $productData = $this->buildProductDataForSidebar($product);
+                                    $hasOptions = $productData !== null;
+                                    $pdvCartQty = 0;
+                                    foreach ($cart as $__key => $__item) {
+                                        $__pid = (int) ($__item['product_id'] ?? (int) explode('_', (string) $__key)[0]);
+                                        if ($__pid === $product->id) {
+                                            $pdvCartQty += $__item['qty'];
+                                        }
+                                    }
+                                    $stockQty = $this->productStocks[$product->id] ?? null;
+                                    $stockOut = $stockQty !== null && $pdvCartQty >= $stockQty;
+                                @endphp
+                                <div class="flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+                                    <button
+                                        type="button"
+                                        @if (!$stockOut)
+                                            @if ($hasOptions)
+                                                @click="addOrOpenOptionSelector(@js($productData), $wire)"
+                                            @else
+                                                wire:click="addProduct({{ $product->id }})"
+                                            @endif
+                                        @endif
+                                        {{ $stockOut ? 'disabled' : '' }}
+                                        class="block w-full disabled:cursor-not-allowed"
+                                    >
+                                        @if ($product->image_path)
+                                            <img
+                                                src="{{ $product->image_url }}"
+                                                alt="{{ $product->name }}"
+                                                class="aspect-square w-full object-cover bg-neutral-100 dark:bg-zinc-800"
+                                            />
+                                        @else
+                                            <div class="aspect-square w-full bg-neutral-100 flex items-center justify-center dark:bg-zinc-800">
+                                                <flux:icon.shopping-bag class="size-6 text-neutral-300 dark:text-zinc-500" />
+                                            </div>
+                                        @endif
+                                    </button>
+                                    <div class="flex flex-1 flex-col p-2">
+                                        <button
+                                            type="button"
+                                            @if (!$stockOut)
+                                                @if ($hasOptions)
+                                                    @click="addOrOpenOptionSelector(@js($productData), $wire)"
+                                                @else
+                                                    wire:click="addProduct({{ $product->id }})"
+                                                @endif
+                                            @endif
+                                            {{ $stockOut ? 'disabled' : '' }}
+                                            class="text-left w-full flex-1 disabled:cursor-not-allowed"
+                                        >
+                                            <span class="block text-xs font-medium leading-snug text-neutral-800 dark:text-neutral-100 line-clamp-2">
+                                                {{ $product->name }}
+                                            </span>
+                                            <span class="block text-xs font-semibold text-amber-600 dark:text-amber-400">
+                                                R$ {{ number_format($product->effective_price, 2, ',', '.') }}
+                                            </span>
+                                            @if ($stockOut)
+                                                <span class="block text-[10px] font-semibold text-red-600 dark:text-red-400">Sem estoque</span>
+                                            @elseif ($stockQty !== null && $stockQty <= 5)
+                                                <span class="block text-[10px] font-semibold text-amber-600 dark:text-amber-400">Restam {{ $stockQty }}</span>
+                                            @endif
+                                        </button>
+                                        <div class="flex items-center justify-end gap-1 mt-1.5">
+                                            @if ($pdvCartQty > 0)
+                                                <button
+                                                    @if ($hasOptions)
+                                                        wire:click.stop="decrementProductFromCart({{ $product->id }})"
+                                                    @else
+                                                        wire:click.stop="updateCartQty('{{ $product->id }}', {{ $pdvCartQty - 1 }})"
+                                                    @endif
+                                                    class="size-6 rounded-full border flex items-center justify-center text-neutral-500 hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition-colors dark:border-zinc-600"
+                                                >
+                                                    <span class="text-xs font-bold leading-none">−</span>
+                                                </button>
+                                                <span class="w-4 text-center text-xs font-semibold text-neutral-800 dark:text-neutral-100">{{ $pdvCartQty }}</span>
+                                            @endif
+                                            <button
+                                                @if (!$stockOut)
+                                                    @if ($hasOptions)
+                                                        @click.stop="addOrOpenOptionSelector(@js($productData), $wire)"
+                                                    @else
+                                                        wire:click.stop="addProduct({{ $product->id }})"
+                                                    @endif
+                                                @endif
+                                                {{ $stockOut ? 'disabled' : '' }}
+                                                class="size-6 rounded-full text-white flex items-center justify-center transition-colors {{ $stockOut ? 'bg-neutral-300 cursor-not-allowed dark:bg-zinc-600' : 'bg-amber-500 hover:bg-amber-600 active:scale-90' }}"
+                                            >
+                                                <span class="text-xs font-bold leading-none">+</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
                     @endif
                     @error('stock')
                         <div class="mt-3 flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl px-3 py-2 text-sm dark:bg-red-900/20 dark:border-red-700 dark:text-red-300">
