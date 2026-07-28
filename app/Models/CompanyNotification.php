@@ -10,6 +10,7 @@ class CompanyNotification extends Model
     protected $fillable = [
         'company_id',
         'type',
+        'is_delivery',
         'title',
         'subtitle',
         'link',
@@ -18,6 +19,7 @@ class CompanyNotification extends Model
 
     protected $casts = [
         'read_at' => 'datetime',
+        'is_delivery' => 'boolean',
     ];
 
     public function company(): BelongsTo

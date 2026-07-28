@@ -30,6 +30,7 @@ class NewOrderPlaced implements ShouldBroadcast
             'customer_name' => $this->order->customer?->name ?? 'Cliente',
             'total' => $this->order->total,
             'payment_method' => $this->order->payment_method,
+            'is_delivery' => $this->order->isDeliveryOrder(),
         ];
     }
 }

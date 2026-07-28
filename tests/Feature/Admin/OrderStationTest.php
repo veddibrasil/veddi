@@ -539,3 +539,187 @@ test('kanban impede entrega de mover pedido pra status fora de out_for_delivery/
 
     expect($order->fresh()->status)->toBe('pending');
 });
+
+// ─── Entrega só vê pedidos de entrega na listagem ─────────────────────────────
+
+test('entrega só vê pedidos de entrega na listagem (lista e kanban), admin vê todos', function () {
+    ['company' => $company, 'admin' => $admin, 'order' => $balcaoOrder] = stationOrderContext();
+    $entrega = makeStationUser($company, 'entrega');
+
+    $deliveryOrder = Order::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'customer_id' => $balcaoOrder->customer_id,
+        'branch_id' => $balcaoOrder->branch_id,
+        'subtotal' => 25.00,
+        'delivery_fee' => 5,
+        'discount' => 0,
+        'total' => 30.00,
+        'fee' => 0,
+        'net_value' => 30.00,
+        'status' => 'pending',
+        'notes' => '',
+        'payment_method' => 'pix',
+        'order_type' => 'delivery',
+    ]);
+
+    $this->actingAs($admin);
+    Livewire::test(OrdersIndex::class)
+        ->assertSee($balcaoOrder->order_number)
+        ->assertSee($deliveryOrder->order_number);
+
+    $this->actingAs($entrega);
+    Livewire::test(OrdersIndex::class)
+        ->assertDontSee($balcaoOrder->order_number)
+        ->assertSee($deliveryOrder->order_number);
+
+    Livewire::test(OrdersIndex::class)
+        ->set('viewMode', 'kanban')
+        ->assertDontSee($balcaoOrder->order_number)
+        ->assertSee($deliveryOrder->order_number);
+});
+
+// ─── Notificações: entrega só é notificado de pedidos de entrega ─────────────
+
+test('CreateOrderNotification marca is_delivery de acordo com o pedido', function () {
+    ['company' => $company, 'order' => $balcaoOrder] = stationOrderContext();
+
+    $deliveryOrder = Order::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'customer_id' => $balcaoOrder->customer_id,
+        'branch_id' => $balcaoOrder->branch_id,
+        'subtotal' => 25.00,
+        'delivery_fee' => 5,
+        'discount' => 0,
+        'total' => 30.00,
+        'fee' => 0,
+        'net_value' => 30.00,
+        'status' => 'pending',
+        'notes' => '',
+        'payment_method' => 'pix',
+        'order_type' => 'delivery',
+    ]);
+
+    app(\App\Listeners\CreateOrderNotification::class)->handle(new \App\Events\NewOrderPlaced($balcaoOrder));
+    app(\App\Listeners\CreateOrderNotification::class)->handle(new \App\Events\NewOrderPlaced($deliveryOrder));
+
+    expect(\App\Models\CompanyNotification::where('title', 'like', '%'.$balcaoOrder->order_number.'%')->first()->is_delivery)->toBeFalse();
+    expect(\App\Models\CompanyNotification::where('title', 'like', '%'.$deliveryOrder->order_number.'%')->first()->is_delivery)->toBeTrue();
+});
+
+test('NotificationBell só mostra notificações de entrega pra estação entrega', function () {
+    ['company' => $company, 'admin' => $admin] = stationOrderContext();
+    $entrega = makeStationUser($company, 'entrega');
+
+    \App\Models\CompanyNotification::create([
+        'company_id' => $company->id,
+        'type' => 'order',
+        'is_delivery' => false,
+        'title' => 'Novo pedido: balcão',
+    ]);
+
+    \App\Models\CompanyNotification::create([
+        'company_id' => $company->id,
+        'type' => 'order',
+        'is_delivery' => true,
+        'title' => 'Novo pedido: entrega',
+    ]);
+
+    $this->actingAs($admin);
+    Livewire::test(\App\Livewire\Admin\NotificationBell::class)
+        ->assertSee('Novo pedido: balcão')
+        ->assertSee('Novo pedido: entrega');
+
+    $this->actingAs($entrega);
+    Livewire::test(\App\Livewire\Admin\NotificationBell::class)
+        ->assertDontSee('Novo pedido: balcão')
+        ->assertSee('Novo pedido: entrega');
+});
+
+test('Notifications (toast) ignora pedido não-entrega pra estação entrega', function () {
+    ['company' => $company] = stationOrderContext();
+    $entrega = makeStationUser($company, 'entrega');
+
+    $this->actingAs($entrega);
+
+    Livewire::test(\App\Livewire\Admin\Notifications::class)
+        ->call('onNewOrder', ['order_id' => 1, 'order_number' => 'X-1', 'customer_name' => 'Cliente', 'total' => 10, 'is_delivery' => false])
+        ->assertSet('notifications', []);
+
+    Livewire::test(\App\Livewire\Admin\Notifications::class)
+        ->call('onNewOrder', ['order_id' => 2, 'order_number' => 'X-2', 'customer_name' => 'Cliente', 'total' => 10, 'is_delivery' => true])
+        ->assertCount('notifications', 1);
+});
+
+// ─── UI mobile do entrega: fila em cards + barra de status fixa ───────────────
+
+test('entrega vê fila em cards com ação de avançar status, sem kanban', function () {
+    ['company' => $company, 'order' => $balcaoOrder] = stationOrderContext();
+    $entrega = makeStationUser($company, 'entrega');
+
+    $deliveryOrder = Order::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'customer_id' => $balcaoOrder->customer_id,
+        'branch_id' => $balcaoOrder->branch_id,
+        'subtotal' => 25.00,
+        'delivery_fee' => 5,
+        'discount' => 0,
+        'total' => 30.00,
+        'fee' => 0,
+        'net_value' => 30.00,
+        'status' => 'ready',
+        'notes' => '',
+        'payment_method' => 'pix',
+        'order_type' => 'delivery',
+    ]);
+
+    $this->actingAs($entrega);
+
+    $test = Livewire::test(OrdersIndex::class)
+        ->assertSet('viewMode', 'list')
+        ->assertSee('Minhas entregas')
+        ->assertSee($deliveryOrder->order_number)
+        ->assertSee('Saiu para entrega')
+        ->assertDontSee('data-kanban-col');
+
+    $test->call('updateOrderStatus', $deliveryOrder->id, 'out_for_delivery');
+
+    expect($deliveryOrder->fresh()->status)->toBe('out_for_delivery');
+});
+
+test('entrega vê barra de status fixa embaixo no detalhe do pedido', function () {
+    ['company' => $company, 'order' => $order] = stationOrderContext();
+    $order->update(['order_type' => 'delivery']);
+    $entrega = makeStationUser($company, 'entrega');
+
+    $this->actingAs($entrega);
+
+    Livewire::test(Show::class, ['order' => $order])
+        ->assertSeeHtml('fixed inset-x-0 bottom-0');
+});
+
+test('entrega vê a taxa de frete no detalhe do pedido e na fila de entregas', function () {
+    ['company' => $company, 'order' => $order] = stationOrderContext();
+    $order->update(['order_type' => 'delivery', 'delivery_fee' => 7.50]);
+    $entrega = makeStationUser($company, 'entrega');
+
+    $this->actingAs($entrega);
+
+    Livewire::test(Show::class, ['order' => $order])
+        ->assertSee('Taxa de frete')
+        ->assertSee('7,50');
+
+    Livewire::test(OrdersIndex::class)
+        ->assertSee('Frete')
+        ->assertSee('7,50');
+});
+
+test('entrega vê "Grátis" quando a taxa de frete é zero', function () {
+    ['company' => $company, 'order' => $order] = stationOrderContext();
+    $order->update(['order_type' => 'delivery', 'delivery_fee' => 0]);
+    $entrega = makeStationUser($company, 'entrega');
+
+    $this->actingAs($entrega);
+
+    Livewire::test(Show::class, ['order' => $order])->assertSee('Grátis');
+    Livewire::test(OrdersIndex::class)->assertSee('Grátis');
+});

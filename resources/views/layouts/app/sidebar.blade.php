@@ -10,11 +10,13 @@
         $can = fn(string $perm) => $company && $user?->hasPermission($perm, $company);
         // Garçom só opera mesas/comandas — sem acesso ao dashboard nem ao resto do painel.
         $isWaiterOnly = $can('pdv.waiter_operate') && !$can('pdv.operate');
+        // Entregador só opera a fila de entregas — sem acesso ao dashboard nem ao resto do painel.
+        $isDeliveryOnly = $company && $user?->roleForCompany($company) === 'entrega';
     @endphp
     <body class="{{ $bodyClass }} bg-[#f8f8fb] dark:bg-[#0d1825]">
         <flux:sidebar sticky collapsible="mobile" class="veddi-sidebar border-e border-[#5c0079]">
             <flux:sidebar.header>
-                <x-app-logo :sidebar="true" href="{{ auth()->user()?->isSuperAdmin() ? route('superadmin.dashboard') : ($isWaiterOnly ? route('admin.pdv.tabs') : route('admin.dashboard')) }}" wire:navigate />
+                <x-app-logo :sidebar="true" href="{{ auth()->user()?->isSuperAdmin() ? route('superadmin.dashboard') : ($isWaiterOnly ? route('admin.pdv.tabs') : ($isDeliveryOnly ? route('admin.orders.index') : route('admin.dashboard'))) }}" wire:navigate />
 
                 @auth
                     @if(!auth()->user()?->isSuperAdmin())
@@ -42,6 +44,12 @@
                         <flux:sidebar.group heading="PDV" class="grid">
                             <flux:sidebar.item icon="table-cells" :href="route('admin.pdv.tabs')" :current="request()->routeIs('admin.pdv.tabs')" wire:navigate>
                                 Mesas / Comandas
+                            </flux:sidebar.item>
+                        </flux:sidebar.group>
+                    @elseif($isDeliveryOnly)
+                        <flux:sidebar.group heading="Entregas" class="grid">
+                            <flux:sidebar.item icon="truck" :href="route('admin.orders.index')" :current="request()->routeIs('admin.orders.*')" wire:navigate>
+                                Minhas entregas
                             </flux:sidebar.item>
                         </flux:sidebar.group>
                     @else

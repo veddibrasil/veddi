@@ -45,6 +45,20 @@ test('garçom é redirecionado direto para mesas/comandas após o login', functi
     $this->assertAuthenticatedAs($waiter);
 });
 
+test('entregador é redirecionado direto para a fila de pedidos após o login', function () {
+    ['company' => $company, 'branch' => $branch] = loginRedirectContext();
+
+    $entrega = User::factory()->create(['email' => 'entrega@teste.com']);
+    $entrega->companies()->attach($company->id, ['role' => 'entrega', 'branch_id' => $branch->id]);
+
+    $this->post(route('login.store'), [
+        'email' => 'entrega@teste.com',
+        'password' => 'password',
+    ])->assertRedirect(route('admin.orders.index', absolute: false));
+
+    $this->assertAuthenticatedAs($entrega);
+});
+
 test('company_admin é redirecionado para o dashboard após o login', function () {
     ['company' => $company] = loginRedirectContext();
 

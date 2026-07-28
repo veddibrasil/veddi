@@ -11,10 +11,17 @@ class NotificationBell extends Component
 
     public bool $confirmingClearAll = false;
 
+    /** Estação do usuário logado ('cozinha'|'bar'|'entrega') quando o papel é restrito a uma estação, senão null. */
+    public ?string $userStation = null;
+
     public function mount(): void
     {
         if (app()->bound('current.company')) {
-            $this->companyId = app('current.company')->id;
+            $company = app('current.company');
+            $this->companyId = $company->id;
+
+            $roleSlug = auth()->user()?->roleForCompany($company);
+            $this->userStation = in_array($roleSlug, ['cozinha', 'bar', 'entrega']) ? $roleSlug : null;
         }
     }
 
@@ -46,6 +53,7 @@ class NotificationBell extends Component
     public function markAllRead(): void
     {
         CompanyNotification::where('company_id', $this->companyId)
+            ->when($this->userStation === 'entrega', fn ($q) => $q->where('is_delivery', true))
             ->whereNull('read_at')
             ->update(['read_at' => now()]);
     }
@@ -70,12 +78,15 @@ class NotificationBell extends Component
     public function clearAll(): void
     {
         $this->confirmingClearAll = false;
-        CompanyNotification::where('company_id', $this->companyId)->delete();
+        CompanyNotification::where('company_id', $this->companyId)
+            ->when($this->userStation === 'entrega', fn ($q) => $q->where('is_delivery', true))
+            ->delete();
     }
 
     public function render()
     {
         $notifications = CompanyNotification::where('company_id', $this->companyId)
+            ->when($this->userStation === 'entrega', fn ($q) => $q->where('is_delivery', true))
             ->latest()
             ->limit(30)
             ->get();

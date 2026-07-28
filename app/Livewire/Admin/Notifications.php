@@ -10,10 +10,17 @@ class Notifications extends Component
 
     public array $notifications = [];
 
+    /** Estação do usuário logado ('cozinha'|'bar'|'entrega') quando o papel é restrito a uma estação, senão null. */
+    public ?string $userStation = null;
+
     public function mount(): void
     {
         if (app()->bound('current.company')) {
-            $this->companyId = app('current.company')->id;
+            $company = app('current.company');
+            $this->companyId = $company->id;
+
+            $roleSlug = auth()->user()?->roleForCompany($company);
+            $this->userStation = in_array($roleSlug, ['cozinha', 'bar', 'entrega']) ? $roleSlug : null;
         }
     }
 
@@ -30,6 +37,10 @@ class Notifications extends Component
 
     public function onNewOrder(array $data): void
     {
+        if ($this->userStation === 'entrega' && empty($data['is_delivery'])) {
+            return;
+        }
+
         $this->notifications[] = [
             'id' => uniqid('notif_'),
             'order_id' => $data['order_id'],

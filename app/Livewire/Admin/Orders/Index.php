@@ -67,6 +67,11 @@ class Index extends Component
             $roleSlug = $user->roleForCompany($company);
             $this->userStation = in_array($roleSlug, ['cozinha', 'bar', 'entrega']) ? $roleSlug : null;
         }
+
+        // Entrega usa uma fila de cards mobile própria (sem kanban) — força a lista.
+        if ($this->userStation === 'entrega') {
+            $this->viewMode = 'list';
+        }
     }
 
     public function updatingSearch(): void
@@ -207,12 +212,15 @@ class Index extends Component
             )
             : collect();
 
-        if ($this->viewMode === 'kanban') {
+        // Entrega usa a fila de cards mobile (view "list"), nunca o kanban — mesmo que
+        // viewMode tenha ficado com um valor antigo persistido na URL.
+        if ($this->viewMode === 'kanban' && $this->userStation !== 'entrega') {
             $baseQuery = $this->isSuperAdmin
-                ? Order::withoutGlobalScope(CompanyScope::class)->with(['customer', 'branch', 'company'])
-                : Order::with(['customer', 'branch']);
+                ? Order::withoutGlobalScope(CompanyScope::class)->with(['customer', 'branch', 'company', 'deliveryAddressRecord'])
+                : Order::with(['customer', 'branch', 'deliveryAddressRecord']);
 
             $baseQuery = $baseQuery
+                ->when($this->userStation === 'entrega', fn ($q) => $q->deliveryOnly())
                 ->when($this->search, fn ($q) => $q
                     ->where('order_number', 'like', "%{$this->search}%")
                     ->orWhereHas('customer', fn ($cq) => $cq->where('name', 'like', "%{$this->search}%"))
@@ -247,10 +255,11 @@ class Index extends Component
         }
 
         $query = $this->isSuperAdmin
-            ? Order::withoutGlobalScope(CompanyScope::class)->with(['customer', 'branch', 'company'])
-            : Order::with(['customer', 'branch']);
+            ? Order::withoutGlobalScope(CompanyScope::class)->with(['customer', 'branch', 'company', 'deliveryAddressRecord'])
+            : Order::with(['customer', 'branch', 'deliveryAddressRecord']);
 
         $orders = $query
+            ->when($this->userStation === 'entrega', fn ($q) => $q->deliveryOnly())
             ->when($this->statusFilter, fn ($q) => $q->where('status', $this->statusFilter))
             ->when($this->search, fn ($q) => $q
                 ->where('order_number', 'like', "%{$this->search}%")

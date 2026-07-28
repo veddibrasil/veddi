@@ -271,6 +271,17 @@ class Order extends Model
         return $this->order_type === 'delivery' || ($this->order_type === 'pdv' && $this->delivery_address_id !== null);
     }
 
+    /** Restringe a query a pedidos de entrega, mesmo critério de {@see isDeliveryOrder()}. */
+    public function scopeDeliveryOnly(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query->where(function ($q) {
+            $q->where('order_type', 'delivery')
+                ->orWhere(function ($q2) {
+                    $q2->where('order_type', 'pdv')->whereNotNull('delivery_address_id');
+                });
+        });
+    }
+
     /** Human-readable label for the order's origin/channel (chat, PDV balcão, mesa/comanda, delivery via PDV). */
     public function getOriginLabelAttribute(): string
     {

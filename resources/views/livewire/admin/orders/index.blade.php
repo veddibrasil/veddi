@@ -1,12 +1,115 @@
 <div class="space-y-4">
-    <h1 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100">Pedidos</h1>
+@if ($userStation === 'entrega')
+    {{-- ── ENTREGA: fila mobile em cards, sem kanban ──────────────────────── --}}
+    <div class="flex items-center justify-between">
+        <h1 class="text-xl font-bold text-neutral-800 dark:text-neutral-100">Minhas entregas</h1>
+        <span class="text-xs font-medium px-2 py-1 rounded-full bg-neutral-100 text-neutral-500 dark:bg-zinc-700 dark:text-neutral-400">{{ $orders->total() }}</span>
+    </div>
+
+    <flux:input wire:model.live.debounce.400ms="search" placeholder="Buscar por número ou cliente..." />
 
     <div class="flex gap-2">
-        <div class="flex-1">
+        <button wire:click="$set('statusFilter', '')"
+                class="flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors {{ $statusFilter === '' ? 'bg-amber-500 text-white' : 'bg-neutral-100 text-neutral-600 dark:bg-zinc-700 dark:text-neutral-300' }}">
+            Todos
+        </button>
+        <button wire:click="$set('statusFilter', 'out_for_delivery')"
+                class="flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors {{ $statusFilter === 'out_for_delivery' ? 'bg-purple-600 text-white' : 'bg-neutral-100 text-neutral-600 dark:bg-zinc-700 dark:text-neutral-300' }}">
+            A caminho
+        </button>
+        <button wire:click="$set('statusFilter', 'delivered')"
+                class="flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors {{ $statusFilter === 'delivered' ? 'bg-emerald-600 text-white' : 'bg-neutral-100 text-neutral-600 dark:bg-zinc-700 dark:text-neutral-300' }}">
+            Entregues
+        </button>
+    </div>
+
+    <div class="space-y-3">
+        @forelse ($orders as $order)
+            @php
+                $addrFull = $order->deliveryFullAddress();
+                $rawPhone = preg_replace('/\D/', '', $order->customer?->phone ?? '');
+                $whatsappPhone = strlen($rawPhone) <= 11 ? '55'.$rawPhone : $rawPhone;
+            @endphp
+            <div wire:key="entrega-card-{{ $order->id }}" class="bg-white border rounded-xl shadow-sm overflow-hidden dark:bg-zinc-800 dark:border-zinc-700">
+                <a href="{{ route('admin.orders.show', $order) }}" wire:navigate class="block px-4 pt-4 pb-3">
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="min-w-0">
+                            <p class="font-mono font-semibold text-xs text-neutral-400 dark:text-neutral-500">{{ $order->order_number }}</p>
+                            <p class="text-base font-semibold text-neutral-800 dark:text-neutral-100 truncate">{{ $order->customer->name ?? '—' }}</p>
+                            @if ($addrFull)
+                                <p class="text-sm text-neutral-500 dark:text-neutral-400 truncate">{{ $addrFull }}</p>
+                            @endif
+                        </div>
+                        <span class="shrink-0 text-xs px-2 py-1 rounded-full font-medium
+                            @if($order->status === 'delivered') bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400
+                            @elseif($order->status === 'out_for_delivery') bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-400
+                            @elseif($order->status === 'cancelled') bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400
+                            @else bg-neutral-100 text-neutral-600 dark:bg-zinc-700 dark:text-neutral-300 @endif">
+                            {{ $order->status_label }}
+                        </span>
+                    </div>
+                    <div class="flex items-baseline justify-between mt-2">
+                        <p class="text-lg font-bold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($order->total, 2, ',', '.') }}</p>
+                        <p class="text-xs text-neutral-400 dark:text-neutral-500">
+                            Frete:
+                            @if ($order->delivery_fee > 0)
+                                R$ {{ number_format($order->delivery_fee, 2, ',', '.') }}
+                            @else
+                                <span class="text-green-600 dark:text-green-400">Grátis</span>
+                            @endif
+                        </p>
+                    </div>
+                </a>
+
+                @if ($addrFull || $rawPhone)
+                    <div class="grid grid-cols-3 border-t dark:border-zinc-700 divide-x dark:divide-zinc-700">
+                        <a href="tel:{{ $rawPhone }}"
+                           class="flex items-center justify-center gap-1.5 py-3 text-xs font-medium text-neutral-600 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-zinc-700/50 transition-colors">
+                            📞 Ligar
+                        </a>
+                        <a href="https://wa.me/{{ $whatsappPhone }}" target="_blank"
+                           class="flex items-center justify-center gap-1.5 py-3 text-xs font-medium text-green-700 dark:text-green-400 hover:bg-neutral-50 dark:hover:bg-zinc-700/50 transition-colors">
+                            💬 WhatsApp
+                        </a>
+                        <a href="https://maps.google.com/?q={{ urlencode($addrFull) }}" target="_blank"
+                           class="flex items-center justify-center gap-1.5 py-3 text-xs font-medium text-blue-700 dark:text-blue-400 hover:bg-neutral-50 dark:hover:bg-zinc-700/50 transition-colors">
+                            📍 Mapa
+                        </a>
+                    </div>
+                @endif
+
+                @if ($canUpdate && in_array($order->status, ['paid', 'preparing', 'ready']))
+                    <button wire:click="updateOrderStatus({{ $order->id }}, 'out_for_delivery')"
+                            wire:loading.attr="disabled"
+                            class="w-full py-3.5 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 active:bg-purple-800 disabled:opacity-50 transition-colors border-t dark:border-zinc-700">
+                        Saiu para entrega
+                    </button>
+                @elseif ($canUpdate && $order->status === 'out_for_delivery')
+                    <button wire:click="updateOrderStatus({{ $order->id }}, 'delivered')"
+                            wire:loading.attr="disabled"
+                            class="w-full py-3.5 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 transition-colors border-t dark:border-zinc-700">
+                        Marcar como entregue
+                    </button>
+                @endif
+            </div>
+        @empty
+            <div class="px-4 py-16 text-center">
+                <div class="text-4xl mb-2">🛵</div>
+                <p class="text-sm text-neutral-500 dark:text-neutral-400">Nenhuma entrega no momento.</p>
+            </div>
+        @endforelse
+    </div>
+
+    <div>{{ $orders->links() }}</div>
+@else
+    <h1 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100">Pedidos</h1>
+
+    <div class="flex flex-wrap gap-2">
+        <div class="flex-1 min-w-[12rem]">
             <flux:input wire:model.live="search" placeholder="Buscar por número ou cliente..." />
         </div>
         @if(auth()->user()->isSuperAdmin())
-        <flux:select wire:model.live="companyFilter" placeholder="Todas as empresas" class="w-48 shrink-0">
+        <flux:select wire:model.live="companyFilter" placeholder="Todas as empresas" class="w-full sm:w-48 shrink-0">
             <flux:select.option value="">Todas as empresas</flux:select.option>
             @foreach ($companies as $company)
                 <flux:select.option value="{{ $company->id }}">{{ $company->name }}</flux:select.option>
@@ -14,7 +117,7 @@
         </flux:select>
         @endif
         @if($viewMode === 'list')
-        <flux:select wire:model.live="statusFilter" placeholder="Todos os status" class="w-44 shrink-0">
+        <flux:select wire:model.live="statusFilter" placeholder="Todos os status" class="w-full sm:w-44 shrink-0">
             <flux:select.option value="">Todos os status</flux:select.option>
             <flux:select.option value="pending">Pendente</flux:select.option>
             <flux:select.option value="awaiting_payment">Aguardando Pagamento</flux:select.option>
@@ -218,4 +321,5 @@
         @endforeach
     </div>
     @endif
+@endif
 </div>

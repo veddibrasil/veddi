@@ -40,6 +40,11 @@ class FortifyServiceProvider extends ServiceProvider
                     return redirect()->intended(route('admin.pdv.tabs'));
                 }
 
+                // Entregador só usa a fila de pedidos — pular o dashboard genérico, direto pra tela dele.
+                if ($company && $user?->roleForCompany($company) === 'entrega') {
+                    return redirect()->intended(route('admin.orders.index'));
+                }
+
                 return redirect()->intended(route('admin.dashboard'));
             }
         });
