@@ -723,3 +723,215 @@ test('entrega vê "Grátis" quando a taxa de frete é zero', function () {
     Livewire::test(Show::class, ['order' => $order])->assertSee('Grátis');
     Livewire::test(OrdersIndex::class)->assertSee('Grátis');
 });
+
+// ─── Fila própria de cozinha/bar (scope por item) ─────────────────────────────
+
+function makeSingleItemOrder(Company $company, Branch $branch, Customer $customer, Product $product, float $price): Order
+{
+    $order = Order::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'customer_id' => $customer->id,
+        'branch_id' => $branch->id,
+        'subtotal' => $price,
+        'delivery_fee' => 0,
+        'discount' => 0,
+        'total' => $price,
+        'fee' => 0,
+        'net_value' => $price,
+        'status' => 'pending',
+        'notes' => '',
+        'payment_method' => 'pix',
+        'order_type' => 'pdv',
+    ]);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'product_id' => $product->id,
+        'product_name' => $product->name,
+        'unit_price' => $price,
+        'quantity' => 1,
+        'subtotal' => $price,
+    ]);
+
+    return $order;
+}
+
+test('cozinha só vê pedidos com item de cozinha na fila; bar só vê pedidos com item de bar', function () {
+    ['company' => $company, 'branch' => $branch, 'customer' => $customer, 'snack' => $snack, 'drink' => $drink] = stationOrderContext();
+
+    $kitchenOnlyOrder = makeSingleItemOrder($company, $branch, $customer, $snack, 25.00);
+    $barOnlyOrder = makeSingleItemOrder($company, $branch, $customer, $drink, 6.00);
+
+    $cozinha = makeStationUser($company, 'cozinha');
+    $bar = makeStationUser($company, 'bar');
+
+    $this->actingAs($cozinha);
+    Livewire::test(OrdersIndex::class)
+        ->assertSee($kitchenOnlyOrder->order_number)
+        ->assertDontSee($barOnlyOrder->order_number);
+
+    $this->actingAs($bar);
+    Livewire::test(OrdersIndex::class)
+        ->assertSee($barOnlyOrder->order_number)
+        ->assertDontSee($kitchenOnlyOrder->order_number);
+});
+
+test('pedido misto (item de cozinha + item de bar) aparece na fila das duas estações, cada uma só com seu item no ticket', function () {
+    ['company' => $company, 'order' => $order] = stationOrderContext();
+    $cozinha = makeStationUser($company, 'cozinha');
+    $bar = makeStationUser($company, 'bar');
+
+    $this->actingAs($cozinha);
+    Livewire::test(OrdersIndex::class)
+        ->assertSee($order->order_number)
+        ->assertSee('X-Burguer')
+        ->assertDontSee('Refrigerante Lata');
+
+    $this->actingAs($bar);
+    Livewire::test(OrdersIndex::class)
+        ->assertSee($order->order_number)
+        ->assertSee('Refrigerante Lata')
+        ->assertDontSee('X-Burguer');
+});
+
+test('Order::hasItemsForStation reflete os itens do pedido', function () {
+    ['order' => $order] = stationOrderContext();
+
+    expect($order->hasItemsForStation('cozinha'))->toBeTrue();
+    expect($order->hasItemsForStation('bar'))->toBeTrue();
+});
+
+// ─── Fila em cards + botão de avançar status (cozinha/bar) ────────────────────
+
+test('cozinha vê fila em cards, sem kanban, com ticket próprio e botão de avançar status', function () {
+    ['company' => $company, 'order' => $order] = stationOrderContext();
+    $cozinha = makeStationUser($company, 'cozinha');
+
+    $this->actingAs($cozinha);
+
+    $test = Livewire::test(OrdersIndex::class)
+        ->assertSet('viewMode', 'list')
+        ->assertSee('Minha fila')
+        ->assertSee($order->order_number)
+        ->assertSee('X-Burguer')
+        ->assertDontSee('Refrigerante Lata')
+        ->assertSee('Iniciar preparo')
+        ->assertDontSee('data-kanban-col');
+
+    $test->call('updateOrderStatus', $order->id, 'preparing');
+
+    expect($order->fresh()->status)->toBe('preparing');
+
+    Livewire::test(OrdersIndex::class)->assertSee('Marcar como pronto');
+});
+
+test('bar vê fila em cards com ticket dos próprios itens, sem kanban', function () {
+    ['company' => $company, 'order' => $order] = stationOrderContext();
+    $bar = makeStationUser($company, 'bar');
+
+    $this->actingAs($bar);
+
+    Livewire::test(OrdersIndex::class)
+        ->assertSet('viewMode', 'list')
+        ->assertSee($order->order_number)
+        ->assertSee('Refrigerante Lata')
+        ->assertDontSee('X-Burguer')
+        ->assertSee('Iniciar preparo')
+        ->assertDontSee('data-kanban-col');
+});
+
+test('urgência: pedido de cozinha parado há muito tempo mostra badge crítico', function () {
+    ['company' => $company, 'order' => $order] = stationOrderContext();
+    $cozinha = makeStationUser($company, 'cozinha');
+
+    $order->forceFill(['created_at' => now()->subMinutes(30)])->save();
+
+    $this->actingAs($cozinha);
+
+    Livewire::test(OrdersIndex::class)->assertSeeHtml('animate-pulse');
+});
+
+test('fila de cozinha/bar mostra a mesa quando o pedido é do PDV', function () {
+    ['company' => $company, 'order' => $order] = stationOrderContext();
+    $order->update(['table_label' => 'Mesa 5', 'is_open_tab' => true]);
+    $cozinha = makeStationUser($company, 'cozinha');
+
+    $this->actingAs($cozinha);
+
+    Livewire::test(OrdersIndex::class)->assertSee('Mesa 5');
+});
+
+test('formatElapsed formata minutos decorridos de forma legível', function () {
+    $component = new OrdersIndex;
+
+    expect($component->formatElapsed(0))->toBe('agora');
+    expect($component->formatElapsed(45))->toBe('45 min');
+    expect($component->formatElapsed(60))->toBe('1h');
+    expect($component->formatElapsed(75))->toBe('1h15');
+});
+
+// ─── Notificações filtradas por estação (cozinha/bar) ─────────────────────────
+
+test('CreateOrderNotification grava is_kitchen/is_bar de acordo com os itens do pedido', function () {
+    ['company' => $company, 'branch' => $branch, 'customer' => $customer, 'snack' => $snack, 'order' => $mixedOrder] = stationOrderContext();
+
+    $kitchenOnlyOrder = makeSingleItemOrder($company, $branch, $customer, $snack, 25.00);
+
+    app(\App\Listeners\CreateOrderNotification::class)->handle(new \App\Events\NewOrderPlaced($kitchenOnlyOrder));
+    app(\App\Listeners\CreateOrderNotification::class)->handle(new \App\Events\NewOrderPlaced($mixedOrder));
+
+    $kitchenNotif = \App\Models\CompanyNotification::where('title', 'like', '%'.$kitchenOnlyOrder->order_number.'%')->first();
+    expect($kitchenNotif->is_kitchen)->toBeTrue();
+    expect($kitchenNotif->is_bar)->toBeFalse();
+
+    $mixedNotif = \App\Models\CompanyNotification::where('title', 'like', '%'.$mixedOrder->order_number.'%')->first();
+    expect($mixedNotif->is_kitchen)->toBeTrue();
+    expect($mixedNotif->is_bar)->toBeTrue();
+});
+
+test('NotificationBell só mostra notificações da própria estação pra cozinha e bar', function () {
+    ['company' => $company] = stationOrderContext();
+    $cozinha = makeStationUser($company, 'cozinha');
+    $bar = makeStationUser($company, 'bar');
+
+    \App\Models\CompanyNotification::create([
+        'company_id' => $company->id,
+        'type' => 'order',
+        'is_kitchen' => true,
+        'is_bar' => false,
+        'title' => 'Novo pedido: cozinha',
+    ]);
+
+    \App\Models\CompanyNotification::create([
+        'company_id' => $company->id,
+        'type' => 'order',
+        'is_kitchen' => false,
+        'is_bar' => true,
+        'title' => 'Novo pedido: bar',
+    ]);
+
+    $this->actingAs($cozinha);
+    Livewire::test(\App\Livewire\Admin\NotificationBell::class)
+        ->assertSee('Novo pedido: cozinha')
+        ->assertDontSee('Novo pedido: bar');
+
+    $this->actingAs($bar);
+    Livewire::test(\App\Livewire\Admin\NotificationBell::class)
+        ->assertSee('Novo pedido: bar')
+        ->assertDontSee('Novo pedido: cozinha');
+});
+
+test('Notifications (toast) ignora pedido de outra estação pra cozinha', function () {
+    ['company' => $company] = stationOrderContext();
+    $cozinha = makeStationUser($company, 'cozinha');
+
+    $this->actingAs($cozinha);
+
+    Livewire::test(\App\Livewire\Admin\Notifications::class)
+        ->call('onNewOrder', ['order_id' => 1, 'order_number' => 'X-1', 'customer_name' => 'Cliente', 'total' => 10, 'is_kitchen' => false, 'is_bar' => true])
+        ->assertSet('notifications', []);
+
+    Livewire::test(\App\Livewire\Admin\Notifications::class)
+        ->call('onNewOrder', ['order_id' => 2, 'order_number' => 'X-2', 'customer_name' => 'Cliente', 'total' => 10, 'is_kitchen' => true, 'is_bar' => false])
+        ->assertCount('notifications', 1);
+});

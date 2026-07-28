@@ -101,6 +101,8 @@
     </div>
 
     <div>{{ $orders->links() }}</div>
+@elseif (in_array($userStation, ['cozinha', 'bar']))
+    @include('livewire.admin.orders.partials.station-queue')
 @else
     <h1 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100">Pedidos</h1>
 

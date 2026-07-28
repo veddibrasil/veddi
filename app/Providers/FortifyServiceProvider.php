@@ -45,6 +45,11 @@ class FortifyServiceProvider extends ServiceProvider
                     return redirect()->intended(route('admin.orders.index'));
                 }
 
+                // Cozinha/bar só usam a fila da própria estação — pular o dashboard genérico.
+                if ($company && in_array($user?->roleForCompany($company), ['cozinha', 'bar'])) {
+                    return redirect()->intended(route('admin.orders.index'));
+                }
+
                 return redirect()->intended(route('admin.dashboard'));
             }
         });

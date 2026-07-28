@@ -11,6 +11,8 @@ class CompanyNotification extends Model
         'company_id',
         'type',
         'is_delivery',
+        'is_kitchen',
+        'is_bar',
         'title',
         'subtitle',
         'link',
@@ -20,6 +22,8 @@ class CompanyNotification extends Model
     protected $casts = [
         'read_at' => 'datetime',
         'is_delivery' => 'boolean',
+        'is_kitchen' => 'boolean',
+        'is_bar' => 'boolean',
     ];
 
     public function company(): BelongsTo

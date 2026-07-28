@@ -282,6 +282,24 @@ class Order extends Model
         });
     }
 
+    /** Pedido tem ao menos um item que pertence à estação, mesmo critério de {@see OrderItem::matchesStation()}. */
+    public function hasItemsForStation(string $station): bool
+    {
+        return $this->items->contains(fn (OrderItem $item) => $item->matchesStation($station));
+    }
+
+    /** Restringe a query a pedidos com ao menos um item da estação (cozinha/bar), mesmo critério de {@see OrderItem::matchesStation()}. */
+    public function scopeForStation(\Illuminate\Database\Eloquent\Builder $query, string $station): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query->whereHas('items', function ($q) use ($station) {
+            $q->whereDoesntHave('product')
+                ->orWhereHas('product', function ($pq) use ($station) {
+                    $pq->whereDoesntHave('category')
+                        ->orWhereHas('category', fn ($cq) => $cq->whereNull('station')->orWhere('station', $station));
+                });
+        });
+    }
+
     /** Human-readable label for the order's origin/channel (chat, PDV balcão, mesa/comanda, delivery via PDV). */
     public function getOriginLabelAttribute(): string
     {

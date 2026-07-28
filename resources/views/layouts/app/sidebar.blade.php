@@ -12,11 +12,13 @@
         $isWaiterOnly = $can('pdv.waiter_operate') && !$can('pdv.operate');
         // Entregador só opera a fila de entregas — sem acesso ao dashboard nem ao resto do painel.
         $isDeliveryOnly = $company && $user?->roleForCompany($company) === 'entrega';
+        // Cozinha/bar só operam a própria fila de pedidos — sem acesso ao dashboard nem ao resto do painel.
+        $isStationOnly = $company && in_array($user?->roleForCompany($company), ['cozinha', 'bar']);
     @endphp
     <body class="{{ $bodyClass }} bg-[#f8f8fb] dark:bg-[#0d1825]">
         <flux:sidebar sticky collapsible="mobile" class="veddi-sidebar border-e border-[#5c0079]">
             <flux:sidebar.header>
-                <x-app-logo :sidebar="true" href="{{ auth()->user()?->isSuperAdmin() ? route('superadmin.dashboard') : ($isWaiterOnly ? route('admin.pdv.tabs') : ($isDeliveryOnly ? route('admin.orders.index') : route('admin.dashboard'))) }}" wire:navigate />
+                <x-app-logo :sidebar="true" href="{{ auth()->user()?->isSuperAdmin() ? route('superadmin.dashboard') : (($isWaiterOnly ? route('admin.pdv.tabs') : (($isDeliveryOnly || $isStationOnly) ? route('admin.orders.index') : route('admin.dashboard')))) }}" wire:navigate />
 
                 @auth
                     @if(!auth()->user()?->isSuperAdmin())
@@ -50,6 +52,12 @@
                         <flux:sidebar.group heading="Entregas" class="grid">
                             <flux:sidebar.item icon="truck" :href="route('admin.orders.index')" :current="request()->routeIs('admin.orders.*')" wire:navigate>
                                 Minhas entregas
+                            </flux:sidebar.item>
+                        </flux:sidebar.group>
+                    @elseif($isStationOnly)
+                        <flux:sidebar.group heading="Minha fila" class="grid">
+                            <flux:sidebar.item icon="fire" :href="route('admin.orders.index')" :current="request()->routeIs('admin.orders.*')" wire:navigate>
+                                Pedidos
                             </flux:sidebar.item>
                         </flux:sidebar.group>
                     @else

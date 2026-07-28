@@ -37,7 +37,14 @@ class Notifications extends Component
 
     public function onNewOrder(array $data): void
     {
-        if ($this->userStation === 'entrega' && empty($data['is_delivery'])) {
+        $flag = match ($this->userStation) {
+            'entrega' => 'is_delivery',
+            'cozinha' => 'is_kitchen',
+            'bar' => 'is_bar',
+            default => null,
+        };
+
+        if ($flag !== null && empty($data[$flag])) {
             return;
         }
 

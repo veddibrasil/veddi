@@ -53,7 +53,7 @@ class NotificationBell extends Component
     public function markAllRead(): void
     {
         CompanyNotification::where('company_id', $this->companyId)
-            ->when($this->userStation === 'entrega', fn ($q) => $q->where('is_delivery', true))
+            ->when($this->stationNotificationColumn(), fn ($q, $column) => $q->where($column, true))
             ->whereNull('read_at')
             ->update(['read_at' => now()]);
     }
@@ -79,14 +79,25 @@ class NotificationBell extends Component
     {
         $this->confirmingClearAll = false;
         CompanyNotification::where('company_id', $this->companyId)
-            ->when($this->userStation === 'entrega', fn ($q) => $q->where('is_delivery', true))
+            ->when($this->stationNotificationColumn(), fn ($q, $column) => $q->where($column, true))
             ->delete();
+    }
+
+    /** Coluna de flag de notificação (is_delivery/is_kitchen/is_bar) pra estação do usuário, ou null se não restrito. */
+    private function stationNotificationColumn(): ?string
+    {
+        return match ($this->userStation) {
+            'entrega' => 'is_delivery',
+            'cozinha' => 'is_kitchen',
+            'bar' => 'is_bar',
+            default => null,
+        };
     }
 
     public function render()
     {
         $notifications = CompanyNotification::where('company_id', $this->companyId)
-            ->when($this->userStation === 'entrega', fn ($q) => $q->where('is_delivery', true))
+            ->when($this->stationNotificationColumn(), fn ($q, $column) => $q->where($column, true))
             ->latest()
             ->limit(30)
             ->get();

@@ -31,6 +31,8 @@ class NewOrderPlaced implements ShouldBroadcast
             'total' => $this->order->total,
             'payment_method' => $this->order->payment_method,
             'is_delivery' => $this->order->isDeliveryOrder(),
+            'is_kitchen' => $this->order->hasItemsForStation('cozinha'),
+            'is_bar' => $this->order->hasItemsForStation('bar'),
         ];
     }
 }

@@ -30,6 +30,8 @@ class Index extends Component
 
     public bool $canUpdate = false;
 
+    public int $companyId = 0;
+
     /** Estação do usuário logado ('cozinha'|'bar'|'entrega') quando o papel é restrito a uma estação, senão null. */
     public ?string $userStation = null;
 
@@ -39,6 +41,10 @@ class Index extends Component
     const KANBAN_STATUSES = ['scheduled', 'pending', 'awaiting_payment', 'paid', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled'];
 
     const KANBAN_PER_PAGE = 15;
+
+    const URGENCY_WARNING_MINUTES = 10;
+
+    const URGENCY_CRITICAL_MINUTES = 20;
 
     public array $kanbanPages = [
         'scheduled' => 1,
@@ -61,6 +67,7 @@ class Index extends Component
             $this->canView = $this->canUpdate = true;
         } elseif (app()->bound('current.company')) {
             $company = app('current.company');
+            $this->companyId = $company->id;
             $this->canView = $user->hasPermission('orders.view', $company);
             $this->canUpdate = $user->hasPermission('orders.update', $company);
 
@@ -68,10 +75,23 @@ class Index extends Component
             $this->userStation = in_array($roleSlug, ['cozinha', 'bar', 'entrega']) ? $roleSlug : null;
         }
 
-        // Entrega usa uma fila de cards mobile própria (sem kanban) — força a lista.
-        if ($this->userStation === 'entrega') {
+        // Cozinha, bar e entrega usam fila de cards mobile própria (sem kanban) — força a lista.
+        if (in_array($this->userStation, ['cozinha', 'bar', 'entrega'])) {
             $this->viewMode = 'list';
         }
+    }
+
+    /** Escuta eventos de pedido da empresa (novo pedido/status alterado) pra manter a listagem/fila em tempo real. */
+    public function getListeners(): array
+    {
+        if (! $this->companyId) {
+            return [];
+        }
+
+        return [
+            "echo:orders.{$this->companyId},NewOrderPlaced" => '$refresh',
+            "echo:orders.{$this->companyId},OrderStatusUpdated" => '$refresh',
+        ];
     }
 
     public function updatingSearch(): void
@@ -112,6 +132,23 @@ class Index extends Component
         }
 
         $this->kanbanPages[$status]++;
+    }
+
+    /** Formata minutos decorridos pra exibição na fila de cozinha/bar (ex: "45 min", "1h20"). */
+    public function formatElapsed(int $minutes): string
+    {
+        if ($minutes < 1) {
+            return 'agora';
+        }
+
+        if ($minutes < 60) {
+            return "{$minutes} min";
+        }
+
+        $hours = intdiv($minutes, 60);
+        $rest = $minutes % 60;
+
+        return $rest > 0 ? sprintf('%dh%02d', $hours, $rest) : "{$hours}h";
     }
 
     private function resetKanbanPages(): void
@@ -212,15 +249,16 @@ class Index extends Component
             )
             : collect();
 
-        // Entrega usa a fila de cards mobile (view "list"), nunca o kanban — mesmo que
-        // viewMode tenha ficado com um valor antigo persistido na URL.
-        if ($this->viewMode === 'kanban' && $this->userStation !== 'entrega') {
+        // Cozinha, bar e entrega usam a fila de cards mobile (view "list"), nunca o kanban —
+        // mesmo que viewMode tenha ficado com um valor antigo persistido na URL.
+        if ($this->viewMode === 'kanban' && ! in_array($this->userStation, ['cozinha', 'bar', 'entrega'])) {
             $baseQuery = $this->isSuperAdmin
                 ? Order::withoutGlobalScope(CompanyScope::class)->with(['customer', 'branch', 'company', 'deliveryAddressRecord'])
                 : Order::with(['customer', 'branch', 'deliveryAddressRecord']);
 
             $baseQuery = $baseQuery
                 ->when($this->userStation === 'entrega', fn ($q) => $q->deliveryOnly())
+                ->when(in_array($this->userStation, ['cozinha', 'bar']), fn ($q) => $q->forStation($this->userStation))
                 ->when($this->search, fn ($q) => $q
                     ->where('order_number', 'like', "%{$this->search}%")
                     ->orWhereHas('customer', fn ($cq) => $cq->where('name', 'like', "%{$this->search}%"))
@@ -254,13 +292,20 @@ class Index extends Component
                 ->layout('layouts.app', ['title' => 'Pedidos']);
         }
 
+        $with = ['customer', 'branch', 'deliveryAddressRecord'];
+        if (in_array($this->userStation, ['cozinha', 'bar'])) {
+            $with[] = 'items.product.category';
+        }
+
         $query = $this->isSuperAdmin
-            ? Order::withoutGlobalScope(CompanyScope::class)->with(['customer', 'branch', 'company', 'deliveryAddressRecord'])
-            : Order::with(['customer', 'branch', 'deliveryAddressRecord']);
+            ? Order::withoutGlobalScope(CompanyScope::class)->with([...$with, 'company'])
+            : Order::with($with);
 
         $orders = $query
             ->when($this->userStation === 'entrega', fn ($q) => $q->deliveryOnly())
-            ->when($this->statusFilter, fn ($q) => $q->where('status', $this->statusFilter))
+            ->when(in_array($this->userStation, ['cozinha', 'bar']), fn ($q) => $q->forStation($this->userStation))
+            ->when($this->statusFilter === 'new', fn ($q) => $q->whereIn('status', ['pending', 'awaiting_payment', 'paid']))
+            ->when($this->statusFilter && $this->statusFilter !== 'new', fn ($q) => $q->where('status', $this->statusFilter))
             ->when($this->search, fn ($q) => $q
                 ->where('order_number', 'like', "%{$this->search}%")
                 ->orWhereHas('customer', fn ($cq) => $cq->where('name', 'like', "%{$this->search}%"))
