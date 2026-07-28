@@ -1661,9 +1661,9 @@
                                         @endif
                                     </div>
                                     {{-- Info --}}
-                                    <div class="flex-1 min-w-0">
-                                        <div class="flex items-center gap-1">
-                                            <p class="font-semibold text-sm {{ $sbDisabled ? 'text-gray-400' : 'text-gray-800' }} truncate leading-tight">{{ $product->name }}</p>
+                                    <div class="flex-1 min-w-0" x-data="{ expanded: false }">
+                                        <div class="flex items-center gap-1 cursor-pointer" @click="expanded = !expanded">
+                                            <p class="font-semibold text-sm {{ $sbDisabled ? 'text-gray-400' : 'text-gray-800' }} leading-tight" :class="expanded ? '' : 'truncate'">{{ $product->name }}</p>
                                             @if ($sbOutOfStock)
                                                 <span class="shrink-0 text-[9px] font-bold px-1 py-0.5 rounded-full bg-gray-200 text-gray-500 uppercase">Esgotado</span>
                                             @elseif ($sbInsufficientStock)
@@ -1671,7 +1671,7 @@
                                             @endif
                                         </div>
                                         @if ($product->description)
-                                            <p class="text-[11px] text-gray-400 leading-snug mt-0.5 line-clamp-2">{{ $product->description }}</p>
+                                            <p class="text-[11px] text-gray-400 leading-snug mt-0.5 cursor-pointer" :class="expanded ? '' : 'line-clamp-2'" @click="expanded = !expanded">{{ $product->description }}</p>
                                         @endif
                                      
                                         @if ($product->is_variant && $product->optionGroups->isNotEmpty())
