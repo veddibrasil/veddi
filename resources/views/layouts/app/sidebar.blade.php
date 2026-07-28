@@ -21,7 +21,7 @@
                 <x-app-logo :sidebar="true" href="{{ auth()->user()?->isSuperAdmin() ? route('superadmin.dashboard') : (($isWaiterOnly ? route('admin.pdv.tabs') : (($isDeliveryOnly || $isStationOnly) ? route('admin.orders.index') : route('admin.dashboard')))) }}" wire:navigate />
 
                 @auth
-                    @if(!auth()->user()?->isSuperAdmin())
+                    @if(!auth()->user()?->isSuperAdmin() && !$isWaiterOnly)
                         <livewire:admin.notification-bell />
                     @endif
                 @endauth
@@ -214,7 +214,7 @@
             <flux:spacer />
 
             @auth
-                @if(!auth()->user()?->isSuperAdmin())
+                @if(!auth()->user()?->isSuperAdmin() && !$isWaiterOnly)
                     <livewire:admin.notification-bell />
                 @endif
             @endauth
@@ -272,7 +272,9 @@
         {{ $slot }}
 
         @auth
-            <livewire:admin.notifications />
+            @if(!$isWaiterOnly)
+                <livewire:admin.notifications />
+            @endif
             <livewire:admin.profile-modal />
         @endauth
 

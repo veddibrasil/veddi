@@ -91,6 +91,27 @@ class User extends Authenticatable
         return in_array($this->roleForCompany($company), ['branch_manager', 'cozinha', 'caixa', 'bar', 'entrega', 'garcom']);
     }
 
+    /**
+     * Nome da rota pra onde o usuário deve ser levado após login/acesso à raiz.
+     * Papéis operacionais sem dashboard (garcom, entrega, cozinha, bar) vão direto
+     * pra própria tela de trabalho; os demais caem no dashboard.
+     */
+    public function homeRouteName(): string
+    {
+        if ($this->isSuperAdmin()) {
+            return 'superadmin.dashboard';
+        }
+
+        $company = $this->companies()->orderBy('id')->first();
+        $role = $company ? $this->roleForCompany($company) : null;
+
+        return match ($role) {
+            'garcom' => 'admin.pdv.tabs',
+            'entrega', 'cozinha', 'bar' => 'admin.orders.index',
+            default => 'admin.dashboard',
+        };
+    }
+
     public function hasPermission(string $permission, Company $company): bool
     {
         if ($this->isSuperAdmin()) {

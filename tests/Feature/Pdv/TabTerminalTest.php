@@ -778,7 +778,8 @@ test('sidebar do garçom mostra só mesas/comandas, sem dashboard nem resto do p
         ->assertSee('Mesas / Comandas')
         ->assertDontSee('Dashboard')
         ->assertDontSee('Relatório PDV')
-        ->assertDontSee('Cardápio');
+        ->assertDontSee('Cardápio')
+        ->assertDontSee('Notificações');
 });
 
 test('garçom é redirecionado direto pra mesas/comandas ao acessar /pdv', function () {

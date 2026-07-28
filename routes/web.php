@@ -12,17 +12,10 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
     if (auth()->check()) {
-        if (auth()->user()->isSuperAdmin()) {
-            return redirect()->route('superadmin.dashboard');
-        }
-
-        if (auth()->user()->company) {
-            return redirect()->route('admin.dashboard');
-        }
+        return redirect()->route(auth()->user()->homeRouteName());
     }
 
     return redirect()->route('admin.dashboard');
-
 });
 
 Route::get('/health', \App\Http\Controllers\HealthController::class)->name('health');

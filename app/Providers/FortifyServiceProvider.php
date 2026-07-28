@@ -26,31 +26,10 @@ class FortifyServiceProvider extends ServiceProvider
             {
                 $user = $request->user();
 
-                if ($user?->isSuperAdmin()) {
-                    return redirect()->intended(route('superadmin.dashboard'));
-                }
-
                 // Não usa app('current.company'): o IdentifyCompany roda antes do Auth::login()
                 // desta mesma request, então o usuário ainda não estava autenticado quando ele
-                // tentou resolver a empresa — resolve direto pela relação do usuário.
-                $company = $user?->companies()->orderBy('id')->first();
-
-                // Garçom só tem acesso ao PDV — pular o dashboard evita 403 logo após o login.
-                if ($company && $user?->roleForCompany($company) === 'garcom') {
-                    return redirect()->intended(route('admin.pdv.tabs'));
-                }
-
-                // Entregador só usa a fila de pedidos — pular o dashboard genérico, direto pra tela dele.
-                if ($company && $user?->roleForCompany($company) === 'entrega') {
-                    return redirect()->intended(route('admin.orders.index'));
-                }
-
-                // Cozinha/bar só usam a fila da própria estação — pular o dashboard genérico.
-                if ($company && in_array($user?->roleForCompany($company), ['cozinha', 'bar'])) {
-                    return redirect()->intended(route('admin.orders.index'));
-                }
-
-                return redirect()->intended(route('admin.dashboard'));
+                // tentou resolver a empresa — homeRouteName() resolve direto pela relação do usuário.
+                return redirect()->intended(route($user->homeRouteName()));
             }
         });
 
