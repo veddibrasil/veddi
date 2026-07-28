@@ -239,8 +239,37 @@ class Index extends Component
         ]);
     }
 
+    /** Fechamento do dia: contagem e faturamento (exclui cancelado/reembolsado) por canal — delivery, PDV e geral. */
+    private function todayClosing(): array
+    {
+        $base = $this->isSuperAdmin
+            ? Order::withoutGlobalScope(CompanyScope::class)
+            : Order::query();
+
+        $base = $base
+            ->whereDate('created_at', today())
+            ->when($this->isSuperAdmin && $this->companyFilter, fn ($q) => $q->where('company_id', $this->companyFilter));
+
+        $summarize = function (\Illuminate\Database\Eloquent\Builder $query): array {
+            $orders = $query->get(['total', 'status']);
+
+            return [
+                'count' => $orders->count(),
+                'total' => $orders->whereNotIn('status', ['cancelled', 'refunded'])->sum('total'),
+            ];
+        };
+
+        return [
+            'delivery' => $summarize((clone $base)->where('order_type', 'delivery')),
+            'pdv' => $summarize((clone $base)->where('order_type', 'pdv')),
+            'geral' => $summarize(clone $base),
+        ];
+    }
+
     public function render()
     {
+        $closing = $this->todayClosing();
+
         $companies = $this->isSuperAdmin
             ? Cache::remember('companies:active', now()->addHours(24), fn () => Company::withoutGlobalScope(CompanyScope::class)
                 ->where('active', true)
@@ -288,7 +317,7 @@ class Index extends Component
                     ];
                 });
 
-            return view('livewire.admin.orders.index', compact('kanbanColumns', 'companies'))
+            return view('livewire.admin.orders.index', compact('kanbanColumns', 'companies', 'closing'))
                 ->layout('layouts.app', ['title' => 'Pedidos']);
         }
 
@@ -314,7 +343,7 @@ class Index extends Component
             ->latest()
             ->paginate(20);
 
-        return view('livewire.admin.orders.index', compact('orders', 'companies'))
+        return view('livewire.admin.orders.index', compact('orders', 'companies', 'closing'))
             ->layout('layouts.app', ['title' => 'Pedidos']);
     }
 }
