@@ -22,7 +22,7 @@ class Show extends Component
         $company = $this->company;
 
         $ordersQuery = Order::query()->where('company_id', $company->id);
-        $paidStatuses = ['paid', 'preparing', 'ready', 'delivered'];
+        $paidStatuses = ['paid', 'preparing', 'ready', 'out_for_delivery', 'delivered'];
 
         $totalOrders = (clone $ordersQuery)->count();
 

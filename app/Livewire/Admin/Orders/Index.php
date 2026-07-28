@@ -30,10 +30,13 @@ class Index extends Component
 
     public bool $canUpdate = false;
 
+    /** Estação do usuário logado ('cozinha'|'bar'|'entrega') quando o papel é restrito a uma estação, senão null. */
+    public ?string $userStation = null;
+
     #[Url]
     public string $viewMode = 'list';
 
-    const KANBAN_STATUSES = ['scheduled', 'pending', 'awaiting_payment', 'paid', 'preparing', 'ready', 'delivered', 'cancelled'];
+    const KANBAN_STATUSES = ['scheduled', 'pending', 'awaiting_payment', 'paid', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled'];
 
     const KANBAN_PER_PAGE = 15;
 
@@ -44,6 +47,7 @@ class Index extends Component
         'paid' => 1,
         'preparing' => 1,
         'ready' => 1,
+        'out_for_delivery' => 1,
         'delivered' => 1,
         'cancelled' => 1,
     ];
@@ -59,6 +63,9 @@ class Index extends Component
             $company = app('current.company');
             $this->canView = $user->hasPermission('orders.view', $company);
             $this->canUpdate = $user->hasPermission('orders.update', $company);
+
+            $roleSlug = $user->roleForCompany($company);
+            $this->userStation = in_array($roleSlug, ['cozinha', 'bar', 'entrega']) ? $roleSlug : null;
         }
     }
 
@@ -115,9 +122,23 @@ class Index extends Component
             return;
         }
 
+        $allowedForStation = match ($this->userStation) {
+            'cozinha', 'bar' => ['preparing', 'ready'],
+            'entrega' => ['out_for_delivery', 'delivered'],
+            default => null,
+        };
+
+        if ($allowedForStation !== null && ! in_array($newStatus, $allowedForStation)) {
+            return;
+        }
+
         $order = $this->isSuperAdmin
             ? Order::withoutGlobalScope(CompanyScope::class)->findOrFail($orderId)
             : Order::findOrFail($orderId);
+
+        if ($newStatus === 'out_for_delivery' && ! $order->isDeliveryOrder()) {
+            return;
+        }
 
         $previousStatus = $order->status;
 

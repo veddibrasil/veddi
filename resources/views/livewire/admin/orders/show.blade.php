@@ -1,13 +1,35 @@
 <div class="space-y-4">
     <x-admin.page-header :back-route="route('admin.orders.index')" :title="$order->order_number" title-class="font-mono">
         <x-slot:actions>
-            <a href="{{ route('admin.orders.receipt', $order) }}" target="_blank"
-               class="inline-flex items-center gap-1.5 text-sm font-medium bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-zinc-700 dark:text-neutral-300 dark:hover:bg-zinc-600 px-3 py-2 rounded-lg transition-colors">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                </svg>
-                Imprimir cupom
-            </a>
+            @if (! $userStation)
+                <a href="{{ route('admin.orders.receipt', $order) }}" target="_blank"
+                   class="inline-flex items-center gap-1.5 text-sm font-medium bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-zinc-700 dark:text-neutral-300 dark:hover:bg-zinc-600 px-3 py-2 rounded-lg transition-colors">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                    </svg>
+                    Imprimir cupom
+                </a>
+                @else
+            @if ($order->isDeliveryOrder() && ($userStation === 'entrega' || ! $userStation))
+                <a href="{{ route('admin.orders.receipt', ['order' => $order->id, 'station' => 'entrega']) }}" target="_blank"
+                   class="inline-flex items-center gap-1.5 text-sm font-medium bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 px-3 py-2 rounded-lg transition-colors">
+                    Cupom entrega
+                </a>
+            @endif
+            @if ($userStation === 'cozinha' || ! $userStation)
+                <a href="{{ route('admin.orders.receipt', ['order' => $order->id, 'station' => 'cozinha']) }}" target="_blank"
+                   class="inline-flex items-center gap-1.5 text-sm font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:hover:bg-orange-900/50 px-3 py-2 rounded-lg transition-colors">
+                    Cupom cozinha
+                </a>
+            @endif
+            @if ($userStation === 'bar' || ! $userStation)
+                <a href="{{ route('admin.orders.receipt', ['order' => $order->id, 'station' => 'bar']) }}" target="_blank"
+                   class="inline-flex items-center gap-1.5 text-sm font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 px-3 py-2 rounded-lg transition-colors">
+                    Cupom bar
+                </a>
+            @endif
+         @endif
+
         </x-slot:actions>
     </x-admin.page-header>
 
@@ -256,16 +278,49 @@
             {{-- Items --}}
             <div class="bg-white border rounded-xl shadow-sm overflow-hidden dark:bg-zinc-800 dark:border-zinc-700">
                 <div class="flex items-center justify-between px-4 py-3 border-b dark:border-zinc-700">
-                    <p class="font-semibold text-neutral-700 dark:text-neutral-200">Itens do pedido</p>
-                    @if ($canUpdate && $order->isEditable() && !$editingItems)
-                        <button wire:click="startEditItems"
-                                class="text-xs font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 transition-colors">
-                            Editar itens
-                        </button>
-                    @endif
+                    <p class="font-semibold text-neutral-700 dark:text-neutral-200">
+                        Itens do pedido
+                        @if ($userStation === 'cozinha')
+                            <span class="ml-1 text-xs px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400">Cozinha</span>
+                        @elseif ($userStation === 'bar')
+                            <span class="ml-1 text-xs px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400">Bar</span>
+                        @elseif ($userStation === 'entrega')
+                            <span class="ml-1 text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400">Entrega</span>
+                        @endif
+                    </p>
+                    <div class="flex items-center gap-3">
+                        @if ($canUpdate && $order->isEditable() && !$editingItems && !$userStation)
+                            <button wire:click="startEditItems"
+                                    class="text-xs font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 transition-colors">
+                                Editar itens
+                            </button>
+                        @endif
+                    </div>
                 </div>
 
-                @if ($editingItems)
+                @if ($userStation)
+                    <div class="divide-y dark:divide-zinc-700">
+                        @forelse ($this->visibleItems as $item)
+                            <div class="flex items-center justify-between px-4 py-3">
+                                <div class="min-w-0">
+                                    <p class="font-medium text-sm text-neutral-800 dark:text-neutral-100">{{ $item->quantity }}x {{ $item->product_name }}</p>
+                                    @foreach (($item->options ?? []) as $group)
+                                        @if (!empty($group['selections']))
+                                            <p class="text-xs font-medium text-neutral-500 mt-0.5 dark:text-neutral-400">{{ $group['group_name'] ?? 'Opções' }}:</p>
+                                            @foreach ($group['selections'] as $sel)
+                                                <p class="text-xs text-neutral-400 leading-tight dark:text-neutral-500">{{ $sel['qty'] ?? 0 }}× {{ $sel['name'] ?? '-' }}</p>
+                                            @endforeach
+                                        @endif
+                                    @endforeach
+                                </div>
+                            </div>
+                        @empty
+                            <div class="px-4 py-6 text-center text-sm text-neutral-400 dark:text-neutral-500">
+                                Nenhum item desta estação neste pedido.
+                            </div>
+                        @endforelse
+                    </div>
+                @elseif ($editingItems)
                     <div class="divide-y dark:divide-zinc-700">
                         @foreach ($editableItems as $index => $item)
                             <div class="flex items-center gap-3 px-4 py-3">
@@ -647,7 +702,7 @@
                     </p>
                 </div>
                 <div class="flex flex-wrap gap-2">
-                    @foreach ($this->statusMap as $status => $meta)
+                    @foreach ($this->visibleStatusMap as $status => $meta)
                         <button wire:click="updateStatus('{{ $status }}')"
                             class="px-4 py-2 rounded-lg text-sm font-medium transition-colors {{ $order->status === $status ? $meta['active'] : $meta['inactive'] }}">
                             {{ $meta['label'] }}
@@ -657,6 +712,7 @@
             </x-admin.form-card>
 
             {{-- Payment --}}
+            @if (! $userStation)
             <x-admin.form-card padding="p-4">
                 <p class="font-semibold text-neutral-700 mb-2 dark:text-neutral-200">Pagamento</p>
                 <div class="grid grid-cols-2 gap-2 text-sm">
@@ -701,9 +757,10 @@
                     </button>
                 @endif
             </x-admin.form-card>
+            @endif
 
             {{-- Refund Timeline --}}
-            @php $refunds = $order->refunds()->latest()->get(); @endphp
+            @php $refunds = ! $userStation ? $order->refunds()->latest()->get() : collect(); @endphp
             @if ($refunds->isNotEmpty())
                 <x-admin.form-card padding="p-4">
                     <p class="font-semibold text-neutral-700 mb-3 dark:text-neutral-200">Histórico de Estornos</p>

@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Admin\Pdv\Concerns;
 
+use App\Events\NewOrderPlaced;
 use App\Events\OrderStatusUpdated;
 use App\Services\Order\OrderService;
 use App\Services\Payment\PaymentOrchestrator;
@@ -116,6 +117,10 @@ trait HasPaymentFlow
             if ($isPaidOnCreate) {
                 OrderStatusUpdated::dispatch($order);
             }
+
+            // Notifica cozinha/bar (mesmo canal usado pro chat) — sem isso quem só opera pelo PDV
+            // não sabe que um pedido novo chegou pra preparar.
+            NewOrderPlaced::dispatch($order->load('customer'));
 
             $this->lastOrderTotal = (float) $order->total;
             $this->audit('order_created', [

@@ -278,7 +278,8 @@ trait HasPaymentFlow
             'scheduled' => "✅ Pagamento confirmado! Seu pedido {$order->order_number} está agendado para {$scheduledLabel}. Você receberá atualizações quando começarmos a preparar.",
             'paid' => "✅ Após a confirmação o seu pedido {$order->order_number} será preparado.",
             'preparing' => "👨‍🍳 Seu pedido {$order->order_number} está sendo preparado! Em breve ficará pronto.",
-            'ready' => "🛵 Pedido {$order->order_number} pronto e saiu para entrega! Aguarde em breve.",
+            'ready' => "✅ Pedido {$order->order_number} pronto!".($order->order_type === 'delivery' ? ' Logo sai para entrega.' : ''),
+            'out_for_delivery' => "🛵 Pedido {$order->order_number} saiu para entrega! Aguarde em breve.",
             'delivered' => "🎉 Pedido {$order->order_number} entregue! Bom apetite e obrigado pela preferência!",
             'cancelled' => "❌ Seu pedido {$order->order_number} foi cancelado. Entre em contato se precisar de ajuda.",
         ];

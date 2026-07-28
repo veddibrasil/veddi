@@ -87,8 +87,8 @@
                             </span>
                         </div>
                     </a>
-                    <a href="{{ route('admin.orders.receipt', $order) }}" target="_blank"
-                       title="Imprimir cupom"
+                    <a href="{{ route('admin.orders.receipt', $userStation ? ['order' => $order->id, 'station' => $userStation] : $order) }}" target="_blank"
+                       title="{{ $userStation ? 'Imprimir cupom '.$userStation : 'Imprimir cupom' }}"
                        class="ml-3 shrink-0 p-1.5 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded-lg hover:bg-neutral-100 dark:hover:bg-zinc-700 transition-colors">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
@@ -123,6 +123,7 @@
             'paid'            => ['label' => 'Pago',                'bg' => 'bg-green-50 dark:bg-green-900/20',  'text' => 'text-green-700 dark:text-green-400',       'dot' => 'bg-green-500'],
             'preparing'       => ['label' => 'Preparando',          'bg' => 'bg-blue-50 dark:bg-blue-900/20',    'text' => 'text-blue-700 dark:text-blue-400',         'dot' => 'bg-blue-500'],
             'ready'           => ['label' => 'Pronto',              'bg' => 'bg-indigo-50 dark:bg-indigo-900/20','text' => 'text-indigo-700 dark:text-indigo-400',     'dot' => 'bg-indigo-500'],
+            'out_for_delivery'=> ['label' => 'A caminho',           'bg' => 'bg-purple-50 dark:bg-purple-900/20','text' => 'text-purple-700 dark:text-purple-400',     'dot' => 'bg-purple-500'],
             'delivered'       => ['label' => 'Entregue',            'bg' => 'bg-emerald-50 dark:bg-emerald-900/20','text' => 'text-emerald-700 dark:text-emerald-400',  'dot' => 'bg-emerald-500'],
             'cancelled'       => ['label' => 'Cancelado',           'bg' => 'bg-red-50 dark:bg-red-900/20',      'text' => 'text-red-700 dark:text-red-400',           'dot' => 'bg-red-500'],
         ];
@@ -167,8 +168,8 @@
                            class="font-mono text-xs font-semibold text-neutral-800 dark:text-neutral-100 hover:underline">
                             {{ $order->order_number }}
                         </a>
-                        <a href="{{ route('admin.orders.receipt', $order) }}" target="_blank"
-                           title="Imprimir cupom"
+                        <a href="{{ route('admin.orders.receipt', $userStation ? ['order' => $order->id, 'station' => $userStation] : $order) }}" target="_blank"
+                           title="{{ $userStation ? 'Imprimir cupom '.$userStation : 'Imprimir cupom' }}"
                            class="shrink-0 p-0.5 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-colors">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />

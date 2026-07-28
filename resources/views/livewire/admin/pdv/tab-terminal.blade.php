@@ -528,6 +528,20 @@
                                         icon="printer"
                                         title="Imprimir cupom"
                                     />
+                                    <flux:button
+                                        x-data
+                                        x-on:click="window.open('{{ route('admin.orders.receipt', ['order' => $lastOrderId, 'station' => 'cozinha']) }}', '_blank')"
+                                        variant="outline"
+                                        size="base"
+                                        title="Imprimir cupom cozinha"
+                                    >Cozinha</flux:button>
+                                    <flux:button
+                                        x-data
+                                        x-on:click="window.open('{{ route('admin.orders.receipt', ['order' => $lastOrderId, 'station' => 'bar']) }}', '_blank')"
+                                        variant="outline"
+                                        size="base"
+                                        title="Imprimir cupom bar"
+                                    >Bar</flux:button>
                                 @endif
                             </div>
                         </div>

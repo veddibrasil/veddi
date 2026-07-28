@@ -257,11 +257,18 @@ class Order extends Model
             'paid' => 'Pago',
             'preparing' => 'Preparando',
             'ready' => 'Pronto',
+            'out_for_delivery' => 'A caminho',
             'delivered' => 'Entregue',
             'cancelled' => 'Cancelado',
             'refunded' => 'Reembolsado',
             default => $this->status,
         };
+    }
+
+    /** Pedido é de entrega tanto pelo fluxo normal (order_type=delivery) quanto por entrega lançada no PDV. */
+    public function isDeliveryOrder(): bool
+    {
+        return $this->order_type === 'delivery' || ($this->order_type === 'pdv' && $this->delivery_address_id !== null);
     }
 
     /** Human-readable label for the order's origin/channel (chat, PDV balcão, mesa/comanda, delivery via PDV). */

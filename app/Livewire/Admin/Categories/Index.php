@@ -14,6 +14,8 @@ class Index extends Component
 
     public string $name = '';
 
+    public string $station = '';
+
     public int $sort_order = 0;
 
     public ?int $editingId = null;
@@ -39,6 +41,7 @@ class Index extends Component
         return [
             'company_id' => $companyRule,
             'name' => ['required', 'string', 'max:100'],
+            'station' => ['nullable', 'in:cozinha,bar'],
             'sort_order' => ['integer', 'min:0'],
         ];
     }
@@ -75,6 +78,7 @@ class Index extends Component
     public function save(): void
     {
         $validated = $this->validate($this->rules(), $this->messages());
+        $validated['station'] = $validated['station'] !== '' ? $validated['station'] : null;
 
         if ($this->editingId) {
             $category = ProductCategory::withoutGlobalScope(CompanyScope::class)->findOrFail($this->editingId);
@@ -97,7 +101,7 @@ class Index extends Component
             session()->flash('status', 'Categoria criada.');
         }
 
-        $this->reset(['name', 'sort_order', 'editingId']);
+        $this->reset(['name', 'station', 'sort_order', 'editingId']);
     }
 
     public function edit(int $id): void
@@ -105,13 +109,14 @@ class Index extends Component
         $category = ProductCategory::withoutGlobalScope(CompanyScope::class)->findOrFail($id);
         $this->editingId = $id;
         $this->name = $category->name;
+        $this->station = $category->station ?? '';
         $this->sort_order = $category->sort_order;
         $this->company_id = $category->company_id;
     }
 
     public function cancelEdit(): void
     {
-        $this->reset(['name', 'sort_order', 'editingId']);
+        $this->reset(['name', 'station', 'sort_order', 'editingId']);
         if (! $this->isSuperAdmin) {
             $this->company_id = auth()->user()->companies()->first()?->id;
         }

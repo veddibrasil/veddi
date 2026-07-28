@@ -122,6 +122,20 @@ class PermissionSeeder extends Seeder
                 'permissions' => ['orders.view', 'orders.update', 'pdv.operate'],
             ],
             [
+                'name' => 'Bar',
+                'slug' => 'bar',
+                'company_id' => null,
+                'is_system' => true,
+                'permissions' => ['orders.view', 'orders.update'],
+            ],
+            [
+                'name' => 'Entrega',
+                'slug' => 'entrega',
+                'company_id' => null,
+                'is_system' => true,
+                'permissions' => ['orders.view', 'orders.update'],
+            ],
+            [
                 'name' => 'Garçom',
                 'slug' => 'garcom',
                 'company_id' => null,

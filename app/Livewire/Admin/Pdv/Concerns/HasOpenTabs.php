@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Admin\Pdv\Concerns;
 
+use App\Events\NewOrderPlaced;
 use App\Events\OrderStatusUpdated;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -146,6 +147,10 @@ trait HasOpenTabs
                 app(OrderService::class)->applyManualDiscountToOrder($order, 0.0);
 
                 $this->openTabOrderId = $order->id;
+
+                // Notifica cozinha/bar já na abertura da comanda — mesmo canal usado pro PDV
+                // balcão e pro chat.
+                NewOrderPlaced::dispatch($order->load('customer'));
 
                 $this->audit('tab_opened', [
                     'order_id' => $order->id,

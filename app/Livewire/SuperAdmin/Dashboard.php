@@ -47,7 +47,7 @@ class Dashboard extends Component
 
             $mrr = $mrrPlans + $mrrFiscalAddon + $mrrPdvAddon + $mrrWaiterAddon;
 
-            $paidStatuses = ['paid', 'preparing', 'ready', 'delivered'];
+            $paidStatuses = ['paid', 'preparing', 'ready', 'out_for_delivery', 'delivered'];
 
             $totalOrders = Order::count();
             $ordersToday = Order::whereDate('created_at', today())->count();

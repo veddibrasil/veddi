@@ -106,6 +106,9 @@ class Show extends Component
 
     public bool $canIssueFiscal = false;
 
+    /** Estação do usuário logado ('cozinha'|'bar'|'entrega') quando o papel é restrito a uma estação, senão null. */
+    public ?string $userStation = null;
+
     public function mount(): void
     {
         $user = auth()->user();
@@ -116,7 +119,27 @@ class Show extends Component
             $company = app('current.company');
             $this->canUpdate = $user->hasPermission('orders.update', $company);
             $this->canIssueFiscal = $user->hasPermission('fiscal.issue', $company);
+
+            $roleSlug = $user->roleForCompany($company);
+            $this->userStation = in_array($roleSlug, ['cozinha', 'bar', 'entrega']) ? $roleSlug : null;
         }
+
+        $this->order->loadMissing('items.product.category');
+    }
+
+    /**
+     * Itens visíveis pro papel logado. Cozinha só vê itens de categoria 'cozinha', bar só 'bar'.
+     * Itens sem categoria ou de categoria sem estação definida ('ambos') aparecem pros dois.
+     * Entrega vê todos os itens (precisa conferir o pedido inteiro pra entregar).
+     */
+    #[Computed]
+    public function visibleItems(): \Illuminate\Support\Collection
+    {
+        if (! $this->userStation || $this->userStation === 'entrega') {
+            return $this->order->items;
+        }
+
+        return $this->order->items->filter(fn (OrderItem $item) => $item->matchesStation($this->userStation))->values();
     }
 
     // ── Status ───────────────────────────────────────────────────────────────
@@ -125,10 +148,20 @@ class Show extends Component
     {
         abort_unless($this->canUpdate, 403);
 
-        $allowed = ['pending', 'awaiting_payment', 'paid', 'preparing', 'ready', 'delivered', 'cancelled'];
+        $allowed = match ($this->userStation) {
+            'cozinha', 'bar' => ['preparing', 'ready'],
+            'entrega' => ['out_for_delivery', 'delivered'],
+            default => ['pending', 'awaiting_payment', 'paid', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled'],
+        };
 
         if (! in_array($status, $allowed)) {
             $this->addError('status', 'Status inválido.');
+
+            return;
+        }
+
+        if ($status === 'out_for_delivery' && ! $this->order->isDeliveryOrder()) {
+            $this->addError('status', 'Este pedido não é de entrega.');
 
             return;
         }
@@ -257,7 +290,7 @@ class Show extends Component
 
     public function startEditItems(): void
     {
-        abort_unless($this->canUpdate && $this->order->isEditable(), 403);
+        abort_unless($this->canUpdate && ! $this->userStation && $this->order->isEditable(), 403);
 
         $this->order->loadMissing('items');
 
@@ -510,9 +543,35 @@ class Show extends Component
             'paid' => ['label' => 'Pago',          'active' => 'bg-green-500 text-white',   'inactive' => 'bg-green-50 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50'],
             'preparing' => ['label' => 'Preparando',    'active' => 'bg-blue-500 text-white',    'inactive' => 'bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50'],
             'ready' => ['label' => 'Pronto',        'active' => 'bg-indigo-500 text-white',  'inactive' => 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50'],
+            'out_for_delivery' => ['label' => 'A caminho',  'active' => 'bg-purple-500 text-white',  'inactive' => 'bg-purple-50 text-purple-700 hover:bg-purple-100 dark:bg-purple-900/30 dark:text-purple-400 dark:hover:bg-purple-900/50'],
             'delivered' => ['label' => 'Entregue',      'active' => 'bg-teal-500 text-white',    'inactive' => 'bg-teal-50 text-teal-700 hover:bg-teal-100 dark:bg-teal-900/30 dark:text-teal-400 dark:hover:bg-teal-900/50'],
             'cancelled' => ['label' => 'Cancelado',     'active' => 'bg-red-500 text-white',     'inactive' => 'bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50'],
         ];
+    }
+
+    /**
+     * Status exibidos como botões: cozinha/bar só veem preparing/ready, entrega só vê
+     * out_for_delivery/delivered; "A caminho" só aparece pra pedidos de entrega (não faz
+     * sentido em balcão/retirada).
+     */
+    #[Computed]
+    public function visibleStatusMap(): array
+    {
+        $map = $this->statusMap;
+
+        if (in_array($this->userStation, ['cozinha', 'bar'])) {
+            return array_intersect_key($map, array_flip(['preparing', 'ready']));
+        }
+
+        if ($this->userStation === 'entrega') {
+            return array_intersect_key($map, array_flip(['out_for_delivery', 'delivered']));
+        }
+
+        if (! $this->order->isDeliveryOrder()) {
+            unset($map['out_for_delivery']);
+        }
+
+        return $map;
     }
 
     private function recalculateSwapUnitPrice(): void

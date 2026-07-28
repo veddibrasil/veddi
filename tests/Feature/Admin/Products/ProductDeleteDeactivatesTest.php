@@ -108,7 +108,7 @@ test('deleting product with orders deactivates it instead of removing it, and hi
         'company_id' => $company->id,
         'branch_id' => $branch->id,
         'customer_id' => $customer->id,
-        'status' => 'completed',
+        'status' => 'delivered',
         'subtotal' => 8.00,
         'total' => 8.00,
         'order_number' => 'PDT-0001',

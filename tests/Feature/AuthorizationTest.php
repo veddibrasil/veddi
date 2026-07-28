@@ -120,7 +120,23 @@ test('caixa acessa dashboard e pedidos mas não settings', function () {
     $this->actingAs($user)->get(route('admin.settings'))->assertForbidden();
 });
 
-test('cozinha e caixa têm filial travada no container assim como branch_manager', function () {
+test('bar acessa dashboard e pedidos mas não settings', function () {
+    [, $user] = makeUserWithRole('bar');
+
+    $this->actingAs($user)->get(route('admin.dashboard'))->assertOk();
+    $this->actingAs($user)->get(route('admin.orders.index'))->assertOk();
+    $this->actingAs($user)->get(route('admin.settings'))->assertForbidden();
+});
+
+test('entrega acessa dashboard e pedidos mas não settings', function () {
+    [, $user] = makeUserWithRole('entrega');
+
+    $this->actingAs($user)->get(route('admin.dashboard'))->assertOk();
+    $this->actingAs($user)->get(route('admin.orders.index'))->assertOk();
+    $this->actingAs($user)->get(route('admin.settings'))->assertForbidden();
+});
+
+test('cozinha, caixa, bar e entrega têm filial travada no container assim como branch_manager', function () {
     $company = makeCompany();
     $branch = \App\Models\Branch::withoutGlobalScopes()->create([
         'company_id' => $company->id,
@@ -132,7 +148,7 @@ test('cozinha e caixa têm filial travada no container assim como branch_manager
         'closes_at' => '23:59:59',
     ]);
 
-    foreach (['cozinha', 'caixa'] as $role) {
+    foreach (['cozinha', 'caixa', 'bar', 'entrega'] as $role) {
         $user = User::factory()->create();
         $user->companies()->attach($company->id, ['role' => $role, 'branch_id' => $branch->id]);
 

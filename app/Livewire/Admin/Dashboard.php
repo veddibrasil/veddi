@@ -79,7 +79,7 @@ class Dashboard extends Component
 
                     return [
                         $todayOrders,
-                        $todayOrders->whereIn('status', ['paid', 'preparing', 'ready', 'delivered'])->sum('total'),
+                        $todayOrders->whereIn('status', ['paid', 'preparing', 'ready', 'out_for_delivery', 'delivered'])->sum('total'),
                         (clone $query)->whereIn('status', ['paid', 'preparing'])->count(),
                         $query->count(),
                     ];

@@ -35,6 +35,14 @@
                 <label class="block text-xs font-medium text-neutral-500 mb-1 dark:text-neutral-400">Ordem</label>
                 <flux:input wire:model="sort_order" type="number" placeholder="0" min="0" />
             </div>
+            <div class="w-40">
+                <flux:select wire:model="station" label="Estação">
+                    <flux:select.option value="">Ambos</flux:select.option>
+                    <flux:select.option value="cozinha">Cozinha</flux:select.option>
+                    <flux:select.option value="bar">Bar</flux:select.option>
+                </flux:select>
+                @error('station') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            </div>
         </div>
         <div class="flex gap-2">
             <flux:button wire:click="save" class="!bg-amber-500 !text-white hover:!bg-amber-600 text-sm"
@@ -62,7 +70,14 @@
             @forelse ($categories as $cat)
                 <div class="flex items-center justify-between px-4 py-3">
                     <div>
-                        <p class="font-semibold text-sm text-neutral-800 dark:text-neutral-100">{{ $cat->name }}</p>
+                        <p class="font-semibold text-sm text-neutral-800 dark:text-neutral-100">
+                            {{ $cat->name }}
+                            @if($cat->station === 'cozinha')
+                                <span class="ml-1 text-xs px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400">Cozinha</span>
+                            @elseif($cat->station === 'bar')
+                                <span class="ml-1 text-xs px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400">Bar</span>
+                            @endif
+                        </p>
                         @if($isSuperAdmin && $cat->company)
                             <p class="text-xs font-medium text-amber-600 dark:text-amber-400">{{ $cat->company->name }}</p>
                         @endif

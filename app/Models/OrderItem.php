@@ -26,4 +26,20 @@ class OrderItem extends Model
     {
         return $this->belongsTo(Product::class);
     }
+
+    /**
+     * Item pertence à estação (cozinha|bar) se a categoria do produto estiver marcada pra ela,
+     * ou não tiver estação definida (categoria "ambos"). Usado pra filtrar visualização e cupom
+     * de perfis restritos (cozinha/bar).
+     */
+    public function matchesStation(?string $station): bool
+    {
+        if ($station === null) {
+            return true;
+        }
+
+        $itemStation = $this->product?->category?->station;
+
+        return $itemStation === null || $itemStation === $station;
+    }
 }

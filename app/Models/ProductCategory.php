@@ -10,7 +10,7 @@ class ProductCategory extends Model
 {
     use BelongsToCompany;
 
-    protected $fillable = ['company_id', 'name', 'sort_order', 'active'];
+    protected $fillable = ['company_id', 'name', 'station', 'sort_order', 'active'];
 
     protected $casts = ['active' => 'boolean'];
 

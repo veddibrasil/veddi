@@ -5,7 +5,7 @@
         w-full h-full
         sm:w-[420px] sm:h-[90vh] sm:max-h-[820px] sm:rounded-2xl sm:shadow-2xl
     "
-    x-data="{ ...chatApp(), snakeOpen: false, productSidebarOpen: false, productSidebarSide: 'right', selectingProduct: null, pendingSelections: {} }"
+    x-data="{ ...chatApp(), snakeOpen: false, productSidebarOpen: false, productSidebarSide: 'right', selectingProduct: null, pendingSelections: {}, productSearch: '' }"
     x-init="
         $nextTick(() => { if ($wire.step === 'MENU_BROWSE') productSidebarOpen = true; });
         $watch('$wire.step', v => { if (v === 'MENU_BROWSE') productSidebarOpen = true; });
@@ -285,7 +285,7 @@
                             @php
                                 $statusColor = match($order['status']) {
                                     'delivered' => ['bg' => 'bg-green-100', 'text' => 'text-green-700'],
-                                    'paid', 'preparing', 'ready' => ['bg' => 'bg-blue-100', 'text' => 'text-blue-700'],
+                                    'paid', 'preparing', 'ready', 'out_for_delivery' => ['bg' => 'bg-blue-100', 'text' => 'text-blue-700'],
                                     'cancelled', 'refunded' => ['bg' => 'bg-red-100', 'text' => 'text-red-600'],
                                     default => ['bg' => 'bg-amber-100', 'text' => 'text-amber-700'],
                                 };
@@ -1595,11 +1595,41 @@
             </button>
         </div>
 
+        {{-- Search --}}
+        <div class="shrink-0 px-3 pt-3">
+            <div class="relative">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 10.5A6.5 6.5 0 114 10.5a6.5 6.5 0 0113 0z" />
+                </svg>
+                <input
+                    type="text"
+                    x-model="productSearch"
+                    placeholder="Buscar produto..."
+                    class="w-full text-sm bg-gray-100 border border-gray-200 rounded-xl pl-9 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-red-200"
+                >
+                <button
+                    type="button"
+                    x-show="productSearch"
+                    x-cloak
+                    @click="productSearch = ''"
+                    class="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    title="Limpar"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+
         {{-- Product list --}}
         <div class="flex-1 overflow-y-auto px-3 py-3 space-y-3 mc-scrollbar">
             @forelse ($this->menu as $category)
                 @if ($category->products->isNotEmpty())
-                    <div>
+                    <div
+                        x-data="{ categoryName: @js($category->name), categoryProductNames: @js($category->products->pluck('name')) }"
+                        x-show="!productSearch || categoryName.toLowerCase().includes(productSearch.toLowerCase()) || categoryProductNames.some(n => n.toLowerCase().includes(productSearch.toLowerCase()))"
+                    >
                         <div class="flex items-center gap-2 mb-2">
                             <p class="text-xs font-black mc-text-primary uppercase tracking-widest">{{ $category->name }}</p>
                             <div class="flex-1 h-px mc-bg-primary-light"></div>
@@ -1619,7 +1649,9 @@
                                     $sbInsufficientStock = !$sbOutOfStock && $product->track_stock && $sbCartQty > 0 && $sbCartQty >= $product->quantity;
                                     $sbDisabled = $sbOutOfStock || $sbInsufficientStock;
                                 @endphp
-                                <div class="flex items-center gap-3 rounded-xl p-2.5 border {{ $sbDisabled ? 'bg-gray-100 border-gray-200 opacity-70' : 'bg-gray-50 border-gray-100' }}">
+                                <div
+                                    x-show="!productSearch || categoryName.toLowerCase().includes(productSearch.toLowerCase()) || @js($product->name).toLowerCase().includes(productSearch.toLowerCase())"
+                                    class="flex items-center gap-3 rounded-xl p-2.5 border {{ $sbDisabled ? 'bg-gray-100 border-gray-200 opacity-70' : 'bg-gray-50 border-gray-100' }}">
                                     {{-- Image --}}
                                     <div class="w-16 h-16 rounded-xl overflow-hidden shrink-0">
                                         @if ($product->image_path)
