@@ -405,7 +405,49 @@
 
                         {{-- Opções do grupo --}}
                         <div class="space-y-2">
-                            <p class="text-xs font-medium text-neutral-500 uppercase tracking-wide dark:text-neutral-400">Opções</p>
+                            <div class="flex items-center justify-between gap-2 flex-wrap">
+                                <p class="text-xs font-medium text-neutral-500 uppercase tracking-wide dark:text-neutral-400">Opções</p>
+                                <button type="button" wire:click="openProductPicker({{ $gi }})"
+                                    class="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium">
+                                    Converter produto existente
+                                </button>
+                            </div>
+
+                            @if ($showProductPicker && $productPickerGroupIndex === $gi)
+                                <div class="border border-blue-200 rounded-lg p-3 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-800 space-y-2">
+                                    <div class="flex items-center justify-between">
+                                        <p class="text-xs font-medium text-blue-700 dark:text-blue-400">
+                                            Selecione um produto para importar como opção deste grupo. O produto original não é alterado.
+                                        </p>
+                                        <button type="button" wire:click="closeProductPicker"
+                                            class="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 ml-2 shrink-0">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    <flux:input
+                                        wire:model.live.debounce.300ms="productSearch"
+                                        placeholder="Digite o nome do produto..."
+                                        icon="magnifying-glass"
+                                        autofocus
+                                    />
+                                    @if (filled($productSearch))
+                                        <div class="border rounded-lg overflow-hidden dark:border-zinc-600 max-h-56 overflow-y-auto">
+                                            @forelse ($importableProducts as $ip)
+                                                <button type="button" wire:click="importProductAsOption({{ $ip->id }})"
+                                                    class="w-full flex items-center justify-between gap-2 px-3 py-2 text-left border-b last:border-b-0 dark:border-zinc-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
+                                                    <span class="text-sm font-medium text-neutral-700 dark:text-neutral-200">{{ $ip->name }}</span>
+                                                    <span class="text-xs text-neutral-400 dark:text-neutral-500 shrink-0">R$ {{ number_format((float) $ip->price, 2, ',', '.') }}</span>
+                                                </button>
+                                            @empty
+                                                <p class="text-xs text-neutral-400 px-3 py-2">Nenhum produto encontrado.</p>
+                                            @endforelse
+                                        </div>
+                                    @endif
+                                </div>
+                            @endif
+
                             @if (!empty($group['fixed']))
                             @php $optsQtyJson = collect($group['options'])->mapWithKeys(fn($o, $oi) => [(string)$oi => (int)($o['default_qty'] ?? 0)])->toJson(); @endphp
                             <div
@@ -446,6 +488,18 @@
                                     wire:key="group-{{ $gi }}-option-{{ $oi }}"
                                     @if (!empty($group['fixed'])) x-data="{ qty: {{ (int)($option['default_qty'] ?? 0) }}, basePrice: {{ $optBasePrice }} }" @endif
                                     @if (!empty($group['fixed']) && !($isVariant && $gi === 0)) x-on:base-price-changed.window="basePrice = $event.detail.price" @endif>
+
+                                    @if (!empty($option['source_product_id']))
+                                        <div class="flex items-center justify-between gap-2 rounded bg-blue-50 dark:bg-blue-950/20 px-2 py-1">
+                                            <span class="text-[11px] text-blue-600 dark:text-blue-400">
+                                                Importado de "{{ $option['source_product_name'] }}".
+                                            </span>
+                                            <button type="button" wire:click="unlinkSourceProduct({{ $gi }}, {{ $oi }})"
+                                                class="text-[11px] text-blue-500 hover:underline shrink-0">
+                                                desvincular
+                                            </button>
+                                        </div>
+                                    @endif
 
                                     {{-- Linha 1: imagem + nome + ações --}}
                                     <div class="flex items-center gap-2">

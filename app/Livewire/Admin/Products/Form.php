@@ -72,6 +72,12 @@ class Form extends Component
 
     public bool $showGroupPicker = false;
 
+    public bool $showProductPicker = false;
+
+    public ?int $productPickerGroupIndex = null;
+
+    public string $productSearch = '';
+
     public bool $isVariant = false;
 
     public bool $trackStock = false;
@@ -344,6 +350,68 @@ class Form extends Component
         ];
 
         $this->showGroupPicker = false;
+    }
+
+    public function openProductPicker(int $groupIndex): void
+    {
+        $this->productPickerGroupIndex = $groupIndex;
+        $this->productSearch = '';
+        $this->showProductPicker = true;
+    }
+
+    public function closeProductPicker(): void
+    {
+        $this->showProductPicker = false;
+        $this->productPickerGroupIndex = null;
+        $this->productSearch = '';
+    }
+
+    public function importProductAsOption(int $productId): void
+    {
+        if ($this->productPickerGroupIndex === null || ! isset($this->optionGroups[$this->productPickerGroupIndex])) {
+            return;
+        }
+
+        if ($this->isEditing && $this->product && $productId === $this->product->id) {
+            return;
+        }
+
+        $query = $this->isSuperAdmin
+            ? Product::withoutGlobalScope(CompanyScope::class)->where('company_id', $this->company_id)
+            : Product::query();
+
+        $product = $query->find($productId);
+        if (! $product) {
+            return;
+        }
+
+        $groupIndex = $this->productPickerGroupIndex;
+
+        $this->optionGroups[$groupIndex]['options'][] = [
+            'key' => (string) Str::uuid(),
+            'id' => null,
+            'name' => $product->name,
+            'image_path' => $product->image_path,
+            'image_url' => $product->image_url,
+            'active' => true,
+            'description' => Str::limit($product->description ?? '', 255, ''),
+            'additional_price' => number_format((float) $product->price, 2, '.', ''),
+            'default_qty' => '0',
+            'max_qty' => '',
+            'sort_order' => count($this->optionGroups[$groupIndex]['options']),
+            'source_product_id' => $product->id,
+            'source_product_name' => $product->name,
+        ];
+
+        $this->closeProductPicker();
+    }
+
+    public function unlinkSourceProduct(int $groupIndex, int $optionIndex): void
+    {
+        if (isset($this->optionGroups[$groupIndex]['options'][$optionIndex])) {
+            $this->optionGroups[$groupIndex]['options'][$optionIndex]['source_product_id'] = null;
+            $this->optionGroups[$groupIndex]['options'][$optionIndex]['source_product_name'] = null;
+        }
     }
 
     public function removeOptionGroup(int $index): void
@@ -780,7 +848,37 @@ class Form extends Component
         $attachedGroupIds = collect($this->optionGroups)->pluck('group_id')->filter()->values();
         $availableGroups = $availableGroups->whereNotIn('id', $attachedGroupIds)->values();
 
-        return view('livewire.admin.products.form', compact('categories', 'branches', 'companies', 'availableGroups'))
+        $excludedProductIds = collect($this->optionGroups)
+            ->flatMap(fn ($group) => collect($group['options'] ?? [])->pluck('source_product_id'))
+            ->filter()
+            ->when($this->isEditing && $this->product, fn ($ids) => $ids->push($this->product->id))
+            ->values();
+
+        if (filled($this->productSearch)) {
+            if ($this->isSuperAdmin) {
+                $importableProducts = $this->company_id
+                    ? Product::withoutGlobalScope(CompanyScope::class)
+                        ->where('company_id', $this->company_id)
+                        ->where('active', true)
+                        ->where('name', 'like', '%'.$this->productSearch.'%')
+                        ->whereNotIn('id', $excludedProductIds)
+                        ->orderBy('name')
+                        ->limit(20)
+                        ->get()
+                    : collect();
+            } else {
+                $importableProducts = Product::where('active', true)
+                    ->where('name', 'like', '%'.$this->productSearch.'%')
+                    ->whereNotIn('id', $excludedProductIds)
+                    ->orderBy('name')
+                    ->limit(20)
+                    ->get();
+            }
+        } else {
+            $importableProducts = collect();
+        }
+
+        return view('livewire.admin.products.form', compact('categories', 'branches', 'companies', 'availableGroups', 'importableProducts'))
             ->layout('layouts.app', ['title' => $this->isEditing ? 'Editar Produto' : 'Novo Produto']);
     }
 }
