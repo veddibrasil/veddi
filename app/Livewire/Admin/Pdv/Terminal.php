@@ -14,6 +14,7 @@ use App\Livewire\Admin\Pdv\Concerns\HasOrderTotals;
 use App\Livewire\Admin\Pdv\Concerns\HasPaymentFlow;
 use App\Livewire\Admin\Pdv\Concerns\HasPaymentState;
 use App\Livewire\Admin\Pdv\Concerns\HasProductLookup;
+use App\Livewire\Admin\Pdv\Concerns\HasScheduling;
 use App\Models\Branch;
 use App\Models\PdvAuditLog;
 use Livewire\Component;
@@ -33,6 +34,7 @@ class Terminal extends Component
     use HasPaymentFlow;
     use HasPaymentState;
     use HasProductLookup;
+    use HasScheduling;
 
     // ── Estado da interface ──────────────────────────────────────────────────
     public string $step = 'catalog'; // open_cash | catalog | payment | pix | success | close_cash
@@ -102,6 +104,13 @@ class Terminal extends Component
     public ?string $deliveryFeeError = null;
 
     public string $deliveryPaymentStatus = 'paid'; // 'paid' | 'on_delivery' — só relevante quando deliveryType === 'entrega'
+
+    // ── Agendamento ───────────────────────────────────────────────────────────
+    public bool $isScheduled = false;
+
+    public string $scheduleDate = '';
+
+    public string $scheduleTime = '';
 
     // ── Observação ────────────────────────────────────────────────────────────
     public string $notes = '';
@@ -223,6 +232,7 @@ class Terminal extends Component
         $this->showSessionHistory = false;
         $this->resetPaymentState();
         $this->resetDeliveryState();
+        $this->resetScheduleState();
     }
 
     private function audit(string $action, array $data = []): void

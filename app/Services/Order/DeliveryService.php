@@ -31,7 +31,7 @@ class DeliveryService
 
         $this->validateServiceRadius($settings, $distanceKm);
 
-        $fee = $this->resolveFee($settings, $neighborhood, $distanceKm);
+        $fee = $this->resolveFee($settings, $neighborhood, $distanceKm, $customerLat, $customerLng);
 
         $free = false;
         if ($settings->free_delivery_above !== null && $subtotal >= $settings->free_delivery_above) {
@@ -83,12 +83,15 @@ class DeliveryService
     private function resolveFee(
         DeliverySetting $settings,
         string $neighborhood,
-        ?float $distanceKm
+        ?float $distanceKm,
+        ?float $customerLat,
+        ?float $customerLng
     ): float {
         return match ($settings->fee_type) {
             'flat' => (float) $settings->flat_fee,
             'neighborhood' => $this->feeByNeighborhood($settings, $neighborhood),
             'distance' => $this->feeByDistance($settings, $distanceKm),
+            'zone' => $this->feeByZone($settings, $customerLat, $customerLng),
             default => 0.0,
         };
     }
@@ -141,6 +144,51 @@ class DeliveryService
         }
 
         return (float) $tier->fee;
+    }
+
+    private function feeByZone(DeliverySetting $settings, ?float $lat, ?float $lng): float
+    {
+        if ($lat === null || $lng === null) {
+            throw new DeliveryException('Não foi possível calcular a taxa de entrega para sua localização. Entre em contato com a loja.');
+        }
+
+        foreach (($settings->zones ?? []) as $zone) {
+            if (! ($zone['active'] ?? true)) {
+                continue;
+            }
+
+            if ($this->pointInPolygon($lat, $lng, $zone['polygon'] ?? [])) {
+                return (float) $zone['fee'];
+            }
+        }
+
+        throw new DeliveryException('Seu endereço está fora da área de entrega desta filial.');
+    }
+
+    /**
+     * Ray-casting (PNPOLY) — testa se o ponto está dentro do polígono (array de pares [lat, lng]).
+     */
+    private function pointInPolygon(float $lat, float $lng, array $polygon): bool
+    {
+        $count = count($polygon);
+        if ($count < 3) {
+            return false;
+        }
+
+        $inside = false;
+        for ($i = 0, $j = $count - 1; $i < $count; $j = $i++) {
+            [$latI, $lngI] = $polygon[$i];
+            [$latJ, $lngJ] = $polygon[$j];
+
+            $intersects = (($lngI > $lng) !== ($lngJ > $lng))
+                && ($lat < ($latJ - $latI) * ($lng - $lngI) / ($lngJ - $lngI) + $latI);
+
+            if ($intersects) {
+                $inside = ! $inside;
+            }
+        }
+
+        return $inside;
     }
 
     /**

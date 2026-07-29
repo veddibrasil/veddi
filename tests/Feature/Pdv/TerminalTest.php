@@ -954,3 +954,96 @@ test('seletor de PDV mostra as duas opções pra quem tem pdv.operate', function
         ->assertSee('Venda Direta')
         ->assertSee('Mesas / Comandas');
 });
+
+// ─── Agendamento ────────────────────────────────────────────────────────────
+
+test('agendamento fica indisponível quando empresa não habilita', function () {
+    ['admin' => $admin, 'company' => $company] = pdvContext();
+
+    $company->update(['schedule_min_advance_minutes' => 0]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->assertSet('schedulingEnabled', false);
+});
+
+test('pedido PDV agendado grava scheduled_at e status scheduled', function () {
+    ['admin' => $admin, 'company' => $company, 'product' => $product] = pdvContext();
+
+    $company->update(['schedule_min_advance_minutes' => 30]);
+
+    $customer = Customer::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Cliente Agendado',
+        'phone' => '11999990000',
+    ]);
+
+    $this->actingAs($admin);
+
+    $scheduleDate = now()->addDay()->format('Y-m-d');
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('customerId', $customer->id)
+        ->set('isScheduled', true)
+        ->set('scheduleDate', $scheduleDate)
+        ->set('scheduleTime', '12:00')
+        ->set('paymentMethod', 'cash')
+        ->call('processOrder')
+        ->assertHasNoErrors()
+        ->assertSet('step', 'success');
+
+    $order = Order::withoutGlobalScopes()->first();
+    expect($order)->not->toBeNull();
+    expect($order->status)->toBe('scheduled');
+    expect($order->scheduled_at)->not->toBeNull();
+    expect($order->scheduled_at->format('Y-m-d H:i'))->toBe($scheduleDate.' 12:00');
+    expect($order->customer_id)->toBe($customer->id);
+});
+
+test('pedido agendado exige cliente selecionado', function () {
+    ['admin' => $admin, 'company' => $company, 'product' => $product] = pdvContext();
+
+    $company->update(['schedule_min_advance_minutes' => 30]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('isScheduled', true)
+        ->set('scheduleDate', now()->addDay()->format('Y-m-d'))
+        ->set('scheduleTime', '12:00')
+        ->call('processOrder')
+        ->assertHasErrors('order');
+
+    expect(Order::withoutGlobalScopes()->count())->toBe(0);
+});
+
+test('agendamento rejeita horário no passado', function () {
+    ['admin' => $admin, 'company' => $company, 'product' => $product] = pdvContext();
+
+    $company->update(['schedule_min_advance_minutes' => 30]);
+
+    $customer = Customer::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Cliente Agendado',
+        'phone' => '11999990001',
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('customerId', $customer->id)
+        ->set('isScheduled', true)
+        ->set('scheduleDate', now()->subDay()->format('Y-m-d'))
+        ->set('scheduleTime', '12:00')
+        ->call('processOrder')
+        ->assertHasErrors('scheduledAt');
+
+    expect(Order::withoutGlobalScopes()->count())->toBe(0);
+});

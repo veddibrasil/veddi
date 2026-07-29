@@ -36,6 +36,10 @@ return [
         'cdi_rate_fallback_daily' => (float) env('BACEN_CDI_FALLBACK_DAILY', 0.000527),
     ],
 
+    'support' => [
+        'whatsapp_number' => env('SUPPORT_WHATSAPP_NUMBER'),
+    ],
+
     'asaas' => [
         'api_key' => env('ASAAS_API_KEY'),
         'sandbox' => env('ASAAS_SANDBOX', true),

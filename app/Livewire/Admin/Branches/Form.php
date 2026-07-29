@@ -4,7 +4,6 @@ namespace App\Livewire\Admin\Branches;
 
 use App\Models\Branch;
 use App\Models\Company;
-use App\Models\DeliverySetting;
 use App\Models\Scopes\CompanyScope;
 use Illuminate\Support\Facades\Cache;
 use Livewire\Component;
@@ -34,8 +33,6 @@ class Form extends Component
     public string $phone = '';
 
     public bool $active = true;
-
-    public string $service_radius_km = '';
 
     public array $available_days = [0, 1, 2, 3, 4, 5, 6];
 
@@ -73,7 +70,6 @@ class Form extends Component
             'cep' => ['nullable', 'regex:/^\\d{5}-?\\d{3}$/'],
             'phone' => ['nullable', 'regex:/^\(?\d{2}\)?[\s\-]?\d{4,5}[\-]?\d{4}$/'],
             'active' => ['boolean'],
-            'service_radius_km' => ['nullable', 'numeric', 'min:0'],
             'available_days' => ['required', 'array', 'min:1'],
             'available_days.*' => ['integer', 'between:0,6'],
             'day_hours' => ['required', 'array'],
@@ -137,14 +133,6 @@ class Form extends Component
 
         $branch = $this->persistBranch($validated);
         $companyId = $branch->company_id;
-
-        DeliverySetting::updateOrCreate(
-            ['branch_id' => $branch->id],
-            [
-                'company_id' => $companyId,
-                'service_radius_km' => $this->service_radius_km !== '' ? (float) $this->service_radius_km : null,
-            ]
-        );
 
         session()->flash('status', $this->isEditing ? 'Filial atualizada.' : 'Filial criada.');
         session()->forget('chat_state');
@@ -213,9 +201,6 @@ class Form extends Component
         $this->cep = (string) ($branch->cep ?? '');
         $this->phone = (string) ($branch->phone ?? '');
         $this->active = (bool) ($branch->active ?? true);
-        $this->service_radius_km = $branch->deliverySetting?->service_radius_km !== null
-            ? (string) $branch->deliverySetting->service_radius_km
-            : '';
         $this->available_days = $branch->available_days ?? [0, 1, 2, 3, 4, 5, 6];
 
         $this->loadBusinessHours($branch);

@@ -4,6 +4,7 @@ namespace App\Livewire\Admin\Pdv\Concerns;
 
 use App\Events\NewOrderPlaced;
 use App\Events\OrderStatusUpdated;
+use App\Models\Branch;
 use App\Services\Order\OrderService;
 use App\Services\Payment\PaymentOrchestrator;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +22,7 @@ trait HasPaymentFlow
         $this->step = 'payment';
         $this->resetPaymentState();
         $this->resetDeliveryState();
+        $this->resetScheduleState();
     }
 
     public function backToCatalog(): void
@@ -28,6 +30,7 @@ trait HasPaymentFlow
         $this->step = 'catalog';
         $this->resetPaymentState();
         $this->resetDeliveryState();
+        $this->resetScheduleState();
     }
 
     public function processOrder(): void
@@ -54,6 +57,19 @@ trait HasPaymentFlow
             }
         }
 
+        if ($this->isScheduled && ! $this->customerId) {
+            $this->addError('order', 'Selecione ou cadastre um cliente para agendar o pedido.');
+
+            return;
+        }
+
+        $branch = Branch::find($this->selectedBranchId);
+        $scheduledAt = $branch ? $this->resolveScheduledAt($branch) : null;
+
+        if ($this->isScheduled && ! $scheduledAt) {
+            return;
+        }
+
         $company = app('current.company');
         $customerId = $this->resolveCustomerId($company);
 
@@ -64,6 +80,13 @@ trait HasPaymentFlow
             $isPaidOnCreate = in_array($this->paymentMethod, ['cash', 'credit_card', 'pix'])
                 && ! ($this->deliveryType === 'entrega' && $this->deliveryPaymentStatus === 'on_delivery');
 
+            // Pedido agendado: pagamento pode ser coletado agora, mas o status fica 'scheduled'
+            // (não 'paid') pra não disparar preparo/nota fiscal antes da hora combinada — mesma
+            // convenção usada no agendamento do chat público.
+            $status = $isPaidOnCreate
+                ? ($scheduledAt ? 'scheduled' : 'paid')
+                : 'awaiting_payment';
+
             $order = app(OrderService::class)->createOrder(
                 customerId: $customerId,
                 branchId: $this->selectedBranchId,
@@ -71,8 +94,9 @@ trait HasPaymentFlow
                 notes: $this->notes,
                 paymentMethod: $this->paymentMethod,
                 orderType: 'pdv',
-                status: $isPaidOnCreate ? 'paid' : 'awaiting_payment',
+                status: $status,
                 deliveryFee: $this->deliveryFeeAmount,
+                scheduledAt: $scheduledAt,
                 extraDiscount: $this->manualDiscountAmount,
                 serviceFee: $this->serviceFeeAmount,
                 couvertFee: $this->couvertFeeAmount,
@@ -112,8 +136,9 @@ trait HasPaymentFlow
 
             DB::commit();
 
-            // Fora da transação: pedido nasce 'paid' aqui (à vista/cartão/pix no PDV) e nunca
-            // passa por outra transição depois — sem isso a nota fiscal automática nunca dispara.
+            // Fora da transação: pedido nasce 'paid' aqui (à vista/cartão/pix no PDV, quando não
+            // agendado) e nunca passa por outra transição depois — sem isso a nota fiscal automática
+            // nunca dispara. Se agendado, status é 'scheduled' e o listener de nota fiscal ignora.
             if ($isPaidOnCreate) {
                 OrderStatusUpdated::dispatch($order);
             }

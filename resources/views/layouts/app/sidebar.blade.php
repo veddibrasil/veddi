@@ -276,6 +276,7 @@
                 <livewire:admin.notifications />
             @endif
             <livewire:admin.profile-modal />
+            @include('partials.support-whatsapp-button')
         @endauth
 
         @fluxScripts

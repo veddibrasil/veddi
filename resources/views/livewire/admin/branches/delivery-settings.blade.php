@@ -1,6 +1,8 @@
 <div class="w-full space-y-6"
     x-data="{
         feeType: @entangle('fee_type'),
+        initialLat: @json($branch_latitude !== '' ? (float) $branch_latitude : null),
+        initialLng: @json($branch_longitude !== '' ? (float) $branch_longitude : null),
         mapOpen: false,
         mapInstance: null,
         mapMarker: null,
@@ -8,15 +10,28 @@
         mapLng: null,
         mapLoading: false,
         mapError: null,
+        zoneMapInstance: null,
+        zonePolygonDrawer: null,
+        zoneDrawing: false,
+        zoneModalOpen: false,
+        zoneDraftPolygon: [],
+        zoneDraftName: '',
+        zoneDraftFee: '',
         init() {
             this.$watch('feeType', val => {
                 if (val === 'distance' && !this.mapOpen) this.mapOpenWithCurrentValues();
                 if (val !== 'distance') { this.mapOpen = false; this.mapDestroy(); }
+                if (val === 'zone' && !this.zoneMapInstance) { var self = this; setTimeout(() => self.zoneMapBuild(), 100); }
+                if (val !== 'zone') this.zoneMapDestroy();
             });
             this.$watch('mapOpen', val => { if (!val) this.mapDestroy(); });
             if (this.feeType === 'distance') {
                 var self = this;
                 setTimeout(() => { if (!self.mapOpen) self.mapOpenWithCurrentValues(); }, 200);
+            }
+            if (this.feeType === 'zone') {
+                var self = this;
+                setTimeout(() => self.zoneMapBuild(), 200);
             }
         },
         mapBuild() {
@@ -79,14 +94,85 @@
             this.mapDestroy();
         },
         mapOpenWithCurrentValues() {
-            var wireLat = $wire.get('branch_latitude');
-            var wireLng = $wire.get('branch_longitude');
-            if (wireLat && wireLng) { this.mapLat = parseFloat(wireLat); this.mapLng = parseFloat(wireLng); }
+            if (this.mapLat === null && this.initialLat !== null) { this.mapLat = this.initialLat; this.mapLng = this.initialLng; }
             this.mapOpen = true;
             var self = this;
             setTimeout(() => self.mapBuild(), 100);
         },
+        zoneColor(i) {
+            var palette = ['#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
+            return palette[i % palette.length];
+        },
+        zoneMapBuild() {
+            this.zoneMapDestroy();
+            var el = document.getElementById('zone-map-el');
+            if (!el) return;
+            var self = this;
+            var lat = this.mapLat ?? this.initialLat ?? -15.7801;
+            var lng = this.mapLng ?? this.initialLng ?? -47.9292;
+            this.zoneMapInstance = L.map(el, { zoomControl: true }).setView([lat, lng], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© <a href=\'https://www.openstreetmap.org/copyright\'>OpenStreetMap</a>',
+                maxZoom: 19,
+            }).addTo(this.zoneMapInstance);
+
+            // Lê direto do $wire (não do valor travado no x-data no primeiro render) — senão uma
+            // área desenhada agora só aparece no mapa depois de recarregar a página.
+            var existingZones = $wire.zones;
+            existingZones.forEach(function(zone, idx) {
+                if (!zone.polygon || zone.polygon.length < 3) return;
+                L.polygon(zone.polygon, { color: self.zoneColor(idx), weight: 2 })
+                    .addTo(self.zoneMapInstance)
+                    .bindTooltip(zone.name + ' — R$ ' + zone.fee);
+            });
+
+            this.zonePolygonDrawer = new L.Draw.Polygon(this.zoneMapInstance, {
+                shapeOptions: { color: '#f59e0b', weight: 3 },
+                showLength: false,
+                metric: false,
+            });
+
+            this.zoneMapInstance.on(L.Draw.Event.DRAWSTART, function() { self.zoneDrawing = true; });
+            this.zoneMapInstance.on(L.Draw.Event.DRAWSTOP, function() { self.zoneDrawing = false; });
+
+            this.zoneMapInstance.on(L.Draw.Event.CREATED, function(e) {
+                var latlngs = e.layer.getLatLngs()[0];
+                self.zoneDraftPolygon = latlngs.map(function(p) { return [p.lat, p.lng]; });
+                self.zoneDraftName = '';
+                self.zoneDraftFee = '';
+                self.zoneModalOpen = true;
+            });
+
+            requestAnimationFrame(() => requestAnimationFrame(() => { if (this.zoneMapInstance) this.zoneMapInstance.invalidateSize(); }));
+        },
+        zoneMapDestroy() {
+            if (this.zoneMapInstance) { this.zoneMapInstance.remove(); this.zoneMapInstance = null; this.zonePolygonDrawer = null; }
+        },
+        zoneStartDraw() {
+            if (this.zonePolygonDrawer) this.zonePolygonDrawer.enable();
+        },
+        zoneCancelDrawMode() {
+            if (this.zonePolygonDrawer) this.zonePolygonDrawer.disable();
+        },
+        zoneConfirmDraw() {
+            if (!this.zoneDraftName || this.zoneDraftFee === '') return;
+            $wire.addZoneFromDraw(this.zoneDraftName, this.zoneDraftFee, this.zoneDraftPolygon);
+            this.zoneModalOpen = false;
+            this.zoneDraftPolygon = [];
+            this.zoneDraftName = '';
+            this.zoneDraftFee = '';
+            var self = this;
+            setTimeout(() => self.zoneMapBuild(), 400);
+        },
+        zoneCancelDraw() {
+            this.zoneModalOpen = false;
+            this.zoneDraftPolygon = [];
+        },
     }">
+    @once
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    @endonce
 
     <x-admin.page-header
         :back-route="route('admin.branches.index')"
@@ -107,6 +193,7 @@
                     <option value="flat">Taxa fixa</option>
                     <option value="neighborhood">Por bairro</option>
                     <option value="distance">Por distância (km)</option>
+                    <option value="zone">Por área no mapa</option>
                 </flux:select>
                 @error('fee_type') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
@@ -115,7 +202,7 @@
             </div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
                 <flux:input wire:model="minimum_order_value" type="number" step="0.01" min="0"
                     label="Pedido mínimo para entrega (R$)"
@@ -127,6 +214,15 @@
                     label="Frete grátis acima de (R$)"
                     placeholder="Deixe em branco para não usar" />
                 @error('free_delivery_above') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            </div>
+            <div>
+                <flux:input wire:model="service_radius_km" type="number" step="0.01" min="0"
+                    label="Raio de atuação (km)"
+                    placeholder="Deixe em branco para sem limite" />
+                <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
+                    Distância máxima de entrega a partir desta filial.
+                </p>
+                @error('service_radius_km') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
         </div>
 
@@ -192,11 +288,6 @@
     {{-- Por Distância --}}
     <div x-show="feeType === 'distance'" x-cloak>
         <x-admin.form-card title="Frete por distância">
-            @once
-                <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
-                <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-            @endonce
-
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                     <flux:input wire:model="branch_latitude" type="number" step="any"
@@ -291,6 +382,109 @@
                     <p class="text-xs text-neutral-400 dark:text-neutral-500">Deixe "Até" em branco na última faixa para cobrir qualquer distância.</p>
                 </div>
             @endif
+        </x-admin.form-card>
+    </div>
+
+    {{-- Por Área no Mapa --}}
+    <div x-show="feeType === 'zone'" x-cloak>
+        <x-admin.form-card>
+            @once
+                <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" crossorigin=""/>
+                <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js" crossorigin=""></script>
+            @endonce
+
+            <div class="flex items-center justify-between">
+                <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Áreas de entrega no mapa</h2>
+                <button type="button" @click="zoneDrawing ? zoneCancelDrawMode() : zoneStartDraw()"
+                    class="text-xs px-3 py-1.5 rounded-lg transition-colors"
+                    :class="zoneDrawing ? 'bg-neutral-200 text-neutral-700 hover:bg-neutral-300 dark:bg-zinc-600 dark:text-neutral-200' : 'bg-amber-500 text-white hover:bg-amber-600'">
+                    <span x-show="!zoneDrawing">+ Nova área</span>
+                    <span x-show="zoneDrawing" x-cloak>Cancelar desenho</span>
+                </button>
+            </div>
+
+            <p class="text-xs text-neutral-500 dark:text-neutral-400">
+                Clique em "+ Nova área", depois marque os pontos do polígono no mapa. Dê duplo clique (ou clique no primeiro ponto) para fechar a área. Áreas sobrepostas: a primeira da lista abaixo tem prioridade.
+            </p>
+
+            <div class="relative rounded-xl overflow-hidden border border-neutral-200 dark:border-zinc-700">
+                <div x-show="zoneDrawing" x-cloak
+                    class="absolute inset-x-0 top-0 z-2000 flex items-center justify-between gap-2 bg-amber-50 border-b border-amber-200 px-3 py-2 dark:bg-amber-900/40 dark:border-amber-700">
+                    <span class="text-xs font-medium text-amber-700 dark:text-amber-300">Clique no mapa para marcar os pontos. Duplo clique para fechar a área.</span>
+                    <button type="button" @click="zoneCancelDrawMode()" class="text-amber-500 hover:text-amber-800 text-lg leading-none">×</button>
+                </div>
+                <div id="zone-map-el" wire:ignore style="height:380px; width:100%;"></div>
+            </div>
+
+            @error('zones') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+
+            @if (count($zones) === 0)
+                <p class="text-sm text-neutral-400 dark:text-neutral-500">Nenhuma área cadastrada. Desenhe um polígono no mapa acima para começar.</p>
+            @else
+                <div class="space-y-2">
+                    <div class="grid grid-cols-12 gap-2 text-xs font-medium text-neutral-400 uppercase px-1">
+                        <span class="col-span-5">Nome da área</span>
+                        <span class="col-span-3">Taxa (R$)</span>
+                        <span class="col-span-2">Ativo</span>
+                        <span class="col-span-2 text-right">Prioridade</span>
+                    </div>
+
+                    @foreach ($zones as $i => $zone)
+                        <div class="grid grid-cols-12 gap-2 items-center">
+                            <div class="col-span-5">
+                                <flux:input wire:model="zones.{{ $i }}.name" placeholder="Ex: Centro" />
+                                @error("zones.{$i}.name") <p class="text-red-500 text-xs mt-0.5">{{ $message }}</p> @enderror
+                            </div>
+                            <div class="col-span-3">
+                                <flux:input wire:model="zones.{{ $i }}.fee" type="number" step="0.01" min="0" placeholder="13,00" />
+                                @error("zones.{$i}.fee") <p class="text-red-500 text-xs mt-0.5">{{ $message }}</p> @enderror
+                            </div>
+                            <div class="col-span-2 flex items-center">
+                                <flux:checkbox wire:model="zones.{{ $i }}.active" />
+                            </div>
+                            <div class="col-span-2 flex justify-end gap-1">
+                                <button wire:click="moveZoneUp({{ $i }})" type="button" @if($i === 0) disabled @endif
+                                    class="text-neutral-400 hover:text-amber-600 disabled:opacity-30 text-sm leading-none px-1">↑</button>
+                                <button wire:click="moveZoneDown({{ $i }})" type="button" @if($i === count($zones) - 1) disabled @endif
+                                    class="text-neutral-400 hover:text-amber-600 disabled:opacity-30 text-sm leading-none px-1">↓</button>
+                                <button wire:click="removeZone({{ $i }})" type="button"
+                                    class="text-neutral-400 hover:text-red-500 text-lg leading-none px-1">×</button>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+
+            <div x-show="zoneModalOpen" x-cloak
+                class="fixed inset-0 z-2000 flex items-center justify-center bg-black/40 px-4"
+                @keydown.escape.window="zoneCancelDraw()">
+                <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-lg w-full max-w-sm p-5 space-y-4">
+                    <div class="flex items-center justify-between">
+                        <h3 class="font-semibold text-neutral-700 dark:text-neutral-200">Área de Entrega Mapa</h3>
+                        <button type="button" @click="zoneCancelDraw()" class="text-neutral-400 hover:text-neutral-700 text-lg leading-none">×</button>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Nome da Área</label>
+                        <input type="text" x-model="zoneDraftName" placeholder="area01"
+                            class="w-full rounded-lg border border-neutral-300 px-3 py-1.5 text-sm dark:bg-zinc-700 dark:border-zinc-600 dark:text-neutral-200" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Taxa de Entrega</label>
+                        <input type="number" step="0.01" min="0" x-model="zoneDraftFee" placeholder="13,00"
+                            class="w-full rounded-lg border border-neutral-300 px-3 py-1.5 text-sm dark:bg-zinc-700 dark:border-zinc-600 dark:text-neutral-200" />
+                    </div>
+                    <div class="flex gap-2 pt-1">
+                        <button type="button" @click="zoneCancelDraw()"
+                            class="flex-1 text-xs border border-neutral-300 text-neutral-600 px-3 py-1.5 rounded-lg hover:bg-neutral-50 dark:border-zinc-600 dark:text-neutral-300 dark:hover:bg-zinc-700">
+                            Cancelar
+                        </button>
+                        <button type="button" @click="zoneConfirmDraw()"
+                            class="flex-1 text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 transition-colors font-medium">
+                            OK
+                        </button>
+                    </div>
+                </div>
+            </div>
         </x-admin.form-card>
     </div>
 

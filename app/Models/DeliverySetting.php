@@ -18,6 +18,7 @@ class DeliverySetting extends Model
         'branch_latitude',
         'branch_longitude',
         'service_radius_km',
+        'zones',
         'active',
     ];
 
@@ -28,6 +29,7 @@ class DeliverySetting extends Model
         'branch_latitude' => 'float',
         'branch_longitude' => 'float',
         'service_radius_km' => 'float',
+        'zones' => 'array',
         'active' => 'boolean',
     ];
 

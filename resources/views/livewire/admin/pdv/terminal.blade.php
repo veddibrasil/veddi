@@ -1273,6 +1273,55 @@
                                     @endif
                                 </div>
 
+                                @if ($this->schedulingEnabled)
+                                    <div class="space-y-3 rounded-xl border p-3 dark:border-zinc-700">
+                                        <label class="flex cursor-pointer items-center gap-2">
+                                            <flux:checkbox wire:model.live="isScheduled" />
+                                            <span class="text-sm font-semibold">Agendar pedido para depois</span>
+                                        </label>
+
+                                        @if ($isScheduled)
+                                            <div class="flex flex-wrap gap-1.5">
+                                                <flux:button size="xs" variant="{{ $scheduleDate === now()->format('Y-m-d') ? 'primary' : 'ghost' }}" wire:click="$set('scheduleDate', '{{ now()->format('Y-m-d') }}')">Hoje</flux:button>
+                                                <flux:button size="xs" variant="{{ $scheduleDate === now()->addDay()->format('Y-m-d') ? 'primary' : 'ghost' }}" wire:click="$set('scheduleDate', '{{ now()->addDay()->format('Y-m-d') }}')">Amanhã</flux:button>
+                                            </div>
+
+                                            <div class="space-y-1.5">
+                                                <flux:label class="text-xs font-semibold">Data</flux:label>
+                                                <flux:input type="date" wire:model.live="scheduleDate" min="{{ now()->format('Y-m-d') }}" />
+                                            </div>
+
+                                            @if ($scheduleDate)
+                                                <div class="space-y-1.5">
+                                                    <flux:label class="text-xs font-semibold">Horário</flux:label>
+                                                    @if (count($this->availableScheduleTimeSlots) > 0)
+                                                        <div class="flex flex-wrap gap-1.5">
+                                                            @foreach ($this->availableScheduleTimeSlots as $slot)
+                                                                <flux:button
+                                                                    size="xs"
+                                                                    variant="{{ $scheduleTime === $slot ? 'primary' : 'ghost' }}"
+                                                                    wire:click="$set('scheduleTime', '{{ $slot }}')"
+                                                                >
+                                                                    {{ $slot }}
+                                                                </flux:button>
+                                                            @endforeach
+                                                        </div>
+                                                    @else
+                                                        <p class="text-xs text-neutral-500 dark:text-neutral-400">Sem horários disponíveis nesta data.</p>
+                                                    @endif
+                                                </div>
+                                            @endif
+
+                                            <p class="text-xs text-neutral-500 dark:text-neutral-400">
+                                                Selecione um cliente cadastrado abaixo para vincular ao pedido agendado.
+                                            </p>
+                                            @error('scheduledAt')
+                                                <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                                            @enderror
+                                        @endif
+                                    </div>
+                                @endif
+
                                 @if ($this->rawServiceFeeAmount > 0 || $this->rawCouvertFeeAmount > 0)
                                     <div class="grid gap-2 md:grid-cols-2">
                                         @if ($this->rawServiceFeeAmount > 0)
