@@ -76,16 +76,25 @@ trait HasOrderFlow
                 'type' => $coupon->type,
                 'discount' => $discount,
                 'label' => $coupon->name,
+                'payment_method' => $coupon->payment_method,
             ];
             $this->couponDiscount = $discount;
             $this->couponError = null;
+
+            if ($coupon->payment_method !== null) {
+                $this->paymentMethod = $coupon->payment_method;
+            }
 
             $discountLabel = $coupon->type === 'free_delivery'
                 ? 'Frete grátis aplicado!'
                 : 'Desconto de R$ '.number_format($discount, 2, ',', '.').' aplicado!';
 
+            $paymentNote = $coupon->payment_method !== null
+                ? ' Válido somente para pagamento via '.$coupon->payment_method.'.'
+                : '';
+
             $this->addMessage('user', "Cupom: {$coupon->code}");
-            $this->addMessage('bot', "✅ {$discountLabel} Escolha o tipo de entrega:");
+            $this->addMessage('bot', "✅ {$discountLabel}{$paymentNote} Escolha o tipo de entrega:");
             $this->transitionTo('CHECKOUT_ORDER_TYPE');
 
             Log::channel('chat')->info('Cupom aplicado', [

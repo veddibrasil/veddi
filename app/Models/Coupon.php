@@ -14,7 +14,7 @@ class Coupon extends Model
     protected $fillable = [
         'company_id', 'code', 'name', 'description',
         'type', 'discount_value', 'free_product_id',
-        'scope', 'scope_ids',
+        'scope', 'scope_ids', 'payment_method',
         'minimum_order_value', 'max_uses', 'max_uses_per_customer',
         'starts_at', 'expires_at', 'active',
     ];
@@ -63,6 +63,11 @@ class Coupon extends Model
         }
 
         return $this->usages()->where('customer_id', $customerId)->count() >= $this->max_uses_per_customer;
+    }
+
+    public function allowsPaymentMethod(string $paymentMethod): bool
+    {
+        return $this->payment_method === null || $this->payment_method === $paymentMethod;
     }
 
     public function getTypeLabel(): string

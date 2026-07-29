@@ -66,7 +66,7 @@ class CouponService
      *
      * @throws CouponException
      */
-    public function revalidateForOrder(int $couponId, int $customerId, float $subtotal): Coupon
+    public function revalidateForOrder(int $couponId, int $customerId, float $subtotal, ?string $paymentMethod = null): Coupon
     {
         $coupon = Coupon::whereKey($couponId)->lockForUpdate()->first();
 
@@ -76,6 +76,10 @@ class CouponService
 
         if ($coupon->isExpired()) {
             throw new CouponException('Cupom expirado ou ainda não está vigente.');
+        }
+
+        if ($paymentMethod !== null && ! $coupon->allowsPaymentMethod($paymentMethod)) {
+            throw new CouponException('Este cupom é válido apenas para pagamento via '.$coupon->payment_method.'.');
         }
 
         if ($coupon->minimum_order_value !== null && $subtotal < $coupon->minimum_order_value) {

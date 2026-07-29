@@ -45,6 +45,8 @@ class Index extends Component
 
     public array $scope_ids = [];
 
+    public ?string $payment_method = null;
+
     public ?float $minimum_order_value = null;
 
     public ?int $max_uses = null;
@@ -115,6 +117,7 @@ class Index extends Component
             'free_product_id' => ['nullable', 'integer', 'exists:products,id', 'required_if:type,free_product'],
             'scope' => ['required', Rule::in(['order', 'category', 'product'])],
             'scope_ids' => ['nullable', 'array'],
+            'payment_method' => ['nullable', Rule::in(['CASH', 'PIX', 'CARD'])],
             'minimum_order_value' => ['nullable', 'numeric', 'min:0'],
             'max_uses' => ['nullable', 'integer', 'min:1'],
             'max_uses_per_customer' => ['nullable', 'integer', 'min:1'],
@@ -164,6 +167,7 @@ class Index extends Component
             'free_product_id' => $this->type === 'free_product' ? $this->free_product_id : null,
             'scope' => in_array($this->type, ['percentage', 'fixed']) ? $this->scope : 'order',
             'scope_ids' => (in_array($this->type, ['percentage', 'fixed']) && $this->scope !== 'order') ? $this->scope_ids : null,
+            'payment_method' => $this->payment_method ?: null,
             'minimum_order_value' => $this->minimum_order_value,
             'max_uses' => $this->max_uses,
             'max_uses_per_customer' => $this->max_uses_per_customer,
@@ -199,6 +203,7 @@ class Index extends Component
         $this->free_product_id = $coupon->free_product_id;
         $this->scope = $coupon->scope;
         $this->scope_ids = $coupon->scope_ids ?? [];
+        $this->payment_method = $coupon->payment_method;
         $this->minimum_order_value = $coupon->minimum_order_value;
         $this->max_uses = $coupon->max_uses;
         $this->max_uses_per_customer = $coupon->max_uses_per_customer;
@@ -238,7 +243,7 @@ class Index extends Component
     {
         $this->reset([
             'editingId', 'code', 'name', 'description', 'type', 'discount_value',
-            'free_product_id', 'scope', 'scope_ids', 'minimum_order_value',
+            'free_product_id', 'scope', 'scope_ids', 'payment_method', 'minimum_order_value',
             'max_uses', 'starts_at', 'expires_at',
         ]);
         $this->max_uses_per_customer = 1;

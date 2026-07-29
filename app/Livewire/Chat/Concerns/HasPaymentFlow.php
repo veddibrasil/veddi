@@ -22,6 +22,11 @@ trait HasPaymentFlow
 {
     public function selectPaymentMethod(string $method): void
     {
+        $restrictedMethod = $this->appliedCoupon['payment_method'] ?? null;
+        if ($restrictedMethod !== null && $method !== $restrictedMethod) {
+            return;
+        }
+
         $this->paymentMethod = $method;
 
         if ($method === 'CARD') {

@@ -62,6 +62,11 @@
                             ">
                                 {{ $coupon->getTypeLabel() }}
                             </span>
+                            @if ($coupon->payment_method)
+                                <span class="text-xs px-1.5 py-0.5 rounded font-medium bg-neutral-100 text-neutral-600 dark:bg-zinc-700 dark:text-neutral-300">
+                                    Só {{ $coupon->payment_method }}
+                                </span>
+                            @endif
                         </div>
                         <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{{ $coupon->name }}</p>
                     </div>
@@ -266,6 +271,17 @@
                         </div>
                     @endif
                 @endif
+
+                {{-- Forma de pagamento restrita --}}
+                <div>
+                    <flux:select wire:model="payment_method" label="Restringir à forma de pagamento" placeholder="Qualquer forma de pagamento">
+                        <flux:select.option value="">Qualquer forma de pagamento</flux:select.option>
+                        <flux:select.option value="PIX">Somente PIX</flux:select.option>
+                        <flux:select.option value="CASH">Somente Dinheiro</flux:select.option>
+                        <flux:select.option value="CARD">Somente Cartão</flux:select.option>
+                    </flux:select>
+                    @error('payment_method') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                </div>
 
                 {{-- Valor mínimo --}}
                 <div>

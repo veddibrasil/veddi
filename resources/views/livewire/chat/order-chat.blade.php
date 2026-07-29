@@ -839,14 +839,25 @@
 
         {{-- ── CHECKOUT_PAYMENT_METHOD ── --}}
         @elseif ($step === 'CHECKOUT_PAYMENT_METHOD')
+            @php
+                $restrictedPaymentMethod = $appliedCoupon['payment_method'] ?? null;
+            @endphp
             <div wire:key="step-payment-method" class="space-y-3">
                 <p class="text-xs font-semibold text-gray-500 text-center uppercase tracking-wider">Forma de pagamento</p>
+
+                @if ($restrictedPaymentMethod)
+                    <p class="text-xs text-center text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                        🎟️ Cupom {{ $appliedCoupon['code'] }} válido somente para pagamento via {{ $restrictedPaymentMethod }}.
+                    </p>
+                @endif
 
                 {{-- Dinheiro --}}
                 <button
                     wire:click="selectPaymentMethod('CASH')"
                     wire:loading.attr="disabled"
-                    class="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 border-yellow-200 bg-yellow-50 hover:bg-yellow-100 hover:border-yellow-400 transition-all text-left"
+                    @disabled($restrictedPaymentMethod && $restrictedPaymentMethod !== 'CASH')
+                    class="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 border-yellow-200 bg-yellow-50 hover:bg-yellow-100 hover:border-yellow-400 transition-all text-left
+                        {{ ($restrictedPaymentMethod && $restrictedPaymentMethod !== 'CASH') ? 'opacity-40 grayscale cursor-not-allowed hover:bg-yellow-50 hover:border-yellow-200' : '' }}"
                 >
                     <div class="w-9 h-9 rounded-full bg-yellow-500 flex items-center justify-center shrink-0">
                         <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -866,7 +877,9 @@
                 <button
                     wire:click="selectPaymentMethod('PIX')"
                     wire:loading.attr="disabled"
-                    class="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 border-green-200 bg-green-50 hover:bg-green-100 hover:border-green-400 transition-all text-left"
+                    @disabled($restrictedPaymentMethod && $restrictedPaymentMethod !== 'PIX')
+                    class="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 border-green-200 bg-green-50 hover:bg-green-100 hover:border-green-400 transition-all text-left
+                        {{ ($restrictedPaymentMethod && $restrictedPaymentMethod !== 'PIX') ? 'opacity-40 grayscale cursor-not-allowed hover:bg-green-50 hover:border-green-200' : '' }}"
                 >
                     <div class="w-9 h-9 rounded-full bg-green-500 flex items-center justify-center shrink-0">
                         <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
@@ -891,7 +904,9 @@
                 <button
                     wire:click="selectPaymentMethod('CARD')"
                     wire:loading.attr="disabled"
-                    class="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 border-blue-200 bg-blue-50 hover:bg-blue-100 hover:border-blue-400 transition-all text-left"
+                    @disabled($restrictedPaymentMethod && $restrictedPaymentMethod !== 'CARD')
+                    class="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 border-blue-200 bg-blue-50 hover:bg-blue-100 hover:border-blue-400 transition-all text-left
+                        {{ ($restrictedPaymentMethod && $restrictedPaymentMethod !== 'CARD') ? 'opacity-40 grayscale cursor-not-allowed hover:bg-blue-50 hover:border-blue-200' : '' }}"
                 >
                     <div class="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center shrink-0">
                         <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
