@@ -1041,7 +1041,7 @@
                 {{-- ── Carrinho ── --}}
                 @else
                     <div class="flex flex-col h-full overflow-hidden">
-                        <div class="px-4 py-3 border-b border-neutral-100 dark:border-zinc-800 shrink-0 bg-white dark:bg-zinc-900">
+                        <div class="px-4 py-3 [@media(max-height:700px)]:py-1.5 border-b border-neutral-100 dark:border-zinc-800 shrink-0 bg-white dark:bg-zinc-900">
                             <div class="flex items-center justify-between gap-3">
                                 <div class="flex items-center gap-2 min-w-0">
                                     <button
@@ -1074,7 +1074,7 @@
                              causa de redimensionamento, sem depender de conta de altura. --}}
                         <div class="flex-1 min-h-0 overflow-y-auto flex flex-col">
 
-                        <div class="px-4 pt-2.5 pb-1 shrink-0 bg-white dark:bg-zinc-900">
+                        <div class="px-4 pt-2.5 pb-1 [@media(max-height:700px)]:pt-1.5 [@media(max-height:700px)]:pb-0.5 shrink-0 bg-white dark:bg-zinc-900">
                             <p class="text-[10px] font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">Itens do pedido</p>
                         </div>
                         <div x-ref="itemsSection" class="flex-1 overflow-y-auto divide-y divide-neutral-100 bg-white dark:divide-zinc-800 dark:bg-zinc-900">
@@ -1088,16 +1088,16 @@
                                     }
                                     $cartItemUnitPrice = (float) $item['price'] + $cartItemOptionsExtra;
                                 @endphp
-                                <div class="px-3 py-2.5 hover:bg-neutral-50 dark:hover:bg-zinc-800/60 transition-colors flex gap-2.5">
+                                <div class="px-3 py-2.5 [@media(max-height:700px)]:py-1.5 hover:bg-neutral-50 dark:hover:bg-zinc-800/60 transition-colors flex gap-2.5">
                                     @if (!empty($item['image_url']))
                                         <img
                                             src="{{ $item['image_url'] }}"
                                             alt="{{ $item['name'] }}"
-                                            class="size-11 shrink-0 rounded-lg object-cover bg-neutral-100 dark:bg-zinc-800"
+                                            class="size-11 [@media(max-height:700px)]:size-9 shrink-0 rounded-lg object-cover bg-neutral-100 dark:bg-zinc-800"
                                         />
                                     @endif
                                     <div class="min-w-0 flex-1">
-                                    <p class="text-sm font-medium text-neutral-800 dark:text-neutral-100 leading-snug mb-1">
+                                    <p class="text-sm font-medium text-neutral-800 dark:text-neutral-100 leading-snug mb-1 [@media(max-height:700px)]:mb-0.5">
                                         {{ $item['name'] }}
                                     </p>
                                     @if (!empty($item['options']))
@@ -1110,7 +1110,7 @@
                                             @endforeach
                                         @endforeach
                                     @else
-                                        <p class="text-xs text-neutral-500 dark:text-neutral-400 mb-1.5">
+                                        <p class="text-xs text-neutral-500 dark:text-neutral-400 mb-1.5 [@media(max-height:700px)]:mb-0.5">
                                             R$ {{ number_format($cartItemUnitPrice, 2, ',', '.') }} cada
                                         </p>
                                     @endif
@@ -1118,7 +1118,7 @@
                                         <div class="flex items-center gap-1 shrink-0">
                                             <button
                                                 wire:click="updateCartQty('{{ $cartKey }}', {{ $item['qty'] - 1 }})"
-                                                class="size-11 rounded-full border flex items-center justify-center text-neutral-500 hover:bg-red-50 hover:text-red-600 hover:border-red-300 active:scale-90 transition-colors dark:border-zinc-600"
+                                                class="size-11 [@media(max-height:700px)]:size-8 rounded-full border flex items-center justify-center text-neutral-500 hover:bg-red-50 hover:text-red-600 hover:border-red-300 active:scale-90 transition-colors dark:border-zinc-600"
                                             >
                                                 <span class="text-lg font-bold leading-none">−</span>
                                             </button>
@@ -1127,7 +1127,7 @@
                                             </span>
                                             <button
                                                 wire:click="updateCartQty('{{ $cartKey }}', {{ $item['qty'] + 1 }})"
-                                                class="size-11 rounded-full border flex items-center justify-center text-neutral-500 hover:bg-green-50 hover:text-green-600 hover:border-green-300 active:scale-90 transition-colors dark:border-zinc-600"
+                                                class="size-11 [@media(max-height:700px)]:size-8 rounded-full border flex items-center justify-center text-neutral-500 hover:bg-green-50 hover:text-green-600 hover:border-green-300 active:scale-90 transition-colors dark:border-zinc-600"
                                             >
                                                 <span class="text-lg font-bold leading-none">+</span>
                                             </button>
@@ -1160,8 +1160,8 @@
                         {{-- fim da região rolável do meio --}}
 
                         @if (!empty($cart))
-                            <div class="border-t border-neutral-100 px-4 py-4 space-y-3 bg-zinc-50 dark:border-zinc-800 dark:bg-[#0f1926]/70 shrink-0">
-                                <div class="space-y-1 text-sm">
+                            <div class="border-t border-neutral-100 px-4 py-4 space-y-3 [@media(max-height:700px)]:py-2 [@media(max-height:700px)]:space-y-1.5 bg-zinc-50 dark:border-zinc-800 dark:bg-[#0f1926]/70 shrink-0">
+                                <div class="space-y-1 [@media(max-height:700px)]:space-y-0.5 text-sm [@media(max-height:700px)]:text-xs">
                                     <div class="flex justify-between items-center text-neutral-500 dark:text-neutral-400">
                                         <span>Subtotal</span>
                                         <span>R$ {{ number_format($this->cartTotal, 2, ',', '.') }}</span>
@@ -1185,16 +1185,19 @@
                                         </div>
                                     @endif
                                 </div>
-                                <div class="flex justify-between items-end rounded-xl bg-white border border-neutral-200 px-3 py-3 dark:bg-zinc-900 dark:border-zinc-800">
+                                <div class="flex justify-between items-end rounded-xl bg-white border border-neutral-200 px-3 py-3 [@media(max-height:700px)]:py-1.5 dark:bg-zinc-900 dark:border-zinc-800">
                                     <span class="text-sm font-semibold text-neutral-500 dark:text-neutral-400">Total</span>
-                                    <span class="text-2xl font-black text-neutral-900 dark:text-neutral-100">
+                                    <span class="text-2xl [@media(max-height:700px)]:text-lg font-black text-neutral-900 dark:text-neutral-100">
                                         R$ {{ number_format($this->cartTotalAfterDiscount, 2, ',', '.') }}
                                     </span>
                                 </div>
-                                <flux:button wire:click="proceedToPayment" variant="primary" size="base" class="w-full">
-                                    Ir para pagamento
-                                </flux:button>
-                                <flux:button wire:click="clearCart" variant="ghost" size="sm" class="w-full text-red-500 hover:text-red-700">
+                                <div class="flex items-center gap-2 [@media(max-height:700px)]:gap-1.5">
+                                    <flux:button wire:click="proceedToPayment" variant="primary" size="base" class="flex-1 [@media(max-height:700px)]:!py-1.5">
+                                        Ir para pagamento
+                                    </flux:button>
+                                    <flux:button wire:click="clearCart" variant="ghost" size="sm" class="hidden [@media(max-height:700px)]:inline-flex shrink-0" icon="trash" title="Limpar carrinho" />
+                                </div>
+                                <flux:button wire:click="clearCart" variant="ghost" size="sm" class="w-full text-red-500 hover:text-red-700 [@media(max-height:700px)]:hidden">
                                     Limpar carrinho
                                 </flux:button>
                             </div>
