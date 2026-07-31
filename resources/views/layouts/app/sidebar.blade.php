@@ -14,6 +14,10 @@
         $isDeliveryOnly = $company && $user?->roleForCompany($company) === 'entrega';
         // Cozinha/bar só operam a própria fila de pedidos — sem acesso ao dashboard nem ao resto do painel.
         $isStationOnly = $company && in_array($user?->roleForCompany($company), ['cozinha', 'bar']);
+        // Caixa não precisa de notificações de pedido — opera o PDV diretamente.
+        $isCashier = $company && $user?->roleForCompany($company) === 'caixa';
+        // Botão de suporte via WhatsApp só aparece pros papéis administrativos.
+        $isAdmin = $company && in_array($user?->roleForCompany($company), ['company_admin', 'branch_manager']);
     @endphp
     <body class="{{ $bodyClass }} bg-[#f8f8fb] dark:bg-[#0d1825]">
         <flux:sidebar sticky collapsible="mobile" class="veddi-sidebar border-e border-[#5c0079]">
@@ -21,7 +25,7 @@
                 <x-app-logo :sidebar="true" href="{{ auth()->user()?->isSuperAdmin() ? route('superadmin.dashboard') : (($isWaiterOnly ? route('admin.pdv.tabs') : (($isDeliveryOnly || $isStationOnly) ? route('admin.orders.index') : route('admin.dashboard')))) }}" wire:navigate />
 
                 @auth
-                    @if(!auth()->user()?->isSuperAdmin() && !$isWaiterOnly)
+                    @if(!auth()->user()?->isSuperAdmin() && !$isWaiterOnly && !$isCashier)
                         <livewire:admin.notification-bell />
                     @endif
                 @endauth
@@ -214,7 +218,7 @@
             <flux:spacer />
 
             @auth
-                @if(!auth()->user()?->isSuperAdmin() && !$isWaiterOnly)
+                @if(!auth()->user()?->isSuperAdmin() && !$isWaiterOnly && !$isCashier)
                     <livewire:admin.notification-bell />
                 @endif
             @endauth
@@ -272,11 +276,13 @@
         {{ $slot }}
 
         @auth
-            @if(!$isWaiterOnly)
+            @if(!$isWaiterOnly && !$isCashier)
                 <livewire:admin.notifications />
             @endif
             <livewire:admin.profile-modal />
-            @include('partials.support-whatsapp-button')
+            @if($isAdmin)
+                @include('partials.support-whatsapp-button')
+            @endif
         @endauth
 
         @fluxScripts
