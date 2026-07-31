@@ -107,6 +107,7 @@ class User extends Authenticatable
 
         return match ($role) {
             'garcom' => 'admin.pdv.tabs',
+            'caixa' => 'admin.pdv',
             'entrega', 'cozinha', 'bar' => 'admin.orders.index',
             default => 'admin.dashboard',
         };
