@@ -634,7 +634,7 @@
                                                         @endif
                                                     @endif
                                                     {{ $stockOut ? 'disabled' : '' }}
-                                                    class="block shrink-0 disabled:cursor-not-allowed"
+                                                    class="relative block shrink-0 disabled:cursor-not-allowed"
                                                 >
                                                     @if ($product->image_path)
                                                         <img
@@ -646,6 +646,11 @@
                                                         <div class="size-16 rounded-lg bg-neutral-100 flex items-center justify-center dark:bg-zinc-800">
                                                             <flux:icon.shopping-bag class="size-7 text-neutral-300 dark:text-zinc-500" />
                                                         </div>
+                                                    @endif
+                                                    @if ($pdvCartQty > 0)
+                                                        <span class="absolute -top-1 -right-1 min-w-[1.25rem] h-5 px-1 rounded-full bg-amber-500 text-white text-[11px] font-bold flex items-center justify-center shadow ring-2 ring-white dark:ring-zinc-900">
+                                                            {{ $pdvCartQty }}
+                                                        </span>
                                                     @endif
                                                 </button>
                                             </td>
@@ -727,7 +732,7 @@
                                     $stockQty = $this->productStocks[$product->id] ?? null;
                                     $stockOut = $stockQty !== null && $pdvCartQty >= $stockQty;
                                 @endphp
-                                <div class="flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+                                <div class="flex flex-col overflow-hidden rounded-xl border bg-white dark:bg-zinc-900 {{ $pdvCartQty > 0 ? 'border-amber-400 ring-1 ring-amber-400 dark:border-amber-500 dark:ring-amber-500' : 'border-neutral-200 dark:border-zinc-800' }}">
                                     <button
                                         type="button"
                                         @if (!$stockOut)
@@ -738,7 +743,7 @@
                                             @endif
                                         @endif
                                         {{ $stockOut ? 'disabled' : '' }}
-                                        class="block w-full disabled:cursor-not-allowed"
+                                        class="relative block w-full disabled:cursor-not-allowed"
                                     >
                                         @if ($product->image_path)
                                             <img
@@ -750,6 +755,11 @@
                                             <div class="aspect-square w-full bg-neutral-100 flex items-center justify-center dark:bg-zinc-800">
                                                 <flux:icon.shopping-bag class="size-6 text-neutral-300 dark:text-zinc-500" />
                                             </div>
+                                        @endif
+                                        @if ($pdvCartQty > 0)
+                                            <span class="absolute top-1 right-1 min-w-[1.25rem] h-5 px-1 rounded-full bg-amber-500 text-white text-[11px] font-bold flex items-center justify-center shadow ring-2 ring-white dark:ring-zinc-900">
+                                                {{ $pdvCartQty }}
+                                            </span>
                                         @endif
                                     </button>
                                     <div class="flex flex-1 flex-col p-2">
@@ -1078,7 +1088,15 @@
                                     }
                                     $cartItemUnitPrice = (float) $item['price'] + $cartItemOptionsExtra;
                                 @endphp
-                                <div class="px-3 py-2.5 hover:bg-neutral-50 dark:hover:bg-zinc-800/60 transition-colors">
+                                <div class="px-3 py-2.5 hover:bg-neutral-50 dark:hover:bg-zinc-800/60 transition-colors flex gap-2.5">
+                                    @if (!empty($item['image_url']))
+                                        <img
+                                            src="{{ $item['image_url'] }}"
+                                            alt="{{ $item['name'] }}"
+                                            class="size-11 shrink-0 rounded-lg object-cover bg-neutral-100 dark:bg-zinc-800"
+                                        />
+                                    @endif
+                                    <div class="min-w-0 flex-1">
                                     <p class="text-sm font-medium text-neutral-800 dark:text-neutral-100 leading-snug mb-1">
                                         {{ $item['name'] }}
                                     </p>
@@ -1117,6 +1135,7 @@
                                         <p class="text-right text-sm font-semibold text-neutral-800 dark:text-neutral-100 shrink-0">
                                             R$ {{ number_format($cartItemUnitPrice * $item['qty'], 2, ',', '.') }}
                                         </p>
+                                    </div>
                                     </div>
                                 </div>
                             @empty

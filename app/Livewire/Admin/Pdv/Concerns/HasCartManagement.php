@@ -39,6 +39,7 @@ trait HasCartManagement
                 'product_id' => $productId,
                 'name' => $product->name,
                 'price' => (float) $product->effective_price,
+                'image_url' => $product->image_url,
                 'qty' => 1,
             ];
         }
@@ -84,6 +85,7 @@ trait HasCartManagement
                     'product_id' => $productId,
                     'name' => $product->name,
                     'price' => (float) $product->effective_price,
+                    'image_url' => $product->image_url,
                     'qty' => 1,
                     'options' => $optionSelections,
                 ];
@@ -97,6 +99,7 @@ trait HasCartManagement
                 'product_id' => $productId,
                 'name' => $product->name,
                 'price' => (float) $product->effective_price,
+                'image_url' => $product->image_url,
                 'qty' => 1,
                 'options' => $optionSelections,
             ];
