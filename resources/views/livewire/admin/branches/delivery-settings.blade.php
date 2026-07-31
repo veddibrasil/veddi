@@ -12,6 +12,8 @@
         mapError: null,
         zoneMapInstance: null,
         zonePolygonDrawer: null,
+        zoneBranchMarker: null,
+        zoneSettingLocation: false,
         zoneDrawing: false,
         zoneModalOpen: false,
         zoneDraftPolygon: [],
@@ -126,6 +128,12 @@
                     .bindTooltip(zone.name + ' — R$ ' + zone.fee);
             });
 
+            var branchLat = this.mapLat ?? this.initialLat;
+            var branchLng = this.mapLng ?? this.initialLng;
+            if (branchLat !== null && branchLat !== undefined && branchLng !== null && branchLng !== undefined) {
+                this.zoneEnsureBranchMarker(branchLat, branchLng);
+            }
+
             this.zonePolygonDrawer = new L.Draw.Polygon(this.zoneMapInstance, {
                 shapeOptions: { color: '#f59e0b', weight: 3 },
                 showLength: false,
@@ -143,16 +151,77 @@
                 self.zoneModalOpen = true;
             });
 
+            this.zoneMapInstance.on('click', function(e) {
+                if (!self.zoneSettingLocation) return;
+                self.zoneSettingLocation = false;
+                self.mapLat = e.latlng.lat;
+                self.mapLng = e.latlng.lng;
+                $wire.set('branch_latitude', e.latlng.lat);
+                $wire.set('branch_longitude', e.latlng.lng);
+                self.zoneEnsureBranchMarker(e.latlng.lat, e.latlng.lng);
+            });
+
             requestAnimationFrame(() => requestAnimationFrame(() => { if (this.zoneMapInstance) this.zoneMapInstance.invalidateSize(); }));
         },
         zoneMapDestroy() {
-            if (this.zoneMapInstance) { this.zoneMapInstance.remove(); this.zoneMapInstance = null; this.zonePolygonDrawer = null; }
+            if (this.zoneMapInstance) { this.zoneMapInstance.remove(); this.zoneMapInstance = null; this.zonePolygonDrawer = null; this.zoneBranchMarker = null; }
+        },
+        zoneEnsureBranchMarker(lat, lng) {
+            if (!this.zoneMapInstance) return;
+            var self = this;
+            if (this.zoneBranchMarker) {
+                this.zoneBranchMarker.setLatLng([lat, lng]);
+                return;
+            }
+            this.zoneBranchMarker = L.marker([lat, lng], {
+                draggable: true,
+                icon: L.icon({
+                    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+                    iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+                    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+                    iconSize: [25, 41], iconAnchor: [12, 41],
+                }),
+            }).addTo(this.zoneMapInstance).bindTooltip('Local do restaurante (arraste para ajustar)');
+            this.zoneBranchMarker.on('dragend', function() {
+                var pos = self.zoneBranchMarker.getLatLng();
+                self.mapLat = pos.lat;
+                self.mapLng = pos.lng;
+                $wire.set('branch_latitude', pos.lat);
+                $wire.set('branch_longitude', pos.lng);
+            });
+        },
+        zoneUseLocation() {
+            if (!navigator.geolocation) { this.mapError = 'Geolocalização não suportada pelo navegador.'; return; }
+            this.mapLoading = true;
+            this.mapError = null;
+            var self = this;
+            navigator.geolocation.getCurrentPosition(
+                function(pos) {
+                    self.mapLoading = false;
+                    self.mapLat = pos.coords.latitude;
+                    self.mapLng = pos.coords.longitude;
+                    $wire.set('branch_latitude', self.mapLat);
+                    $wire.set('branch_longitude', self.mapLng);
+                    self.zoneEnsureBranchMarker(self.mapLat, self.mapLng);
+                    if (self.zoneMapInstance) self.zoneMapInstance.setView([self.mapLat, self.mapLng], 15);
+                },
+                function() {
+                    self.mapLoading = false;
+                    self.mapError = 'Não foi possível obter localização. Verifique as permissões do navegador.';
+                },
+                { enableHighAccuracy: true, timeout: 12000 }
+            );
         },
         zoneStartDraw() {
+            this.zoneSettingLocation = false;
             if (this.zonePolygonDrawer) this.zonePolygonDrawer.enable();
         },
         zoneCancelDrawMode() {
             if (this.zonePolygonDrawer) this.zonePolygonDrawer.disable();
+        },
+        zoneToggleSetLocation() {
+            this.zoneCancelDrawMode();
+            this.zoneSettingLocation = !this.zoneSettingLocation;
         },
         zoneConfirmDraw() {
             if (!this.zoneDraftName || this.zoneDraftFee === '') return;
@@ -407,16 +476,42 @@
                 Clique em "+ Nova área", depois marque os pontos do polígono no mapa. Dê duplo clique (ou clique no primeiro ponto) para fechar a área. Áreas sobrepostas: a primeira da lista abaixo tem prioridade.
             </p>
 
+            <div class="flex items-center gap-3 flex-wrap">
+                <button type="button" @click="zoneToggleSetLocation()"
+                    :class="zoneSettingLocation ? 'bg-blue-100 border-blue-300 dark:bg-blue-900/50' : 'bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700'"
+                    class="inline-flex items-center gap-1.5 text-xs text-blue-700 border px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors dark:text-blue-300">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-4.724A1 1 0 013 14.382V5a1 1 0 011-1h16a1 1 0 011 1v9.382a1 1 0 01-.553.894L15 20M12 4v16"/></svg>
+                    <span x-text="zoneSettingLocation ? 'Clique no mapa para marcar o local' : 'Marcar local do restaurante'"></span>
+                </button>
+                <button type="button" @click="zoneUseLocation()" :disabled="mapLoading"
+                    class="inline-flex items-center gap-1.5 text-xs bg-neutral-50 text-neutral-600 border border-neutral-200 px-3 py-1.5 rounded-lg hover:bg-neutral-100 transition-colors disabled:opacity-60 dark:bg-zinc-700 dark:text-neutral-300 dark:border-zinc-600">
+                    <template x-if="!mapLoading">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    </template>
+                    <template x-if="mapLoading">
+                        <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                    </template>
+                    <span x-text="mapLoading ? 'Obtendo localização...' : 'Usar minha localização'"></span>
+                </button>
+                <p x-show="mapError" x-text="'⚠ ' + mapError" class="text-red-500 text-xs"></p>
+            </div>
+
             <div class="relative rounded-xl overflow-hidden border border-neutral-200 dark:border-zinc-700">
                 <div x-show="zoneDrawing" x-cloak
                     class="absolute inset-x-0 top-0 z-2000 flex items-center justify-between gap-2 bg-amber-50 border-b border-amber-200 px-3 py-2 dark:bg-amber-900/40 dark:border-amber-700">
                     <span class="text-xs font-medium text-amber-700 dark:text-amber-300">Clique no mapa para marcar os pontos. Duplo clique para fechar a área.</span>
                     <button type="button" @click="zoneCancelDrawMode()" class="text-amber-500 hover:text-amber-800 text-lg leading-none">×</button>
                 </div>
+                <div x-show="zoneSettingLocation" x-cloak
+                    class="absolute inset-x-0 top-0 z-2000 flex items-center justify-between gap-2 bg-blue-50 border-b border-blue-200 px-3 py-2 dark:bg-blue-900/40 dark:border-blue-700">
+                    <span class="text-xs font-medium text-blue-700 dark:text-blue-300">Clique no mapa para marcar o local do restaurante.</span>
+                    <button type="button" @click="zoneSettingLocation = false" class="text-blue-500 hover:text-blue-800 text-lg leading-none">×</button>
+                </div>
                 <div id="zone-map-el" wire:ignore style="height:380px; width:100%;"></div>
             </div>
 
             @error('zones') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            @error('branch_latitude') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
 
             @if (count($zones) === 0)
                 <p class="text-sm text-neutral-400 dark:text-neutral-500">Nenhuma área cadastrada. Desenhe um polígono no mapa acima para começar.</p>
