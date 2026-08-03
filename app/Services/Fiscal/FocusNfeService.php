@@ -162,8 +162,10 @@ class FocusNfeService implements FiscalNoteProviderInterface
         $body = $response->json() ?? [];
 
         if (! $response->successful()) {
+            // 'erros[0].mensagem' é mais específico que 'mensagem' (que costuma ser
+            // genérico, ex.: "Erro de validação") — prioriza o detalhe quando existir.
             throw new FocusNfeCompanyRegistrationException(
-                message: $body['mensagem'] ?? ($body['erros'][0]['mensagem'] ?? 'Erro ao registrar empresa na Focus NFe'),
+                message: $body['erros'][0]['mensagem'] ?? ($body['mensagem'] ?? 'Erro ao registrar empresa na Focus NFe'),
                 statusCode: $response->status(),
                 errors: $body['erros'] ?? [],
                 rawResponse: $body,
@@ -285,6 +287,7 @@ class FocusNfeService implements FiscalNoteProviderInterface
             'natureza_operacao' => 'Venda de mercadoria',
             'data_emissao' => now()->toIso8601String(),
             'cnpj_emitente' => preg_replace('/\D/', '', $dto->emitenteCnpj),
+            'serie' => (int) $dto->nfceSerie,
             'modalidade_frete' => '9',
             'local_destino' => '1',
             'presenca_comprador' => $this->mapPresencaComprador($dto->orderType),

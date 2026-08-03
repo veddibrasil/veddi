@@ -9,6 +9,7 @@ class CompanyFiscalConfig extends Model
 {
     protected $fillable = [
         'company_id',
+        'branch_id',
         'enabled',
         'inscricao_estadual',
         'inscricao_municipal',
@@ -45,6 +46,11 @@ class CompanyFiscalConfig extends Model
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
+    }
+
+    public function branch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class);
     }
 
     /**

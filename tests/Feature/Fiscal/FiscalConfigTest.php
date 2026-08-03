@@ -15,7 +15,7 @@ uses(RefreshDatabase::class);
 
 function fiscalConfigTestCompany(): Company
 {
-    return Company::create([
+    $company = Company::create([
         'name' => 'Empresa Config Fiscal',
         'slug' => 'empresa-config-fiscal-'.uniqid(),
         'order_prefix' => 'CFG',
@@ -25,6 +25,25 @@ function fiscalConfigTestCompany(): Company
         'owner_cpf_cnpj' => '12345678000199',
         'email' => 'empresa@test.com',
     ]);
+
+    // Filial nasce sem endereço no onboarding real (preenchimento é feito depois em
+    // /admin/filiais) — Config::save() agora exige endereço completo antes de
+    // registrar na Focus NFe, então os testes precisam de uma filial já preenchida.
+    \App\Models\Branch::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Filial Principal',
+        'address' => 'Rua A',
+        'number' => '100',
+        'neighborhood' => 'Centro',
+        'city' => 'São Paulo',
+        'state' => 'SP',
+        'cep' => '01310-000',
+        'active' => true,
+        'opens_at' => '00:00:00',
+        'closes_at' => '23:59:59',
+    ]);
+
+    return $company;
 }
 
 function fakeFocusNfeEmpresaCreated(): void
@@ -405,20 +424,11 @@ test('salvar envia inscrição municipal, CSC e telefone/complemento da filial n
     $company = fiscalConfigTestCompany();
     app()->instance('current.company', $company);
 
-    \App\Models\Branch::withoutGlobalScopes()->create([
-        'company_id' => $company->id,
-        'name' => 'Filial Principal',
+    \App\Models\Branch::withoutGlobalScopes()->where('company_id', $company->id)->first()->update([
         'address' => 'Rua B',
         'number' => '200',
         'complement' => 'Sala 3',
-        'neighborhood' => 'Centro',
-        'city' => 'São Paulo',
-        'state' => 'SP',
-        'cep' => '01310-000',
         'phone' => '11988887777',
-        'active' => true,
-        'opens_at' => '00:00:00',
-        'closes_at' => '23:59:59',
     ]);
 
     $admin = User::factory()->create();
@@ -447,6 +457,90 @@ test('salvar envia inscrição municipal, CSC e telefone/complemento da filial n
             && ($request['complemento'] ?? null) === 'Sala 3'
             && ($request['telefone'] ?? null) === '11988887777';
     });
+});
+
+test('com mais de uma filial, usuário escolhe qual delas envia o endereço pro registro na Focus NFe', function () {
+    fakeFocusNfeEmpresaCreated();
+
+    $company = fiscalConfigTestCompany();
+    app()->instance('current.company', $company);
+
+    $firstBranch = \App\Models\Branch::withoutGlobalScopes()->where('company_id', $company->id)->first();
+
+    $secondBranch = \App\Models\Branch::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Filial Zona Sul',
+        'address' => 'Rua da Filial Dois',
+        'number' => '300',
+        'neighborhood' => 'Vila Mariana',
+        'city' => 'São Paulo',
+        'state' => 'SP',
+        'cep' => '04010-000',
+        'active' => true,
+        'opens_at' => '00:00:00',
+        'closes_at' => '23:59:59',
+    ]);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+    grantFiscalSettingsPermission($admin, $company);
+
+    Livewire::actingAs($admin)
+        ->test(Config::class)
+        ->assertSet('branchId', $firstBranch->id)
+        ->set('branchId', $secondBranch->id)
+        ->assertSet('branchAddress', 'Rua da Filial Dois')
+        ->set('enabled', true)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect(CompanyFiscalConfig::where('company_id', $company->id)->first()->branch_id)->toBe($secondBranch->id);
+
+    Http::assertSent(function (\Illuminate\Http\Client\Request $request) {
+        return str_contains($request->url(), '/v2/empresas')
+            && ($request['logradouro'] ?? null) === 'Rua da Filial Dois'
+            && ($request['municipio'] ?? null) === 'São Paulo';
+    });
+});
+
+test('branchId de filial de outra empresa é ignorado ao salvar', function () {
+    $company = fiscalConfigTestCompany();
+    app()->instance('current.company', $company);
+
+    $otherCompany = Company::create([
+        'name' => 'Outra Empresa',
+        'slug' => 'outra-empresa-'.uniqid(),
+        'order_prefix' => 'OTR',
+        'active' => true,
+        'status' => 'ACTIVE',
+    ]);
+
+    $foreignBranch = \App\Models\Branch::withoutGlobalScopes()->create([
+        'company_id' => $otherCompany->id,
+        'name' => 'Filial de Outra Empresa',
+        'address' => 'Rua Estranha',
+        'number' => '1',
+        'neighborhood' => 'Centro',
+        'city' => 'Rio de Janeiro',
+        'state' => 'RJ',
+        'cep' => '20000-000',
+        'active' => true,
+        'opens_at' => '00:00:00',
+        'closes_at' => '23:59:59',
+    ]);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+    grantFiscalSettingsPermission($admin, $company);
+
+    Livewire::actingAs($admin)
+        ->test(Config::class)
+        ->set('branchId', $foreignBranch->id)
+        ->set('enabled', false)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect(CompanyFiscalConfig::where('company_id', $company->id)->first()->branch_id)->not->toBe($foreignBranch->id);
 });
 
 test('registro na Focus NFe sempre bate no domínio de produção, mesmo fora de APP_ENV=production', function () {

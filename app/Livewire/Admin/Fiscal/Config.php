@@ -64,11 +64,30 @@ class Config extends Component
 
     public string $companyEmail = '';
 
-    public string $branchAddressLine = '';
+    public string $branchAddress = '';
+
+    public string $branchNumber = '';
+
+    public string $branchComplement = '';
+
+    public string $branchNeighborhood = '';
+
+    public string $branchCity = '';
+
+    public string $branchState = '';
+
+    public string $branchCep = '';
 
     public string $branchPhone = '';
 
     public bool $hasBranch = false;
+
+    // Empresa pode ter mais de uma filial — o registro na Focus NFe usa o endereço
+    // de uma única filial, então o usuário escolhe qual quando houver mais de uma.
+    public ?int $branchId = null;
+
+    /** @var array<int, array{id: int, name: string}> */
+    public array $branchOptions = [];
 
     public function mount(): void
     {
@@ -85,14 +104,19 @@ class Config extends Component
         $this->hasOwnerCpfCnpj = $company->fiscalConfig?->isRegisteredWithFocus() ?? false;
         $this->ownerCpfCnpj = $company->owner_cpf_cnpj ?? '';
 
-        $branch = Branch::withoutGlobalScopes()->where('company_id', $company->id)->first();
-        $this->hasBranch = (bool) $branch;
-        $this->branchAddressLine = $branch
-            ? trim("{$branch->address}, {$branch->number} - {$branch->neighborhood}, {$branch->city}/{$branch->state} - {$branch->cep}", ' -,')
-            : '';
-        $this->branchPhone = $branch?->phone ?? '';
+        $branches = Branch::withoutGlobalScopes()->where('company_id', $company->id)->orderBy('name')->get();
+        $this->hasBranch = $branches->isNotEmpty();
+        $this->branchOptions = $branches->map(fn (Branch $b) => ['id' => $b->id, 'name' => $b->name])->all();
 
         $config = $company->fiscalConfig;
+
+        // Preserva a filial escolhida em um save anterior; sem escolha prévia, assume
+        // a primeira só como ponto de partida — o usuário troca no select se precisar.
+        $selectedBranch = $config?->branch_id ? $branches->firstWhere('id', $config->branch_id) : null;
+        $branch = $selectedBranch ?? $branches->first();
+
+        $this->branchId = $branch?->id;
+        $this->fillBranchAddressFields($branch);
 
         if ($config) {
             $this->crt = $config->crt;
@@ -108,6 +132,32 @@ class Config extends Component
             $this->hasCscNfceProducao = filled($config->csc_nfce_producao);
             $this->idTokenNfceProducao = $config->id_token_nfce_producao ?? '';
         }
+    }
+
+    public function updatedBranchId(): void
+    {
+        $company = app('current.company');
+        $branch = Branch::withoutGlobalScopes()->where('company_id', $company->id)->find($this->branchId);
+
+        // Ignora seleção de filial que não pertence à empresa atual (branchId é
+        // propriedade pública, então chega do cliente sem garantia de origem).
+        if (! $branch) {
+            $this->branchId = null;
+        }
+
+        $this->fillBranchAddressFields($branch);
+    }
+
+    private function fillBranchAddressFields(?Branch $branch): void
+    {
+        $this->branchAddress = $branch?->address ?? '';
+        $this->branchNumber = $branch?->number ?? '';
+        $this->branchComplement = $branch?->complement ?? '';
+        $this->branchNeighborhood = $branch?->neighborhood ?? '';
+        $this->branchCity = $branch?->city ?? '';
+        $this->branchState = $branch?->state ?? '';
+        $this->branchCep = $branch?->cep ?? '';
+        $this->branchPhone = $branch?->phone ?? '';
     }
 
     public function save(): void
@@ -148,6 +198,13 @@ class Config extends Component
 
         $config = $company->fiscalConfig ?? new CompanyFiscalConfig(['company_id' => $company->id]);
 
+        // Reconfirma que a filial pertence à empresa atual antes de gravar — branchId
+        // é propriedade pública do componente, não dado validado por relacionamento.
+        $branch = $this->branchId
+            ? Branch::withoutGlobalScopes()->where('company_id', $company->id)->find($this->branchId)
+            : null;
+        $config->branch_id = $branch?->id;
+
         $config->crt = $this->crt;
         $config->enabled = $this->enabled;
         $config->inscricao_estadual = $this->inscricaoEstadual ?: null;
@@ -185,7 +242,7 @@ class Config extends Component
             }
 
             try {
-                $this->registerWithFocusNfe($company, $config, $cnpj);
+                $this->registerWithFocusNfe($company, $config, $cnpj, $branch);
             } catch (FocusNfeCompanyRegistrationException $e) {
                 $this->mapFocusErrorsToForm($company, $e);
 
@@ -229,9 +286,20 @@ class Config extends Component
         session()->flash('status', 'Configurações fiscais salvas.');
     }
 
-    private function registerWithFocusNfe(Company $company, CompanyFiscalConfig $config, string $cnpj): void
+    private function registerWithFocusNfe(Company $company, CompanyFiscalConfig $config, string $cnpj, ?Branch $branch): void
     {
-        $branch = Branch::withoutGlobalScopes()->where('company_id', $company->id)->first();
+        // Filial criada no onboarding nasce sem endereço (preenchimento é feito depois
+        // em /admin/filiais) — sem isso a Focus rejeita com "Município inválido:  -",
+        // mensagem que não indica ao usuário o que corrigir. Valida antes de enviar.
+        // Também cobre o caso de nenhuma filial selecionada (branchId inválido).
+        if (! $branch?->address || ! $branch?->city || ! $branch?->state) {
+            throw new FocusNfeCompanyRegistrationException(
+                message: 'Cadastre o endereço completo da filial (endereço, cidade e UF) antes de habilitar a emissão fiscal.',
+                statusCode: 422,
+                errors: [],
+                rawResponse: [],
+            );
+        }
 
         $payload = [
             'nome' => $company->name,
@@ -384,6 +452,8 @@ class Config extends Component
             'company_id' => $company->id,
             'status_code' => $e->statusCode,
             'message' => $message,
+            'errors' => $e->errors,
+            'raw_response' => $e->rawResponse,
         ]);
     }
 

@@ -44,13 +44,51 @@
                     @error('ownerCpfCnpj') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
                 <div>
-                    @if($hasBranch)
-                        <flux:input value="{{ $branchAddressLine }}" label="Endereço da filial" disabled />
-                    @else
-                        <flux:input value="Nenhuma filial cadastrada" label="Endereço da filial" disabled />
+                    @if(count($branchOptions) > 1)
+                        <flux:select wire:model.live="branchId" label="Filial usada no cadastro fiscal" :disabled="!$canManage">
+                            @foreach($branchOptions as $option)
+                                <option value="{{ $option['id'] }}">{{ $option['name'] }}</option>
+                            @endforeach
+                        </flux:select>
                     @endif
                 </div>
             </div>
+
+            @if(!$hasBranch)
+                <p class="text-xs text-yellow-600 dark:text-yellow-400">
+                    Nenhuma filial cadastrada — cadastre uma em <a href="{{ route('admin.branches.index') }}" class="underline">Filiais</a> antes de habilitar a emissão fiscal.
+                </p>
+            @else
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <flux:input value="{{ $branchAddress ?: '—' }}" label="Endereço" disabled />
+                    </div>
+                    <div>
+                        <flux:input value="{{ $branchNumber ?: '—' }}" label="Número" disabled />
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <flux:input value="{{ $branchComplement ?: '—' }}" label="Complemento" disabled />
+                    </div>
+                    <div>
+                        <flux:input value="{{ $branchNeighborhood ?: '—' }}" label="Bairro" disabled />
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                        <flux:input value="{{ $branchCity ?: '—' }}" label="Município" disabled />
+                    </div>
+                    <div>
+                        <flux:input value="{{ $branchState ?: '—' }}" label="UF" disabled />
+                    </div>
+                    <div>
+                        <flux:input value="{{ $branchCep ?: '—' }}" label="CEP" disabled />
+                    </div>
+                </div>
+            @endif
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>

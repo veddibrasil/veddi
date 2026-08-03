@@ -304,10 +304,25 @@ test('FocusNfeService monta payload conforme especificação da API (sem objeto 
             && ! array_key_exists('forma_pagamento', $data)
             && ($data['cnpj_emitente'] ?? null) === '12345678000100'
             && isset($data['data_emissao'])
+            && ($data['serie'] ?? null) === 1
             && ($data['modalidade_frete'] ?? null) === '9'
             && ($data['local_destino'] ?? null) === '1'
             && ($data['presenca_comprador'] ?? null) === '4';
     });
+});
+
+test('série configurada pela empresa é enviada no payload de emissão da Focus NFe', function () {
+    ['order' => $order, 'company' => $company] = fiscalTestContext();
+
+    CompanyFiscalConfig::where('company_id', $company->id)->update(['nfce_serie' => 5]);
+
+    Http::fake([
+        '*' => Http::response(['status' => 'autorizado', 'chave_nfe' => str_repeat('1', 44)], 200),
+    ]);
+
+    app(FiscalNoteService::class)->issue($order);
+
+    Http::assertSent(fn (\Illuminate\Http\Client\Request $request) => ($request->data()['serie'] ?? null) === 5);
 });
 
 test('FiscalNoteService impede emissão duplicada para o mesmo pedido enquanto já existe nota ativa', function () {
