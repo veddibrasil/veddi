@@ -182,7 +182,7 @@ test('pedido PDV com pagamento em dinheiro cria order e payment', function () {
         ->set('paymentMethod', 'cash')
         ->set('cashReceivedInput', '10.00')
         ->call('processOrder')
-        ->assertSet('step', 'success')
+        ->assertSet('step', 'catalog')
         ->assertSet('changeAmount', 2.0);
 
     expect(Order::withoutGlobalScopes()->count())->toBe(1);
@@ -215,7 +215,7 @@ test('pedido PDV pago em dinheiro dispara emissão automática de nota fiscal', 
         ->set('paymentMethod', 'cash')
         ->set('cashReceivedInput', '10.00')
         ->call('processOrder')
-        ->assertSet('step', 'success');
+        ->assertSet('step', 'catalog');
 
     $order = Order::withoutGlobalScopes()->first();
 
@@ -234,7 +234,7 @@ test('pedido PDV com PIX é apenas informativo: marca como pago direto sem gerar
         ->call('proceedToPayment')
         ->set('paymentMethod', 'pix')
         ->call('processOrder')
-        ->assertSet('step', 'success')
+        ->assertSet('step', 'catalog')
         ->assertHasNoErrors();
 
     expect(Order::withoutGlobalScopes()->count())->toBe(1);
@@ -407,7 +407,7 @@ test('pedido PDV com cartão registra como pago via card_machine', function () {
         ->call('proceedToPayment')
         ->set('paymentMethod', 'credit_card')
         ->call('processOrder')
-        ->assertSet('step', 'success');
+        ->assertSet('step', 'catalog');
 
     $order = Order::withoutGlobalScopes()->first();
     expect($order->status)->toBe('paid');
@@ -492,7 +492,7 @@ test('pedido PDV de entrega salva endereço e taxa na order', function () {
         ->assertSet('deliveryFeeAmount', 5.0)
         ->set('paymentMethod', 'cash')
         ->call('processOrder')
-        ->assertSet('step', 'success');
+        ->assertSet('step', 'catalog');
 
     $order = Order::withoutGlobalScopes()->first();
     expect((float) $order->delivery_fee)->toBe(5.0);
@@ -592,17 +592,49 @@ test('operador cancela pedido PDV dentro de 5 minutos', function () {
         ->call('proceedToPayment')
         ->set('paymentMethod', 'cash')
         ->call('processOrder')
-        ->assertSet('step', 'success');
+        ->assertSet('step', 'catalog');
 
     $orderId = $component->get('lastOrderId');
     expect($orderId)->not->toBeNull();
 
+    $order = Order::withoutGlobalScopes()->find($orderId);
+
     $component
         ->call('cancelLastOrder')
         ->assertSet('step', 'catalog')
+        ->assertSet('lastOrderId', null)
+        ->assertDispatched('pdv-toast', message: "Pedido {$order->order_number} cancelado.");
+
+    expect($order->fresh()->status)->toBe('cancelled');
+});
+
+test('cancelar pedido do card de sucesso não apaga o carrinho já iniciado do próximo pedido', function () {
+    // Fluxo não-bloqueante: catálogo libera na hora após pagar, então o operador
+    // pode já estar montando o pedido seguinte quando cancela o anterior pelo card
+    // flutuante — cancelar não pode arrastar junto o carrinho em andamento.
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'cash')
+        ->call('processOrder')
+        ->assertSet('step', 'catalog')
+        ->assertSet('cart', []);
+
+    $firstOrderId = $component->get('lastOrderId');
+
+    $component->call('addProduct', $product->id);
+    expect($component->get('cart'))->not->toBeEmpty();
+
+    $component->call('cancelLastOrder')
         ->assertSet('lastOrderId', null);
 
-    $order = Order::withoutGlobalScopes()->find($orderId);
+    expect($component->get('cart'))->not->toBeEmpty();
+
+    $order = Order::withoutGlobalScopes()->find($firstOrderId);
     expect($order->status)->toBe('cancelled');
 });
 
@@ -616,7 +648,7 @@ test('operador cancela pedido PDV de sessão mesmo após 5 minutos', function ()
         ->call('proceedToPayment')
         ->set('paymentMethod', 'cash')
         ->call('processOrder')
-        ->assertSet('step', 'success');
+        ->assertSet('step', 'catalog');
 
     $orderId = $component->get('lastOrderId');
     Order::withoutGlobalScopes()->where('id', $orderId)->update(['created_at' => now()->subMinutes(6)]);
@@ -637,7 +669,7 @@ test('pedido em status terminal não pode ser cancelado no PDV', function () {
         ->call('proceedToPayment')
         ->set('paymentMethod', 'cash')
         ->call('processOrder')
-        ->assertSet('step', 'success');
+        ->assertSet('step', 'catalog');
 
     $orderId = $component->get('lastOrderId');
     Order::withoutGlobalScopes()->where('id', $orderId)->update(['status' => 'delivered']);
@@ -645,6 +677,7 @@ test('pedido em status terminal não pode ser cancelado no PDV', function () {
     $component->call('cancelLastOrder');
 
     $component->assertHasErrors('cancel');
+    $component->assertDispatched('pdv-toast');
 
     $order = Order::withoutGlobalScopes()->find($orderId);
     expect($order->status)->toBe('delivered');
@@ -723,7 +756,7 @@ test('PDV registra auditoria para venda cancelamento e fechamento', function () 
         ->call('proceedToPayment')
         ->set('paymentMethod', 'cash')
         ->call('processOrder')
-        ->assertSet('step', 'success');
+        ->assertSet('step', 'catalog');
 
     $orderId = $component->get('lastOrderId');
 
@@ -993,7 +1026,7 @@ test('pedido PDV agendado grava scheduled_at e status scheduled', function () {
         ->set('paymentMethod', 'cash')
         ->call('processOrder')
         ->assertHasNoErrors()
-        ->assertSet('step', 'success');
+        ->assertSet('step', 'catalog');
 
     $order = Order::withoutGlobalScopes()->first();
     expect($order)->not->toBeNull();

@@ -190,9 +190,14 @@ class Branch extends Model
         return $this->hasOne(DeliverySetting::class);
     }
 
-    public function printer(): HasOne
+    public function printers(): HasMany
     {
-        return $this->hasOne(BranchPrinter::class);
+        return $this->hasMany(BranchPrinter::class);
+    }
+
+    public function printerForStation(string $station): ?BranchPrinter
+    {
+        return $this->printers->firstWhere('station', $station);
     }
 
     public function restaurantTables(): HasMany

@@ -216,17 +216,32 @@ class Terminal extends Component
 
     public function resetTerminal(): void
     {
+        $this->resetCartForNextOrder();
+        $this->dismissOrderSuccess();
+    }
+
+    /**
+     * Só limpa o card flutuante de sucesso (número, total, troco, confirmação de
+     * cancelar) — nunca mexe no carrinho, porque o operador pode já ter começado a
+     * montar o próximo pedido enquanto o card do anterior ainda estava na tela.
+     */
+    public function dismissOrderSuccess(): void
+    {
+        $this->lastOrderNumber = null;
+        $this->lastOrderTotal = null;
+        $this->lastOrderId = null;
+        $this->confirmingCancelOrder = false;
+        $this->changeAmount = 0.0;
+    }
+
+    private function resetCartForNextOrder(): void
+    {
         $this->cart = [];
         $this->customerQuery = '';
         $this->customerName = '';
         $this->customerId = null;
         $this->customerFound = false;
         $this->customerResults = [];
-        $this->lastOrderNumber = null;
-        $this->lastOrderTotal = null;
-        $this->lastOrderId = null;
-        $this->confirmingCancelOrder = false;
-        $this->changeAmount = 0.0;
         $this->notes = '';
         $this->step = 'catalog';
         $this->showSessionHistory = false;

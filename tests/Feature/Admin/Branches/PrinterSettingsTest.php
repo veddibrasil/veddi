@@ -132,3 +132,105 @@ test('ip inválido é rejeitado na validação', function () {
         ->call('save')
         ->assertHasErrors(['ipAddress' => 'ip']);
 });
+
+test('filial pode ter uma impressora por estação, não mais 1:1 por filial', function () {
+    $company = makePrinterTestCompany();
+    $branch = makePrinterTestBranch($company);
+
+    app()->instance('current.company', $company);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+
+    $component = Livewire::actingAs($admin)->test(PrinterSettings::class, ['branch' => $branch]);
+
+    $component->set('station', 'geral')
+        ->set('ipAddress', '192.168.0.10')
+        ->set('autoPrint', true)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    $component->set('station', 'cozinha')
+        ->set('ipAddress', '192.168.0.20')
+        ->set('autoPrint', true)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect(BranchPrinter::where('branch_id', $branch->id)->count())->toBe(2);
+    expect(BranchPrinter::where('branch_id', $branch->id)->where('station', 'geral')->first()->ip_address)->toBe('192.168.0.10');
+    expect(BranchPrinter::where('branch_id', $branch->id)->where('station', 'cozinha')->first()->ip_address)->toBe('192.168.0.20');
+});
+
+test('salvar de novo na mesma estação atualiza a impressora existente em vez de duplicar', function () {
+    $company = makePrinterTestCompany();
+    $branch = makePrinterTestBranch($company);
+
+    app()->instance('current.company', $company);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+
+    $component = Livewire::actingAs($admin)->test(PrinterSettings::class, ['branch' => $branch]);
+
+    $component->set('station', 'geral')->set('ipAddress', '192.168.0.10')->call('save');
+    $component->set('station', 'geral')->set('ipAddress', '192.168.0.99')->call('save');
+
+    expect(BranchPrinter::where('branch_id', $branch->id)->count())->toBe(1);
+    expect(BranchPrinter::where('branch_id', $branch->id)->first()->ip_address)->toBe('192.168.0.99');
+});
+
+test('edit() carrega os dados da impressora selecionada no formulário', function () {
+    $company = makePrinterTestCompany();
+    $branch = makePrinterTestBranch($company);
+
+    app()->instance('current.company', $company);
+
+    $printer = BranchPrinter::create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'station' => 'bar',
+        'ip_address' => '10.10.10.10',
+        'port' => 9100,
+        'paper_width' => 58,
+        'auto_print' => true,
+        'print_fiscal_note' => false,
+        'active' => true,
+    ]);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+
+    Livewire::actingAs($admin)
+        ->test(PrinterSettings::class, ['branch' => $branch])
+        ->call('edit', $printer->id)
+        ->assertSet('station', 'bar')
+        ->assertSet('ipAddress', '10.10.10.10')
+        ->assertSet('paperWidth', '58')
+        ->assertSet('autoPrint', true);
+});
+
+test('delete() remove a impressora da filial', function () {
+    $company = makePrinterTestCompany();
+    $branch = makePrinterTestBranch($company);
+
+    app()->instance('current.company', $company);
+
+    $printer = BranchPrinter::create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'station' => 'entrega',
+        'ip_address' => '10.10.10.10',
+        'port' => 9100,
+        'paper_width' => 80,
+        'active' => true,
+    ]);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+
+    Livewire::actingAs($admin)
+        ->test(PrinterSettings::class, ['branch' => $branch])
+        ->call('delete', $printer->id);
+
+    expect(BranchPrinter::find($printer->id))->toBeNull();
+});

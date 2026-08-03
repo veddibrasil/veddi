@@ -8,6 +8,7 @@ use App\Models\Branch;
 use App\Services\Order\OrderService;
 use App\Services\Payment\PaymentOrchestrator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 trait HasPaymentFlow
 {
@@ -147,6 +148,10 @@ trait HasPaymentFlow
             // não sabe que um pedido novo chegou pra preparar.
             NewOrderPlaced::dispatch($order->load('customer'));
 
+            if ($isPaidOnCreate) {
+                $this->dispatchAutoPrintPayload($order);
+            }
+
             $this->lastOrderTotal = (float) $order->total;
             $this->audit('order_created', [
                 'order_id' => $order->id,
@@ -157,6 +162,17 @@ trait HasPaymentFlow
                     'manual_discount' => $this->manualDiscountAmount,
                 ],
             ]);
+        } catch (\Illuminate\Database\QueryException $e) {
+            DB::rollBack();
+
+            // Erro de SQL (ex.: colisão de order_number entre terminais concorrentes)
+            // não deve chegar cru pro caixa — só orienta a tentar de novo.
+            Log::channel('orders')->error('Falha de banco ao processar pedido no PDV', [
+                'error' => $e->getMessage(),
+            ]);
+            $this->addError('order', 'Não foi possível processar o pedido agora. Tente novamente.');
+
+            return;
         } catch (\Throwable $e) {
             DB::rollBack();
             $this->addError('order', $e->getMessage());
@@ -166,6 +182,31 @@ trait HasPaymentFlow
 
         $this->lastOrderNumber = $order->order_number;
         $this->lastOrderId = $order->id;
-        $this->step = 'success';
+
+        // Não trava em tela de "sucesso": limpa o carrinho e já libera o catálogo pro
+        // próximo pedido. O card flutuante (fora do fluxo de step) mostra o resultado
+        // por cima, sem bloquear o caixa.
+        $this->resetCartForNextOrder();
+    }
+
+    /**
+     * Manda pro JS quais impressoras da filial imprimem sozinhas — sem isso o
+     * front teria que descobrir a config de auto_print com uma chamada extra
+     * antes de poder imprimir o cupom assim que a tela de sucesso aparece.
+     */
+    private function dispatchAutoPrintPayload($order): void
+    {
+        $printers = $order->branch->printers()
+            ->where('auto_print', true)
+            ->where('active', true)
+            ->get(['station'])
+            ->pluck('station')
+            ->values();
+
+        if ($printers->isEmpty()) {
+            return;
+        }
+
+        $this->dispatch('order-paid', orderId: $order->id, stations: $printers);
     }
 }

@@ -22,11 +22,13 @@ use App\Listeners\SendWhatsAppStatusNotification;
 use App\Models\Branch;
 use App\Models\Company;
 use App\Models\Coupon;
+use App\Models\FiscalNote;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\Role;
 use App\Models\User;
+use App\Observers\FiscalNoteObserver;
 use App\Policies\BranchPolicy;
 use App\Policies\CompanyPolicy;
 use App\Policies\CouponPolicy;
@@ -101,6 +103,8 @@ class AppServiceProvider extends ServiceProvider
         $this->registerPolicies();
         $this->configureNotifications();
         $this->configureEvents();
+
+        FiscalNote::observe(FiscalNoteObserver::class);
     }
 
     protected function configureEvents(): void

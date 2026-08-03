@@ -9,6 +9,60 @@
         style="display: none;"
     ></div>
 
+    {{-- ══ Card flutuante: resultado do último pedido — não bloqueia o catálogo,
+         cupom/nota fiscal já imprimem sozinhos (ver pdv-printer.js) ══ --}}
+    @if ($lastOrderId)
+        <div
+            wire:key="order-success-{{ $lastOrderId }}"
+            x-data
+            x-init="@if ($changeAmount <= 0) setTimeout(() => $wire.dismissOrderSuccess(), 6000) @endif"
+            class="fixed inset-x-0 top-4 z-40 mx-auto w-full max-w-sm px-4"
+        >
+            <div class="rounded-xl border border-neutral-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-900 overflow-hidden">
+                <div class="px-4 py-3 flex items-center gap-2 border-b border-neutral-100 dark:border-zinc-800">
+                    <div class="size-7 rounded-full bg-green-100 flex items-center justify-center dark:bg-green-900/40 shrink-0">
+                        <flux:icon.check class="size-4 text-green-600 dark:text-green-400" />
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <h2 class="font-bold text-neutral-800 dark:text-neutral-100 text-sm">Pedido {{ $lastOrderNumber }} registrado</h2>
+                        @if ($lastOrderTotal)
+                            <p class="text-xs text-neutral-500 dark:text-neutral-400">Total: R$ {{ number_format($lastOrderTotal, 2, ',', '.') }}</p>
+                        @endif
+                    </div>
+                    <button wire:click="dismissOrderSuccess" type="button" class="shrink-0 p-1 rounded-lg text-neutral-400 hover:bg-neutral-100 dark:hover:bg-zinc-800" title="Fechar">
+                        <flux:icon.x-mark class="size-4" />
+                    </button>
+                </div>
+                <div class="p-4 space-y-3">
+                    @if ($changeAmount > 0)
+                        <div class="w-full bg-amber-50 border border-amber-200 rounded-xl p-3 dark:bg-amber-900/20 dark:border-amber-700 text-center">
+                            <p class="text-xs text-amber-700 dark:text-amber-300 mb-1">Troco para o cliente</p>
+                            <p class="text-3xl font-bold text-amber-700 dark:text-amber-300">
+                                R$ {{ number_format($changeAmount, 2, ',', '.') }}
+                            </p>
+                        </div>
+                    @endif
+
+                    @if ($confirmingCancelOrder)
+                        <div class="w-full border border-red-200 rounded-xl p-3 space-y-2 text-sm bg-red-50 dark:bg-red-900/20 dark:border-red-700">
+                            <p class="text-red-700 dark:text-red-300 font-medium">Cancelar pedido {{ $lastOrderNumber }}?</p>
+                            <p class="text-xs text-red-500">Estoque será restaurado. Sem reembolso automático.</p>
+                            <div class="flex gap-2">
+                                <flux:button wire:click="$set('confirmingCancelOrder', false)" variant="ghost" size="sm">Não</flux:button>
+                                <flux:button wire:click="cancelLastOrder" variant="danger" size="sm" class="flex-1">Sim, cancelar</flux:button>
+                            </div>
+                        </div>
+                        @error('cancel') <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
+                    @else
+                        <flux:button wire:click="$set('confirmingCancelOrder', true)" variant="ghost" size="sm" class="w-full text-red-500 hover:text-red-700">
+                            Cancelar este pedido
+                        </flux:button>
+                    @endif
+                </div>
+            </div>
+        </div>
+    @endif
+
     {{-- ══ Header ══ --}}
     <div class="flex items-center justify-between gap-4 px-5 py-3 bg-white border-b border-neutral-200 shadow-sm dark:bg-zinc-900 dark:border-zinc-800 shrink-0">
         <div class="flex items-center gap-3 min-w-0">
@@ -959,87 +1013,13 @@
             </div>
             {{-- fim coluna central --}}
 
-            {{-- ── Coluna direita: Carrinho / Pagamento / Sucesso / PIX ── --}}
+            {{-- ── Coluna direita: Carrinho / Pagamento / PIX ── --}}
             <div
                 class="shrink-0 flex-col rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900 overflow-hidden lg:flex lg:w-[22rem] xl:w-[24rem]"
                 :class="mobileCartOpen ? 'fixed inset-0 z-30 flex' : 'hidden'"
             >
 
-                {{-- ── Sucesso ── --}}
-                @if ($step === 'success')
-                    <div class="flex flex-col h-full overflow-hidden">
-                        <div class="px-4 py-3 border-b border-neutral-100 dark:border-zinc-800 shrink-0 flex items-center gap-2 bg-white dark:bg-zinc-900">
-                            <div class="size-7 rounded-full bg-green-100 flex items-center justify-center dark:bg-green-900/40 shrink-0">
-                                <flux:icon.check class="size-4 text-green-600 dark:text-green-400" />
-                            </div>
-                            <h2 class="font-bold text-neutral-800 dark:text-neutral-100">Pedido registrado!</h2>
-                        </div>
-                        <div class="flex-1 flex flex-col items-center justify-center p-5 space-y-4 overflow-y-auto">
-                            <p class="font-mono text-amber-500 dark:text-amber-400 font-semibold text-2xl">{{ $lastOrderNumber }}</p>
-                            @if ($lastOrderTotal)
-                                <p class="text-sm text-neutral-500 dark:text-neutral-400">
-                                    Total: <span class="font-semibold text-neutral-700 dark:text-neutral-200">R$ {{ number_format($lastOrderTotal, 2, ',', '.') }}</span>
-                                </p>
-                            @endif
-                            @if ($changeAmount > 0)
-                                <div class="w-full bg-amber-50 border border-amber-200 rounded-xl p-4 dark:bg-amber-900/20 dark:border-amber-700 text-center">
-                                    <p class="text-xs text-amber-700 dark:text-amber-300 mb-1">Troco para o cliente</p>
-                                    <p class="text-4xl font-bold text-amber-700 dark:text-amber-300">
-                                        R$ {{ number_format($changeAmount, 2, ',', '.') }}
-                                    </p>
-                                </div>
-                            @endif
-                            <div class="w-full flex gap-2">
-                                <flux:button wire:click="resetTerminal" variant="primary" size="base" class="flex-1">
-                                    Novo pedido
-                                </flux:button>
-                                @if ($lastOrderId)
-                                    <flux:button
-                                        x-data
-                                        x-on:click="window.open('{{ route('admin.orders.receipt', ['order' => $lastOrderId]) }}', '_blank')"
-                                        variant="outline"
-                                        size="base"
-                                        icon="printer"
-                                        title="Imprimir cupom"
-                                    />
-                                    <flux:button
-                                        x-data
-                                        x-on:click="window.open('{{ route('admin.orders.receipt', ['order' => $lastOrderId, 'station' => 'cozinha']) }}', '_blank')"
-                                        variant="outline"
-                                        size="base"
-                                        title="Imprimir cupom cozinha"
-                                    >Cozinha</flux:button>
-                                    <flux:button
-                                        x-data
-                                        x-on:click="window.open('{{ route('admin.orders.receipt', ['order' => $lastOrderId, 'station' => 'bar']) }}', '_blank')"
-                                        variant="outline"
-                                        size="base"
-                                        title="Imprimir cupom bar"
-                                    >Bar</flux:button>
-                                @endif
-                            </div>
-                            @if ($lastOrderId)
-                                @if ($confirmingCancelOrder)
-                                    <div class="w-full border border-red-200 rounded-xl p-3 space-y-2 text-sm bg-red-50 dark:bg-red-900/20 dark:border-red-700">
-                                        <p class="text-red-700 dark:text-red-300 font-medium">Cancelar pedido {{ $lastOrderNumber }}?</p>
-                                        <p class="text-xs text-red-500">Estoque será restaurado. Sem reembolso automático.</p>
-                                        <div class="flex gap-2">
-                                            <flux:button wire:click="$set('confirmingCancelOrder', false)" variant="ghost" size="sm">Não</flux:button>
-                                            <flux:button wire:click="cancelLastOrder" variant="danger" size="sm" class="flex-1">Sim, cancelar</flux:button>
-                                        </div>
-                                    </div>
-                                    @error('cancel') <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
-                                @else
-                                    <flux:button wire:click="$set('confirmingCancelOrder', true)" variant="ghost" size="sm" class="w-full text-red-500 hover:text-red-700">
-                                        Cancelar este pedido
-                                    </flux:button>
-                                @endif
-                            @endif
-                        </div>
-                    </div>
-
                 {{-- ── Carrinho ── --}}
-                @else
                     <div class="flex flex-col h-full overflow-hidden">
                         <div class="px-4 py-3 [@media(max-height:700px)]:py-1.5 border-b border-neutral-100 dark:border-zinc-800 shrink-0 bg-white dark:bg-zinc-900">
                             <div class="flex items-center justify-between gap-3">
@@ -1203,7 +1183,6 @@
                             </div>
                         @endif
                     </div>
-                @endif
                 {{-- fim painel direito --}}
 
             </div>

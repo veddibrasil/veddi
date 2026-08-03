@@ -29,7 +29,7 @@ trait HasOrderCancellation
             ->find($orderId);
 
         if (! $order || in_array($order->status, ['cancelled', 'refunded'])) {
-            $this->addError('cancel', 'Pedido não encontrado ou já cancelado.');
+            $this->failCancel('Pedido não encontrado ou já cancelado.');
 
             return;
         }
@@ -41,7 +41,7 @@ trait HasOrderCancellation
         );
 
         if (! $isSessionOrder) {
-            $this->addError('cancel', 'Pedido não pertence à sessão atual.');
+            $this->failCancel('Pedido não pertence à sessão atual.');
 
             return;
         }
@@ -49,13 +49,15 @@ trait HasOrderCancellation
         try {
             app(OrderCancellationPolicy::class)->authorizeAdminCancel($order);
         } catch (\RuntimeException $e) {
-            $this->addError('cancel', $e->getMessage());
+            $this->failCancel($e->getMessage());
 
             return;
         }
 
         $order->update(['status' => 'cancelled']);
         app(StockService::class)->restoreForOrder($order);
+
+        $this->dispatch('pdv-toast', message: "Pedido {$order->order_number} cancelado.");
 
         Log::channel('orders')->info('Pedido PDV cancelado pelo operador', [
             'order_id' => $order->id,
@@ -73,8 +75,20 @@ trait HasOrderCancellation
         $this->confirmingCancelSessionOrderId = null;
 
         if ($this->lastOrderId === $orderId) {
-            $this->confirmingCancelOrder = false;
-            $this->resetTerminal();
+            // Só limpa o card de sucesso, não o carrinho — o operador pode já ter
+            // começado a montar o próximo pedido enquanto cancelava este.
+            $this->dismissOrderSuccess();
         }
+    }
+
+    /**
+     * Erro de cancelamento vai pro error bag (exibido inline nos dois pontos que já
+     * têm @error('cancel')) e também via toast — o card de sucesso pode já ter sido
+     * fechado/expirado quando o erro chega, então o inline sozinho não é confiável.
+     */
+    private function failCancel(string $message): void
+    {
+        $this->addError('cancel', $message);
+        $this->dispatch('pdv-toast', message: $message);
     }
 }

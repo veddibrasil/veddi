@@ -1,3 +1,5 @@
+import { autoPrintOrderReceipt, listenForFiscalNoteAuthorization } from './pdv-printer.js';
+
 Alpine.data('pdvApp', () => ({
     selectingProduct: null,
     pendingSelections: {},
@@ -21,6 +23,21 @@ Alpine.data('pdvApp', () => ({
         this._focusBarcode();
         window.addEventListener('pdv-barcode-processed', () => this._focusBarcode());
         window.addEventListener('product-added-to-cart', (e) => this.showToast(`${e.detail.name} adicionado ao carrinho`));
+        window.addEventListener('order-paid', (e) => this._handleOrderPaid(e.detail));
+        window.addEventListener('pdv-toast', (e) => this.showToast(e.detail.message));
+    },
+
+    // Cupom imprime na hora (config auto_print da filial); a nota fiscal so
+    // fica pronta depois (emissao assincrona), entao so assina o canal do
+    // pedido e imprime quando o evento de autorizacao chegar.
+    _handleOrderPaid({ orderId, stations }) {
+        autoPrintOrderReceipt(orderId, stations, () => this.showToast('Falha ao imprimir cupom automaticamente'));
+        listenForFiscalNoteAuthorization(orderId, () => this.showToast('Falha ao imprimir nota fiscal automaticamente'));
+
+        // Terminal nao entra mais em step 'success' (card flutuante mostra o resultado
+        // por cima do catalogo) — no mobile, garante que a tela volta pro catalogo em
+        // vez de ficar presa no carrinho em tela cheia.
+        this.mobileCartOpen = false;
     },
 
     showToast(message) {

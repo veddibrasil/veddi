@@ -22,6 +22,7 @@
         "livewire/blaze": "^1.0",
         "livewire/flux": "^2.9.0",
         "livewire/livewire": "^4.0",
+        "mike42/escpos-php": "^5.0",
         "predis/predis": "^3.4"
     },
     "require-dev": {
