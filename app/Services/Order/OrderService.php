@@ -45,7 +45,7 @@ class OrderService implements OrderServiceInterface
 
         $customer = \App\Models\Customer::withoutGlobalScopes()->find($customerId);
 
-        $order = DB::transaction(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer, $extraDiscount, $serviceFee, $couvertFee) {
+        $order = $this->transactionRetryingOnOrderNumberCollision(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer, $extraDiscount, $serviceFee, $couvertFee) {
             $subtotal = 0.0;
             $optionPricing = app(CartOptionPricing::class);
             foreach ($cart as $cartKey => $item) {
@@ -193,6 +193,30 @@ class OrderService implements OrderServiceInterface
         }
 
         return $order;
+    }
+
+    /**
+     * generateOrderNumber() já usa lockForUpdate() pra serializar o incremento do
+     * order_sequence, mas dois pedidos batendo em terminais/abas diferentes ao mesmo
+     * tempo ainda podem colidir na constraint única (ex.: o segundo lê o sequence
+     * antes do primeiro commitar). Em vez de estourar erro de SQL pro caixa, tenta de
+     * novo — o retry relê o sequence já atualizado e gera um número novo.
+     */
+    private function transactionRetryingOnOrderNumberCollision(\Closure $callback, int $maxAttempts = 3): Order
+    {
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            try {
+                return DB::transaction($callback);
+            } catch (\Illuminate\Database\QueryException $e) {
+                $isOrderNumberCollision = str_contains($e->getMessage(), 'orders_company_id_order_number_unique');
+
+                if (! $isOrderNumberCollision || $attempt === $maxAttempts) {
+                    throw $e;
+                }
+            }
+        }
+
+        throw new RuntimeException('Não foi possível gerar um número de pedido único.');
     }
 
     /**
