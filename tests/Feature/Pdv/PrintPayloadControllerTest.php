@@ -105,8 +105,31 @@ test('cupom retorna ip/porta e payload em base64 quando a impressora existe e es
         ->assertOk()
         ->json();
 
-    expect($response['printer'])->toBe(['ip' => '192.168.0.50', 'port' => 9100]);
+    expect($response['printer'])->toBe(['connection_type' => 'network', 'ip' => '192.168.0.50', 'port' => 9100, 'name' => null]);
     expect(base64_decode($response['payload']))->toContain('Coxinha');
+});
+
+test('cupom retorna nome da impressora (sem ip/porta) quando conexão é USB', function () {
+    ['admin' => $admin, 'order' => $order, 'branch' => $branch, 'company' => $company] = printPayloadContext();
+
+    BranchPrinter::create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'station' => 'geral',
+        'connection_type' => 'usb',
+        'printer_name' => 'EPSON TM-T20',
+        'paper_width' => 80,
+        'active' => true,
+    ]);
+
+    $response = $this->actingAs($admin)
+        ->get(route('admin.pdv.print.receipt', ['order' => $order, 'station' => 'geral']))
+        ->assertOk()
+        ->json();
+
+    // port não é nullable no schema (default 9100) — fica sem uso pra USB, mas
+    // sempre presente; connection_type é o que o front usa pra decidir o transporte.
+    expect($response['printer'])->toBe(['connection_type' => 'usb', 'ip' => null, 'port' => 9100, 'name' => 'EPSON TM-T20']);
 });
 
 test('cupom retorna 404 pra estação inválida', function () {
@@ -184,7 +207,7 @@ test('nota fiscal retorna payload quando autorizada e há impressora marcada', f
         ->assertOk()
         ->json();
 
-    expect($response['printer'])->toBe(['ip' => '192.168.0.50', 'port' => 9100]);
+    expect($response['printer'])->toBe(['connection_type' => 'network', 'ip' => '192.168.0.50', 'port' => 9100, 'name' => null]);
     expect(base64_decode($response['payload']))->toContain('NFC-e AUTORIZADA');
 });
 

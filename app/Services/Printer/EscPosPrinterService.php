@@ -23,6 +23,12 @@ class EscPosPrinterService implements PrinterServiceInterface
 
     public function testConnection(BranchPrinter $printer): bool
     {
+        // Impressora USB fala com o navegador do caixa via driver do SO, não pela
+        // rede — o backend não tem como alcançá-la daqui, então não há o que testar.
+        if ($printer->connection_type === 'usb') {
+            return true;
+        }
+
         $socket = @fsockopen($printer->ip_address, $printer->port, $errorCode, $errorMessage, self::CONNECT_TIMEOUT_SECONDS);
 
         if ($socket === false) {

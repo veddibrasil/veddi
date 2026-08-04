@@ -234,3 +234,59 @@ test('delete() remove a impressora da filial', function () {
 
     expect(BranchPrinter::find($printer->id))->toBeNull();
 });
+
+test('salva impressora USB com nome, sem exigir IP/porta', function () {
+    $company = makePrinterTestCompany();
+    $branch = makePrinterTestBranch($company);
+
+    app()->instance('current.company', $company);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+
+    Livewire::actingAs($admin)
+        ->test(PrinterSettings::class, ['branch' => $branch])
+        ->set('connectionType', 'usb')
+        ->set('printerName', 'EPSON TM-T20')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    $printer = BranchPrinter::where('branch_id', $branch->id)->first();
+    expect($printer->connection_type)->toBe('usb');
+    expect($printer->printer_name)->toBe('EPSON TM-T20');
+    expect($printer->ip_address)->toBeNull();
+});
+
+test('impressora USB sem nome é rejeitada na validação', function () {
+    $company = makePrinterTestCompany();
+    $branch = makePrinterTestBranch($company);
+
+    app()->instance('current.company', $company);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+
+    Livewire::actingAs($admin)
+        ->test(PrinterSettings::class, ['branch' => $branch])
+        ->set('connectionType', 'usb')
+        ->set('printerName', '')
+        ->call('save')
+        ->assertHasErrors(['printerName' => 'required_if']);
+});
+
+test('testConnection é bloqueado para impressora USB (nada pra testar do servidor)', function () {
+    $company = makePrinterTestCompany();
+    $branch = makePrinterTestBranch($company);
+
+    app()->instance('current.company', $company);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+
+    Livewire::actingAs($admin)
+        ->test(PrinterSettings::class, ['branch' => $branch])
+        ->set('connectionType', 'usb')
+        ->set('printerName', 'EPSON TM-T20')
+        ->call('testConnection')
+        ->assertStatus(422);
+});

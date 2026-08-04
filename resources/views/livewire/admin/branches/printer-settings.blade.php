@@ -27,7 +27,12 @@
                                 @endunless
                             </div>
                             <div class="text-xs text-neutral-500 dark:text-neutral-400">
-                                {{ $printer->ip_address }}:{{ $printer->port }} · {{ $printer->paper_width }}mm
+                                @if ($printer->connection_type === 'usb')
+                                    USB · {{ $printer->printer_name }}
+                                @else
+                                    {{ $printer->ip_address }}:{{ $printer->port }}
+                                @endif
+                                · {{ $printer->paper_width }}mm
                                 @if ($printer->auto_print) · cupom automático @endif
                                 @if ($printer->print_fiscal_note) · nota fiscal automática @endif
                             </div>
@@ -63,17 +68,37 @@
             </div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-                <flux:input wire:model="ipAddress" label="Endereço IP" placeholder="Ex: 192.168.0.50" />
-                @error('ipAddress') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-            </div>
-            <div>
-                <flux:input wire:model="port" type="number" min="1" max="65535"
-                    label="Porta" placeholder="9100" />
-                @error('port') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-            </div>
+        <div>
+            <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Tipo de conexão</label>
+            <flux:select wire:model.live="connectionType">
+                <option value="network">Rede (IP)</option>
+                <option value="usb">USB (impressora instalada no computador do caixa)</option>
+            </flux:select>
+            @error('connectionType') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
         </div>
+
+        @if ($connectionType === 'usb')
+            <div>
+                <flux:input wire:model="printerName" label="Nome da impressora" placeholder="Ex: EPSON TM-T20" />
+                <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                    Use exatamente o nome como aparece na lista de impressoras do Windows/Mac do computador do caixa
+                    (o QZ Tray precisa estar instalado e a impressora, com driver instalado nesse computador).
+                </p>
+                @error('printerName') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            </div>
+        @else
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <flux:input wire:model="ipAddress" label="Endereço IP" placeholder="Ex: 192.168.0.50" />
+                    @error('ipAddress') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                </div>
+                <div>
+                    <flux:input wire:model="port" type="number" min="1" max="65535"
+                        label="Porta" placeholder="9100" />
+                    @error('port') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                </div>
+            </div>
+        @endif
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -94,20 +119,27 @@
             <flux:checkbox wire:model="printFiscalNote" label="Imprimir nota fiscal (NFC-e) automaticamente ao autorizar" />
         </div>
 
-        <div class="flex items-center gap-3 flex-wrap pt-2">
-            <button wire:click="testConnection" type="button"
-                wire:loading.attr="disabled" wire:target="testConnection"
-                class="inline-flex items-center gap-1.5 text-xs bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-60 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700">
-                <span wire:loading.remove wire:target="testConnection">Testar conexão</span>
-                <span wire:loading wire:target="testConnection">Testando...</span>
-            </button>
+        @if ($connectionType === 'usb')
+            <p class="text-xs text-neutral-500 dark:text-neutral-400 pt-2">
+                Não dá pra testar impressora USB por aqui — o teste depende do computador do caixa, não do servidor.
+                Confira se o QZ Tray está aberto e se o nome digitado acima bate com a lista de impressoras do sistema.
+            </p>
+        @else
+            <div class="flex items-center gap-3 flex-wrap pt-2">
+                <button wire:click="testConnection" type="button"
+                    wire:loading.attr="disabled" wire:target="testConnection"
+                    class="inline-flex items-center gap-1.5 text-xs bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-60 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700">
+                    <span wire:loading.remove wire:target="testConnection">Testar conexão</span>
+                    <span wire:loading wire:target="testConnection">Testando...</span>
+                </button>
 
-            @if ($testResult === true)
-                <span class="text-xs text-green-600 dark:text-green-400">✓ Impressora respondeu no IP:porta informados.</span>
-            @elseif ($testResult === false)
-                <span class="text-xs text-red-500">✗ Não foi possível conectar. Verifique IP, porta e rede.</span>
-            @endif
-        </div>
+                @if ($testResult === true)
+                    <span class="text-xs text-green-600 dark:text-green-400">✓ Impressora respondeu no IP:porta informados.</span>
+                @elseif ($testResult === false)
+                    <span class="text-xs text-red-500">✗ Não foi possível conectar. Verifique IP, porta e rede.</span>
+                @endif
+            </div>
+        @endif
 
         <div class="flex gap-3 pt-2">
             <flux:button wire:click="save" class="!bg-amber-500 !text-white hover:!bg-amber-600" wire:loading.attr="disabled">

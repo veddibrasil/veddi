@@ -28,7 +28,7 @@ class PrintPayloadController extends Controller
         $payload = app(PrinterServiceInterface::class)->buildOrderReceipt($order, $station, $company);
 
         return response()->json([
-            'printer' => ['ip' => $printer->ip_address, 'port' => $printer->port],
+            'printer' => $this->printerPayload($printer),
             'payload' => base64_encode($payload),
         ]);
     }
@@ -50,9 +50,22 @@ class PrintPayloadController extends Controller
         $payload = app(PrinterServiceInterface::class)->buildFiscalNoteReceipt($note);
 
         return response()->json([
-            'printer' => ['ip' => $printer->ip_address, 'port' => $printer->port],
+            'printer' => $this->printerPayload($printer),
             'payload' => base64_encode($payload),
         ]);
+    }
+
+    /**
+     * @return array{connection_type: string, ip: ?string, port: ?int, name: ?string}
+     */
+    private function printerPayload(BranchPrinter $printer): array
+    {
+        return [
+            'connection_type' => $printer->connection_type,
+            'ip' => $printer->ip_address,
+            'port' => $printer->port,
+            'name' => $printer->printer_name,
+        ];
     }
 
     private function authorizeAccess(): void

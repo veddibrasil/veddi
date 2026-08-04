@@ -9,13 +9,17 @@ class BranchPrinter extends Model
 {
     public const STATIONS = ['geral', 'cozinha', 'bar', 'entrega'];
 
+    public const CONNECTION_TYPES = ['network', 'usb'];
+
     protected $fillable = [
         'company_id',
         'branch_id',
         'name',
         'station',
+        'connection_type',
         'ip_address',
         'port',
+        'printer_name',
         'paper_width',
         'auto_print',
         'print_fiscal_note',

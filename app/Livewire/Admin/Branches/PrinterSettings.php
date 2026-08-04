@@ -20,9 +20,13 @@ class PrinterSettings extends Component
 
     public string $name = '';
 
+    public string $connectionType = 'network';
+
     public string $ipAddress = '';
 
     public string $port = '9100';
+
+    public string $printerName = '';
 
     public string $paperWidth = '80';
 
@@ -41,8 +45,10 @@ class PrinterSettings extends Component
         return [
             'station' => ['required', 'in:'.implode(',', BranchPrinter::STATIONS)],
             'name' => ['nullable', 'string', 'max:100'],
-            'ipAddress' => ['required', 'ip'],
-            'port' => ['required', 'integer', 'between:1,65535'],
+            'connectionType' => ['required', 'in:'.implode(',', BranchPrinter::CONNECTION_TYPES)],
+            'ipAddress' => ['required_if:connectionType,network', 'nullable', 'ip'],
+            'port' => ['required_if:connectionType,network', 'nullable', 'integer', 'between:1,65535'],
+            'printerName' => ['required_if:connectionType,usb', 'nullable', 'string', 'max:150'],
             'paperWidth' => ['required', 'in:58,80'],
             'autoPrint' => ['boolean'],
             'printFiscalNote' => ['boolean'],
@@ -53,9 +59,10 @@ class PrinterSettings extends Component
     protected function messages(): array
     {
         return [
-            'ipAddress.required' => 'Informe o endereço IP da impressora.',
+            'ipAddress.required_if' => 'Informe o endereço IP da impressora.',
             'ipAddress.ip' => 'Informe um endereço IP válido.',
-            'port.required' => 'Informe a porta da impressora.',
+            'port.required_if' => 'Informe a porta da impressora.',
+            'printerName.required_if' => 'Informe o nome da impressora exatamente como aparece no sistema operacional.',
         ];
     }
 
@@ -109,8 +116,10 @@ class PrinterSettings extends Component
         $this->editingId = $printer->id;
         $this->station = $printer->station;
         $this->name = $printer->name ?? '';
-        $this->ipAddress = $printer->ip_address;
+        $this->connectionType = $printer->connection_type;
+        $this->ipAddress = $printer->ip_address ?? '';
         $this->port = (string) $printer->port;
+        $this->printerName = $printer->printer_name ?? '';
         $this->paperWidth = (string) $printer->paper_width;
         $this->autoPrint = $printer->auto_print;
         $this->printFiscalNote = $printer->print_fiscal_note;
@@ -123,8 +132,10 @@ class PrinterSettings extends Component
         $this->editingId = null;
         $this->station = $this->availableStations[0] ?? 'geral';
         $this->name = '';
+        $this->connectionType = 'network';
         $this->ipAddress = '';
         $this->port = '9100';
+        $this->printerName = '';
         $this->paperWidth = '80';
         $this->autoPrint = false;
         $this->printFiscalNote = false;
@@ -136,6 +147,9 @@ class PrinterSettings extends Component
     public function testConnection(): void
     {
         abort_unless($this->canSave, 403);
+        // Teste de conexão só faz sentido pra impressora de rede — USB fala com o
+        // navegador do caixa via driver do SO, o backend não alcança de jeito nenhum.
+        abort_if($this->connectionType === 'usb', 422);
 
         $this->validate($this->rules(), $this->messages());
 
@@ -154,13 +168,19 @@ class PrinterSettings extends Component
 
         $this->validate($this->rules(), $this->messages());
 
+        $isUsb = $this->connectionType === 'usb';
+
         BranchPrinter::updateOrCreate(
             ['branch_id' => $this->branch->id, 'station' => $this->station],
             [
                 'company_id' => $this->branch->company_id,
                 'name' => $this->name !== '' ? $this->name : null,
-                'ip_address' => $this->ipAddress,
-                'port' => (int) $this->port,
+                'connection_type' => $this->connectionType,
+                'ip_address' => $isUsb ? null : $this->ipAddress,
+                // port não é nullable no schema (tem default 9100) — pra USB o valor
+                // fica sem uso, só não pode ser NULL.
+                'port' => $isUsb ? 9100 : (int) $this->port,
+                'printer_name' => $isUsb ? $this->printerName : null,
                 'paper_width' => (int) $this->paperWidth,
                 'auto_print' => $this->autoPrint,
                 'print_fiscal_note' => $this->printFiscalNote,

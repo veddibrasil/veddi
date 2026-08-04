@@ -50,6 +50,17 @@ function connectQz() {
 
 async function sendToPrinter(printer, base64Payload) {
     await connectQz();
+
+    if (printer.connection_type === 'usb') {
+        // Impressora USB instalada como impressora do SO (driver do fabricante) —
+        // QZ Tray manda os mesmos bytes ESC/POS pelo nome da impressora, sem IP/porta.
+        const config = qz.configs.create(printer.name);
+
+        await qz.print(config, [{ type: 'raw', format: 'command', flavor: 'base64', data: base64Payload }]);
+
+        return;
+    }
+
     await qz.socket.open(printer.ip, printer.port);
 
     try {
