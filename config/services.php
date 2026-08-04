@@ -40,6 +40,14 @@ return [
         'whatsapp_number' => env('SUPPORT_WHATSAPP_NUMBER'),
     ],
 
+    // Par de chaves do QZ Tray em base64 (evita problema de newline em env
+    // var). Usado como alternativa aos arquivos em storage/app/private/qz/
+    // pra ambientes sem acesso a shell (ex.: Laravel Cloud).
+    'qz' => [
+        'private_key' => env('QZ_PRIVATE_KEY'),
+        'certificate' => env('QZ_CERTIFICATE'),
+    ],
+
     'asaas' => [
         'api_key' => env('ASAAS_API_KEY'),
         'sandbox' => env('ASAAS_SANDBOX', true),

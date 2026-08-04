@@ -12,33 +12,58 @@ use Illuminate\Http\Request;
  * storage/app/private/qz/ (private-key.pem + digital-certificate.txt), gerado
  * uma vez por ambiente (ex.: `openssl req -x509 -newkey rsa:2048 -keyout
  * storage/app/private/qz/private-key.pem -out
- * storage/app/private/qz/digital-certificate.txt -days 3650 -nodes`).
- * Sem esses arquivos, os dois endpoints retornam 404 e o front trata como
- * "QZ Tray indisponível" sem quebrar o PDV.
+ * storage/app/private/qz/digital-certificate.txt -days 3650 -nodes`), OU
+ * via QZ_PRIVATE_KEY/QZ_CERTIFICATE (conteudo em base64) em ambientes sem
+ * acesso a shell/filesystem persistente pra rodar o openssl (ex.: Laravel
+ * Cloud) — env tem prioridade sobre o arquivo.
+ * Sem nenhuma das duas fontes, os dois endpoints retornam 404 e o front
+ * trata como "QZ Tray indisponível" sem quebrar o PDV.
  */
 class QzTraySignatureController extends Controller
 {
     public function certificate()
     {
-        $path = storage_path('app/private/qz/digital-certificate.txt');
+        $certificate = $this->certificateContents();
 
-        abort_unless(is_readable($path), 404);
+        abort_unless($certificate !== null, 404);
 
-        return response(file_get_contents($path), 200, ['Content-Type' => 'text/plain']);
+        return response($certificate, 200, ['Content-Type' => 'text/plain']);
     }
 
     public function sign(Request $request)
     {
-        $keyPath = storage_path('app/private/qz/private-key.pem');
+        $privateKey = $this->privateKeyContents();
 
-        abort_unless(is_readable($keyPath), 404);
+        abort_unless($privateKey !== null, 404);
 
-        $privateKey = openssl_pkey_get_private(file_get_contents($keyPath));
+        $privateKey = openssl_pkey_get_private($privateKey);
 
         abort_if($privateKey === false, 500, 'Chave privada do QZ Tray inválida.');
 
         openssl_sign($request->input('request', ''), $signature, $privateKey, OPENSSL_ALGO_SHA512);
 
         return response(base64_encode($signature), 200, ['Content-Type' => 'text/plain']);
+    }
+
+    private function privateKeyContents(): ?string
+    {
+        if ($encoded = config('services.qz.private_key')) {
+            return base64_decode($encoded);
+        }
+
+        $path = storage_path('app/private/qz/private-key.pem');
+
+        return is_readable($path) ? file_get_contents($path) : null;
+    }
+
+    private function certificateContents(): ?string
+    {
+        if ($encoded = config('services.qz.certificate')) {
+            return base64_decode($encoded);
+        }
+
+        $path = storage_path('app/private/qz/digital-certificate.txt');
+
+        return is_readable($path) ? file_get_contents($path) : null;
     }
 }
