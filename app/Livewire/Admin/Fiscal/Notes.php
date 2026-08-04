@@ -117,6 +117,20 @@ class Notes extends Component
             return;
         }
 
+        // Nota "error" pode ter sido timeout de rede depois que a Focus (e por trás
+        // dela a SEFAZ) já recebeu a tentativa anterior — reemitir sem checar arrisca
+        // reciclar o mesmo número de NFC-e e cair em "Duplicidade de NF-e" na SEFAZ.
+        // Reconsulta pelo ref antes de decidir se ainda há o que reemitir.
+        if ($note->provider_reference) {
+            $note = app(FiscalNoteService::class)->reconcile($note);
+
+            if (! in_array($note->status, ['error', 'rejected'], true)) {
+                session()->flash('status', 'A tentativa anterior já havia sido processada pela Focus NFe — status atualizado, nada foi reemitido.');
+
+                return;
+            }
+        }
+
         // FiscalNoteService::issue() já garante (via lock) que não cria uma nota
         // ativa duplicada caso outra emissão para o mesmo pedido esteja em andamento.
         IssueFiscalNote::dispatch($note->order_id);

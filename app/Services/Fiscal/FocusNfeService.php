@@ -79,6 +79,12 @@ class FocusNfeService implements FiscalNoteProviderInterface
 
             return new FiscalNoteResult(
                 status: 'error',
+                // Exceção pode vir de timeout após o POST já ter chegado na Focus (que
+                // pode ter repassado a SEFAZ) — sem o ref, uma reconciliação posterior
+                // (consulta por GET /v2/nfce/{ref}) não tem como checar o que de fato
+                // aconteceu do lado de lá, e um reissue às cegas arrisca reciclar o
+                // mesmo número de NFC-e (rejeição "Duplicidade de NF-e" da SEFAZ).
+                providerReference: $ref,
                 errorMessage: $e->getMessage(),
                 requestPayload: $payload,
             );

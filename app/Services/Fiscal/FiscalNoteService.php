@@ -142,6 +142,60 @@ class FiscalNoteService
         });
     }
 
+    /**
+     * Consulta o status real na Focus NFe (GET /v2/nfce/{ref}) e atualiza a nota local.
+     * Usada pelo job de reconciliação periódica (notas presas em "pending") e antes de
+     * reemitir uma nota "error"/"rejected" — timeout de rede não garante que a Focus (e,
+     * por trás dela, a SEFAZ) não recebeu a emissão anterior; reemitir sem checar arrisca
+     * reciclar o mesmo número de NFC-e e cair em "Duplicidade de NF-e" na SEFAZ.
+     * Sem provider_reference (falha antes do POST sequer sair), não há o que consultar.
+     */
+    public function reconcile(FiscalNote $note): FiscalNote
+    {
+        if (! $note->provider_reference) {
+            return $note;
+        }
+
+        $companyConfig = $note->company?->fiscalConfig;
+        $environment = $companyConfig?->environment ?: config('fiscal.environment');
+        $effectiveEnvironment = $this->effectiveEnvironment($environment);
+        $token = $companyConfig?->tokenFor($effectiveEnvironment) ?: config('fiscal.focus_nfe.token');
+
+        if (! $token) {
+            return $note;
+        }
+
+        $provider = new FocusNfeService($token, $this->baseUrlFor($effectiveEnvironment));
+        $result = $provider->query($note->provider_reference);
+
+        if ($result->status === 'pending' || $result->status === 'error') {
+            Log::channel('fiscal')->debug('FiscalNoteService: reconciliação não mudou status', [
+                'fiscal_note_id' => $note->id,
+                'status' => $result->status,
+            ]);
+
+            return $note;
+        }
+
+        $data = $note->data ?? [];
+        $data['xml_url'] = $result->xmlUrl ?? $data['xml_url'] ?? null;
+        $data['danfe_url'] = $result->danfeUrl ?? $data['danfe_url'] ?? null;
+        $data['reconciled_at'] = now()->toIso8601String();
+
+        $note->update([
+            'status' => $result->status,
+            'access_key' => $result->accessKey ?? $note->access_key,
+            'data' => $data,
+        ]);
+
+        Log::channel('fiscal')->info('FiscalNoteService: status atualizado via reconciliação', [
+            'fiscal_note_id' => $note->id,
+            'status' => $note->status,
+        ]);
+
+        return $note->fresh();
+    }
+
     public function cancel(FiscalNote $note, string $justification): void
     {
         Log::channel('fiscal')->info('FiscalNoteService: cancelamento solicitado', [
