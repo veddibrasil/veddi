@@ -10,12 +10,18 @@ function csrfToken() {
 }
 
 function connectQz() {
-    if (qz.websocket.isActive()) {
-        return Promise.resolve();
-    }
-
+    // Checa qzConnection (promise em andamento) antes de isActive(): o socket
+    // fica em readyState CONNECTING logo apos criado, e isActive() considera
+    // isso "ativo" tambem — se checarmos isActive() primeiro, uma segunda
+    // impressao disparada em paralelo (varias estacoes) resolve na hora sem
+    // esperar o handshake terminar, e connection.sendData ainda nao existe
+    // nesse ponto (so e definido apos o "open" completar).
     if (qzConnection) {
         return qzConnection;
+    }
+
+    if (qz.websocket.isActive()) {
+        return Promise.resolve();
     }
 
     qz.security.setCertificatePromise((resolve, reject) => {
