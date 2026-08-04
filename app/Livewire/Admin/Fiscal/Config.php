@@ -179,6 +179,16 @@ class Config extends Component
             'certificatePassword' => ['nullable', 'string', 'max:255'],
         ]);
 
+        // IE é numérica em todos os estados, exceto o literal "ISENTO" usado quando a
+        // empresa não tem inscrição — normaliza pontuação/espaço digitados (ex: "123.456.789")
+        // pra digits-only, preservando "ISENTO" como está (já usado como default no payload
+        // da Focus NFe quando o campo fica em branco, ver registerWithFocusNfe()).
+        $ie = trim($this->inscricaoEstadual);
+        if ($ie !== '' && mb_strtoupper($ie) !== 'ISENTO') {
+            $ie = preg_replace('/\D/', '', $ie);
+        }
+        $this->inscricaoEstadual = $ie !== '' ? mb_strtoupper($ie) : '';
+
         // CNPJ não tem tela própria de edição — só é gravável aqui enquanto a empresa
         // ainda não foi registrada na Focus NFe; uma vez registrada, o campo fica
         // travado (disabled na view) para não divergir do que a Focus já reconhece

@@ -107,9 +107,10 @@
                                     </button>
                                 @endif
                                 @if($note->error_message)
-                                    <span class="text-red-500 dark:text-red-400 text-xs truncate max-w-[12rem]" title="{{ $note->error_message }}">
-                                        {{ $note->error_message }}
-                                    </span>
+                                    <button wire:click="openErrorModal({{ $note->id }})"
+                                        class="text-red-500 hover:text-red-700 dark:text-red-400 font-medium text-xs">
+                                        Ver erro
+                                    </button>
                                 @endif
                             </div>
                         </td>
@@ -130,6 +131,46 @@
             </div>
         @endif
     </div>
+
+    {{-- Error detail modal --}}
+    @if($showErrorModal && $errorNote)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-xl p-6 max-w-2xl w-full mx-4 max-h-[85vh] overflow-y-auto">
+                <h3 class="text-lg font-semibold text-neutral-800 dark:text-neutral-100 mb-4">Detalhe do erro — Nota #{{ $errorNote->id }}</h3>
+
+                <div class="space-y-4">
+                    <div>
+                        <h4 class="text-xs font-medium text-neutral-500 uppercase tracking-wide dark:text-neutral-400 mb-1">Mensagem</h4>
+                        <p class="text-sm text-red-600 dark:text-red-400 whitespace-pre-wrap">{{ $errorNote->error_message ?? '—' }}</p>
+                    </div>
+
+                    @if(!empty($errorNote->request_payload))
+                        <div>
+                            <h4 class="text-xs font-medium text-neutral-500 uppercase tracking-wide dark:text-neutral-400 mb-1">Parâmetros enviados à Focus NFe</h4>
+                            <pre class="text-xs bg-neutral-50 dark:bg-zinc-900 border dark:border-zinc-700 rounded-lg p-3 overflow-x-auto">{{ json_encode($errorNote->request_payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) }}</pre>
+                        </div>
+                    @endif
+
+                    @if(!empty($errorNote->raw_response))
+                        <div>
+                            <h4 class="text-xs font-medium text-neutral-500 uppercase tracking-wide dark:text-neutral-400 mb-1">Resposta bruta da Focus NFe</h4>
+                            <pre class="text-xs bg-neutral-50 dark:bg-zinc-900 border dark:border-zinc-700 rounded-lg p-3 overflow-x-auto">{{ json_encode($errorNote->raw_response, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) }}</pre>
+                        </div>
+                    @endif
+
+                    @if(empty($errorNote->request_payload) && empty($errorNote->raw_response))
+                        <p class="text-xs text-neutral-400 dark:text-neutral-500">
+                            Sem parâmetros/resposta registrados para esta tentativa (falha ocorreu antes do envio à Focus NFe).
+                        </p>
+                    @endif
+                </div>
+
+                <div class="flex justify-end mt-6">
+                    <flux:button wire:click="closeErrorModal" variant="ghost">Fechar</flux:button>
+                </div>
+            </div>
+        </div>
+    @endif
 
     {{-- Cancel modal --}}
     @if($showCancelModal)

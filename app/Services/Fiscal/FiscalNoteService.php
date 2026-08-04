@@ -85,6 +85,7 @@ class FiscalNoteService
                     'error_message' => $result->errorMessage,
                     'issued_at' => now()->toIso8601String(),
                     'raw_response' => $result->rawResponse,
+                    'request_payload' => $result->requestPayload,
                     'customer_cpf_cnpj' => $customerDocument,
                 ],
             ]);

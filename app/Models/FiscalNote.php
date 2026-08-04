@@ -49,6 +49,29 @@ class FiscalNote extends Model
         return $this->data['error_message'] ?? null;
     }
 
+    /**
+     * Resposta bruta da Focus NFe (JSON completo do body) para inspeção de erro —
+     * mensagem curta em error_message costuma esconder detalhes como o campo
+     * específico rejeitado ou o código do erro da SEFAZ.
+     *
+     * @return array<string, mixed>
+     */
+    public function getRawResponseAttribute(): array
+    {
+        return $this->data['raw_response'] ?? [];
+    }
+
+    /**
+     * Payload enviado à Focus NFe na tentativa de emissão — só existe quando a nota
+     * já foi para o provider (não em falhas anteriores, como validação local).
+     *
+     * @return array<string, mixed>
+     */
+    public function getRequestPayloadAttribute(): array
+    {
+        return $this->data['request_payload'] ?? [];
+    }
+
     public function isActive(): bool
     {
         return in_array($this->status, ['pending', 'authorized']);

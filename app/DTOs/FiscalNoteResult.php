@@ -12,6 +12,7 @@ readonly class FiscalNoteResult
         public ?string $danfeUrl = null,
         public ?string $errorMessage = null,
         public array $rawResponse = [],
+        public array $requestPayload = [],
     ) {}
 
     public function isSuccessful(): bool

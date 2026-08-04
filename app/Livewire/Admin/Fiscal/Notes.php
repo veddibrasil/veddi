@@ -29,6 +29,10 @@ class Notes extends Component
 
     public string $cancelJustification = '';
 
+    public bool $showErrorModal = false;
+
+    public ?int $errorNoteId = null;
+
     public function mount(): void
     {
         $company = app('current.company');
@@ -89,6 +93,18 @@ class Notes extends Component
         session()->flash('status', 'Cancelamento solicitado.');
     }
 
+    public function openErrorModal(int $noteId): void
+    {
+        $this->errorNoteId = $noteId;
+        $this->showErrorModal = true;
+    }
+
+    public function closeErrorModal(): void
+    {
+        $this->showErrorModal = false;
+        $this->errorNoteId = null;
+    }
+
     public function reissue(int $noteId): void
     {
         abort_unless($this->canIssue, 403);
@@ -127,6 +143,7 @@ class Notes extends Component
 
         return view('livewire.admin.fiscal.notes', [
             'notes' => $query->paginate(15),
+            'errorNote' => $this->errorNoteId ? FiscalNote::find($this->errorNoteId) : null,
         ])->layout('layouts.app', ['title' => 'Notas Fiscais']);
     }
 }

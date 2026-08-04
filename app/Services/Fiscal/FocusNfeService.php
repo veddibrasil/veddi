@@ -45,6 +45,7 @@ class FocusNfeService implements FiscalNoteProviderInterface
                     providerReference: $ref,
                     errorMessage: $body['mensagem'] ?? 'Erro de validação no Focus NFe',
                     rawResponse: $body,
+                    requestPayload: $payload,
                 );
             }
 
@@ -59,6 +60,7 @@ class FocusNfeService implements FiscalNoteProviderInterface
                     danfeUrl: self::absoluteUrl($body['caminho_danfe'] ?? null, $this->baseUrl),
                     errorMessage: $body['mensagem_sefaz'] ?? ($body['erros'][0]['mensagem'] ?? null),
                     rawResponse: $body,
+                    requestPayload: $payload,
                 );
             }
 
@@ -67,6 +69,7 @@ class FocusNfeService implements FiscalNoteProviderInterface
                 providerReference: $ref,
                 errorMessage: $body['mensagem'] ?? 'Erro na comunicação com Focus NFe',
                 rawResponse: $body,
+                requestPayload: $payload,
             );
         } catch (\Throwable $e) {
             Log::channel('fiscal')->error('Focus NFe: exceção ao emitir', [
@@ -77,6 +80,7 @@ class FocusNfeService implements FiscalNoteProviderInterface
             return new FiscalNoteResult(
                 status: 'error',
                 errorMessage: $e->getMessage(),
+                requestPayload: $payload,
             );
         }
     }
