@@ -121,6 +121,10 @@ class TabTerminal extends Component
 
     public string $newTableNumber = '';
 
+    // Nome opcional informado ao abrir comanda — só usado quando a mesa ainda não tem
+    // comanda vinculada nesta seleção (ver HasOpenTabs::buildTabLabel).
+    public string $tabCustomerName = '';
+
     public ?int $openTabOrderId = null;
 
     public ?int $closingTabOrderId = null;
@@ -206,6 +210,7 @@ class TabTerminal extends Component
         $this->search = '';
         $this->openTabOrderId = null;
         $this->selectedTableId = null;
+        $this->tabCustomerName = '';
         unset($this->branchServiceCharge);
 
         if ($this->isWaiter) {
@@ -354,6 +359,7 @@ class TabTerminal extends Component
         $this->selectedTableId = null;
         $this->openTabOrderId = null;
         $this->closingTabOrderId = null;
+        $this->tabCustomerName = '';
         $this->resetPaymentState();
     }
 

@@ -1,12 +1,15 @@
 <?php
 
+use App\Events\TabItemsReadyForProduction;
 use App\Events\TabOrderSentToProduction;
 use App\Jobs\IssueFiscalNote;
 use App\Livewire\Admin\Pdv\TabTerminal;
+use App\Models\BranchPrinter;
 use App\Models\BranchServiceCharge;
 use App\Models\CompanyFiscalConfig;
 use App\Models\Customer;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Payment;
 use App\Models\PdvCashSession;
 use App\Models\Product;
@@ -120,7 +123,7 @@ test('garçom não consegue cadastrar mesa', function () {
     expect(RestaurantTable::where('number', 3)->count())->toBe(0);
 });
 
-test('mesa ocupada some da lista de mesas disponíveis e não pode ser reaberta', function () {
+test('mesa ocupada continua disponível e reabrir cria uma segunda comanda distinta', function () {
     ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
 
     $table5 = RestaurantTable::create([
@@ -137,15 +140,38 @@ test('mesa ocupada some da lista de mesas disponíveis e não pode ser reaberta'
         ->call('addProduct', $product->id)
         ->assertHasNoErrors();
 
-    expect($component->get('availableTables'))->toHaveCount(0);
+    expect($component->get('availableTables'))->toHaveCount(1);
 
     $component
         ->call('deselectOpenTab')
         ->set('selectedTableId', $table5->id)
         ->call('addProduct', $product->id)
-        ->assertHasErrors('selectedTableId');
+        ->assertHasNoErrors();
 
-    expect(Order::withoutGlobalScopes()->count())->toBe(1);
+    $openOrders = Order::withoutGlobalScopes()
+        ->where('restaurant_table_id', $table5->id)
+        ->where('is_open_tab', true)
+        ->latest('id')
+        ->get();
+
+    expect($openOrders)->toHaveCount(2);
+    expect($openOrders->first()->table_label)->toBe('Mesa 5 (2)');
+});
+
+test('nome opcional informado ao abrir comanda vira sufixo do rótulo da mesa', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+    $table = openTable($company, $branch);
+
+    $this->actingAs($admin);
+
+    Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->set('tabCustomerName', 'João')
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    $order = Order::withoutGlobalScopes()->first();
+    expect($order->table_label)->toBe('Mesa 5 · João');
 });
 
 test('mesa desativada não aparece disponível no PDV', function () {
@@ -652,6 +678,129 @@ test('broadcast de comanda finalizada de outra filial não dispara nada nesta te
             'stations' => ['cozinha'],
         ])
         ->assertNotDispatched('tab-order-finalized');
+});
+
+// ─── Auto-impressão de item novo lançado na comanda (sem "Finalizar Pedido") ──
+
+test('lançar item na comanda com impressora auto_print na cozinha dispara TabItemsReadyForProduction e marca a quantidade enviada', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+    $table = openTable($company, $branch);
+
+    BranchPrinter::create([
+        'company_id' => $company->id, 'branch_id' => $branch->id, 'station' => 'cozinha',
+        'ip_address' => '192.168.0.20', 'port' => 9100, 'paper_width' => 80,
+        'auto_print' => true, 'active' => true,
+    ]);
+
+    $this->actingAs($admin);
+
+    Event::fake([TabItemsReadyForProduction::class]);
+
+    Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    $item = OrderItem::first();
+
+    expect($item->kitchen_sent_quantity)->toBe(1);
+
+    Event::assertDispatched(TabItemsReadyForProduction::class, fn ($event) => $event->stationItems['cozinha'][0]['id'] === $item->id
+        && $event->stationItems['cozinha'][0]['qty'] === 1);
+});
+
+test('lançar o mesmo produto de novo manda só a quantidade nova (delta), não a quantidade total', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+    $table = openTable($company, $branch);
+
+    BranchPrinter::create([
+        'company_id' => $company->id, 'branch_id' => $branch->id, 'station' => 'cozinha',
+        'ip_address' => '192.168.0.20', 'port' => 9100, 'paper_width' => 80,
+        'auto_print' => true, 'active' => true,
+    ]);
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    Event::fake([TabItemsReadyForProduction::class]);
+
+    // Mesmo produto, mesmas opções (nenhuma) — addOrIncrementItem funde na mesma linha.
+    $component->call('addProduct', $product->id)->assertHasNoErrors();
+
+    $item = OrderItem::first();
+
+    expect($item->quantity)->toBe(2);
+    expect($item->kitchen_sent_quantity)->toBe(2);
+
+    Event::assertDispatched(TabItemsReadyForProduction::class, fn ($event) => $event->stationItems['cozinha'][0]['id'] === $item->id
+        && $event->stationItems['cozinha'][0]['qty'] === 1);
+});
+
+test('lançar item sem impressora auto_print configurada não dispara TabItemsReadyForProduction', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+    $table = openTable($company, $branch);
+
+    $this->actingAs($admin);
+
+    Event::fake([TabItemsReadyForProduction::class]);
+
+    Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    $item = OrderItem::first();
+    expect($item->kitchen_sent_quantity)->toBe(0);
+
+    Event::assertNotDispatched(TabItemsReadyForProduction::class);
+});
+
+test('lançar item com impressora cozinha ativa mas auto_print desligado não dispara auto-print', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+    $table = openTable($company, $branch);
+
+    BranchPrinter::create([
+        'company_id' => $company->id, 'branch_id' => $branch->id, 'station' => 'cozinha',
+        'ip_address' => '192.168.0.20', 'port' => 9100, 'paper_width' => 80,
+        'auto_print' => false, 'active' => true,
+    ]);
+
+    $this->actingAs($admin);
+
+    Event::fake([TabItemsReadyForProduction::class]);
+
+    Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    Event::assertNotDispatched(TabItemsReadyForProduction::class);
+});
+
+test('broadcast de item pendente dispara tab-items-pending na filial certa e ignora filial errada', function () {
+    ['admin' => $admin, 'branch' => $branch] = pdvContext();
+
+    $this->actingAs($admin);
+
+    Livewire::test(TabTerminal::class)
+        ->call('onTabItemsReadyForProductionBroadcast', [
+            'order_id' => 321,
+            'branch_id' => $branch->id,
+            'stations' => ['cozinha' => [['id' => 1, 'qty' => 1]]],
+        ])
+        ->assertDispatched('tab-items-pending', orderId: 321);
+
+    Livewire::test(TabTerminal::class)
+        ->call('onTabItemsReadyForProductionBroadcast', [
+            'order_id' => 322,
+            'branch_id' => $branch->id + 999,
+            'stations' => ['cozinha' => [['id' => 1, 'qty' => 1]]],
+        ])
+        ->assertNotDispatched('tab-items-pending');
 });
 
 test('checkbox de imprimir nota fiscal só aparece com o módulo fiscal habilitado na empresa', function () {

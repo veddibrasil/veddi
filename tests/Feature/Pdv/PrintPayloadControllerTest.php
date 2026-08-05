@@ -179,6 +179,93 @@ test('cupom retorna 404 quando a impressora existe mas está inativa', function 
         ->assertNotFound();
 });
 
+// ─── Cupom de item novo (auto-print por lançamento na comanda) ────────────────
+
+test('pending-items retorna 404 pra estação fora de cozinha/bar', function () {
+    ['admin' => $admin, 'order' => $order] = printPayloadContext();
+
+    $this->actingAs($admin)
+        ->get(route('admin.pdv.print.pending-items', ['order' => $order, 'station' => 'geral']).'?items[1]=1')
+        ->assertNotFound();
+});
+
+test('pending-items retorna 404 sem impressora ativa na estação', function () {
+    ['admin' => $admin, 'order' => $order] = printPayloadContext();
+
+    $this->actingAs($admin)
+        ->get(route('admin.pdv.print.pending-items', ['order' => $order, 'station' => 'cozinha']).'?items[1]=1')
+        ->assertNotFound();
+});
+
+test('pending-items retorna 404 sem itens informados na query', function () {
+    ['admin' => $admin, 'order' => $order, 'branch' => $branch, 'company' => $company] = printPayloadContext();
+
+    BranchPrinter::create([
+        'company_id' => $company->id, 'branch_id' => $branch->id, 'station' => 'cozinha',
+        'ip_address' => '192.168.0.51', 'port' => 9100, 'paper_width' => 80, 'active' => true,
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('admin.pdv.print.pending-items', ['order' => $order, 'station' => 'cozinha']))
+        ->assertNotFound();
+});
+
+test('pending-items monta cupom só com o item e a quantidade pedidos, não a quantidade real do item', function () {
+    ['admin' => $admin, 'order' => $order, 'branch' => $branch, 'company' => $company] = printPayloadContext();
+
+    BranchPrinter::create([
+        'company_id' => $company->id, 'branch_id' => $branch->id, 'station' => 'cozinha',
+        'ip_address' => '192.168.0.51', 'port' => 9100, 'paper_width' => 80, 'active' => true,
+    ]);
+
+    $item = $order->items()->first();
+    $item->update(['quantity' => 3, 'subtotal' => 30]);
+
+    // Pediu só 1 (a quantidade nova, delta) mesmo o item tendo 3 no total —
+    // simula 2 já enviados antes e 1 recém lançado.
+    $response = $this->actingAs($admin)
+        ->get(route('admin.pdv.print.pending-items', ['order' => $order, 'station' => 'cozinha']).'?items['.$item->id.']=1')
+        ->assertOk()
+        ->json();
+
+    $payload = base64_decode($response['payload']);
+    expect($payload)->toContain('1x Coxinha');
+    expect($payload)->not->toContain('3x Coxinha');
+});
+
+test('pending-items limita a quantidade pedida à quantidade real do item, contra manipulação da query', function () {
+    ['admin' => $admin, 'order' => $order, 'branch' => $branch, 'company' => $company] = printPayloadContext();
+
+    BranchPrinter::create([
+        'company_id' => $company->id, 'branch_id' => $branch->id, 'station' => 'cozinha',
+        'ip_address' => '192.168.0.51', 'port' => 9100, 'paper_width' => 80, 'active' => true,
+    ]);
+
+    $item = $order->items()->first(); // quantity = 1
+
+    $response = $this->actingAs($admin)
+        ->get(route('admin.pdv.print.pending-items', ['order' => $order, 'station' => 'cozinha']).'?items['.$item->id.']=99')
+        ->assertOk()
+        ->json();
+
+    $payload = base64_decode($response['payload']);
+    expect($payload)->toContain('1x Coxinha');
+    expect($payload)->not->toContain('99x Coxinha');
+});
+
+test('pending-items ignora id de item que não pertence ao pedido', function () {
+    ['admin' => $admin, 'order' => $order, 'branch' => $branch, 'company' => $company] = printPayloadContext();
+
+    BranchPrinter::create([
+        'company_id' => $company->id, 'branch_id' => $branch->id, 'station' => 'cozinha',
+        'ip_address' => '192.168.0.51', 'port' => 9100, 'paper_width' => 80, 'active' => true,
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('admin.pdv.print.pending-items', ['order' => $order, 'station' => 'cozinha']).'?items[999999]=1')
+        ->assertNotFound();
+});
+
 test('nota fiscal retorna 404 quando não há nota autorizada', function () {
     ['admin' => $admin, 'order' => $order] = printPayloadContext();
 

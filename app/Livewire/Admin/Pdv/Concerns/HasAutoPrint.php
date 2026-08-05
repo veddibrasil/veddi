@@ -16,6 +16,7 @@ trait HasAutoPrint
             ? [
                 "echo:orders.{$companyId},NewOrderPlaced" => 'onOrderBroadcastReceived',
                 "echo:orders.{$companyId},TabOrderSentToProduction" => 'onTabOrderSentToProductionBroadcast',
+                "echo:orders.{$companyId},TabItemsReadyForProduction" => 'onTabItemsReadyForProductionBroadcast',
             ]
             : [];
     }
@@ -85,6 +86,27 @@ trait HasAutoPrint
         }
 
         $this->dispatch('tab-order-finalized', orderId: $event['order_id'], stations: $stations);
+    }
+
+    /**
+     * Item novo lançado numa comanda em qualquer tela da filial — o que precisa ser
+     * impresso (item+quantidade) já veio pronto no payload, decidido atomicamente
+     * no momento do lançamento (ver HasOpenTabs::notifyPendingProductionItems).
+     * Aqui só repassa pro JS montar e mandar pro QZ Tray.
+     */
+    public function onTabItemsReadyForProductionBroadcast(array $event): void
+    {
+        if ((int) ($event['branch_id'] ?? 0) !== (int) $this->selectedBranchId) {
+            return;
+        }
+
+        $stations = collect($event['stations'] ?? [])->filter(fn ($items) => ! empty($items));
+
+        if ($stations->isEmpty()) {
+            return;
+        }
+
+        $this->dispatch('tab-items-pending', orderId: $event['order_id'], stations: $stations);
     }
 
     /**

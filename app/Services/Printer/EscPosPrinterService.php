@@ -7,6 +7,7 @@ use App\Models\BranchPrinter;
 use App\Models\Company;
 use App\Models\FiscalNote;
 use App\Models\Order;
+use Illuminate\Support\Collection;
 use Mike42\Escpos\PrintConnectors\MemoryPrintConnector;
 use Mike42\Escpos\Printer;
 
@@ -40,7 +41,7 @@ class EscPosPrinterService implements PrinterServiceInterface
         return true;
     }
 
-    public function buildOrderReceipt(Order $order, string $station, ?Company $company = null, bool $full = false): string
+    public function buildOrderReceipt(Order $order, string $station, ?Company $company = null, bool $full = false, ?Collection $itemsOverride = null): string
     {
         $connector = new MemoryPrintConnector;
         $printer = new Printer($connector);
@@ -56,7 +57,7 @@ class EscPosPrinterService implements PrinterServiceInterface
         if ($label !== null) {
             $printer->feed();
             $printer->setEmphasis(true);
-            $printer->text("== {$label} ==\n");
+            $printer->text($itemsOverride !== null ? "== {$label} - ITEM NOVO ==\n" : "== {$label} ==\n");
             $printer->setEmphasis(false);
         }
 
@@ -82,6 +83,7 @@ class EscPosPrinterService implements PrinterServiceInterface
         $this->divider($printer);
 
         $items = match (true) {
+            $itemsOverride !== null => $itemsOverride,
             $full, in_array($station, ['geral', 'entrega'], true) => $order->items,
             default => $order->items->filter(fn ($item) => $item->matchesStation($station))->values(),
         };

@@ -4,7 +4,9 @@ namespace App\Livewire\Admin\Pdv\Concerns;
 
 use App\Events\NewOrderPlaced;
 use App\Events\OrderStatusUpdated;
+use App\Events\TabItemsReadyForProduction;
 use App\Events\TabOrderSentToProduction;
+use App\Models\BranchPrinter;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
@@ -31,6 +33,7 @@ trait HasOpenTabs
         $this->selectedTableId = null;
         $this->openTabOrderId = null;
         $this->viewingTabItemsOrderId = null;
+        $this->tabCustomerName = '';
     }
 
     public function selectOpenTab(int $orderId): void
@@ -47,6 +50,7 @@ trait HasOpenTabs
     {
         $this->openTabOrderId = null;
         $this->selectedTableId = null;
+        $this->tabCustomerName = '';
     }
 
     /** Cadastro rápido de mesa direto do terminal, sem sair pra tela de configurações da filial. */
@@ -141,7 +145,7 @@ trait HasOpenTabs
                 $order->update([
                     'pdv_cash_session_id' => $this->cashSessionId,
                     'is_open_tab' => true,
-                    'table_label' => 'Mesa '.$table->number,
+                    'table_label' => $this->buildTabLabel($table, $this->tabCustomerName),
                     'restaurant_table_id' => $table->id,
                 ]);
 
@@ -167,8 +171,62 @@ trait HasOpenTabs
             return;
         }
 
+        $this->notifyPendingProductionItems($order);
+
         unset($this->openTabs);
         unset($this->availableTables);
+    }
+
+    /**
+     * Item novo lançado (ou incrementado) na comanda — se a filial tem impressora com
+     * auto_print ativo em cozinha/bar, avisa a produção sozinha, sem esperar o
+     * garçom clicar em "Finalizar Pedido". A quantidade é marcada como enviada
+     * aqui mesmo, antes do broadcast: decidir "o que ainda não foi impresso" tem
+     * que ser atômico nesta requisição — se ficasse pra quem recebe o broadcast
+     * recalcular depois, duas telas de PDV abertas na mesma filial poderiam
+     * calcular pendências diferentes ou brigar por quem consome o item primeiro.
+     */
+    private function notifyPendingProductionItems(Order $order): void
+    {
+        $items = OrderItem::where('order_id', $order->id)->get();
+        $stationItems = [];
+
+        foreach (['cozinha', 'bar'] as $station) {
+            $pending = $items
+                ->map(fn (OrderItem $item) => ['item' => $item, 'qty' => $item->pendingQuantityForStation($station)])
+                ->filter(fn (array $entry) => $entry['qty'] > 0);
+
+            if ($pending->isEmpty()) {
+                continue;
+            }
+
+            $hasAutoPrintPrinter = BranchPrinter::where('branch_id', $order->branch_id)
+                ->where('station', $station)
+                ->where('auto_print', true)
+                ->where('active', true)
+                ->exists();
+
+            if (! $hasAutoPrintPrinter) {
+                continue;
+            }
+
+            $sentColumn = $station === 'cozinha' ? 'kitchen_sent_quantity' : 'bar_sent_quantity';
+
+            foreach ($pending as $entry) {
+                $entry['item']->update([$sentColumn => $entry['item']->quantity]);
+            }
+
+            $stationItems[$station] = $pending
+                ->map(fn (array $entry) => ['id' => $entry['item']->id, 'qty' => $entry['qty']])
+                ->values()
+                ->all();
+        }
+
+        if ($stationItems === []) {
+            return;
+        }
+
+        TabItemsReadyForProduction::dispatch($order, $stationItems);
     }
 
     /**
@@ -397,6 +455,27 @@ trait HasOpenTabs
         $this->step = 'catalog';
     }
 
+    /**
+     * Rótulo da comanda: com nome informado, "Mesa N · Nome"; sem nome, mesa livre vira só
+     * "Mesa N" e mesa que já tem comanda(s) aberta(s) ganha sufixo sequencial "Mesa N (2)" —
+     * evita dois cards idênticos quando mais de uma comanda abre na mesma mesa.
+     */
+    private function buildTabLabel(RestaurantTable $table, string $customerName): string
+    {
+        $name = trim($customerName);
+
+        if ($name !== '') {
+            return "Mesa {$table->number} · {$name}";
+        }
+
+        $openCount = Order::withoutGlobalScopes()
+            ->where('restaurant_table_id', $table->id)
+            ->where('is_open_tab', true)
+            ->count();
+
+        return $openCount > 0 ? "Mesa {$table->number} (".($openCount + 1).')' : "Mesa {$table->number}";
+    }
+
     // ── Computed ──────────────────────────────────────────────────────────────
 
     /** Memoiza a comanda em fechamento — evita 3 finds() repetidos (cartTotal, service fee, couvert). */
@@ -457,7 +536,11 @@ trait HasOpenTabs
         return OrderItem::where('order_id', $this->closingTabOrderId)->get();
     }
 
-    /** Mesas pré-cadastradas da filial que a empresa optou por usar (não estão ocupadas por comanda aberta). */
+    /**
+     * Mesas pré-cadastradas da filial que a empresa optou por usar. Inclui mesa já ocupada por
+     * comanda aberta — clicar nela abre uma comanda adicional, independente das existentes (ver
+     * {@see buildTabLabel} pra como cada uma fica identificada).
+     */
     #[Computed]
     public function availableTables(): Collection
     {
@@ -465,11 +548,8 @@ trait HasOpenTabs
             return collect();
         }
 
-        $occupiedIds = $this->openTabs->pluck('restaurant_table_id')->filter()->all();
-
         return RestaurantTable::where('branch_id', $this->selectedBranchId)
             ->where('active', true)
-            ->whereNotIn('id', $occupiedIds)
             ->orderBy('number')
             ->get();
     }

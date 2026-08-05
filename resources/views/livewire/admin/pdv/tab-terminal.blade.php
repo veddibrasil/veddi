@@ -198,11 +198,17 @@
                                 </p>
                                 <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
                                     @foreach ($this->availableTables as $table)
+                                        @php $tableOpenCount = $this->openTabs->where('restaurant_table_id', $table->id)->count(); @endphp
                                         <button
                                             type="button"
                                             wire:click="$set('selectedTableId', {{ $table->id }})"
-                                            class="rounded-xl border-2 border-neutral-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 py-4 text-center hover:border-amber-400 hover:shadow-md transition-all"
+                                            class="relative rounded-xl border-2 py-4 text-center transition-all {{ $tableOpenCount > 0 ? 'border-amber-300 bg-amber-50 hover:border-amber-500 dark:border-amber-800/60 dark:bg-amber-900/10' : 'border-neutral-200 bg-white hover:border-amber-400 hover:shadow-md dark:border-zinc-700 dark:bg-zinc-900' }}"
                                         >
+                                            @if ($tableOpenCount > 0)
+                                                <span class="absolute -top-2 -right-2 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white shadow dark:bg-amber-400 dark:text-amber-950">
+                                                    {{ $tableOpenCount }} {{ $tableOpenCount === 1 ? 'aberta' : 'abertas' }}
+                                                </span>
+                                            @endif
                                             <span class="block text-[10px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Mesa</span>
                                             <span class="block text-xl font-black text-neutral-800 dark:text-neutral-100">{{ $table->number }}</span>
                                         </button>
@@ -689,6 +695,20 @@
                                     Nova comanda
                                 </button>
                             </div>
+
+                            {{-- Nome opcional pra identificar esta comanda entre outras da mesma mesa
+                                 (vira sufixo do table_label) — só antes do primeiro item, depois some. --}}
+                            @if ($selectedTableId && ! $openTabOrderId)
+                                <div class="px-4 pt-2 pb-1 shrink-0 bg-white dark:bg-zinc-900">
+                                    <input
+                                        type="text"
+                                        wire:model="tabCustomerName"
+                                        placeholder="Nome do cliente (opcional)"
+                                        maxlength="40"
+                                        class="w-full rounded-lg border border-neutral-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-neutral-800 dark:text-neutral-100 placeholder:text-neutral-400 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 outline-none"
+                                    />
+                                </div>
+                            @endif
 
                             @error('order')
                                 <p class="mx-4 mt-3 text-xs font-semibold text-red-600 dark:text-red-400">{{ $message }}</p>

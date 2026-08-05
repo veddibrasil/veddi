@@ -9,6 +9,7 @@ class OrderItem extends Model
 {
     protected $fillable = [
         'order_id', 'product_id', 'product_name', 'unit_price', 'quantity', 'subtotal', 'options',
+        'kitchen_sent_quantity', 'bar_sent_quantity',
     ];
 
     protected $casts = [
@@ -41,5 +42,31 @@ class OrderItem extends Model
         $itemStation = $this->product?->category?->station;
 
         return $itemStation === null || $itemStation === $station;
+    }
+
+    /**
+     * Quanto desta linha ainda não foi mandado pra produção na estação informada.
+     * addOrIncrementItem() funde quantidade nova na mesma linha (mesmo id) quando o
+     * produto+opções repete — sem isso não dá pra saber "já imprimi 2, chegou +1"
+     * sem reimprimir os 2 de novo. Só cozinha/bar têm contador; 'geral'/'entrega'
+     * sempre voltam 0 aqui (a via deles é o cupom de venda completo, não item a item).
+     */
+    public function pendingQuantityForStation(string $station): int
+    {
+        if (! $this->matchesStation($station)) {
+            return 0;
+        }
+
+        $sentColumn = match ($station) {
+            'cozinha' => 'kitchen_sent_quantity',
+            'bar' => 'bar_sent_quantity',
+            default => null,
+        };
+
+        if ($sentColumn === null) {
+            return 0;
+        }
+
+        return max(0, $this->quantity - $this->{$sentColumn});
     }
 }
