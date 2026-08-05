@@ -74,7 +74,10 @@ async function sendToPrinter(printer, base64Payload) {
     if (printer.connection_type === 'usb') {
         // Impressora USB instalada como impressora do SO (driver do fabricante) —
         // QZ Tray manda os mesmos bytes ESC/POS pelo nome da impressora, sem IP/porta.
-        const config = qz.configs.create(printer.name);
+        // forceRaw evita que o driver do Windows tente interpretar os bytes ESC/POS
+        // como documento normal — sem isso o job "conclui" no QZ Tray mas nao sai
+        // nada fisicamente na impressora.
+        const config = qz.configs.create(printer.name, { forceRaw: true });
 
         await qz.print(config, [{ type: 'raw', format: 'command', flavor: 'base64', data: base64Payload }]);
 
