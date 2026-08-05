@@ -19,7 +19,10 @@ function bindPdvGlobalListenersOnce() {
     window.addEventListener('pdv-barcode-processed', () => pdvActiveInstance?._focusBarcode());
     window.addEventListener('product-added-to-cart', (e) => pdvActiveInstance?.showToast(`${e.detail.name} adicionado ao carrinho`));
     window.addEventListener('order-paid', (e) => pdvActiveInstance?._handleOrderPaid(e.detail));
-    window.addEventListener('tab-order-finalized', (e) => pdvActiveInstance?._handleTabOrderFinalized(e.detail));
+    window.addEventListener('tab-order-finalized', (e) => {
+        console.log('[auto-print] window recebeu evento tab-order-finalized', e.detail, '| instancia Alpine ativa?', !!pdvActiveInstance);
+        pdvActiveInstance?._handleTabOrderFinalized(e.detail);
+    });
     window.addEventListener('pdv-toast', (e) => pdvActiveInstance?.showToast(e.detail.message));
 
     window.addEventListener('keydown', (e) => {

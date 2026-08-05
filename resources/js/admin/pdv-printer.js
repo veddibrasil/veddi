@@ -27,6 +27,8 @@ function isBase64Signature(text) {
 }
 
 function connectQz() {
+    console.log('[auto-print] connectQz: iniciando (qzConnection em cache?', !!qzConnection, '| websocket ativo?', qz.websocket.isActive(), ')');
+
     // Sem isso, qzConnection guarda a promise resolvida da PRIMEIRA conexao pra
     // sempre — se o QZ Tray fechar ou a rede cair depois, o cache continua
     // "verdadeiro" e o proximo print pula reconexao, batendo direto num socket
@@ -35,6 +37,7 @@ function connectQz() {
     // verdade, forcando reconexao no proximo print.
     if (!closedCallbackRegistered) {
         qz.websocket.setClosedCallbacks(() => {
+            console.warn('[auto-print] QZ Tray: socket fechou, limpando cache de conexao');
             qzConnection = null;
         });
         closedCallbackRegistered = true;
@@ -47,12 +50,18 @@ function connectQz() {
     // esperar o handshake terminar, e connection.sendData ainda nao existe
     // nesse ponto (so e definido apos o "open" completar).
     if (qzConnection) {
+        console.log('[auto-print] connectQz: reusando conexao em andamento/estabelecida');
+
         return qzConnection;
     }
 
     if (qz.websocket.isActive()) {
+        console.log('[auto-print] connectQz: websocket ja ativo, sem reconectar');
+
         return Promise.resolve();
     }
+
+    console.log('[auto-print] connectQz: sem conexao ativa, abrindo websocket com QZ Tray...');
 
     qz.security.setCertificatePromise((resolve, reject) => {
         fetch('/admin/pdv/qz-certificate')
@@ -65,7 +74,10 @@ function connectQz() {
                 return text;
             })
             .then(resolve)
-            .catch(reject);
+            .catch((err) => {
+                console.error('[auto-print] connectQz: falha ao buscar certificado', err);
+                reject(err);
+            });
     });
 
     qz.security.setSignatureAlgorithm('SHA512');
@@ -87,18 +99,30 @@ function connectQz() {
                 return text;
             })
             .then(resolve)
-            .catch(reject);
+            .catch((err) => {
+                console.error('[auto-print] connectQz: falha ao assinar requisicao', err);
+                reject(err);
+            });
     });
 
-    qzConnection = qz.websocket.connect().catch((err) => {
-        qzConnection = null;
-        throw err;
-    });
+    qzConnection = qz.websocket.connect()
+        .then((res) => {
+            console.log('[auto-print] connectQz: websocket conectado com sucesso');
+
+            return res;
+        })
+        .catch((err) => {
+            console.error('[auto-print] connectQz: falha ao conectar no websocket do QZ Tray (QZ Tray fechado/nao instalado?)', err);
+            qzConnection = null;
+            throw err;
+        });
 
     return qzConnection;
 }
 
 async function sendToPrinter(printer, base64Payload) {
+    console.log('[auto-print] sendToPrinter: iniciando', { connection_type: printer.connection_type, ip: printer.ip, port: printer.port, name: printer.name });
+
     await connectQz();
 
     if (printer.connection_type === 'usb') {
@@ -109,31 +133,42 @@ async function sendToPrinter(printer, base64Payload) {
         // nada fisicamente na impressora.
         const config = qz.configs.create(printer.name, { forceRaw: true });
 
+        console.log('[auto-print] sendToPrinter: enviando via USB pra', printer.name);
         await qz.print(config, [{ type: 'raw', format: 'command', flavor: 'base64', data: base64Payload }]);
+        console.log('[auto-print] sendToPrinter: qz.print concluido (USB)', printer.name);
 
         return;
     }
 
+    console.log('[auto-print] sendToPrinter: abrindo socket de rede', printer.ip, printer.port);
     await qz.socket.open(printer.ip, printer.port);
 
     try {
+        console.log('[auto-print] sendToPrinter: enviando dados pro socket', printer.ip, printer.port);
         await qz.socket.sendData(printer.ip, printer.port, { data: base64Payload, type: 'BASE64' });
+        console.log('[auto-print] sendToPrinter: dados enviados com sucesso', printer.ip, printer.port);
     } finally {
         await qz.socket.close(printer.ip, printer.port);
     }
 }
 
 async function fetchAndPrint(url) {
+    console.log('[auto-print] fetchAndPrint: buscando payload em', url);
+
     const res = await fetch(url, { headers: { Accept: 'application/json' } });
 
     if (!res.ok) {
         // 404 = filial nao tem impressora configurada pra essa estacao/nota —
         // config valida de quem nao quer auto-print, nao e erro.
+        console.warn('[auto-print] fetchAndPrint: resposta não-ok, abortando sem imprimir', url, res.status);
+
         return;
     }
 
     const { printer, payload } = await res.json();
+    console.log('[auto-print] fetchAndPrint: payload recebido, mandando pra impressora', url, { printer });
     await sendToPrinter(printer, payload);
+    console.log('[auto-print] fetchAndPrint: impressão concluída sem erro', url);
 }
 
 // Falha de impressao (QZ Tray fechado, impressora offline, etc.) nunca deve
@@ -152,9 +187,11 @@ export function autoPrintOrderReceipt(orderId, stations, onError) {
 // cada impressora configurada da filial — cozinha/bar recebem o pedido inteiro,
 // não só os itens deles, porque a mesma via serve de guia de entrega pro garçom.
 export function autoPrintTabOrderTicket(orderId, stations, onError) {
+    console.log('[auto-print] autoPrintTabOrderTicket: chamado', { orderId, stations });
+
     (stations || []).forEach((station) => {
         fetchAndPrint(`/admin/pdv/print/receipt/${orderId}/${station}?full=1`).catch((err) => {
-            console.warn('[pdv-printer] falha ao imprimir via da mesa', station, err);
+            console.error('[auto-print] falha ao imprimir via da mesa', station, err);
             onError?.(station, err);
         });
     });
