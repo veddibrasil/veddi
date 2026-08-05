@@ -18,7 +18,7 @@ function connectQz() {
     // proprio qz.print). O closedCallback zera o cache quando o socket cai de
     // verdade, forcando reconexao no proximo print.
     if (!closedCallbackRegistered) {
-        qz.websocket.setClosedCallback(() => {
+        qz.websocket.setClosedCallbacks(() => {
             qzConnection = null;
         });
         closedCallbackRegistered = true;
