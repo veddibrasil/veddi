@@ -35,6 +35,9 @@ class Index extends Component
     /** Estação do usuário logado ('cozinha'|'bar'|'entrega') quando o papel é restrito a uma estação, senão null. */
     public ?string $userStation = null;
 
+    /** Filial do usuário logado quando o papel é restrito a uma (cozinha/bar/entrega/garçom/caixa), senão null. */
+    public ?int $userBranchId = null;
+
     #[Url]
     public string $viewMode = 'list';
 
@@ -73,6 +76,10 @@ class Index extends Component
 
             $roleSlug = $user->roleForCompany($company);
             $this->userStation = in_array($roleSlug, ['cozinha', 'bar', 'entrega']) ? $roleSlug : null;
+
+            if ($this->userStation !== null) {
+                $this->userBranchId = $user->branchIdForCompany($company);
+            }
         }
 
         // Cozinha, bar e entrega usam fila de cards mobile própria (sem kanban) — força a lista.
@@ -88,11 +95,49 @@ class Index extends Component
             return [];
         }
 
-        return [
+        $listeners = [
             "echo:orders.{$this->companyId},NewOrderPlaced" => '$refresh',
             "echo:orders.{$this->companyId},OrderStatusUpdated" => '$refresh',
             "echo:orders.{$this->companyId},OrderItemsUpdated" => '$refresh',
         ];
+
+        // "Minha fila" é a tela que cozinha/bar realmente usa no dia a dia (não tem
+        // pdv.operate/pdv.waiter_operate pra acessar o Terminal/Mesas do PDV) — sem
+        // este listener aqui, "Finalizar Pedido" do garçom nunca chega em lugar
+        // nenhum que essas roles conseguem abrir.
+        if (in_array($this->userStation, ['cozinha', 'bar'], true)) {
+            $listeners["echo:orders.{$this->companyId},TabOrderSentToProduction"] = 'onTabOrderSentToProductionBroadcast';
+        }
+
+        return $listeners;
+    }
+
+    /**
+     * Garçom mandou a comanda pra produção — filtra só a estação deste usuário
+     * (cozinha só reage a via de cozinha, bar só à de bar) e a filial dele, quando
+     * a role tiver uma associada. Mesmo evento/payload que já alimenta o PDV (ver
+     * HasAutoPrint::onTabOrderSentToProductionBroadcast).
+     */
+    public function onTabOrderSentToProductionBroadcast(array $event): void
+    {
+        if ($this->userBranchId !== null && (int) ($event['branch_id'] ?? 0) !== $this->userBranchId) {
+            return;
+        }
+
+        $stations = collect($event['stations'] ?? [])->filter(fn ($station) => $station === $this->userStation)->values();
+
+        if ($stations->isEmpty()) {
+            return;
+        }
+
+        Log::channel('orders')->info('[auto-print] fila cozinha/bar recebeu TabOrderSentToProduction, repassando pro JS imprimir', [
+            'order_id' => $event['order_id'] ?? null,
+            'user_station' => $this->userStation,
+            'user_branch_id' => $this->userBranchId,
+            'stations' => $stations->all(),
+        ]);
+
+        $this->dispatch('tab-order-finalized', orderId: $event['order_id'], stations: $stations);
     }
 
     public function updatingSearch(): void

@@ -1,4 +1,4 @@
-<div class="space-y-4">
+<div class="space-y-4" x-data="stationPrintListener()">
 @if ($userStation === 'entrega')
     {{-- ── ENTREGA: fila mobile em cards, sem kanban ──────────────────────── --}}
     <div class="flex items-center justify-between">

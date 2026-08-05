@@ -4,6 +4,7 @@ window.QRCode = QRCode;
 import './admin/order-show.js';
 import './admin/pdv-app.js';
 import './admin/orders-kanban.js';
+import './admin/kitchen-print.js';
 import './chat/map-picker.js';
 import './chat/branch-locator.js';
 import './chat/chat-app.js';

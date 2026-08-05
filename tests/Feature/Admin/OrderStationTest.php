@@ -935,3 +935,82 @@ test('Notifications (toast) ignora pedido de outra estação pra cozinha', funct
         ->call('onNewOrder', ['order_id' => 2, 'order_number' => 'X-2', 'customer_name' => 'Cliente', 'total' => 10, 'is_kitchen' => true, 'is_bar' => false])
         ->assertCount('notifications', 1);
 });
+
+// ─── "Minha fila" (Orders/Index) imprime quando garçom finaliza a comanda ─────
+// Cozinha/bar não têm pdv.operate nem pdv.waiter_operate — não acessam o
+// Terminal/Mesas do PDV, então "Minha fila" precisa do próprio listener de
+// TabOrderSentToProduction pra imprimir (ver HasAutoPrint pro equivalente no PDV).
+
+test('getListeners inclui TabOrderSentToProduction pra cozinha/bar, mas não pra entrega nem admin', function () {
+    ['company' => $company] = stationOrderContext();
+    $cozinha = makeStationUser($company, 'cozinha');
+    $bar = makeStationUser($company, 'bar');
+    $entrega = makeStationUser($company, 'entrega');
+
+    $this->actingAs($cozinha);
+    $listeners = Livewire::test(OrdersIndex::class)->instance()->getListeners();
+    expect($listeners)->toHaveKey("echo:orders.{$company->id},TabOrderSentToProduction");
+
+    $this->actingAs($bar);
+    $listeners = Livewire::test(OrdersIndex::class)->instance()->getListeners();
+    expect($listeners)->toHaveKey("echo:orders.{$company->id},TabOrderSentToProduction");
+
+    $this->actingAs($entrega);
+    $listeners = Livewire::test(OrdersIndex::class)->instance()->getListeners();
+    expect($listeners)->not->toHaveKey("echo:orders.{$company->id},TabOrderSentToProduction");
+});
+
+test('cozinha recebe broadcast de comanda finalizada e dispara tab-order-finalized só com a estação dela', function () {
+    ['company' => $company] = stationOrderContext();
+    $cozinha = makeStationUser($company, 'cozinha');
+
+    $this->actingAs($cozinha);
+
+    Livewire::test(OrdersIndex::class)
+        ->call('onTabOrderSentToProductionBroadcast', [
+            'order_id' => 777,
+            'branch_id' => 1,
+            'stations' => ['geral', 'cozinha', 'bar'],
+        ])
+        ->assertDispatched('tab-order-finalized', fn ($name, $params) => $params['orderId'] === 777
+            && collect($params['stations'])->values()->all() === ['cozinha']);
+});
+
+test('bar ignora broadcast sem estação bar', function () {
+    ['company' => $company] = stationOrderContext();
+    $bar = makeStationUser($company, 'bar');
+
+    $this->actingAs($bar);
+
+    Livewire::test(OrdersIndex::class)
+        ->call('onTabOrderSentToProductionBroadcast', [
+            'order_id' => 778,
+            'branch_id' => 1,
+            'stations' => ['geral', 'cozinha'],
+        ])
+        ->assertNotDispatched('tab-order-finalized');
+});
+
+test('cozinha com filial associada ignora broadcast de outra filial', function () {
+    ['company' => $company, 'branch' => $branch] = stationOrderContext();
+    $cozinha = User::factory()->create();
+    $cozinha->companies()->attach($company->id, ['role' => 'cozinha', 'branch_id' => $branch->id]);
+
+    $this->actingAs($cozinha);
+
+    Livewire::test(OrdersIndex::class)
+        ->call('onTabOrderSentToProductionBroadcast', [
+            'order_id' => 779,
+            'branch_id' => $branch->id + 999,
+            'stations' => ['cozinha'],
+        ])
+        ->assertNotDispatched('tab-order-finalized');
+
+    Livewire::test(OrdersIndex::class)
+        ->call('onTabOrderSentToProductionBroadcast', [
+            'order_id' => 780,
+            'branch_id' => $branch->id,
+            'stations' => ['cozinha'],
+        ])
+        ->assertDispatched('tab-order-finalized', orderId: 780);
+});
