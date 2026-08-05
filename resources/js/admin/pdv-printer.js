@@ -4,12 +4,26 @@ import qz from 'qz-tray';
 // impressora via socket raw na rede local. Sem isso, o Laravel remoto nao
 // tem como alcancar o hardware fisico do caixa.
 let qzConnection = null;
+let closedCallbackRegistered = false;
 
 function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
 }
 
 function connectQz() {
+    // Sem isso, qzConnection guarda a promise resolvida da PRIMEIRA conexao pra
+    // sempre — se o QZ Tray fechar ou a rede cair depois, o cache continua
+    // "verdadeiro" e o proximo print pula reconexao, batendo direto num socket
+    // morto (erro "connection ... has not been established yet" dentro do
+    // proprio qz.print). O closedCallback zera o cache quando o socket cai de
+    // verdade, forcando reconexao no proximo print.
+    if (!closedCallbackRegistered) {
+        qz.websocket.setClosedCallback(() => {
+            qzConnection = null;
+        });
+        closedCallbackRegistered = true;
+    }
+
     // Checa qzConnection (promise em andamento) antes de isActive(): o socket
     // fica em readyState CONNECTING logo apos criado, e isActive() considera
     // isso "ativo" tambem — se checarmos isActive() primeiro, uma segunda
