@@ -125,6 +125,11 @@ class TabTerminal extends Component
     // comanda vinculada nesta seleção (ver HasOpenTabs::buildTabLabel).
     public string $tabCustomerName = '';
 
+    // Marca que o operador escolheu explicitamente abrir uma comanda nova numa mesa
+    // que já tem outra(s) aberta(s) — sem isso, mesa ocupada sempre cai na tela de
+    // escolha em vez de ir direto pro catálogo.
+    public bool $openingNewTabForTable = false;
+
     public ?int $openTabOrderId = null;
 
     public ?int $closingTabOrderId = null;
@@ -211,6 +216,7 @@ class TabTerminal extends Component
         $this->openTabOrderId = null;
         $this->selectedTableId = null;
         $this->tabCustomerName = '';
+        $this->openingNewTabForTable = false;
         unset($this->branchServiceCharge);
 
         if ($this->isWaiter) {
@@ -360,6 +366,7 @@ class TabTerminal extends Component
         $this->openTabOrderId = null;
         $this->closingTabOrderId = null;
         $this->tabCustomerName = '';
+        $this->openingNewTabForTable = false;
         $this->resetPaymentState();
     }
 

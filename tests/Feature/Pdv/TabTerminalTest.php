@@ -174,6 +174,60 @@ test('nome opcional informado ao abrir comanda vira sufixo do rótulo da mesa', 
     expect($order->table_label)->toBe('Mesa 5 · João');
 });
 
+test('mesa com comandas abertas mostra tela de escolha em vez de ir direto pro catálogo', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+    $table = openTable($company, $branch);
+
+    $this->actingAs($admin);
+
+    Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->call('deselectOpenTab')
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->call('deselectOpenTab');
+
+    $component = Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id);
+
+    $component->assertSee('Escolha uma comanda ou abra uma nova.');
+    $component->assertDontSee('aguardando itens');
+});
+
+test('nova comanda nesta mesa bypassa a tela de escolha e cria uma terceira comanda', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+    $table = openTable($company, $branch);
+
+    $this->actingAs($admin);
+
+    Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->call('deselectOpenTab')
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->call('deselectOpenTab');
+
+    $component = Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->set('openingNewTabForTable', true);
+
+    $component->assertSee('aguardando itens');
+    $component->assertDontSee('Escolha uma comanda ou abra uma nova.');
+
+    $component->call('addProduct', $product->id)->assertHasNoErrors();
+
+    $openOrders = Order::withoutGlobalScopes()
+        ->where('restaurant_table_id', $table->id)
+        ->where('is_open_tab', true)
+        ->latest('id')
+        ->get();
+
+    expect($openOrders)->toHaveCount(3);
+    expect($openOrders->first()->table_label)->toBe('Mesa 5 (3)');
+});
+
 test('mesa desativada não aparece disponível no PDV', function () {
     ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
 
@@ -569,6 +623,29 @@ test('botão Finalizar Pedido sempre avisa o operador, com ou sem impressora con
     // Sem impressora cadastrada na filial não há o que mandar pra produção — evento
     // de broadcast não dispara à toa.
     Event::assertNotDispatched(TabOrderSentToProduction::class);
+});
+
+test('Finalizar Pedido volta pra seleção de mesas/comandas, sem fechar a comanda', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+    $table = openTable($company, $branch);
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    $orderId = $component->get('openTabOrderId');
+
+    $component->call('finalizeOrder')
+        ->assertSet('openTabOrderId', null)
+        ->assertSet('selectedTableId', null);
+
+    // Comanda continua aberta — só foi enviada pra produção, não fechada/paga.
+    $order = Order::withoutGlobalScopes()->find($orderId);
+    expect($order->is_open_tab)->toBeTrue();
+    expect($order->status)->toBe('pending');
 });
 
 test('Finalizar Pedido broadcasta pra TODAS as impressoras configuradas (geral + cozinha), ignorando entrega e inativa', function () {
@@ -1035,6 +1112,25 @@ test('garçom abre comanda e lança itens sem precisar de caixa', function () {
     expect($order->table_label)->toBe('Mesa 7');
     expect($order->is_open_tab)->toBeTrue();
     expect($order->pdv_cash_session_id)->toBeNull();
+});
+
+test('garçom vê botão flutuante de voltar pras mesas dentro de uma comanda, admin não vê', function () {
+    ['company' => $company, 'branch' => $branch, 'product' => $product, 'admin' => $admin] = pdvContext();
+    $waiter = makeWaiter($company, $branch);
+    $table = openTable($company, $branch, 7);
+
+    Livewire::actingAs($waiter)
+        ->test(TabTerminal::class)
+        ->assertDontSee('Voltar para as mesas/comandas')
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertSee('Voltar para as mesas/comandas');
+
+    $this->actingAs($admin);
+
+    Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->assertDontSee('Voltar para as mesas/comandas');
 });
 
 test('garçom vê comanda aberta por outro operador da mesma filial', function () {

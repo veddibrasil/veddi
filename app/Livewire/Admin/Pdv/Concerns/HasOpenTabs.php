@@ -34,6 +34,7 @@ trait HasOpenTabs
         $this->openTabOrderId = null;
         $this->viewingTabItemsOrderId = null;
         $this->tabCustomerName = '';
+        $this->openingNewTabForTable = false;
     }
 
     public function selectOpenTab(int $orderId): void
@@ -51,6 +52,7 @@ trait HasOpenTabs
         $this->openTabOrderId = null;
         $this->selectedTableId = null;
         $this->tabCustomerName = '';
+        $this->openingNewTabForTable = false;
     }
 
     /** Cadastro rápido de mesa direto do terminal, sem sair pra tela de configurações da filial. */
@@ -280,6 +282,14 @@ trait HasOpenTabs
             'order_id' => $order->id,
             'reason' => $order->table_label,
         ]);
+
+        // Comanda continua aberta (só foi enviada pra produção, não fechada/paga) — volta
+        // pra seleção de mesas/comandas em vez de travar o operador na comanda atual, mesmo
+        // comportamento de "voltar pra próxima" já usado em closeTab().
+        $this->openTabOrderId = null;
+        $this->selectedTableId = null;
+        $this->tabCustomerName = '';
+        $this->openingNewTabForTable = false;
     }
 
     /** Remove um item já lançado da comanda ativa. Disponível para garçom e caixa. */

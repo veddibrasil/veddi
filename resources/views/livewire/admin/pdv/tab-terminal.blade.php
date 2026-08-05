@@ -116,11 +116,31 @@
         </div>
     </div>
 
+    {{-- ══ Voltar pras mesas/comandas: flutuante e sempre alcançável no celular do garçom —
+         o botão de voltar que já existe fica dentro do carrinho, então enquanto ele tá
+         navegando o catálogo (tela padrão no mobile) não tinha nenhum jeito direto de
+         voltar sem abrir o carrinho primeiro. ══ --}}
+    @php $hasActiveTableContext = $openTabOrderId || $selectedTableId; @endphp
+    @if ($isWaiter && $hasActiveTableContext && $step !== 'payment')
+        <button
+            type="button"
+            wire:click="deselectOpenTab"
+            title="Voltar para as mesas/comandas"
+            class="lg:hidden fixed top-20 left-3 z-20 flex items-center justify-center size-11 rounded-full bg-white text-amber-600 shadow-lg border border-amber-200 hover:bg-amber-50 dark:bg-zinc-900 dark:text-amber-400 dark:border-amber-800/60 dark:hover:bg-zinc-800 transition-colors"
+        >
+            <flux:icon.arrow-left class="size-5" />
+        </button>
+    @endif
+
         <div class="flex flex-col lg:flex-row flex-1 overflow-hidden relative p-3 gap-3">
 
 
             @php
                 $mesaNotCommitted = ! $openTabOrderId && ! $selectedTableId;
+                $selectedTableOpenTabs = $selectedTableId
+                    ? $this->openTabs->where('restaurant_table_id', $selectedTableId)
+                    : collect();
+                $tableNeedsChoice = $selectedTableId && ! $openTabOrderId && ! $openingNewTabForTable && $selectedTableOpenTabs->isNotEmpty();
             @endphp
 
             @if ($mesaNotCommitted)
@@ -157,44 +177,11 @@
                             </div>
                         @endif
 
-                        @if ($this->openTabs->isNotEmpty())
-                            <div>
-                                <p class="flex items-center gap-1.5 text-xs font-bold text-amber-800 dark:text-amber-300 mb-2">
-                                    <flux:icon.clipboard-document-list class="size-3.5" />
-                                    Comandas abertas
-                                    <span class="font-normal text-amber-600 dark:text-amber-500">({{ $this->openTabs->count() }})</span>
-                                </p>
-                                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-                                    @foreach ($this->openTabs as $tab)
-                                        <div
-                                            role="button"
-                                            tabindex="0"
-                                            wire:click="selectOpenTab({{ $tab->id }})"
-                                            wire:keydown.enter="selectOpenTab({{ $tab->id }})"
-                                            class="group text-left rounded-xl border-2 border-amber-200 dark:border-amber-800/60 bg-white dark:bg-zinc-900 p-3 cursor-pointer hover:border-amber-400 hover:shadow-md transition-all flex flex-col gap-1"
-                                        >
-                                            <span class="font-bold text-sm text-neutral-800 dark:text-neutral-100 truncate">{{ $tab->table_label }}</span>
-                                            <span class="text-xs font-semibold text-amber-600 dark:text-amber-400">R$ {{ number_format($tab->total, 2, ',', '.') }}</span>
-                                            @unless ($isWaiter)
-                                                <button
-                                                    type="button"
-                                                    wire:click.stop="proceedToCloseTab({{ $tab->id }})"
-                                                    class="mt-1 self-start text-xs text-neutral-400 hover:text-red-600 dark:hover:text-red-400"
-                                                >
-                                                    Fechar
-                                                </button>
-                                            @endunless
-                                        </div>
-                                    @endforeach
-                                </div>
-                            </div>
-                        @endif
-
                         @if ($this->availableTables->isNotEmpty())
                             <div>
                                 <p class="flex items-center gap-1.5 text-xs font-bold text-amber-800 dark:text-amber-300 mb-2">
-                                    <flux:icon.plus-circle class="size-3.5" />
-                                    Nova comanda
+                                    <flux:icon.table-cells class="size-3.5" />
+                                    Mesas
                                 </p>
                                 <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
                                     @foreach ($this->availableTables as $table)
@@ -218,6 +205,60 @@
                         @elseif ($this->branchUsesRegisteredTables)
                             <p class="text-xs text-neutral-500 dark:text-neutral-400 text-center">Nenhuma mesa livre no momento.</p>
                         @endif
+                    </div>
+                </div>
+            @elseif ($tableNeedsChoice)
+                {{-- ── Mesa ocupada: escolher entre comanda(s) existente(s) ou abrir uma nova ── --}}
+                @php $pickerTable = $this->availableTables->firstWhere('id', $selectedTableId); @endphp
+                <div class="flex-1 overflow-y-auto p-4">
+                    <div class="w-full max-w-3xl mx-auto space-y-6">
+                        <div class="flex items-center gap-3">
+                            <button
+                                type="button"
+                                wire:click="deselectOpenTab"
+                                class="shrink-0 p-2 rounded-lg text-neutral-500 hover:bg-neutral-100 dark:hover:bg-zinc-800 dark:text-neutral-400"
+                                title="Voltar para as mesas"
+                            >
+                                <flux:icon.arrow-left class="size-5" />
+                            </button>
+                            <div>
+                                <h2 class="text-lg font-bold text-neutral-800 dark:text-neutral-100">Mesa {{ $pickerTable?->number }}</h2>
+                                <p class="text-sm text-neutral-500 dark:text-neutral-400">Escolha uma comanda ou abra uma nova.</p>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                            @foreach ($selectedTableOpenTabs as $tab)
+                                <div
+                                    role="button"
+                                    tabindex="0"
+                                    wire:click="selectOpenTab({{ $tab->id }})"
+                                    wire:keydown.enter="selectOpenTab({{ $tab->id }})"
+                                    class="group text-left rounded-xl border-2 border-amber-200 dark:border-amber-800/60 bg-white dark:bg-zinc-900 p-3 cursor-pointer hover:border-amber-400 hover:shadow-md transition-all flex flex-col gap-1"
+                                >
+                                    <span class="font-bold text-sm text-neutral-800 dark:text-neutral-100 truncate">{{ $tab->table_label }}</span>
+                                    <span class="text-xs font-semibold text-amber-600 dark:text-amber-400">R$ {{ number_format($tab->total, 2, ',', '.') }}</span>
+                                    @unless ($isWaiter)
+                                        <button
+                                            type="button"
+                                            wire:click.stop="proceedToCloseTab({{ $tab->id }})"
+                                            class="mt-1 self-start text-xs text-neutral-400 hover:text-red-600 dark:hover:text-red-400"
+                                        >
+                                            Fechar
+                                        </button>
+                                    @endunless
+                                </div>
+                            @endforeach
+
+                            <button
+                                type="button"
+                                wire:click="$set('openingNewTabForTable', true)"
+                                class="rounded-xl border-2 border-dashed border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-900/10 p-3 flex flex-col items-center justify-center gap-1 text-amber-700 dark:text-amber-400 hover:border-amber-500 hover:bg-amber-50 transition-all min-h-[5.5rem]"
+                            >
+                                <flux:icon.plus-circle class="size-5" />
+                                <span class="text-xs font-bold text-center">Nova comanda nesta mesa</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             @else
@@ -631,7 +672,7 @@
             {{-- fim coluna central --}}
             @endif
 
-            @unless ($mesaNotCommitted)
+            @unless ($mesaNotCommitted || $tableNeedsChoice)
             {{-- ── Coluna direita: Carrinho / Pagamento / Sucesso / PIX ── --}}
             <div
                 class="shrink-0 flex-col rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900 overflow-hidden lg:flex lg:w-[22rem] xl:w-[24rem]"
@@ -817,7 +858,7 @@
             @endunless
 
             {{-- ── Barra flutuante do carrinho (mobile) ── --}}
-            @if ($step !== 'payment' && ($openTabOrderId || $selectedTableId))
+            @if ($step !== 'payment' && ! $tableNeedsChoice && ($openTabOrderId || $selectedTableId))
                 <div
                     x-show="!mobileCartOpen && selectingProduct === null"
                     class="lg:hidden fixed inset-x-3 bottom-3 z-20 flex items-center justify-between gap-3 rounded-xl bg-amber-500 px-4 py-3 text-white shadow-lg shadow-amber-500/30 dark:bg-amber-400"
