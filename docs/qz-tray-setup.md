@@ -10,15 +10,28 @@ Tray confiar automaticamente num certificado autoassinado. Sem confiança
 explícita, o QZ Tray mostra o dialogo "Action Required" em toda nova conexão
 (e, dependendo da versão/config, a cada job de impressão).
 
-A correção definitiva é instalar o certificado como `override.crt` na
-instalação do QZ Tray de cada estação de caixa — isso faz o QZ Tray confiar
-nesse certificado permanentemente, sem diálogo nenhum, sem depender do
-operador clicar "Remember this decision".
+Existem duas formas de resolver, e elas não se excluem:
 
-Esse passo é local à máquina do caixa (QZ Tray desktop), não tem como ser
-feito pelo código do Laravel/JS.
+1. **Certificado de entidade final (CA:FALSE)** — o QZ Tray só habilita o
+   checkbox "Remember this decision" no próprio diálogo quando o certificado
+   usado pra assinar é `CA:FALSE` com `keyUsage=digitalSignature`. Um
+   certificado gerado sem esses parâmetros (`openssl req -x509` sem
+   `-addext`) sai como `CA:TRUE` por padrão no OpenSSL 3.x — o QZ Tray aceita
+   a assinatura, mas deixa o checkbox desabilitado, forçando o operador a
+   confirmar toda vez. Regenerar o par com o comando correto (ver
+   `QzTraySignatureController`) resolve isso: o operador confirma **uma vez**
+   por estação, marcando "Remember", e o QZ Tray não pergunta mais.
+2. **`override.crt`** — instalar o certificado direto na pasta do QZ Tray
+   faz ele confiar sem diálogo nenhum, nem a primeira confirmação. Mais
+   forte, mas exige acesso ao sistema de arquivos da máquina do caixa (passo
+   manual, não dá pra automatizar pelo Laravel/JS).
 
-## Passo a passo (uma vez por estação)
+Se o certificado já for `CA:FALSE`, normalmente a opção 1 já basta e é mais
+simples de operar (não precisa mexer em pasta de instalação). Use `override.crt`
+como reforço se quiser eliminar até a primeira confirmação, ou se o QZ Tray da
+estação não estiver persistindo o "Remember" por algum motivo.
+
+## Passo a passo (uma vez por estação) — override.crt
 
 1. Baixe o conteúdo do certificado da própria empresa: acesse
    `https://SEU-DOMINIO/admin/pdv/qz-certificate` (autenticado, mesma
