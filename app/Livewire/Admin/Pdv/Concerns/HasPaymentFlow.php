@@ -12,6 +12,14 @@ use Illuminate\Support\Facades\Log;
 
 trait HasPaymentFlow
 {
+    // Guarda contra double-submit: se duas chamadas a processOrder() caírem na mesma
+    // requisição (ex.: F10 e clique no botão disparados no mesmo tick, que o Livewire
+    // agrupa numa única requisição), a segunda precisa ser barrada aqui — senão os dois
+    // criam pedido e nota fiscal duplicados de verdade. Não cobre duas requisições HTTP
+    // genuinamente concorrentes (cada uma hidrata sua própria instância a partir do mesmo
+    // snapshot); isso já é mitigado no client travando o F10 junto com o botão desabilitado.
+    public bool $processingOrder = false;
+
     public function proceedToPayment(): void
     {
         abort_unless(! $this->isWaiter, 403);
@@ -38,10 +46,25 @@ trait HasPaymentFlow
     {
         abort_unless(! $this->isWaiter, 403);
 
+        if ($this->processingOrder) {
+            return;
+        }
+
         if (empty($this->cart) || ! $this->selectedBranchId) {
             return;
         }
 
+        $this->processingOrder = true;
+
+        try {
+            $this->doProcessOrder();
+        } finally {
+            $this->processingOrder = false;
+        }
+    }
+
+    private function doProcessOrder(): void
+    {
         if ($this->deliveryType === 'entrega' && ! $this->customerId) {
             $this->addError('order', 'Selecione ou cadastre um cliente para entrega.');
 

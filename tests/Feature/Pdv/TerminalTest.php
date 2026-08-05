@@ -170,6 +170,27 @@ test('produto com available_in_pdv false não aparece nem pode ser adicionado no
 
 // ─── Pedido com dinheiro ──────────────────────────────────────────────────────
 
+test('processOrder ignora chamada reentrante enquanto outra já está em andamento', function () {
+    // Simula F10 + clique disparando processOrder() quase simultaneamente: a
+    // segunda chamada precisa ser barrada pelo guard, sem criar um segundo
+    // pedido nem mexer no carrinho ainda pendente da primeira.
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'cash')
+        ->set('cashReceivedInput', '10.00');
+
+    $component->set('processingOrder', true)
+        ->call('processOrder');
+
+    expect(Order::withoutGlobalScopes()->count())->toBe(0);
+    expect($component->get('cart'))->not->toBeEmpty();
+});
+
 test('pedido PDV com pagamento em dinheiro cria order e payment', function () {
     ['admin' => $admin, 'product' => $product, 'branch' => $branch] = pdvContext();
 

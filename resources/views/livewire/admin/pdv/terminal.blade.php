@@ -1541,6 +1541,7 @@
                                                 Voltar
                                             </flux:button>
                                             <flux:button
+                                                id="pdv-confirm-order-btn"
                                                 wire:click="processOrder"
                                                 variant="primary"
                                                 size="base"

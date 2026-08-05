@@ -1,5 +1,118 @@
 import { autoPrintOrderReceipt, listenForFiscalNoteAuthorization } from './pdv-printer.js';
 
+// O terminal usa wire:navigate (SPA, sem reload de pagina) — cada vez que o
+// caixa sai e volta pra tela do PDV, o Alpine destroi e recria o <div
+// x-data="pdvApp()">, rodando init() de novo. window.addEventListener cru
+// (diferente de x-on) nao e limpo automaticamente nessa troca, entao sem
+// esse guard cada visita empilha mais um listener em window: um so evento
+// 'order-paid' (ou uma so tecla F10) passa a disparar N vezes — reimprime
+// cupom/nota fiscal N vezes e pode chamar processOrder() N vezes.
+// pdvActiveInstance sempre aponta pro componente Alpine montado no momento;
+// os listeners globais sao registrados uma unica vez e delegam pra ele.
+let pdvActiveInstance = null;
+let pdvGlobalListenersBound = false;
+
+function bindPdvGlobalListenersOnce() {
+    if (pdvGlobalListenersBound) return;
+    pdvGlobalListenersBound = true;
+
+    window.addEventListener('pdv-barcode-processed', () => pdvActiveInstance?._focusBarcode());
+    window.addEventListener('product-added-to-cart', (e) => pdvActiveInstance?.showToast(`${e.detail.name} adicionado ao carrinho`));
+    window.addEventListener('order-paid', (e) => pdvActiveInstance?._handleOrderPaid(e.detail));
+    window.addEventListener('pdv-toast', (e) => pdvActiveInstance?.showToast(e.detail.message));
+
+    window.addEventListener('keydown', (e) => {
+        const instance = pdvActiveInstance;
+        if (!instance) return;
+
+        // Skip if user is actively typing in a text input/textarea
+        const tag = e.target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        if (e.target.isContentEditable) return;
+
+        const now = Date.now();
+        const gap = now - instance._barcodeLastKeyTime;
+        instance._barcodeLastKeyTime = now;
+
+        if (e.key === 'Enter') {
+            if (instance._barcodeBuffer.length >= 3) {
+                // Dispatch to Livewire: set barcodeInput + call lookupByBarcode
+                const wire = Livewire.find(document.querySelector('[wire\\:id]')?.getAttribute('wire:id'));
+                if (wire) {
+                    wire.set('barcodeInput', instance._barcodeBuffer).then(() => {
+                        wire.call('lookupByBarcode');
+                    });
+                }
+            }
+            instance._barcodeBuffer = '';
+            clearTimeout(instance._barcodeClearTimer);
+            return;
+        }
+
+        if (e.key.length === 1) {
+            // Fast sequential keys = scanner; slow keys = user typing something else
+            if (gap < instance._barcodeThreshold || instance._barcodeBuffer.length === 0) {
+                instance._barcodeBuffer += e.key;
+            } else {
+                instance._barcodeBuffer = e.key;
+            }
+
+            clearTimeout(instance._barcodeClearTimer);
+            instance._barcodeClearTimer = setTimeout(() => {
+                instance._barcodeBuffer = '';
+            }, 1000);
+        }
+    });
+
+    window.addEventListener('keydown', (e) => {
+        const instance = pdvActiveInstance;
+        if (!instance) return;
+
+        const tag = e.target.tagName;
+        const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable;
+        const wire = instance._wire();
+
+        if (!wire) return;
+        const step = wire.get('step');
+
+        if (e.key === 'Escape') {
+            instance.selectingProduct = null;
+            instance.pendingSelections = {};
+            if (step === 'payment') {
+                e.preventDefault();
+                wire.call('backToCatalog');
+                instance._focusBarcode();
+            }
+            return;
+        }
+
+        if (typing) return;
+
+        if (e.key === '/') {
+            e.preventDefault();
+            instance._focusSearch();
+            return;
+        }
+
+        if (e.key === 'F2') {
+            e.preventDefault();
+            wire.call('proceedToPayment');
+            return;
+        }
+
+        if (e.key === 'F10') {
+            e.preventDefault();
+            // Botao "Confirmar" fica disabled (wire:loading.attr) enquanto ha uma
+            // requisicao em curso — F10 respeita o mesmo estado pra nao disparar
+            // processOrder() de novo por cima de um clique/F10 anterior ainda em voo.
+            const confirmBtn = document.getElementById('pdv-confirm-order-btn');
+            if (step === 'payment' && !confirmBtn?.disabled) {
+                wire.call('processOrder');
+            }
+        }
+    });
+}
+
 Alpine.data('pdvApp', () => ({
     selectingProduct: null,
     pendingSelections: {},
@@ -16,15 +129,12 @@ Alpine.data('pdvApp', () => ({
     _barcodeThreshold: 50, // ms between keystrokes — USB scanners type at < 30ms
 
     init() {
+        pdvActiveInstance = this;
+        bindPdvGlobalListenersOnce();
+
         this.sidebarHidden = localStorage.getItem('pdv_sidebar_hidden') === '1';
         this._applySidebarState();
-        this._initBarcodeScanner();
-        this._initShortcuts();
         this._focusBarcode();
-        window.addEventListener('pdv-barcode-processed', () => this._focusBarcode());
-        window.addEventListener('product-added-to-cart', (e) => this.showToast(`${e.detail.name} adicionado ao carrinho`));
-        window.addEventListener('order-paid', (e) => this._handleOrderPaid(e.detail));
-        window.addEventListener('pdv-toast', (e) => this.showToast(e.detail.message));
     },
 
     // Cupom imprime na hora (config auto_print da filial); a nota fiscal so
@@ -127,48 +237,6 @@ Alpine.data('pdvApp', () => ({
         this._prevPdvStep = step;
     },
 
-    _initBarcodeScanner() {
-        window.addEventListener('keydown', (e) => {
-            // Skip if user is actively typing in a text input/textarea
-            const tag = e.target.tagName;
-            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-            if (e.target.isContentEditable) return;
-
-            const now = Date.now();
-            const gap = now - this._barcodeLastKeyTime;
-            this._barcodeLastKeyTime = now;
-
-            if (e.key === 'Enter') {
-                if (this._barcodeBuffer.length >= 3) {
-                    // Dispatch to Livewire: set barcodeInput + call lookupByBarcode
-                    const wire = Livewire.find(document.querySelector('[wire\\:id]')?.getAttribute('wire:id'));
-                    if (wire) {
-                        wire.set('barcodeInput', this._barcodeBuffer).then(() => {
-                            wire.call('lookupByBarcode');
-                        });
-                    }
-                }
-                this._barcodeBuffer = '';
-                clearTimeout(this._barcodeClearTimer);
-                return;
-            }
-
-            if (e.key.length === 1) {
-                // Fast sequential keys = scanner; slow keys = user typing something else
-                if (gap < this._barcodeThreshold || this._barcodeBuffer.length === 0) {
-                    this._barcodeBuffer += e.key;
-                } else {
-                    this._barcodeBuffer = e.key;
-                }
-
-                clearTimeout(this._barcodeClearTimer);
-                this._barcodeClearTimer = setTimeout(() => {
-                    this._barcodeBuffer = '';
-                }, 1000);
-            }
-        });
-    },
-
     _wire() {
         return Livewire.find(document.querySelector('[wire\\:id]')?.getAttribute('wire:id'));
     },
@@ -182,49 +250,6 @@ Alpine.data('pdvApp', () => ({
     _focusBarcode() {
         requestAnimationFrame(() => {
             document.getElementById('pdv-barcode-input')?.focus();
-        });
-    },
-
-    _initShortcuts() {
-        window.addEventListener('keydown', (e) => {
-            const tag = e.target.tagName;
-            const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable;
-            const wire = this._wire();
-
-            if (!wire) return;
-            const step = wire.get('step');
-
-            if (e.key === 'Escape') {
-                this.selectingProduct = null;
-                this.pendingSelections = {};
-                if (step === 'payment') {
-                    e.preventDefault();
-                    wire.call('backToCatalog');
-                    this._focusBarcode();
-                }
-                return;
-            }
-
-            if (typing) return;
-
-            if (e.key === '/') {
-                e.preventDefault();
-                this._focusSearch();
-                return;
-            }
-
-            if (e.key === 'F2') {
-                e.preventDefault();
-                wire.call('proceedToPayment');
-                return;
-            }
-
-            if (e.key === 'F10') {
-                e.preventDefault();
-                if (step === 'payment') {
-                    wire.call('processOrder');
-                }
-            }
         });
     },
 
