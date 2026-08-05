@@ -10,6 +10,22 @@ function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
 }
 
+// O terminal fica aberto por horas (turno de caixa) — se a sessao expirar nesse
+// meio tempo, o fetch de /qz-certificate segue o redirect pro /login e devolve
+// a PAGINA DE LOGIN em HTML com status 200 ("res.ok" fica true, entao o bug nao
+// aparece como erro de rede). Sem essa checagem, esse HTML era repassado pro QZ
+// Tray como se fosse o certificado, e o QZ Tray acusava "certificado invalido"
+// — mascarando o problema real (sessao expirada) atras de um erro de PKI.
+function isPemCertificate(text) {
+    return typeof text === 'string' && text.includes('-----BEGIN CERTIFICATE-----');
+}
+
+// Mesmo risco do certificado: base64 nunca contem '<', entao uma pagina de
+// login/erro em HTML fica facil de distinguir de uma assinatura de verdade.
+function isBase64Signature(text) {
+    return typeof text === 'string' && text.length > 0 && ! text.includes('<');
+}
+
 function connectQz() {
     // Sem isso, qzConnection guarda a promise resolvida da PRIMEIRA conexao pra
     // sempre — se o QZ Tray fechar ou a rede cair depois, o cache continua
@@ -41,6 +57,13 @@ function connectQz() {
     qz.security.setCertificatePromise((resolve, reject) => {
         fetch('/admin/pdv/qz-certificate')
             .then((res) => (res.ok ? res.text() : Promise.reject(new Error('QZ Tray sem certificado configurado'))))
+            .then((text) => {
+                if (!isPemCertificate(text)) {
+                    throw new Error('Sessao expirada — atualize a pagina para reconectar a impressora.');
+                }
+
+                return text;
+            })
             .then(resolve)
             .catch(reject);
     });
@@ -56,6 +79,13 @@ function connectQz() {
             body: new URLSearchParams({ request: toSign }),
         })
             .then((res) => (res.ok ? res.text() : Promise.reject(new Error('falha ao assinar requisicao QZ Tray'))))
+            .then((text) => {
+                if (!isBase64Signature(text)) {
+                    throw new Error('Sessao expirada — atualize a pagina para reconectar a impressora.');
+                }
+
+                return text;
+            })
             .then(resolve)
             .catch(reject);
     });
