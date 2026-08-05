@@ -244,6 +244,7 @@ class OrderService implements OrderServiceInterface
                 $existing->quantity += 1;
                 $existing->subtotal = $unitPrice * $existing->quantity;
                 $existing->save();
+                $summary = "{$product->name}: quantidade alterada para {$existing->quantity}x";
             } else {
                 OrderItem::create([
                     'order_id' => $order->id,
@@ -254,9 +255,10 @@ class OrderService implements OrderServiceInterface
                     'subtotal' => $unitPrice,
                     'options' => $normalizedOptions,
                 ]);
+                $summary = "{$product->name} adicionado";
             }
 
-            $this->recalculateOrderTotals($order);
+            $this->recalculateOrderTotals($order, summary: $summary);
 
             return $order->fresh();
         });
@@ -272,7 +274,7 @@ class OrderService implements OrderServiceInterface
 
             $item->delete();
 
-            $this->recalculateOrderTotals($order);
+            $this->recalculateOrderTotals($order, summary: "{$item->product_name} removido");
 
             Log::channel('orders')->info('Item removido da comanda', [
                 'order_id' => $order->id,
@@ -309,7 +311,7 @@ class OrderService implements OrderServiceInterface
                 'subtotal' => $item->unit_price * $quantity,
             ]);
 
-            $this->recalculateOrderTotals($order);
+            $this->recalculateOrderTotals($order, summary: "{$item->product_name}: quantidade alterada para {$quantity}x");
 
             Log::channel('orders')->info('Quantidade de item ajustada na comanda', [
                 'order_id' => $order->id,
@@ -341,7 +343,7 @@ class OrderService implements OrderServiceInterface
      * Recalcula subtotal/total/fee/net_value a partir dos OrderItem e do manual_discount atuais. Sem
      * cupom/frete — usado pelo fluxo de comanda do PDV, que não tem esses conceitos.
      */
-    private function recalculateOrderTotals(Order $order, bool $waiveServiceFee = false, bool $waiveCouvertFee = false): void
+    private function recalculateOrderTotals(Order $order, bool $waiveServiceFee = false, bool $waiveCouvertFee = false, ?string $summary = null): void
     {
         $subtotal = (float) $order->items()->sum('subtotal');
         $manualDiscount = (float) $order->manual_discount;
@@ -371,7 +373,7 @@ class OrderService implements OrderServiceInterface
             'net_value' => $netValue,
         ]);
 
-        OrderItemsUpdated::dispatch($order);
+        OrderItemsUpdated::dispatch($order, $summary);
     }
 
     private function resolveProducts(array $cart, int $branchId, string $channelColumn): Collection

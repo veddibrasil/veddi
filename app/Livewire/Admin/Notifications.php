@@ -32,10 +32,53 @@ class Notifications extends Component
 
         return [
             "echo:orders.{$this->companyId},NewOrderPlaced" => 'onNewOrder',
+            "echo:orders.{$this->companyId},OrderItemsUpdated" => 'onOrderItemsUpdated',
         ];
     }
 
     public function onNewOrder(array $data): void
+    {
+        if ($this->stationFilteredOut($data)) {
+            return;
+        }
+
+        $this->pushNotification([
+            'type' => 'new_order',
+            'order_id' => $data['order_id'],
+            'order_number' => $data['order_number'],
+            'customer_name' => $data['customer_name'],
+            'total' => $data['total'],
+        ]);
+    }
+
+    public function onOrderItemsUpdated(array $data): void
+    {
+        if (empty($data['summary']) || $this->stationFilteredOut($data)) {
+            return;
+        }
+
+        $this->pushNotification([
+            'type' => 'items_updated',
+            'order_id' => $data['order_id'],
+            'order_number' => $data['order_number'],
+            'summary' => $data['summary'],
+        ]);
+    }
+
+    private function pushNotification(array $notification): void
+    {
+        $this->notifications[] = $notification + [
+            'id' => uniqid('notif_'),
+            'created_at' => now()->format('H:i'),
+        ];
+
+        if (count($this->notifications) > 5) {
+            array_shift($this->notifications);
+        }
+    }
+
+    /** Estações restritas (cozinha/bar/entrega) só veem notificações de pedidos que envolvem sua estação. */
+    private function stationFilteredOut(array $data): bool
     {
         $flag = match ($this->userStation) {
             'entrega' => 'is_delivery',
@@ -44,22 +87,7 @@ class Notifications extends Component
             default => null,
         };
 
-        if ($flag !== null && empty($data[$flag])) {
-            return;
-        }
-
-        $this->notifications[] = [
-            'id' => uniqid('notif_'),
-            'order_id' => $data['order_id'],
-            'order_number' => $data['order_number'],
-            'customer_name' => $data['customer_name'],
-            'total' => $data['total'],
-            'created_at' => now()->format('H:i'),
-        ];
-
-        if (count($this->notifications) > 5) {
-            array_shift($this->notifications);
-        }
+        return $flag !== null && empty($data[$flag]);
     }
 
     public function dismiss(string $id): void

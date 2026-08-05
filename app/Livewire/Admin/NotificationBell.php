@@ -33,13 +33,15 @@ class NotificationBell extends Component
 
         return [
             "echo:orders.{$this->companyId},NewOrderPlaced" => 'onNewOrder',
+            "echo:orders.{$this->companyId},OrderItemsUpdated" => 'onNewOrder',
         ];
     }
 
     public function onNewOrder(): void
     {
-        // The DB record is created by CreateOrderNotification listener (server-side, once).
-        // Here we just re-render to pick up the new notification from the database.
+        // The DB record is created by CreateOrderNotification/CreateOrderItemsChangeNotification
+        // listener (server-side, once). Here we just re-render to pick up the new notification
+        // from the database.
     }
 
     public function markRead(int $id): void

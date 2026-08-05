@@ -808,6 +808,7 @@ class Show extends Component
         }
 
         $this->order->refresh();
+        $itemsBeforeEdit = $this->order->items->keyBy('id');
         $originalSubtotal = round((float) $this->order->subtotal, 2);
         $newSubtotal = round(collect($this->editableItems)->sum(function ($item) {
             $qty = max(1, (int) ($item['quantity'] ?? 1));
@@ -899,7 +900,9 @@ class Show extends Component
         $this->productSearch = '';
         $this->productResults = [];
 
-        OrderItemsUpdated::dispatch($this->order);
+        $summary = $this->buildItemsChangeSummary($itemsBeforeEdit, $this->editableItems);
+
+        OrderItemsUpdated::dispatch($this->order, $summary);
 
         Log::channel('orders')->info('Itens do pedido editados pelo admin', [
             'order_id' => $this->order->id,
@@ -908,6 +911,50 @@ class Show extends Component
         ]);
 
         session()->flash('status', 'Itens atualizados.');
+    }
+
+    /**
+     * Monta um resumo legível do que mudou entre os itens antes e depois da edição
+     * (adicionados, removidos, quantidade alterada), para alimentar a notificação de pedido.
+     *
+     * @param  \Illuminate\Support\Collection<int, OrderItem>  $itemsBefore
+     * @param  array<int, array{id: ?int, product_name: string, quantity: int}>  $itemsAfter
+     */
+    private function buildItemsChangeSummary($itemsBefore, array $itemsAfter): ?string
+    {
+        $changes = [];
+        $seenIds = [];
+
+        foreach ($itemsAfter as $item) {
+            $id = $item['id'] ?? null;
+
+            if ($id === null) {
+                $changes[] = "{$item['product_name']} adicionado";
+
+                continue;
+            }
+
+            $seenIds[] = $id;
+            $before = $itemsBefore->get($id);
+
+            if (! $before) {
+                continue;
+            }
+
+            if ($before->product_name !== $item['product_name']) {
+                $changes[] = "{$before->product_name} trocado por {$item['product_name']}";
+            } elseif ((int) $before->quantity !== (int) $item['quantity']) {
+                $changes[] = "{$item['product_name']}: quantidade alterada para {$item['quantity']}x";
+            }
+        }
+
+        foreach ($itemsBefore as $id => $before) {
+            if (! in_array($id, $seenIds, true)) {
+                $changes[] = "{$before->product_name} removido";
+            }
+        }
+
+        return $changes === [] ? null : implode('; ', $changes);
     }
 
     // ── Manual refund ────────────────────────────────────────────────────────

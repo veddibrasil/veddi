@@ -27,30 +27,36 @@
             x-transition:leave-end="opacity-0 translate-y-4 scale-95"
             class="pointer-events-auto w-80 bg-white dark:bg-zinc-800 border border-neutral-200 dark:border-zinc-700 rounded-xl shadow-lg overflow-hidden"
         >
-            <div class="h-1 bg-green-500"></div>
+            <div class="h-1 {{ $notification['type'] === 'items_updated' ? 'bg-amber-500' : 'bg-green-500' }}"></div>
 
             <div class="p-4">
                 <div class="flex items-start justify-between gap-3">
                     <div class="flex items-start gap-3">
-                        <div class="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center shrink-0">
-                            <svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div class="w-8 h-8 rounded-full {{ $notification['type'] === 'items_updated' ? 'bg-amber-100 dark:bg-amber-900/40' : 'bg-green-100 dark:bg-green-900/40' }} flex items-center justify-center shrink-0">
+                            <svg class="w-4 h-4 {{ $notification['type'] === 'items_updated' ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 11H4L5 9z"/>
                             </svg>
                         </div>
 
                         <div class="min-w-0 flex-1">
                             <p class="text-sm font-semibold text-neutral-800 dark:text-neutral-100">
-                                Novo pedido!
+                                {{ $notification['type'] === 'items_updated' ? 'Pedido atualizado' : 'Novo pedido!' }}
                             </p>
                             <p class="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
                                 {{ $notification['order_number'] }}
                             </p>
-                            <p class="text-xs text-neutral-600 dark:text-neutral-300 mt-0.5 truncate">
-                                {{ $notification['customer_name'] }}
-                            </p>
-                            <p class="text-sm font-bold text-neutral-800 dark:text-neutral-100 mt-1">
-                                R$ {{ number_format($notification['total'], 2, ',', '.') }}
-                            </p>
+                            @if ($notification['type'] === 'items_updated')
+                                <p class="text-xs text-neutral-600 dark:text-neutral-300 mt-0.5">
+                                    {{ $notification['summary'] }}
+                                </p>
+                            @else
+                                <p class="text-xs text-neutral-600 dark:text-neutral-300 mt-0.5 truncate">
+                                    {{ $notification['customer_name'] }}
+                                </p>
+                                <p class="text-sm font-bold text-neutral-800 dark:text-neutral-100 mt-1">
+                                    R$ {{ number_format($notification['total'], 2, ',', '.') }}
+                                </p>
+                            @endif
                         </div>
                     </div>
 
