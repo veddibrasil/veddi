@@ -40,7 +40,7 @@ class EscPosPrinterService implements PrinterServiceInterface
         return true;
     }
 
-    public function buildOrderReceipt(Order $order, string $station, ?Company $company = null): string
+    public function buildOrderReceipt(Order $order, string $station, ?Company $company = null, bool $full = false): string
     {
         $connector = new MemoryPrintConnector;
         $printer = new Printer($connector);
@@ -81,8 +81,8 @@ class EscPosPrinterService implements PrinterServiceInterface
 
         $this->divider($printer);
 
-        $items = match ($station) {
-            'geral', 'entrega' => $order->items,
+        $items = match (true) {
+            $full, in_array($station, ['geral', 'entrega'], true) => $order->items,
             default => $order->items->filter(fn ($item) => $item->matchesStation($station))->values(),
         };
 

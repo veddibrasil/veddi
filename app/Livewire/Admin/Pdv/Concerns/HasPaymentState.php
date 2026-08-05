@@ -19,5 +19,6 @@ trait HasPaymentState
         $this->manualDiscountType = 'fixed';
         $this->serviceFeeWaived = false;
         $this->couvertFeeWaived = false;
+        $this->printFiscalNote = false;
     }
 }

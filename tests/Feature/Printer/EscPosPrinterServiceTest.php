@@ -129,6 +129,15 @@ test('buildOrderReceipt da estação bar só inclui itens daquela estação', fu
         ->not->toContain('Coxinha');
 });
 
+test('buildOrderReceipt com full=true ignora o filtro por estação e imprime todos os itens', function () {
+    $order = escposTestOrder();
+
+    $bytes = app(PrinterServiceInterface::class)->buildOrderReceipt($order, 'cozinha', full: true);
+
+    expect($bytes)->toContain('Coxinha')
+        ->toContain('Suco de Laranja');
+});
+
 test('buildOrderReceipt sempre termina com o comando de corte de papel ESC/POS', function () {
     $order = escposTestOrder();
 

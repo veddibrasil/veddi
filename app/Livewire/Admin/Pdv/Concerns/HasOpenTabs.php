@@ -16,6 +16,8 @@ use Livewire\Attributes\Computed;
 
 trait HasOpenTabs
 {
+    use HasAutoPrint;
+
     public function updatedOrderMode(): void
     {
         if ($this->isWaiter) {
@@ -168,6 +170,53 @@ trait HasOpenTabs
         unset($this->availableTables);
     }
 
+    /**
+     * Envia a comanda pra produção — dispara a impressão da via completa (sem
+     * filtro por categoria) em CADA impressora ativa da filial nas estações
+     * geral/cozinha/bar (mesmo pedido inteiro em todas, não uma por categoria),
+     * que cozinha/bar usam pra preparo e o garçom usa pra levar até a mesa certa
+     * (já traz o table_label no cabeçalho do cupom). Fica de fora a estação
+     * 'entrega' — não faz sentido pra pedido de mesa.
+     * Disponível pro garçom: é o passo dele, não do caixa — não fecha nem cobra a
+     * comanda, só avisa a produção. Pode ser chamado de novo se entrar item depois
+     * (reimprime o pedido completo; não há rastreio de "já enviado" por item).
+     */
+    public function finalizeOrder(): void
+    {
+        if (! $this->openTabOrderId) {
+            return;
+        }
+
+        $order = Order::withoutGlobalScopes()
+            ->where('is_open_tab', true)
+            ->find($this->openTabOrderId);
+
+        if (! $order) {
+            $this->addError('order', 'Comanda não encontrada ou já fechada.');
+
+            return;
+        }
+
+        if (! OrderItem::where('order_id', $order->id)->exists()) {
+            return;
+        }
+
+        $stations = $order->branch->printers()
+            ->where('active', true)
+            ->whereIn('station', ['geral', 'cozinha', 'bar'])
+            ->get(['station'])
+            ->pluck('station')
+            ->values();
+
+        $this->dispatch('tab-order-finalized', orderId: $order->id, stations: $stations);
+        $this->dispatch('pdv-toast', message: "Pedido de {$order->table_label} enviado pra produção.");
+
+        $this->audit('tab_order_finalized', [
+            'order_id' => $order->id,
+            'reason' => $order->table_label,
+        ]);
+    }
+
     /** Remove um item já lançado da comanda ativa. Disponível para garçom e caixa. */
     public function removeTabItem(int $orderItemId): void
     {
@@ -313,6 +362,7 @@ trait HasOpenTabs
             // pra pedidos pagos aqui (ver OrderService::createOrder() pro mesmo problema na criação).
             if ($isPaidOnCreate) {
                 OrderStatusUpdated::dispatch($order);
+                $this->dispatchAutoPrintPayload($order, includeReceiptStations: false);
             }
 
             $this->lastOrderTotal = (float) $order->total;
@@ -332,7 +382,12 @@ trait HasOpenTabs
         $this->lastOrderId = $order->id;
         $this->openTabOrderId = null;
         $this->closingTabOrderId = null;
-        $this->step = 'success';
+        // Mesmo comportamento do Terminal (caixa livre): não trava numa tela de
+        // sucesso — volta direto pra seleção de comandas (mesaNotCommitted volta a
+        // true) e o card flutuante do header mostra o resultado por cima, sem
+        // bloquear o operador de já abrir a próxima mesa.
+        $this->selectedTableId = null;
+        $this->step = 'catalog';
     }
 
     // ── Computed ──────────────────────────────────────────────────────────────

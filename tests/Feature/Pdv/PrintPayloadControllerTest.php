@@ -109,6 +109,27 @@ test('cupom retorna ip/porta e payload em base64 quando a impressora existe e es
     expect(base64_decode($response['payload']))->toContain('Coxinha');
 });
 
+test('cupom com ?full=1 ignora o filtro da estação e inclui o pedido inteiro', function () {
+    ['admin' => $admin, 'order' => $order, 'branch' => $branch, 'company' => $company] = printPayloadContext();
+
+    BranchPrinter::create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'station' => 'cozinha',
+        'ip_address' => '192.168.0.51',
+        'port' => 9100,
+        'paper_width' => 80,
+        'active' => true,
+    ]);
+
+    $response = $this->actingAs($admin)
+        ->get(route('admin.pdv.print.receipt', ['order' => $order, 'station' => 'cozinha']).'?full=1')
+        ->assertOk()
+        ->json();
+
+    expect(base64_decode($response['payload']))->toContain('Coxinha');
+});
+
 test('cupom retorna nome da impressora (sem ip/porta) quando conexão é USB', function () {
     ['admin' => $admin, 'order' => $order, 'branch' => $branch, 'company' => $company] = printPayloadContext();
 

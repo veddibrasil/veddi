@@ -6,10 +6,11 @@ use App\Contracts\PrinterServiceInterface;
 use App\Http\Controllers\Controller;
 use App\Models\BranchPrinter;
 use App\Models\Order;
+use Illuminate\Http\Request;
 
 class PrintPayloadController extends Controller
 {
-    public function receipt(Order $order, ?string $station = null)
+    public function receipt(Request $request, Order $order, ?string $station = null)
     {
         $this->authorizeAccess();
 
@@ -25,7 +26,10 @@ class PrintPayloadController extends Controller
 
         $company = app()->bound('current.company') ? app('current.company') : null;
 
-        $payload = app(PrinterServiceInterface::class)->buildOrderReceipt($order, $station, $company);
+        // ?full=1: via completa do "Finalizar Pedido" da mesa — ignora o filtro por
+        // categoria da estação (cozinha/bar recebem o pedido inteiro, não só os itens
+        // deles), porque a mesma via também serve de guia de entrega pro garçom.
+        $payload = app(PrinterServiceInterface::class)->buildOrderReceipt($order, $station, $company, $request->boolean('full'));
 
         return response()->json([
             'printer' => $this->printerPayload($printer),

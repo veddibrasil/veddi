@@ -31,7 +31,7 @@ class TabTerminal extends Component
     use HasProductLookup;
 
     // ── Estado da interface ──────────────────────────────────────────────────
-    public string $step = 'catalog'; // open_cash | catalog | payment | pix | success
+    public string $step = 'catalog'; // catalog | payment | pix
 
     public bool $showSessionHistory = false;
 
@@ -83,6 +83,12 @@ class TabTerminal extends Component
     public bool $serviceFeeWaived = false;
 
     public bool $couvertFeeWaived = false;
+
+    // Só aparece se company.canUseFiscalNotes() — desmarcado por padrão, controla
+    // só a impressão automática da nota (a emissão em si é sempre obrigatória).
+    public bool $printFiscalNote = false;
+
+    public bool $canUseFiscalNotes = false;
 
     // ── Observação ────────────────────────────────────────────────────────────
     public string $notes = '';
@@ -161,6 +167,7 @@ class TabTerminal extends Component
         $this->manualDiscountAllowed = (bool) $company->pdv_manual_discount_enabled;
         $this->canManageUsers = ! $this->isWaiter && (bool) $user?->hasPermission('users.manage', $company);
         $this->waiterModuleEnabled = (bool) $company->waiter_module_enabled;
+        $this->canUseFiscalNotes = $company->canUseFiscalNotes();
 
         $branch = $this->isWaiter && $user->branchIdForCompany($company)
             ? Branch::where('company_id', $company->id)->find($user->branchIdForCompany($company))

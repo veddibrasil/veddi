@@ -1208,7 +1208,11 @@
             @endif
 
             @if ($step === 'payment')
-                <div class="absolute inset-0 z-30 flex items-center justify-center bg-amber-950/45 p-3 lg:p-6">
+                {{-- fixed (não absolute): mesmo motivo do TabTerminal — cobre o header
+                     inteiro (select de filial incluso), senão ele fica clicável/focável
+                     por trás do modal e mudar de filial no meio do pagamento fecha o
+                     modal sozinho (updatedSelectedBranchId() zera $step). --}}
+                <div class="fixed inset-0 z-30 flex items-center justify-center bg-amber-950/45 p-3 lg:p-6">
                     <div class="flex max-h-full w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900">
                         <div class="shrink-0 border-b border-neutral-100 px-4 py-3 dark:border-zinc-800">
                             <div class="flex items-center justify-between gap-3">
@@ -1434,7 +1438,7 @@
                                             <div class="pt-3 space-y-1.5">
                                                 <flux:label class="text-xs font-semibold">Valor recebido</flux:label>
                                                 <flux:input
-                                                    wire:model="cashReceivedInput"
+                                                    wire:model.live.debounce.500ms="cashReceivedInput"
                                                     placeholder="Em branco = valor exato"
                                                     type="number"
                                                     step="0.01"
@@ -1535,6 +1539,13 @@
                                                 </span>
                                             </div>
                                         </div>
+
+                                        @if ($canUseFiscalNotes)
+                                            <label class="flex items-center gap-2 px-3 py-2 border rounded-xl dark:border-zinc-700 cursor-pointer">
+                                                <flux:checkbox wire:model.live="printFiscalNote" />
+                                                <span class="text-sm">Imprimir nota fiscal ao confirmar</span>
+                                            </label>
+                                        @endif
 
                                         <div class="grid grid-cols-2 gap-2">
                                             <flux:button wire:click="backToCatalog" variant="ghost" size="base">

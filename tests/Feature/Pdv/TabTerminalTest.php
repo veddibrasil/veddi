@@ -407,7 +407,7 @@ test('editar item de comanda já fechada não é permitido', function () {
         ->set('paymentMethod', 'cash')
         ->set('cashReceivedInput', '10.00')
         ->call('confirmCloseTab')
-        ->assertSet('step', 'success');
+        ->assertSet('step', 'catalog');
 
     Livewire::test(TabTerminal::class)
         ->set('openTabOrderId', $orderId)
@@ -435,9 +435,19 @@ test('fechar comanda com dinheiro cobra e marca como paga', function () {
         ->call('proceedToCloseTab', $orderId)
         ->assertSet('step', 'payment')
         ->set('paymentMethod', 'cash')
+        ->assertDontSee('Troco: R$')
         ->set('cashReceivedInput', '10.00')
+        // Preview de troco calculado assim que o valor recebido é informado, antes de confirmar.
+        ->assertSee('Troco: R$ 2,00')
         ->call('confirmCloseTab')
-        ->assertSet('step', 'success');
+        // Mesmo comportamento do Terminal (caixa livre): não trava em tela de sucesso —
+        // volta direto pra seleção de comandas (selectedTableId também limpo) com o
+        // resultado só no card flutuante do topo, sem bloquear o próximo atendimento.
+        ->assertSet('step', 'catalog')
+        ->assertSet('selectedTableId', null)
+        ->assertSet('openTabOrderId', null)
+        ->assertSet('lastOrderId', $orderId)
+        ->assertSee('fechada');
 
     $order = Order::withoutGlobalScopes()->find($orderId);
     expect($order->is_open_tab)->toBeFalse();
@@ -478,7 +488,7 @@ test('fechar comanda vinculando cliente informado pelo mesário salva o cliente 
         ->set('paymentMethod', 'cash')
         ->set('cashReceivedInput', '10.00')
         ->call('confirmCloseTab')
-        ->assertSet('step', 'success');
+        ->assertSet('step', 'catalog');
 
     $order = Order::withoutGlobalScopes()->find($orderId);
     expect($order->customer_id)->toBe($customer->id);
@@ -507,9 +517,184 @@ test('fechar comanda com dinheiro dispara emissão automática de nota fiscal', 
         ->set('paymentMethod', 'cash')
         ->set('cashReceivedInput', '10.00')
         ->call('confirmCloseTab')
-        ->assertSet('step', 'success');
+        ->assertSet('step', 'catalog');
 
     Bus::assertDispatched(IssueFiscalNote::class, fn ($job) => $job->orderId === $orderId);
+});
+
+test('botão Finalizar Pedido envia a comanda pra produção', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+    $table = openTable($company, $branch);
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    $orderId = Order::withoutGlobalScopes()->first()->id;
+
+    $component->call('finalizeOrder')
+        ->assertDispatched('tab-order-finalized', orderId: $orderId)
+        ->assertDispatched('pdv-toast', message: 'Pedido de Mesa 5 enviado pra produção.');
+});
+
+test('Finalizar Pedido manda a via pra TODAS as impressoras configuradas (geral + cozinha), ignorando entrega e inativa', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+    $table = openTable($company, $branch);
+
+    \App\Models\BranchPrinter::create([
+        'company_id' => $company->id, 'branch_id' => $branch->id, 'station' => 'geral',
+        'ip_address' => '192.168.0.10', 'port' => 9100, 'paper_width' => 80, 'active' => true,
+    ]);
+    \App\Models\BranchPrinter::create([
+        'company_id' => $company->id, 'branch_id' => $branch->id, 'station' => 'cozinha',
+        'ip_address' => '192.168.0.11', 'port' => 9100, 'paper_width' => 80, 'active' => true,
+    ]);
+    \App\Models\BranchPrinter::create([
+        'company_id' => $company->id, 'branch_id' => $branch->id, 'station' => 'entrega',
+        'ip_address' => '192.168.0.12', 'port' => 9100, 'paper_width' => 80, 'active' => true,
+    ]);
+    \App\Models\BranchPrinter::create([
+        'company_id' => $company->id, 'branch_id' => $branch->id, 'station' => 'bar',
+        'ip_address' => '192.168.0.13', 'port' => 9100, 'paper_width' => 80, 'active' => false,
+    ]);
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    $orderId = Order::withoutGlobalScopes()->first()->id;
+
+    $component->call('finalizeOrder')
+        ->assertDispatched('tab-order-finalized', fn ($name, $params) => $params['orderId'] === $orderId
+            && collect($params['stations'])->sort()->values()->all() === ['cozinha', 'geral']);
+});
+
+test('Finalizar Pedido sem comanda selecionada não dispara impressão', function () {
+    ['admin' => $admin] = pdvContext();
+
+    $this->actingAs($admin);
+
+    Livewire::test(TabTerminal::class)
+        ->call('finalizeOrder')
+        ->assertNotDispatched('tab-order-finalized');
+});
+
+test('garçom também pode usar o Finalizar Pedido (é o passo dele, não do caixa)', function () {
+    ['company' => $company, 'branch' => $branch, 'product' => $product] = pdvContext();
+    $table = openTable($company, $branch);
+    $waiter = makeWaiter($company, $branch);
+
+    $this->actingAs($waiter);
+
+    $component = Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    $orderId = Order::withoutGlobalScopes()->first()->id;
+
+    $component->call('finalizeOrder')
+        ->assertDispatched('tab-order-finalized', orderId: $orderId);
+});
+
+test('checkbox de imprimir nota fiscal só aparece com o módulo fiscal habilitado na empresa', function () {
+    ['admin' => $admin] = pdvContext();
+
+    $this->actingAs($admin);
+
+    Livewire::test(TabTerminal::class)
+        ->assertSet('canUseFiscalNotes', false)
+        ->assertSet('printFiscalNote', false);
+});
+
+test('fechar comanda com checkbox de nota fiscal marcado dispara order-paid com printFiscalNote, mesmo sem impressora de auto-print', function () {
+    ['admin' => $admin, 'product' => $product, 'company' => $company, 'branch' => $branch] = pdvContext();
+    $table = openTable($company, $branch);
+
+    $company->update(['fiscal_notes_enabled' => true]);
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(TabTerminal::class)
+        ->assertSet('canUseFiscalNotes', true)
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    $orderId = Order::withoutGlobalScopes()->first()->id;
+
+    $component
+        ->call('proceedToCloseTab', $orderId)
+        ->set('paymentMethod', 'cash')
+        ->set('cashReceivedInput', '10.00')
+        ->set('printFiscalNote', true)
+        ->call('confirmCloseTab')
+        ->assertSet('step', 'catalog')
+        ->assertDispatched('order-paid', printFiscalNote: true, stations: []);
+});
+
+test('fechar comanda NÃO reimprime cupom mesmo com impressora de auto-print configurada — cupom já saiu no Finalizar Pedido', function () {
+    ['admin' => $admin, 'product' => $product, 'company' => $company, 'branch' => $branch] = pdvContext();
+    $table = openTable($company, $branch);
+
+    $company->update(['fiscal_notes_enabled' => true]);
+
+    \App\Models\BranchPrinter::create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'station' => 'geral',
+        'ip_address' => '192.168.0.50',
+        'port' => 9100,
+        'paper_width' => 80,
+        'auto_print' => true,
+        'active' => true,
+    ]);
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    $orderId = Order::withoutGlobalScopes()->first()->id;
+
+    $component
+        ->call('proceedToCloseTab', $orderId)
+        ->set('paymentMethod', 'cash')
+        ->set('cashReceivedInput', '10.00')
+        ->set('printFiscalNote', true)
+        ->call('confirmCloseTab')
+        ->assertSet('step', 'catalog')
+        ->assertDispatched('order-paid', printFiscalNote: true, stations: []);
+});
+
+test('fechar comanda sem marcar o checkbox e sem impressora de auto-print não dispara order-paid', function () {
+    ['admin' => $admin, 'product' => $product, 'company' => $company, 'branch' => $branch] = pdvContext();
+    $table = openTable($company, $branch);
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    $orderId = Order::withoutGlobalScopes()->first()->id;
+
+    $component
+        ->call('proceedToCloseTab', $orderId)
+        ->set('paymentMethod', 'cash')
+        ->set('cashReceivedInput', '10.00')
+        ->call('confirmCloseTab')
+        ->assertSet('step', 'catalog')
+        ->assertNotDispatched('order-paid');
 });
 
 test('comanda aberta não aparece em shiftStats nem sessionOrders', function () {
@@ -694,7 +879,7 @@ test('caixa fecha e paga comanda aberta pelo garçom, e o valor entra na confer�
         ->set('paymentMethod', 'cash')
         ->set('cashReceivedInput', '10.00')
         ->call('confirmCloseTab')
-        ->assertSet('step', 'success');
+        ->assertSet('step', 'catalog');
 
     $order = Order::withoutGlobalScopes()->find($orderId);
     expect($order->status)->toBe('paid');

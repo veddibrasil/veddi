@@ -84,6 +84,12 @@ class Terminal extends Component
 
     public bool $couvertFeeWaived = false;
 
+    // Só aparece se company.canUseFiscalNotes() — desmarcado por padrão, controla
+    // só a impressão automática da nota (a emissão em si é sempre obrigatória).
+    public bool $printFiscalNote = false;
+
+    public bool $canUseFiscalNotes = false;
+
     // ── Entrega ───────────────────────────────────────────────────────────────
     public string $deliveryType = 'balcao'; // 'balcao' | 'entrega'
 
@@ -191,6 +197,7 @@ class Terminal extends Component
 
         $this->canOperate = true;
         $this->manualDiscountAllowed = (bool) $company->pdv_manual_discount_enabled;
+        $this->canUseFiscalNotes = $company->canUseFiscalNotes();
 
         $branch = Branch::where('company_id', $company->id)
             ->where('active', true)

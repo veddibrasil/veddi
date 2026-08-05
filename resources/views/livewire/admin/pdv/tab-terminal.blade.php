@@ -16,6 +16,45 @@
         </div>
     @endif
 
+    {{-- ══ Card flutuante: resultado da comanda fechada — não bloqueia a tela, mesmo
+         comportamento do Terminal (caixa livre). O operador já vê a seleção de
+         comandas por baixo e pode abrir a próxima mesa na hora ══ --}}
+    @if ($lastOrderId)
+        <div
+            wire:key="tab-order-success-{{ $lastOrderId }}"
+            x-data
+            x-init="@if ($changeAmount <= 0) setTimeout(() => $wire.resetTerminal(), 6000) @endif"
+            class="fixed inset-x-0 top-4 z-40 mx-auto w-full max-w-sm px-4"
+        >
+            <div class="rounded-xl border border-neutral-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-900 overflow-hidden">
+                <div class="px-4 py-3 flex items-center gap-2 border-b border-neutral-100 dark:border-zinc-800">
+                    <div class="size-7 rounded-full bg-green-100 flex items-center justify-center dark:bg-green-900/40 shrink-0">
+                        <flux:icon.check class="size-4 text-green-600 dark:text-green-400" />
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <h2 class="font-bold text-neutral-800 dark:text-neutral-100 text-sm">Comanda {{ $lastOrderNumber }} fechada</h2>
+                        @if ($lastOrderTotal)
+                            <p class="text-xs text-neutral-500 dark:text-neutral-400">Total: R$ {{ number_format($lastOrderTotal, 2, ',', '.') }}</p>
+                        @endif
+                    </div>
+                    <button wire:click="resetTerminal" type="button" class="shrink-0 p-1 rounded-lg text-neutral-400 hover:bg-neutral-100 dark:hover:bg-zinc-800" title="Fechar">
+                        <flux:icon.x-mark class="size-4" />
+                    </button>
+                </div>
+                @if ($changeAmount > 0)
+                    <div class="p-4">
+                        <div class="w-full bg-amber-50 border border-amber-200 rounded-xl p-3 dark:bg-amber-900/20 dark:border-amber-700 text-center">
+                            <p class="text-xs text-amber-700 dark:text-amber-300 mb-1">Troco para o cliente</p>
+                            <p class="text-3xl font-bold text-amber-700 dark:text-amber-300">
+                                R$ {{ number_format($changeAmount, 2, ',', '.') }}
+                            </p>
+                        </div>
+                    </div>
+                @endif
+            </div>
+        </div>
+    @endif
+
     {{-- ══ Header ══ --}}
     <div class="flex items-center justify-between gap-4 px-5 py-3 bg-white border-b border-neutral-200 shadow-sm dark:bg-zinc-900 dark:border-zinc-800 shrink-0">
         <div class="flex items-center gap-3 min-w-0">
@@ -593,64 +632,8 @@
                 :class="mobileCartOpen ? 'fixed inset-0 z-30 flex' : 'hidden'"
             >
 
-                {{-- ── Sucesso ── --}}
-                @if ($step === 'success')
-                    <div class="flex flex-col h-full overflow-hidden">
-                        <div class="px-4 py-3 border-b border-neutral-100 dark:border-zinc-800 shrink-0 flex items-center gap-2 bg-white dark:bg-zinc-900">
-                            <div class="size-7 rounded-full bg-green-100 flex items-center justify-center dark:bg-green-900/40 shrink-0">
-                                <flux:icon.check class="size-4 text-green-600 dark:text-green-400" />
-                            </div>
-                            <h2 class="font-bold text-neutral-800 dark:text-neutral-100">Pedido registrado!</h2>
-                        </div>
-                        <div class="flex-1 flex flex-col items-center justify-center p-5 space-y-4 overflow-y-auto">
-                            <p class="font-mono text-amber-500 dark:text-amber-400 font-semibold text-2xl">{{ $lastOrderNumber }}</p>
-                            @if ($lastOrderTotal)
-                                <p class="text-sm text-neutral-500 dark:text-neutral-400">
-                                    Total: <span class="font-semibold text-neutral-700 dark:text-neutral-200">R$ {{ number_format($lastOrderTotal, 2, ',', '.') }}</span>
-                                </p>
-                            @endif
-                            @if ($changeAmount > 0)
-                                <div class="w-full bg-amber-50 border border-amber-200 rounded-xl p-4 dark:bg-amber-900/20 dark:border-amber-700 text-center">
-                                    <p class="text-xs text-amber-700 dark:text-amber-300 mb-1">Troco para o cliente</p>
-                                    <p class="text-4xl font-bold text-amber-700 dark:text-amber-300">
-                                        R$ {{ number_format($changeAmount, 2, ',', '.') }}
-                                    </p>
-                                </div>
-                            @endif
-                            <div class="w-full flex gap-2">
-                                <flux:button wire:click="resetTerminal" variant="primary" size="base" class="flex-1">
-                                    Novo pedido
-                                </flux:button>
-                                @if ($lastOrderId)
-                                    <flux:button
-                                        x-data
-                                        x-on:click="window.open('{{ route('admin.orders.receipt', ['order' => $lastOrderId]) }}', '_blank')"
-                                        variant="outline"
-                                        size="base"
-                                        icon="printer"
-                                        title="Imprimir cupom"
-                                    />
-                                    <flux:button
-                                        x-data
-                                        x-on:click="window.open('{{ route('admin.orders.receipt', ['order' => $lastOrderId, 'station' => 'cozinha']) }}', '_blank')"
-                                        variant="outline"
-                                        size="base"
-                                        title="Imprimir cupom cozinha"
-                                    >Cozinha</flux:button>
-                                    <flux:button
-                                        x-data
-                                        x-on:click="window.open('{{ route('admin.orders.receipt', ['order' => $lastOrderId, 'station' => 'bar']) }}', '_blank')"
-                                        variant="outline"
-                                        size="base"
-                                        title="Imprimir cupom bar"
-                                    >Bar</flux:button>
-                                @endif
-                            </div>
-                        </div>
-                    </div>
-
-                {{-- ── Carrinho ── --}}
-                @else
+                {{-- ── Carrinho ── (fechar comanda não trava mais aqui — volta pra seleção de
+                     comandas e mostra o resultado no card flutuante do topo, ver acima) --}}
                     <div class="flex flex-col h-full overflow-hidden">
                         <div class="px-4 py-3 border-b border-neutral-100 dark:border-zinc-800 shrink-0 bg-white dark:bg-zinc-900">
                             <div class="flex items-center justify-between gap-3">
@@ -797,6 +780,9 @@
                                             R$ {{ number_format($activeTabOrder?->total ?? 0, 2, ',', '.') }}
                                         </span>
                                     </div>
+                                    <flux:button wire:click="finalizeOrder" variant="filled" size="base" class="w-full h-12 text-base" icon="printer">
+                                        Finalizar Pedido
+                                    </flux:button>
                                     @unless ($isWaiter)
                                         <flux:button wire:click="proceedToCloseTab({{ $openTabOrderId }})" variant="primary" size="base" class="w-full h-14 text-base">
                                             Fechar comanda
@@ -805,7 +791,6 @@
                                 </div>
                             @endif
                     </div>
-                @endif
                 {{-- fim painel direito --}}
 
             </div>
@@ -836,7 +821,13 @@
             @endif
 
             @if ($step === 'payment')
-                <div class="absolute inset-0 z-30 flex items-center justify-center bg-amber-950/45 p-3 lg:p-6">
+                {{-- fixed (não absolute): o container relative é só a área abaixo do header —
+                     um "absolute inset-0" aqui deixa o header (com o select de filial) fora da
+                     sobreposição, ainda clicável/focável por trás do modal. Mudar filial durante
+                     o pagamento dispara updatedSelectedBranchId(), que zera $step pra 'catalog'
+                     e fecha o modal na hora, descartando forma de pagamento/desconto já
+                     preenchidos — daí o fechamento "sozinho" e intermitente. --}}
+                <div class="fixed inset-0 z-30 flex items-center justify-center bg-amber-950/45 p-3 lg:p-6">
                     <div class="flex max-h-full w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900">
                         <div class="shrink-0 border-b border-neutral-100 px-4 py-3 dark:border-zinc-800">
                             <div class="flex items-center justify-between gap-3">
@@ -938,7 +929,7 @@
                                             <div class="pt-3 space-y-1.5">
                                                 <flux:label class="text-xs font-semibold">Valor recebido</flux:label>
                                                 <flux:input
-                                                    wire:model="cashReceivedInput"
+                                                    wire:model.live.debounce.500ms="cashReceivedInput"
                                                     placeholder="Em branco = valor exato"
                                                     type="number"
                                                     step="0.01"
@@ -1024,6 +1015,13 @@
                                                 </span>
                                             </div>
                                         </div>
+
+                                        @if ($canUseFiscalNotes)
+                                            <label class="flex items-center gap-2 px-3 py-2 border rounded-xl dark:border-zinc-700 cursor-pointer">
+                                                <flux:checkbox wire:model.live="printFiscalNote" />
+                                                <span class="text-sm">Imprimir nota fiscal ao confirmar</span>
+                                            </label>
+                                        @endif
 
                                         <div class="grid grid-cols-2 gap-2">
                                             <flux:button wire:click="backToCatalog" variant="ghost" size="base">

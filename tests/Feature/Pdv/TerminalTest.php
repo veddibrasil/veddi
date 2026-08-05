@@ -243,6 +243,50 @@ test('pedido PDV pago em dinheiro dispara emissão automática de nota fiscal', 
     Bus::assertDispatched(IssueFiscalNote::class, fn ($job) => $job->orderId === $order->id);
 });
 
+test('checkbox de imprimir nota fiscal só aparece com o módulo fiscal habilitado na empresa', function () {
+    ['admin' => $admin] = pdvContext();
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->assertSet('canUseFiscalNotes', false)
+        ->assertSet('printFiscalNote', false);
+});
+
+test('pagamento com checkbox de nota fiscal marcado dispara order-paid com printFiscalNote, mesmo sem impressora de auto-print', function () {
+    ['admin' => $admin, 'product' => $product, 'company' => $company] = pdvContext();
+
+    $company->update(['fiscal_notes_enabled' => true]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->assertSet('canUseFiscalNotes', true)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'cash')
+        ->set('cashReceivedInput', '10.00')
+        ->set('printFiscalNote', true)
+        ->call('processOrder')
+        ->assertSet('step', 'catalog')
+        ->assertDispatched('order-paid', printFiscalNote: true);
+});
+
+test('pagamento sem marcar o checkbox e sem impressora de auto-print não dispara order-paid', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'cash')
+        ->set('cashReceivedInput', '10.00')
+        ->call('processOrder')
+        ->assertSet('step', 'catalog')
+        ->assertNotDispatched('order-paid');
+});
+
 // ─── Pedido com PIX ───────────────────────────────────────────────────────────
 
 test('pedido PDV com PIX é apenas informativo: marca como pago direto sem gerar cobrança', function () {
@@ -387,6 +431,20 @@ test('troco calculado corretamente', function () {
         ->set('cashReceivedInput', '20.00')
         ->call('processOrder')
         ->assertSet('changeAmount', 12.0);
+});
+
+test('preview de troco aparece assim que o valor recebido é informado, antes de confirmar o pagamento', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'cash')
+        ->assertDontSee('Troco: R$')
+        ->set('cashReceivedInput', '20.00')
+        ->assertSee('Troco: R$ 12,00');
 });
 
 // ─── Isolamento multi-tenant ───────────────────────────────────────────────────

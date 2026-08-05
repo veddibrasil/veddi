@@ -1,4 +1,4 @@
-import { autoPrintOrderReceipt, listenForFiscalNoteAuthorization } from './pdv-printer.js';
+import { autoPrintOrderReceipt, autoPrintTabOrderTicket, listenForFiscalNoteAuthorization } from './pdv-printer.js';
 
 // O terminal usa wire:navigate (SPA, sem reload de pagina) — cada vez que o
 // caixa sai e volta pra tela do PDV, o Alpine destroi e recria o <div
@@ -19,6 +19,7 @@ function bindPdvGlobalListenersOnce() {
     window.addEventListener('pdv-barcode-processed', () => pdvActiveInstance?._focusBarcode());
     window.addEventListener('product-added-to-cart', (e) => pdvActiveInstance?.showToast(`${e.detail.name} adicionado ao carrinho`));
     window.addEventListener('order-paid', (e) => pdvActiveInstance?._handleOrderPaid(e.detail));
+    window.addEventListener('tab-order-finalized', (e) => pdvActiveInstance?._handleTabOrderFinalized(e.detail));
     window.addEventListener('pdv-toast', (e) => pdvActiveInstance?.showToast(e.detail.message));
 
     window.addEventListener('keydown', (e) => {
@@ -75,6 +76,14 @@ function bindPdvGlobalListenersOnce() {
         if (!wire) return;
         const step = wire.get('step');
 
+        // Esc rodava ANTES desse guard: apertar Esc com foco num campo de texto do
+        // modal de pagamento (busca de cliente, desconto, valor recebido, observação
+        // — pra limpar o campo, fechar um autocomplete do navegador, ou só por hábito)
+        // fechava o modal inteiro na hora, descartando forma de pagamento/desconto já
+        // preenchidos. Os outros atalhos (F2/F10//) já respeitavam esse guard — Esc
+        // passa a respeitar também, só fecha o modal quando o foco não está num campo.
+        if (typing) return;
+
         if (e.key === 'Escape') {
             instance.selectingProduct = null;
             instance.pendingSelections = {};
@@ -85,8 +94,6 @@ function bindPdvGlobalListenersOnce() {
             }
             return;
         }
-
-        if (typing) return;
 
         if (e.key === '/') {
             e.preventDefault();
@@ -139,15 +146,27 @@ Alpine.data('pdvApp', () => ({
 
     // Cupom imprime na hora (config auto_print da filial); a nota fiscal so
     // fica pronta depois (emissao assincrona), entao so assina o canal do
-    // pedido e imprime quando o evento de autorizacao chegar.
-    _handleOrderPaid({ orderId, stations }) {
+    // pedido e imprime quando o evento de autorizacao chegar — e so faz isso
+    // se o operador marcou o checkbox "Imprimir nota fiscal" no pagamento.
+    _handleOrderPaid({ orderId, stations, printFiscalNote }) {
         autoPrintOrderReceipt(orderId, stations, () => this.showToast('Falha ao imprimir cupom automaticamente'));
-        listenForFiscalNoteAuthorization(orderId, () => this.showToast('Falha ao imprimir nota fiscal automaticamente'));
+
+        if (printFiscalNote) {
+            listenForFiscalNoteAuthorization(orderId, () => this.showToast('Falha ao imprimir nota fiscal automaticamente'));
+        }
 
         // Terminal nao entra mais em step 'success' (card flutuante mostra o resultado
         // por cima do catalogo) — no mobile, garante que a tela volta pro catalogo em
         // vez de ficar presa no carrinho em tela cheia.
         this.mobileCartOpen = false;
+    },
+
+    // Garçom manda a comanda pra produção (botão "Finalizar Pedido") — a via
+    // completa (sem filtro por categoria) vai pra CADA impressora configurada da
+    // filial (geral, cozinha, bar), servindo tanto de ticket de preparo quanto de
+    // guia de entrega pro garçom.
+    _handleTabOrderFinalized({ orderId, stations }) {
+        autoPrintTabOrderTicket(orderId, stations, () => this.showToast('Falha ao imprimir pedido da mesa'));
     },
 
     showToast(message) {

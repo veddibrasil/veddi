@@ -148,6 +148,18 @@ export function autoPrintOrderReceipt(orderId, stations, onError) {
     });
 }
 
+// "Finalizar Pedido" da mesa: manda a via COMPLETA (sem filtro por categoria) pra
+// cada impressora configurada da filial — cozinha/bar recebem o pedido inteiro,
+// não só os itens deles, porque a mesma via serve de guia de entrega pro garçom.
+export function autoPrintTabOrderTicket(orderId, stations, onError) {
+    (stations || []).forEach((station) => {
+        fetchAndPrint(`/admin/pdv/print/receipt/${orderId}/${station}?full=1`).catch((err) => {
+            console.warn('[pdv-printer] falha ao imprimir via da mesa', station, err);
+            onError?.(station, err);
+        });
+    });
+}
+
 export function autoPrintFiscalNote(orderId, onError) {
     fetchAndPrint(`/admin/pdv/print/fiscal-note/${orderId}`).catch((err) => {
         console.warn('[pdv-printer] falha ao imprimir nota fiscal', err);

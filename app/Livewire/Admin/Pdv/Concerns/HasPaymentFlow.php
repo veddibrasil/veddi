@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Log;
 
 trait HasPaymentFlow
 {
+    use HasAutoPrint;
+
     // Guarda contra double-submit: se duas chamadas a processOrder() caírem na mesma
     // requisição (ex.: F10 e clique no botão disparados no mesmo tick, que o Livewire
     // agrupa numa única requisição), a segunda precisa ser barrada aqui — senão os dois
@@ -210,26 +212,5 @@ trait HasPaymentFlow
         // próximo pedido. O card flutuante (fora do fluxo de step) mostra o resultado
         // por cima, sem bloquear o caixa.
         $this->resetCartForNextOrder();
-    }
-
-    /**
-     * Manda pro JS quais impressoras da filial imprimem sozinhas — sem isso o
-     * front teria que descobrir a config de auto_print com uma chamada extra
-     * antes de poder imprimir o cupom assim que a tela de sucesso aparece.
-     */
-    private function dispatchAutoPrintPayload($order): void
-    {
-        $printers = $order->branch->printers()
-            ->where('auto_print', true)
-            ->where('active', true)
-            ->get(['station'])
-            ->pluck('station')
-            ->values();
-
-        if ($printers->isEmpty()) {
-            return;
-        }
-
-        $this->dispatch('order-paid', orderId: $order->id, stations: $printers);
     }
 }
