@@ -1,4 +1,4 @@
-import { autoPrintOrderReceipt, autoPrintTabOrderTicket, autoPrintPendingTabItems, listenForFiscalNoteAuthorization } from './pdv-printer.js';
+import { autoPrintOrderReceipt, autoPrintTabOrderTicket, listenForFiscalNoteAuthorization } from './pdv-printer.js';
 
 // O terminal usa wire:navigate (SPA, sem reload de pagina) — cada vez que o
 // caixa sai e volta pra tela do PDV, o Alpine destroi e recria o <div
@@ -20,7 +20,6 @@ function bindPdvGlobalListenersOnce() {
     window.addEventListener('product-added-to-cart', (e) => pdvActiveInstance?.showToast(`${e.detail.name} adicionado ao carrinho`));
     window.addEventListener('order-paid', (e) => pdvActiveInstance?._handleOrderPaid(e.detail));
     window.addEventListener('tab-order-finalized', (e) => pdvActiveInstance?._handleTabOrderFinalized(e.detail));
-    window.addEventListener('tab-items-pending', (e) => pdvActiveInstance?._handleTabItemsPending(e.detail));
     window.addEventListener('pdv-toast', (e) => pdvActiveInstance?.showToast(e.detail.message));
 
     window.addEventListener('keydown', (e) => {
@@ -168,12 +167,6 @@ Alpine.data('pdvApp', () => ({
     // guia de entrega pro garçom.
     _handleTabOrderFinalized({ orderId, stations }) {
         autoPrintTabOrderTicket(orderId, stations, () => this.showToast('Falha ao imprimir pedido da mesa'));
-    },
-
-    // Garçom lançou item novo na comanda — sai sozinho na cozinha/bar (se a filial
-    // tiver impressora com auto_print), sem precisar de "Finalizar Pedido".
-    _handleTabItemsPending({ orderId, stations }) {
-        autoPrintPendingTabItems(orderId, stations, () => this.showToast('Falha ao imprimir item novo da comanda'));
     },
 
     showToast(message) {

@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\BranchPrinter;
 use App\Models\Order;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class PrintPayloadController extends Controller
 {
@@ -22,6 +23,16 @@ class PrintPayloadController extends Controller
 
         $printer = $order->branch->printerForStation($station);
 
+        Log::channel('orders')->info('[auto-print] navegador pediu payload de impressão', [
+            'order_id' => $order->id,
+            'branch_id' => $order->branch_id,
+            'station' => $station,
+            'full' => $request->boolean('full'),
+            'printer_found' => (bool) $printer,
+            'printer_active' => $printer?->active,
+            'user_id' => auth()->id(),
+        ]);
+
         abort_unless($printer && $printer->active, 404);
 
         $company = app()->bound('current.company') ? app('current.company') : null;
@@ -30,55 +41,6 @@ class PrintPayloadController extends Controller
         // categoria da estação (cozinha/bar recebem o pedido inteiro, não só os itens
         // deles), porque a mesma via também serve de guia de entrega pro garçom.
         $payload = app(PrinterServiceInterface::class)->buildOrderReceipt($order, $station, $company, $request->boolean('full'));
-
-        return response()->json([
-            'printer' => $this->printerPayload($printer),
-            'payload' => base64_encode($payload),
-        ]);
-    }
-
-    /**
-     * Cupom de item novo lançado na comanda (auto-print, sem "Finalizar Pedido"). Os
-     * ids/quantidades vêm prontos do broadcast TabItemsReadyForProduction — já
-     * decididos atomicamente no momento do lançamento (ver
-     * HasOpenTabs::notifyPendingProductionItems), não recalculados aqui. Isso só
-     * monta o cupom pros itens pedidos, validando contra os itens reais do pedido
-     * (ids e quantidade máxima) pra não confiar cegamente no que vier na URL.
-     */
-    public function pendingItems(Request $request, Order $order, string $station)
-    {
-        $this->authorizeAccess();
-
-        abort_unless(in_array($station, ['cozinha', 'bar'], true), 404);
-
-        $order->load(['items.product.category', 'branch']);
-
-        $printer = $order->branch->printerForStation($station);
-
-        abort_unless($printer && $printer->active, 404);
-
-        $requested = collect($request->query('items', []))
-            ->mapWithKeys(fn ($qty, $id) => [(int) $id => (int) $qty])
-            ->filter(fn ($qty) => $qty > 0);
-
-        abort_if($requested->isEmpty(), 404);
-
-        $items = $order->items
-            ->whereIn('id', $requested->keys())
-            ->map(function ($item) use ($requested) {
-                $copy = $item->replicate();
-                $copy->quantity = min($requested->get($item->id), $item->quantity);
-
-                return $copy;
-            })
-            ->filter(fn ($item) => $item->quantity > 0)
-            ->values();
-
-        abort_if($items->isEmpty(), 404);
-
-        $company = app()->bound('current.company') ? app('current.company') : null;
-
-        $payload = app(PrinterServiceInterface::class)->buildOrderReceipt($order, $station, $company, itemsOverride: $items);
 
         return response()->json([
             'printer' => $this->printerPayload($printer),

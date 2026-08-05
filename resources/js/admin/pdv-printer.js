@@ -160,24 +160,6 @@ export function autoPrintTabOrderTicket(orderId, stations, onError) {
     });
 }
 
-// Item novo lançado na comanda (garçom pode estar no celular, sem QZ Tray) — cada
-// tela de PDV que receber o broadcast tenta imprimir só o item novo (não a comanda
-// inteira) com a impressora que tiver pareada. `stations` é { cozinha: [{id,qty}], bar: [...] }.
-export function autoPrintPendingTabItems(orderId, stations, onError) {
-    Object.entries(stations || {}).forEach(([station, items]) => {
-        if (!items || items.length === 0) {
-            return;
-        }
-
-        const query = items.map((item) => `items[${item.id}]=${item.qty}`).join('&');
-
-        fetchAndPrint(`/admin/pdv/print/pending-items/${orderId}/${station}?${query}`).catch((err) => {
-            console.warn('[pdv-printer] falha ao imprimir item novo da comanda', station, err);
-            onError?.(station, err);
-        });
-    });
-}
-
 export function autoPrintFiscalNote(orderId, onError) {
     fetchAndPrint(`/admin/pdv/print/fiscal-note/${orderId}`).catch((err) => {
         console.warn('[pdv-printer] falha ao imprimir nota fiscal', err);

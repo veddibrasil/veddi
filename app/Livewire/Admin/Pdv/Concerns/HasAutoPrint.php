@@ -4,6 +4,7 @@ namespace App\Livewire\Admin\Pdv\Concerns;
 
 use App\Models\BranchPrinter;
 use App\Models\Order;
+use Illuminate\Support\Facades\Log;
 
 /** Compartilhado entre Terminal (HasPaymentFlow) e TabTerminal (HasOpenTabs) — os dois pagam um pedido. */
 trait HasAutoPrint
@@ -16,7 +17,6 @@ trait HasAutoPrint
             ? [
                 "echo:orders.{$companyId},NewOrderPlaced" => 'onOrderBroadcastReceived',
                 "echo:orders.{$companyId},TabOrderSentToProduction" => 'onTabOrderSentToProductionBroadcast',
-                "echo:orders.{$companyId},TabItemsReadyForProduction" => 'onTabItemsReadyForProductionBroadcast',
             ]
             : [];
     }
@@ -76,37 +76,33 @@ trait HasAutoPrint
     public function onTabOrderSentToProductionBroadcast(array $event): void
     {
         if ((int) ($event['branch_id'] ?? 0) !== (int) $this->selectedBranchId) {
+            Log::channel('orders')->info('[auto-print] broadcast TabOrderSentToProduction recebido, mas filial não bate — ignorado nesta tela', [
+                'order_id' => $event['order_id'] ?? null,
+                'event_branch_id' => $event['branch_id'] ?? null,
+                'this_branch_id' => $this->selectedBranchId,
+            ]);
+
             return;
         }
 
         $stations = collect($event['stations'] ?? [])->values();
 
         if ($stations->isEmpty()) {
+            Log::channel('orders')->info('[auto-print] broadcast TabOrderSentToProduction recebido sem estações — nada a imprimir', [
+                'order_id' => $event['order_id'] ?? null,
+                'branch_id' => $this->selectedBranchId,
+            ]);
+
             return;
         }
+
+        Log::channel('orders')->info('[auto-print] broadcast TabOrderSentToProduction recebido nesta tela, repassando pro JS imprimir', [
+            'order_id' => $event['order_id'],
+            'branch_id' => $this->selectedBranchId,
+            'stations' => $stations->all(),
+        ]);
 
         $this->dispatch('tab-order-finalized', orderId: $event['order_id'], stations: $stations);
-    }
-
-    /**
-     * Item novo lançado numa comanda em qualquer tela da filial — o que precisa ser
-     * impresso (item+quantidade) já veio pronto no payload, decidido atomicamente
-     * no momento do lançamento (ver HasOpenTabs::notifyPendingProductionItems).
-     * Aqui só repassa pro JS montar e mandar pro QZ Tray.
-     */
-    public function onTabItemsReadyForProductionBroadcast(array $event): void
-    {
-        if ((int) ($event['branch_id'] ?? 0) !== (int) $this->selectedBranchId) {
-            return;
-        }
-
-        $stations = collect($event['stations'] ?? [])->filter(fn ($items) => ! empty($items));
-
-        if ($stations->isEmpty()) {
-            return;
-        }
-
-        $this->dispatch('tab-items-pending', orderId: $event['order_id'], stations: $stations);
     }
 
     /**

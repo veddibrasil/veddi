@@ -4,9 +4,7 @@ namespace App\Livewire\Admin\Pdv\Concerns;
 
 use App\Events\NewOrderPlaced;
 use App\Events\OrderStatusUpdated;
-use App\Events\TabItemsReadyForProduction;
 use App\Events\TabOrderSentToProduction;
-use App\Models\BranchPrinter;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
@@ -15,6 +13,7 @@ use App\Services\Order\OrderService;
 use App\Services\Payment\PaymentOrchestrator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Computed;
 
 trait HasOpenTabs
@@ -173,62 +172,8 @@ trait HasOpenTabs
             return;
         }
 
-        $this->notifyPendingProductionItems($order);
-
         unset($this->openTabs);
         unset($this->availableTables);
-    }
-
-    /**
-     * Item novo lançado (ou incrementado) na comanda — se a filial tem impressora com
-     * auto_print ativo em cozinha/bar, avisa a produção sozinha, sem esperar o
-     * garçom clicar em "Finalizar Pedido". A quantidade é marcada como enviada
-     * aqui mesmo, antes do broadcast: decidir "o que ainda não foi impresso" tem
-     * que ser atômico nesta requisição — se ficasse pra quem recebe o broadcast
-     * recalcular depois, duas telas de PDV abertas na mesma filial poderiam
-     * calcular pendências diferentes ou brigar por quem consome o item primeiro.
-     */
-    private function notifyPendingProductionItems(Order $order): void
-    {
-        $items = OrderItem::where('order_id', $order->id)->get();
-        $stationItems = [];
-
-        foreach (['cozinha', 'bar'] as $station) {
-            $pending = $items
-                ->map(fn (OrderItem $item) => ['item' => $item, 'qty' => $item->pendingQuantityForStation($station)])
-                ->filter(fn (array $entry) => $entry['qty'] > 0);
-
-            if ($pending->isEmpty()) {
-                continue;
-            }
-
-            $hasAutoPrintPrinter = BranchPrinter::where('branch_id', $order->branch_id)
-                ->where('station', $station)
-                ->where('auto_print', true)
-                ->where('active', true)
-                ->exists();
-
-            if (! $hasAutoPrintPrinter) {
-                continue;
-            }
-
-            $sentColumn = $station === 'cozinha' ? 'kitchen_sent_quantity' : 'bar_sent_quantity';
-
-            foreach ($pending as $entry) {
-                $entry['item']->update([$sentColumn => $entry['item']->quantity]);
-            }
-
-            $stationItems[$station] = $pending
-                ->map(fn (array $entry) => ['id' => $entry['item']->id, 'qty' => $entry['qty']])
-                ->values()
-                ->all();
-        }
-
-        if ($stationItems === []) {
-            return;
-        }
-
-        TabItemsReadyForProduction::dispatch($order, $stationItems);
     }
 
     /**
@@ -273,7 +218,18 @@ trait HasOpenTabs
         // garçom no celular, sem QZ Tray nenhum. Quem tem que imprimir é a tela de PDV
         // que estiver com a impressora de verdade pareada — não necessariamente esta.
         if ($stations->isNotEmpty()) {
+            Log::channel('orders')->info('[auto-print] Finalizar Pedido: disparando TabOrderSentToProduction', [
+                'order_id' => $order->id,
+                'branch_id' => $order->branch_id,
+                'stations' => $stations->all(),
+            ]);
+
             TabOrderSentToProduction::dispatch($order, $stations->all());
+        } else {
+            Log::channel('orders')->info('[auto-print] Finalizar Pedido: nenhuma impressora ativa na filial, não broadcasta', [
+                'order_id' => $order->id,
+                'branch_id' => $order->branch_id,
+            ]);
         }
 
         $this->dispatch('pdv-toast', message: "Pedido de {$order->table_label} enviado pra produção.");
