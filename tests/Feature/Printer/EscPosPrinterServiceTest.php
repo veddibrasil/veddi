@@ -138,7 +138,28 @@ test('buildOrderReceipt sempre termina com o comando de corte de papel ESC/POS',
     expect($bytes)->toContain(chr(0x1D).chr(0x56));
 });
 
-test('buildFiscalNoteReceipt inclui a chave de acesso formatada e o QR code', function () {
+test('buildFiscalNoteReceipt monta o DANFE completo com itens, totais e chave de acesso', function () {
+    $order = escposTestOrder();
+
+    $note = FiscalNote::create([
+        'company_id' => $order->company_id,
+        'order_id' => $order->id,
+        'status' => 'authorized',
+        'access_key' => str_repeat('1', 44),
+        'data' => ['customer_cpf_cnpj' => '11144477735'],
+    ]);
+
+    $bytes = app(PrinterServiceInterface::class)->buildFiscalNoteReceipt($note, $order);
+
+    expect($bytes)->toContain('DANFE NFC-e')
+        ->toContain('Coxinha')
+        ->toContain('Suco de Laranja')
+        ->toContain('TOTAL')
+        ->toContain('11144477735')
+        ->toContain(chunk_split(str_repeat('1', 44), 4, ' '));
+});
+
+test('buildFiscalNoteReceipt indica consumidor nao identificado quando nao ha documento', function () {
     $order = escposTestOrder();
 
     $note = FiscalNote::create([
@@ -148,8 +169,7 @@ test('buildFiscalNoteReceipt inclui a chave de acesso formatada e o QR code', fu
         'access_key' => str_repeat('1', 44),
     ]);
 
-    $bytes = app(PrinterServiceInterface::class)->buildFiscalNoteReceipt($note);
+    $bytes = app(PrinterServiceInterface::class)->buildFiscalNoteReceipt($note, $order);
 
-    expect($bytes)->toContain('NFC-e AUTORIZADA')
-        ->toContain(chunk_split(str_repeat('1', 44), 4, ' '));
+    expect($bytes)->toContain('CONSUMIDOR NAO IDENTIFICADO');
 });

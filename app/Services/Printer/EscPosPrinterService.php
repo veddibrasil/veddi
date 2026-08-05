@@ -154,21 +154,87 @@ class EscPosPrinterService implements PrinterServiceInterface
         return $data;
     }
 
-    public function buildFiscalNoteReceipt(FiscalNote $note): string
+    public function buildFiscalNoteReceipt(FiscalNote $note, Order $order, ?Company $company = null): string
     {
         $connector = new MemoryPrintConnector;
         $printer = new Printer($connector);
+        $branch = $order->branch;
+        $raw = $note->raw_response;
 
         $printer->setJustification(Printer::JUSTIFY_CENTER);
         $printer->setEmphasis(true);
-        $printer->text("NFC-e AUTORIZADA\n");
+        $printer->text($company?->name ?? config('app.name')."\n");
         $printer->setEmphasis(false);
+
+        if ($company?->owner_cpf_cnpj) {
+            $printer->text('CNPJ: '.$company->owner_cpf_cnpj."\n");
+        }
+
+        if ($branch) {
+            $printer->text($branch->address.($branch->number ? ', '.$branch->number : '')."\n");
+            $printer->text($branch->neighborhood.($branch->city ? ' - '.$branch->city : '')."\n");
+        }
+
         $printer->feed();
+        $printer->setEmphasis(true);
+        $printer->text("DANFE NFC-e\n");
+        $printer->setEmphasis(false);
+        $printer->text("Documento Auxiliar da Nota Fiscal\nde Consumidor Eletronica\n");
+        $printer->setJustification(Printer::JUSTIFY_LEFT);
+
+        $this->divider($printer);
+        $printer->text("Pedido: {$order->order_number}\n");
+        $printer->text('Data: '.$order->created_at->format('d/m/Y H:i')."\n");
+        $this->divider($printer);
+
+        foreach ($order->items as $item) {
+            $printer->setEmphasis(true);
+            $printer->text("{$item->quantity}x {$item->product_name}\n");
+            $printer->setEmphasis(false);
+            $printer->text('  R$ '.number_format((float) $item->unit_price, 2, ',', '.')." / un.\n");
+
+            $printer->setJustification(Printer::JUSTIFY_RIGHT);
+            $printer->text('R$ '.number_format((float) $item->subtotal, 2, ',', '.')."\n");
+            $printer->setJustification(Printer::JUSTIFY_LEFT);
+        }
+
+        $this->divider($printer);
+        $this->printTotals($printer, $order);
+        $this->divider($printer);
+        $this->printPayment($printer, $order);
+        $this->divider($printer);
+
+        $customerDocument = $note->data['customer_cpf_cnpj'] ?? null;
+
+        if ($customerDocument) {
+            $printer->text("CPF/CNPJ do consumidor:\n{$customerDocument}\n");
+        } else {
+            $printer->text("CONSUMIDOR NAO IDENTIFICADO\n");
+        }
+
+        $this->divider($printer);
+
+        if (! empty($raw['numero'])) {
+            $printer->text('NFC-e no '.$raw['numero'].' Serie '.($raw['serie'] ?? '')."\n");
+        }
+
+        if (! empty($raw['protocolo_autorizacao'])) {
+            $printer->text("Protocolo de autorizacao:\n{$raw['protocolo_autorizacao']}\n");
+        }
+
+        if (! empty($raw['data_autorizacao'])) {
+            $printer->text('Autorizada em: '.$raw['data_autorizacao']."\n");
+        }
 
         if ($note->access_key) {
+            $printer->feed();
+            $printer->setJustification(Printer::JUSTIFY_CENTER);
+            $printer->text("Chave de acesso\n");
             $printer->text(chunk_split($note->access_key, 4, ' ')."\n");
             $printer->feed();
             $printer->qrCode($note->access_key, Printer::QR_ECLEVEL_L, 6);
+            $printer->feed();
+            $printer->text("Consulte pela Chave de Acesso em\nwww.nfce.fazenda.gov.br\n");
         }
 
         $printer->feed(2);

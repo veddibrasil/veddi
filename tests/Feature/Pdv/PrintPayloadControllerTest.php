@@ -208,7 +208,7 @@ test('nota fiscal retorna payload quando autorizada e há impressora marcada', f
         ->json();
 
     expect($response['printer'])->toBe(['connection_type' => 'network', 'ip' => '192.168.0.50', 'port' => 9100, 'name' => null]);
-    expect(base64_decode($response['payload']))->toContain('NFC-e AUTORIZADA');
+    expect(base64_decode($response['payload']))->toContain('DANFE NFC-e')->toContain('Coxinha');
 });
 
 test('usuário sem permissão de pdv/pedidos não acessa o payload de impressão', function () {

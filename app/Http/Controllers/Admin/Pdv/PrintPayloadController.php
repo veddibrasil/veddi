@@ -37,7 +37,7 @@ class PrintPayloadController extends Controller
     {
         $this->authorizeAccess();
 
-        $order->load('branch.printers', 'activeFiscalNote');
+        $order->load('branch.printers', 'items', 'activeFiscalNote');
 
         $note = $order->activeFiscalNote;
 
@@ -47,7 +47,9 @@ class PrintPayloadController extends Controller
 
         abort_unless($printer && $printer->active, 404);
 
-        $payload = app(PrinterServiceInterface::class)->buildFiscalNoteReceipt($note);
+        $company = app()->bound('current.company') ? app('current.company') : null;
+
+        $payload = app(PrinterServiceInterface::class)->buildFiscalNoteReceipt($note, $order, $company);
 
         return response()->json([
             'printer' => $this->printerPayload($printer),

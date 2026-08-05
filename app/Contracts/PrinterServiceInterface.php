@@ -19,8 +19,9 @@ interface PrinterServiceInterface
     public function buildOrderReceipt(Order $order, string $station, ?Company $company = null): string;
 
     /**
-     * Monta os bytes ESC/POS do comprovante simplificado da NFC-e (chave de
-     * acesso + QR code), a ser impresso quando a nota é autorizada.
+     * Monta os bytes ESC/POS do DANFE NFC-e completo (itens, totais, forma de
+     * pagamento, consumidor, protocolo de autorização, chave de acesso e QR
+     * code), a ser impresso quando a nota é autorizada.
      */
-    public function buildFiscalNoteReceipt(FiscalNote $note): string;
+    public function buildFiscalNoteReceipt(FiscalNote $note, Order $order, ?Company $company = null): string;
 }
