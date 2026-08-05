@@ -10,16 +10,14 @@ use Illuminate\Http\Request;
  * RSA própria, pra não exibir o prompt de "site não confiável" a cada cupom.
  * O par de chaves não é gerado por este código — precisa existir em
  * storage/app/private/qz/ (private-key.pem + digital-certificate.txt), gerado
- * uma vez por ambiente com um certificado de ENTIDADE FINAL (CA:FALSE +
- * keyUsage=digitalSignature) — ex.:
+ * uma vez por ambiente, de preferência como certificado de ENTIDADE FINAL
+ * (CA:FALSE + keyUsage=digitalSignature — formato correto de certificado de
+ * assinatura, mesmo não sendo isso que resolve o popup do QZ Tray, ver
+ * docs/qz-tray-setup.md) — ex.:
  * `openssl req -x509 -newkey rsa:2048 -keyout storage/app/private/qz/private-key.pem
  * -out storage/app/private/qz/digital-certificate.txt -days 3650 -nodes
  * -subj "/CN=Sua Empresa QZ Tray" -addext "basicConstraints=critical,CA:FALSE"
  * -addext "keyUsage=critical,digitalSignature"`
- * Sem CA:FALSE + keyUsage explícitos, o OpenSSL 3.x gera um certificado com
- * CA:TRUE por padrão — o QZ Tray aceita esse certificado pra assinar, mas
- * desabilita o checkbox "Remember this decision" no diálogo de permissão,
- * obrigando o operador a confirmar a impressão toda vez.
  * OU via QZ_PRIVATE_KEY/QZ_CERTIFICATE (conteudo em base64) em ambientes sem
  * acesso a shell/filesystem persistente pra rodar o openssl (ex.: Laravel
  * Cloud) — env tem prioridade sobre o arquivo.

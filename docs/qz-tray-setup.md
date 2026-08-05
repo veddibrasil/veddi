@@ -10,26 +10,26 @@ Tray confiar automaticamente num certificado autoassinado. Sem confiança
 explícita, o QZ Tray mostra o dialogo "Action Required" em toda nova conexão
 (e, dependendo da versão/config, a cada job de impressão).
 
-Existem duas formas de resolver, e elas não se excluem:
+Testamos gerar o certificado como entidade final (`CA:FALSE` +
+`keyUsage=digitalSignature`, em vez do `CA:TRUE` que o OpenSSL 3.x produz por
+padrão) na expectativa de que isso habilitasse o checkbox "Remember this
+decision" — **não fez diferença**. Certificado autoassinado (mesmo
+`CA:FALSE`) continua aparecendo como não verificado pro QZ Tray, e o
+"Remember" fica indisponível pra esse caso. `CA:FALSE`/`keyUsage` continuam
+sendo boa prática pro certificado (é o formato correto de um certificado de
+assinatura), só não resolve o popup sozinho.
 
-1. **Certificado de entidade final (CA:FALSE)** — o QZ Tray só habilita o
-   checkbox "Remember this decision" no próprio diálogo quando o certificado
-   usado pra assinar é `CA:FALSE` com `keyUsage=digitalSignature`. Um
-   certificado gerado sem esses parâmetros (`openssl req -x509` sem
-   `-addext`) sai como `CA:TRUE` por padrão no OpenSSL 3.x — o QZ Tray aceita
-   a assinatura, mas deixa o checkbox desabilitado, forçando o operador a
-   confirmar toda vez. Regenerar o par com o comando correto (ver
-   `QzTraySignatureController`) resolve isso: o operador confirma **uma vez**
-   por estação, marcando "Remember", e o QZ Tray não pergunta mais.
-2. **`override.crt`** — instalar o certificado direto na pasta do QZ Tray
-   faz ele confiar sem diálogo nenhum, nem a primeira confirmação. Mais
-   forte, mas exige acesso ao sistema de arquivos da máquina do caixa (passo
-   manual, não dá pra automatizar pelo Laravel/JS).
+A única forma de eliminar o popup com certificado autoassinado é
+`override.crt` — instalar o certificado direto na pasta do QZ Tray faz ele
+confiar sem diálogo nenhum, sem depender do "Remember". Único jeito de
+zerar isso de vez (sem custo) é uma CA reconhecida assinar o certificado —
+a própria QZ vende esse serviço (qz.io), decisão de negócio, fora do escopo
+de código.
 
-Se o certificado já for `CA:FALSE`, normalmente a opção 1 já basta e é mais
-simples de operar (não precisa mexer em pasta de instalação). Use `override.crt`
-como reforço se quiser eliminar até a primeira confirmação, ou se o QZ Tray da
-estação não estiver persistindo o "Remember" por algum motivo.
+Importante: `override.crt` é um passo único de quem **configura** a
+estação (instala o QZ Tray na máquina do caixa), não algo que o operador
+repete no dia a dia — depois de instalado, ninguém vê popup de novo nessa
+máquina.
 
 ## Passo a passo (uma vez por estação) — override.crt
 
