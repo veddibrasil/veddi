@@ -1047,6 +1047,124 @@ test('garçom (só pdv.waiter_operate) recebe 403 ao acessar Terminal — venda 
         ->assertForbidden();
 });
 
+// ─── Auto-impressão de pedido chegando de fora (chat/site) via broadcast ──────
+
+test('pedido de fora com item de cozinha dispara order-paid quando a filial tem impressora auto_print ativa', function () {
+    ['admin' => $admin, 'branch' => $branch, 'company' => $company] = pdvContext();
+
+    \App\Models\BranchPrinter::create([
+        'company_id' => $company->id, 'branch_id' => $branch->id, 'station' => 'cozinha',
+        'ip_address' => '192.168.0.20', 'port' => 9100, 'paper_width' => 80,
+        'auto_print' => true, 'active' => true,
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('onOrderBroadcastReceived', [
+            'order_id' => 999,
+            'branch_id' => $branch->id,
+            'order_type' => 'delivery',
+            'is_kitchen' => true,
+            'is_bar' => false,
+        ])
+        ->assertDispatched('order-paid', orderId: 999, printFiscalNote: false);
+});
+
+test('pedido com order_type pdv não dispara order-paid pelo broadcast — já tem impressão local própria', function () {
+    ['admin' => $admin, 'branch' => $branch, 'company' => $company] = pdvContext();
+
+    \App\Models\BranchPrinter::create([
+        'company_id' => $company->id, 'branch_id' => $branch->id, 'station' => 'cozinha',
+        'ip_address' => '192.168.0.20', 'port' => 9100, 'paper_width' => 80,
+        'auto_print' => true, 'active' => true,
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('onOrderBroadcastReceived', [
+            'order_id' => 998,
+            'branch_id' => $branch->id,
+            'order_type' => 'pdv',
+            'is_kitchen' => true,
+            'is_bar' => false,
+        ])
+        ->assertNotDispatched('order-paid');
+});
+
+test('pedido de fora de outra filial não dispara order-paid nesta tela', function () {
+    ['admin' => $admin, 'branch' => $branch, 'company' => $company] = pdvContext();
+
+    \App\Models\BranchPrinter::create([
+        'company_id' => $company->id, 'branch_id' => $branch->id, 'station' => 'cozinha',
+        'ip_address' => '192.168.0.20', 'port' => 9100, 'paper_width' => 80,
+        'auto_print' => true, 'active' => true,
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('onOrderBroadcastReceived', [
+            'order_id' => 997,
+            'branch_id' => $branch->id + 999,
+            'order_type' => 'delivery',
+            'is_kitchen' => true,
+            'is_bar' => false,
+        ])
+        ->assertNotDispatched('order-paid');
+});
+
+test('pedido de fora sem impressora auto_print ativa na estação não dispara order-paid', function () {
+    ['admin' => $admin, 'branch' => $branch, 'company' => $company] = pdvContext();
+
+    \App\Models\BranchPrinter::create([
+        'company_id' => $company->id, 'branch_id' => $branch->id, 'station' => 'bar',
+        'ip_address' => '192.168.0.20', 'port' => 9100, 'paper_width' => 80,
+        'auto_print' => true, 'active' => true,
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('onOrderBroadcastReceived', [
+            'order_id' => 996,
+            'branch_id' => $branch->id,
+            'order_type' => 'delivery',
+            'is_kitchen' => true,
+            'is_bar' => false,
+        ])
+        ->assertNotDispatched('order-paid');
+});
+
+test('duas telas de PDV abertas na mesma filial só imprimem o mesmo pedido de fora uma vez', function () {
+    ['admin' => $admin, 'branch' => $branch, 'company' => $company] = pdvContext();
+
+    \App\Models\BranchPrinter::create([
+        'company_id' => $company->id, 'branch_id' => $branch->id, 'station' => 'cozinha',
+        'ip_address' => '192.168.0.20', 'port' => 9100, 'paper_width' => 80,
+        'auto_print' => true, 'active' => true,
+    ]);
+
+    $this->actingAs($admin);
+
+    $payload = [
+        'order_id' => 995,
+        'branch_id' => $branch->id,
+        'order_type' => 'delivery',
+        'is_kitchen' => true,
+        'is_bar' => false,
+    ];
+
+    Livewire::test(Terminal::class)
+        ->call('onOrderBroadcastReceived', $payload)
+        ->assertDispatched('order-paid', orderId: 995);
+
+    Livewire::test(Terminal::class)
+        ->call('onOrderBroadcastReceived', $payload)
+        ->assertNotDispatched('order-paid');
+});
+
 test('sidebar do caixa continua mostrando dashboard e painel completo', function () {
     ['admin' => $admin] = pdvContext();
 
