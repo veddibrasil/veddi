@@ -4,6 +4,7 @@ namespace App\Services\Order;
 
 use App\Contracts\OrderServiceInterface;
 use App\Contracts\RefundServiceInterface;
+use App\Events\OrderItemsUpdated;
 use App\Jobs\NotifyScheduledOrderJob;
 use App\Models\CompanyNotification;
 use App\Models\Coupon;
@@ -369,6 +370,8 @@ class OrderService implements OrderServiceInterface
             'fee' => $fee,
             'net_value' => $netValue,
         ]);
+
+        OrderItemsUpdated::dispatch($order);
     }
 
     private function resolveProducts(array $cart, int $branchId, string $channelColumn): Collection

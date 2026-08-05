@@ -4,6 +4,7 @@ namespace App\Livewire\Admin\Pdv\Concerns;
 
 use App\Events\NewOrderPlaced;
 use App\Events\OrderStatusUpdated;
+use App\Events\TabOrderSentToProduction;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
@@ -208,7 +209,13 @@ trait HasOpenTabs
             ->pluck('station')
             ->values();
 
-        $this->dispatch('tab-order-finalized', orderId: $order->id, stations: $stations);
+        // Broadcast em vez de dispatch local: quem clica "Finalizar Pedido" pode ser o
+        // garçom no celular, sem QZ Tray nenhum. Quem tem que imprimir é a tela de PDV
+        // que estiver com a impressora de verdade pareada — não necessariamente esta.
+        if ($stations->isNotEmpty()) {
+            TabOrderSentToProduction::dispatch($order, $stations->all());
+        }
+
         $this->dispatch('pdv-toast', message: "Pedido de {$order->table_label} enviado pra produção.");
 
         $this->audit('tab_order_finalized', [

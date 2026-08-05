@@ -1,5 +1,6 @@
 <?php
 
+use App\Events\TabOrderSentToProduction;
 use App\Jobs\IssueFiscalNote;
 use App\Livewire\Admin\Pdv\TabTerminal;
 use App\Models\BranchServiceCharge;
@@ -13,6 +14,7 @@ use App\Models\RestaurantTable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
@@ -522,7 +524,7 @@ test('fechar comanda com dinheiro dispara emissão automática de nota fiscal', 
     Bus::assertDispatched(IssueFiscalNote::class, fn ($job) => $job->orderId === $orderId);
 });
 
-test('botão Finalizar Pedido envia a comanda pra produção', function () {
+test('botão Finalizar Pedido sempre avisa o operador, com ou sem impressora configurada', function () {
     ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
     $table = openTable($company, $branch);
 
@@ -533,14 +535,17 @@ test('botão Finalizar Pedido envia a comanda pra produção', function () {
         ->call('addProduct', $product->id)
         ->assertHasNoErrors();
 
-    $orderId = Order::withoutGlobalScopes()->first()->id;
+    Event::fake([TabOrderSentToProduction::class]);
 
     $component->call('finalizeOrder')
-        ->assertDispatched('tab-order-finalized', orderId: $orderId)
         ->assertDispatched('pdv-toast', message: 'Pedido de Mesa 5 enviado pra produção.');
+
+    // Sem impressora cadastrada na filial não há o que mandar pra produção — evento
+    // de broadcast não dispara à toa.
+    Event::assertNotDispatched(TabOrderSentToProduction::class);
 });
 
-test('Finalizar Pedido manda a via pra TODAS as impressoras configuradas (geral + cozinha), ignorando entrega e inativa', function () {
+test('Finalizar Pedido broadcasta pra TODAS as impressoras configuradas (geral + cozinha), ignorando entrega e inativa', function () {
     ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
     $table = openTable($company, $branch);
 
@@ -570,25 +575,37 @@ test('Finalizar Pedido manda a via pra TODAS as impressoras configuradas (geral 
 
     $orderId = Order::withoutGlobalScopes()->first()->id;
 
-    $component->call('finalizeOrder')
-        ->assertDispatched('tab-order-finalized', fn ($name, $params) => $params['orderId'] === $orderId
-            && collect($params['stations'])->sort()->values()->all() === ['cozinha', 'geral']);
+    Event::fake([TabOrderSentToProduction::class]);
+
+    $component->call('finalizeOrder');
+
+    Event::assertDispatched(TabOrderSentToProduction::class, fn ($event) => $event->order->id === $orderId
+        && collect($event->stations)->sort()->values()->all() === ['cozinha', 'geral']);
 });
 
-test('Finalizar Pedido sem comanda selecionada não dispara impressão', function () {
+test('Finalizar Pedido sem comanda selecionada não dispara nada', function () {
     ['admin' => $admin] = pdvContext();
 
     $this->actingAs($admin);
 
+    Event::fake([TabOrderSentToProduction::class]);
+
     Livewire::test(TabTerminal::class)
         ->call('finalizeOrder')
-        ->assertNotDispatched('tab-order-finalized');
+        ->assertNotDispatched('pdv-toast');
+
+    Event::assertNotDispatched(TabOrderSentToProduction::class);
 });
 
 test('garçom também pode usar o Finalizar Pedido (é o passo dele, não do caixa)', function () {
     ['company' => $company, 'branch' => $branch, 'product' => $product] = pdvContext();
     $table = openTable($company, $branch);
     $waiter = makeWaiter($company, $branch);
+
+    \App\Models\BranchPrinter::create([
+        'company_id' => $company->id, 'branch_id' => $branch->id, 'station' => 'cozinha',
+        'ip_address' => '192.168.0.11', 'port' => 9100, 'paper_width' => 80, 'active' => true,
+    ]);
 
     $this->actingAs($waiter);
 
@@ -599,8 +616,42 @@ test('garçom também pode usar o Finalizar Pedido (é o passo dele, não do cai
 
     $orderId = Order::withoutGlobalScopes()->first()->id;
 
+    Event::fake([TabOrderSentToProduction::class]);
+
     $component->call('finalizeOrder')
-        ->assertDispatched('tab-order-finalized', orderId: $orderId);
+        ->assertDispatched('pdv-toast');
+
+    Event::assertDispatched(TabOrderSentToProduction::class, fn ($event) => $event->order->id === $orderId);
+});
+
+// ─── Impressão automática pra quem clicou "Finalizar Pedido" longe da impressora ──
+
+test('broadcast de comanda finalizada dispara tab-order-finalized na tela de PDV com a filial certa', function () {
+    ['admin' => $admin, 'branch' => $branch] = pdvContext();
+
+    $this->actingAs($admin);
+
+    Livewire::test(TabTerminal::class)
+        ->call('onTabOrderSentToProductionBroadcast', [
+            'order_id' => 555,
+            'branch_id' => $branch->id,
+            'stations' => ['cozinha', 'geral'],
+        ])
+        ->assertDispatched('tab-order-finalized', orderId: 555);
+});
+
+test('broadcast de comanda finalizada de outra filial não dispara nada nesta tela', function () {
+    ['admin' => $admin, 'branch' => $branch] = pdvContext();
+
+    $this->actingAs($admin);
+
+    Livewire::test(TabTerminal::class)
+        ->call('onTabOrderSentToProductionBroadcast', [
+            'order_id' => 554,
+            'branch_id' => $branch->id + 999,
+            'stations' => ['cozinha'],
+        ])
+        ->assertNotDispatched('tab-order-finalized');
 });
 
 test('checkbox de imprimir nota fiscal só aparece com o módulo fiscal habilitado na empresa', function () {

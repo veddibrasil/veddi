@@ -1137,7 +1137,11 @@ test('pedido de fora sem impressora auto_print ativa na estação não dispara o
         ->assertNotDispatched('order-paid');
 });
 
-test('duas telas de PDV abertas na mesma filial só imprimem o mesmo pedido de fora uma vez', function () {
+test('duas telas de PDV abertas na mesma filial tentam imprimir o mesmo pedido de fora cada uma — sem trava de "só a primeira"', function () {
+    // Sem lock de propósito: se uma tela sem impressora pareada vencesse a corrida de
+    // travar o pedido, ele nunca sairia impresso em lugar nenhum. Preferimos o risco
+    // raro de via duplicada (duas telas realmente pareadas com a mesma impressora) a
+    // silenciosamente não imprimir.
     ['admin' => $admin, 'branch' => $branch, 'company' => $company] = pdvContext();
 
     \App\Models\BranchPrinter::create([
@@ -1162,7 +1166,7 @@ test('duas telas de PDV abertas na mesma filial só imprimem o mesmo pedido de f
 
     Livewire::test(Terminal::class)
         ->call('onOrderBroadcastReceived', $payload)
-        ->assertNotDispatched('order-paid');
+        ->assertDispatched('order-paid', orderId: 995);
 });
 
 test('sidebar do caixa continua mostrando dashboard e painel completo', function () {

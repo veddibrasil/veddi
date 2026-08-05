@@ -3,6 +3,7 @@
 namespace App\Livewire\Admin\Orders;
 
 use App\Contracts\RefundServiceInterface;
+use App\Events\OrderItemsUpdated;
 use App\Events\OrderStatusUpdated;
 use App\Jobs\IssueFiscalNote;
 use App\Models\Order;
@@ -108,6 +109,15 @@ class Show extends Component
 
     /** Estação do usuário logado ('cozinha'|'bar'|'entrega') quando o papel é restrito a uma estação, senão null. */
     public ?string $userStation = null;
+
+    /** Escuta eventos do próprio pedido (status/itens) pra manter a tela em tempo real. */
+    public function getListeners(): array
+    {
+        return [
+            "echo:order.{$this->order->id},OrderStatusUpdated" => '$refresh',
+            "echo:order.{$this->order->id},OrderItemsUpdated" => '$refresh',
+        ];
+    }
 
     public function mount(): void
     {
@@ -888,6 +898,8 @@ class Show extends Component
         $this->editingItems = false;
         $this->productSearch = '';
         $this->productResults = [];
+
+        OrderItemsUpdated::dispatch($this->order);
 
         Log::channel('orders')->info('Itens do pedido editados pelo admin', [
             'order_id' => $this->order->id,

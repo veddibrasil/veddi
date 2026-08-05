@@ -4,7 +4,6 @@ namespace App\Livewire\Admin\Pdv\Concerns;
 
 use App\Models\BranchPrinter;
 use App\Models\Order;
-use Illuminate\Support\Facades\Cache;
 
 /** Compartilhado entre Terminal (HasPaymentFlow) e TabTerminal (HasOpenTabs) — os dois pagam um pedido. */
 trait HasAutoPrint
@@ -14,7 +13,10 @@ trait HasAutoPrint
         $companyId = app()->bound('current.company') ? app('current.company')->id : null;
 
         return $companyId
-            ? ["echo:orders.{$companyId},NewOrderPlaced" => 'onOrderBroadcastReceived']
+            ? [
+                "echo:orders.{$companyId},NewOrderPlaced" => 'onOrderBroadcastReceived',
+                "echo:orders.{$companyId},TabOrderSentToProduction" => 'onTabOrderSentToProductionBroadcast',
+            ]
             : [];
     }
 
@@ -24,6 +26,12 @@ trait HasAutoPrint
      * esperar o operador clicar em nada. Pedido com order_type 'pdv' é ignorado aqui:
      * ele já tem seu próprio gatilho de impressão local (pagamento no balcão ou
      * "Finalizar Pedido" na comanda) — reagir ao broadcast dele também duplicaria a via.
+     *
+     * Não há trava de "só a primeira tela imprime": se a empresa tiver mais de uma tela
+     * de PDV aberta na filial, cada uma tenta imprimir com a impressora que tiver
+     * pareada no próprio QZ Tray. Preferimos o risco raro de via duplicada (duas telas
+     * realmente pareadas com a mesma impressora) a uma tela sem impressora nenhuma
+     * "ganhar a corrida" e o pedido nunca sair impresso em lugar nenhum.
      */
     public function onOrderBroadcastReceived(array $event): void
     {
@@ -55,14 +63,28 @@ trait HasAutoPrint
             return;
         }
 
-        // Trava por pedido: se a filial tiver mais de uma tela de PDV aberta ouvindo o
-        // mesmo canal, só a primeira a processar o evento imprime — sem isso cada tela
-        // aberta manda o cupom pra impressora de rede, duplicando a via física.
-        if (! Cache::add('auto-print-order-'.$event['order_id'], true, now()->addMinutes(2))) {
+        $this->dispatch('order-paid', orderId: $event['order_id'], stations: $printers, printFiscalNote: false);
+    }
+
+    /**
+     * Garçom mandou a comanda pra produção — pode ter clicado do celular, sem QZ Tray.
+     * Toda tela de PDV aberta na filial recebe o broadcast e tenta imprimir com a
+     * impressora que tiver pareada; mesma lógica de {@see onOrderBroadcastReceived()}
+     * sobre não travar em "só a primeira imprime".
+     */
+    public function onTabOrderSentToProductionBroadcast(array $event): void
+    {
+        if ((int) ($event['branch_id'] ?? 0) !== (int) $this->selectedBranchId) {
             return;
         }
 
-        $this->dispatch('order-paid', orderId: $event['order_id'], stations: $printers, printFiscalNote: false);
+        $stations = collect($event['stations'] ?? [])->values();
+
+        if ($stations->isEmpty()) {
+            return;
+        }
+
+        $this->dispatch('tab-order-finalized', orderId: $event['order_id'], stations: $stations);
     }
 
     /**

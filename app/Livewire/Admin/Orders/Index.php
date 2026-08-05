@@ -91,6 +91,7 @@ class Index extends Component
         return [
             "echo:orders.{$this->companyId},NewOrderPlaced" => '$refresh',
             "echo:orders.{$this->companyId},OrderStatusUpdated" => '$refresh',
+            "echo:orders.{$this->companyId},OrderItemsUpdated" => '$refresh',
         ];
     }
 
