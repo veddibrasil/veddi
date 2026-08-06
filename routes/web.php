@@ -15,7 +15,10 @@ Route::get('/', function () {
         return redirect()->route(auth()->user()->homeRouteName());
     }
 
-    return redirect()->route('admin.dashboard');
+    // Rota protegida (admin.dashboard) faria o middleware 'auth' gravar ela como
+    // intended na sessão, e o LoginResponse (redirect()->intended()) priorizaria
+    // esse intended sobre homeRouteName() — garçom cairia sempre no dashboard.
+    return redirect()->route('login');
 });
 
 Route::get('/health', \App\Http\Controllers\HealthController::class)->name('health');
