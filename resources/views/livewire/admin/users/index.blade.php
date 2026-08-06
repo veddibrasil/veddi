@@ -50,9 +50,11 @@
                     <flux:select wire:model.live="newRole" label="Tipo de usuário">
                         <flux:select.option value="">Selecione...</flux:select.option>
                         @foreach($roles as $role)
-                            <flux:select.option value="{{ $role->slug }}">
+                            @php $roleUnavailable = ! $company->waiter_module_enabled && $role->permissions->pluck('name')->contains('pdv.waiter_operate'); @endphp
+                            <flux:select.option value="{{ $role->slug }}" :disabled="$roleUnavailable">
                                 {{ $role->name }}
                                 @if($role->is_system) (padrão) @endif
+                                @if($roleUnavailable) — indisponível (módulo Garçom) @endif
                             </flux:select.option>
                         @endforeach
                     </flux:select>
@@ -100,9 +102,11 @@
                     <flux:select wire:model.live="linkRole" label="Tipo de usuário">
                         <flux:select.option value="">Selecione...</flux:select.option>
                         @foreach($roles as $role)
-                            <flux:select.option value="{{ $role->slug }}">
+                            @php $roleUnavailable = ! $company->waiter_module_enabled && $role->permissions->pluck('name')->contains('pdv.waiter_operate'); @endphp
+                            <flux:select.option value="{{ $role->slug }}" :disabled="$roleUnavailable">
                                 {{ $role->name }}
                                 @if($role->is_system) (padrão) @endif
+                                @if($roleUnavailable) — indisponível (módulo PDV) @endif
                             </flux:select.option>
                         @endforeach
                     </flux:select>
@@ -161,9 +165,14 @@
                                 <div class="flex items-center gap-2">
                                     <flux:select wire:model.live="editRole">
                                         @foreach($roles as $role)
-                                            <flux:select.option value="{{ $role->slug }}">{{ $role->name }}</flux:select.option>
+                                            @php $roleUnavailable = ! $company->waiter_module_enabled && $role->permissions->pluck('name')->contains('pdv.waiter_operate'); @endphp
+                                            <flux:select.option value="{{ $role->slug }}" :disabled="$roleUnavailable">
+                                                {{ $role->name }}
+                                                @if($roleUnavailable) — indisponível (módulo PDV) @endif
+                                            </flux:select.option>
                                         @endforeach
                                     </flux:select>
+                                    @error('editRole') <p class="text-red-500 text-xs">{{ $message }}</p> @enderror
                                     @if(in_array($editRole, ['branch_manager', 'cozinha', 'caixa', 'garcom']))
                                         <flux:select wire:model="editBranchId">
                                             <flux:select.option value="0">Todas</flux:select.option>

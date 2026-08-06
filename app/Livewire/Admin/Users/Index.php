@@ -3,12 +3,14 @@
 namespace App\Livewire\Admin\Users;
 
 use App\Models\Branch;
+use App\Models\Company;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\UserPermission;
 use App\Services\Company\UserCreationService;
 use App\Services\Company\UserDeletionService;
 use App\Services\Company\UserPermissionService;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -19,6 +21,8 @@ class Index extends Component
     use WithPagination;
 
     private const BRANCH_SCOPED_ROLES = ['branch_manager', 'cozinha', 'caixa', 'garcom'];
+
+    private const WAITER_MODULE_MESSAGE = 'Módulo Garçom não habilitado. Adicione essa funcionalidade ao módulo PDV em Configurações > Faturamento antes de atribuir esse tipo de usuário.';
 
     public string $search = '';
 
@@ -76,25 +80,43 @@ class Index extends Component
         $this->resetPage();
     }
 
+    /**
+     * Papeis cuja permissao pdv.waiter_operate exige o modulo Garçom habilitado na empresa.
+     */
+    private function availableRoleSlugs(Company $company): array
+    {
+        return Role::forCompany($company)
+            ->with('permissions')
+            ->get()
+            ->reject(fn (Role $role) => ! $company->waiter_module_enabled
+                && $role->permissions->pluck('name')->contains('pdv.waiter_operate')
+            )
+            ->pluck('slug')
+            ->all();
+    }
+
     public function createUser(): void
     {
         abort_unless($this->canManage, 403);
 
+        $company = app('current.company');
+
         $this->validate([
             'newName' => 'required|string|max:255',
             'newEmail' => 'required|email|unique:users,email',
-            'newRole' => 'required|string',
+            'newRole' => ['required', 'string', Rule::in($this->availableRoleSlugs($company))],
             'newPassword' => 'required|string|min:8',
         ], [
             'newName.required' => 'Informe o nome.',
             'newEmail.required' => 'Informe o e-mail.',
             'newEmail.unique' => 'Este e-mail já está em uso.',
             'newRole.required' => 'Selecione o tipo de usuário.',
+            'newRole.in' => self::WAITER_MODULE_MESSAGE,
             'newPassword.required' => 'Informe a senha.',
             'newPassword.min' => 'A senha deve ter no mínimo 8 caracteres.',
         ]);
 
-        UserCreationService::create(app('current.company'), $this->newName, $this->newEmail, $this->newRole, $this->newBranchId, $this->newPassword);
+        UserCreationService::create($company, $this->newName, $this->newEmail, $this->newRole, $this->newBranchId, $this->newPassword);
 
         $this->reset(['newName', 'newEmail', 'newRole', 'newBranchId', 'newPassword', 'showCreateForm']);
         session()->flash('status', 'Usuário criado e e-mail de boas-vindas enviado.');
@@ -104,16 +126,18 @@ class Index extends Component
     {
         abort_unless($this->canManage, 403);
 
+        $company = app('current.company');
+
         $this->validate([
             'linkEmail' => 'required|email|exists:users,email',
-            'linkRole' => 'required|string',
+            'linkRole' => ['required', 'string', Rule::in($this->availableRoleSlugs($company))],
         ], [
             'linkEmail.required' => 'Informe o e-mail.',
             'linkEmail.exists' => 'Usuário não encontrado.',
             'linkRole.required' => 'Selecione o tipo de usuário.',
+            'linkRole.in' => self::WAITER_MODULE_MESSAGE,
         ]);
 
-        $company = app('current.company');
         $user = User::where('email', $this->linkEmail)->firstOrFail();
 
         $user->companies()->syncWithoutDetaching([
@@ -146,13 +170,15 @@ class Index extends Component
     {
         abort_unless($this->canManage, 403);
 
+        $company = app('current.company');
+
         $this->validate([
-            'editRole' => 'required|string',
+            'editRole' => ['required', 'string', Rule::in($this->availableRoleSlugs($company))],
         ], [
             'editRole.required' => 'Selecione o tipo de usuário.',
+            'editRole.in' => self::WAITER_MODULE_MESSAGE,
         ]);
 
-        $company = app('current.company');
         $user = User::findOrFail($this->editUserId);
 
         $user->companies()->updateExistingPivot($company->id, [
@@ -214,13 +240,14 @@ class Index extends Component
             ->orderBy('name')
             ->paginate(20);
 
-        $roles = Role::forCompany($company)->orderBy('is_system', 'desc')->orderBy('name')->get();
+        $roles = Role::forCompany($company)->with('permissions')->orderBy('is_system', 'desc')->orderBy('name')->get();
         $branches = Branch::orderBy('name')->get();
 
         return view('livewire.admin.users.index', [
             'users' => $users,
             'roles' => $roles,
             'branches' => $branches,
+            'company' => $company,
         ]);
     }
 }
