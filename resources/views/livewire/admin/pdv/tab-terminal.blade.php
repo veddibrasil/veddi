@@ -244,19 +244,21 @@
                                     tabindex="0"
                                     wire:click="selectOpenTab({{ $tab->id }})"
                                     wire:keydown.enter="selectOpenTab({{ $tab->id }})"
-                                    class="group text-left rounded-xl border-2 border-amber-200 dark:border-amber-800/60 bg-white dark:bg-zinc-900 p-3 cursor-pointer hover:border-amber-400 hover:shadow-md transition-all flex flex-col gap-1"
+                                    class="group relative text-left rounded-xl border-2 border-amber-200 dark:border-amber-800/60 bg-white dark:bg-zinc-900 p-3 cursor-pointer hover:border-amber-400 hover:shadow-md transition-all flex flex-col gap-1"
                                 >
-                                    <span class="font-bold text-sm text-neutral-800 dark:text-neutral-100 truncate">{{ $tab->table_label }}</span>
-                                    <span class="text-xs font-semibold text-amber-600 dark:text-amber-400">R$ {{ number_format($tab->total, 2, ',', '.') }}</span>
                                     @unless ($isWaiter)
                                         <button
                                             type="button"
                                             wire:click.stop="proceedToCloseTab({{ $tab->id }})"
-                                            class="mt-1 self-start text-xs text-neutral-400 hover:text-red-600 dark:hover:text-red-400"
+                                            title="Fechar esta comanda"
+                                            class="absolute top-1.5 right-1.5 flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-1.5 py-1 text-[11px] font-bold text-red-600 hover:bg-red-100 hover:border-red-300 dark:border-red-900/60 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40 transition-colors"
                                         >
+                                            <flux:icon.x-circle class="size-3.5" />
                                             Fechar
                                         </button>
                                     @endunless
+                                    <span class="font-bold text-sm text-neutral-800 dark:text-neutral-100 truncate pr-14">{{ $tab->table_label }}</span>
+                                    <span class="text-xs font-semibold text-amber-600 dark:text-amber-400">R$ {{ number_format($tab->total, 2, ',', '.') }}</span>
                                 </div>
                             @endforeach
 
