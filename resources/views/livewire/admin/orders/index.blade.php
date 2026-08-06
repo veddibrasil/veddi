@@ -144,6 +144,12 @@
             @endforeach
         </flux:select>
         @endif
+        <flux:select wire:model.live="channelFilter" placeholder="Todos os canais" class="w-full sm:w-40 shrink-0">
+            <flux:select.option value="">Todos os canais</flux:select.option>
+            <flux:select.option value="chat">Chat</flux:select.option>
+            <flux:select.option value="pdv">PDV</flux:select.option>
+            <flux:select.option value="delivery">Entrega</flux:select.option>
+        </flux:select>
         @if($viewMode === 'list')
         <flux:select wire:model.live="statusFilter" placeholder="Todos os status" class="w-full sm:w-44 shrink-0">
             <flux:select.option value="">Todos os status</flux:select.option>

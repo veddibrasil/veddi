@@ -24,6 +24,9 @@ class Index extends Component
 
     public string $companyFilter = '';
 
+    /** Filtro de canal: '' (todos), 'chat' (order_type delivery/pickup), 'pdv' (order_type pdv) ou 'delivery' (todo pedido com entrega, via ou não do PDV). */
+    public string $channelFilter = '';
+
     public bool $isSuperAdmin = false;
 
     public bool $canView = false;
@@ -155,6 +158,20 @@ class Index extends Component
     {
         $this->resetPage();
         $this->resetKanbanPages();
+    }
+
+    public function updatingChannelFilter(): void
+    {
+        $this->resetPage();
+        $this->resetKanbanPages();
+    }
+
+    private function applyChannelFilter(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query
+            ->when($this->channelFilter === 'pdv', fn ($q) => $q->where('order_type', 'pdv'))
+            ->when($this->channelFilter === 'chat', fn ($q) => $q->whereIn('order_type', ['delivery', 'pickup']))
+            ->when($this->channelFilter === 'delivery', fn ($q) => $q->deliveryOnly());
     }
 
     public function setViewMode(string $mode): void
@@ -340,6 +357,8 @@ class Index extends Component
                 )
                 ->when($this->isSuperAdmin && $this->companyFilter, fn ($q) => $q->where('company_id', $this->companyFilter));
 
+            $baseQuery = $this->applyChannelFilter($baseQuery);
+
             $perPage = self::KANBAN_PER_PAGE;
 
             $totals = (clone $baseQuery)
@@ -385,7 +404,9 @@ class Index extends Component
                 ->where('order_number', 'like', "%{$this->search}%")
                 ->orWhereHas('customer', fn ($cq) => $cq->where('name', 'like', "%{$this->search}%"))
             )
-            ->when($this->isSuperAdmin && $this->companyFilter, fn ($q) => $q->where('company_id', $this->companyFilter))
+            ->when($this->isSuperAdmin && $this->companyFilter, fn ($q) => $q->where('company_id', $this->companyFilter));
+
+        $orders = $this->applyChannelFilter($orders)
             ->latest()
             ->paginate(20);
 
