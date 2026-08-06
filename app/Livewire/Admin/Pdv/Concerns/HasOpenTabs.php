@@ -721,6 +721,16 @@ trait HasOpenTabs
         return OrderItem::where('order_id', $this->openTabOrderId)->get();
     }
 
+    /** product_id => quantidade total já lançada na comanda ativa, pra marcar no grid do catálogo. */
+    #[Computed]
+    public function activeTabProductQuantities(): array
+    {
+        return $this->activeTabItems
+            ->groupBy('product_id')
+            ->map(fn ($items) => $items->sum('quantity'))
+            ->toArray();
+    }
+
     #[Computed]
     public function closingTabItems(): Collection
     {

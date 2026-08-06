@@ -353,8 +353,9 @@
                                             }
                                             $stockQty = $this->productStocks[$product->id] ?? null;
                                             $stockOut = $stockQty !== null && $pdvCartQty >= $stockQty;
+                                            $inComandaQty = $this->activeTabProductQuantities[$product->id] ?? 0;
                                         @endphp
-                                        <tr>
+                                        <tr class="{{ $inComandaQty > 0 ? 'bg-amber-50/60 dark:bg-amber-900/10' : '' }}">
                                             <td class="py-3 pl-3 pr-0">
                                                 <button
                                                     type="button"
@@ -366,18 +367,23 @@
                                                         @endif
                                                     @endif
                                                     {{ $stockOut ? 'disabled' : '' }}
-                                                    class="block shrink-0 disabled:cursor-not-allowed"
+                                                    class="relative block shrink-0 disabled:cursor-not-allowed"
                                                 >
                                                     @if ($product->image_path)
                                                         <img
                                                             src="{{ $product->image_url }}"
                                                             alt="{{ $product->name }}"
-                                                            class="size-16 rounded-lg object-cover bg-neutral-100 dark:bg-zinc-800"
+                                                            class="size-16 rounded-lg object-cover bg-neutral-100 dark:bg-zinc-800 {{ $inComandaQty > 0 ? 'ring-2 ring-amber-500 dark:ring-amber-400' : '' }}"
                                                         />
                                                     @else
-                                                        <div class="size-16 rounded-lg bg-neutral-100 flex items-center justify-center dark:bg-zinc-800">
+                                                        <div class="size-16 rounded-lg bg-neutral-100 flex items-center justify-center dark:bg-zinc-800 {{ $inComandaQty > 0 ? 'ring-2 ring-amber-500 dark:ring-amber-400' : '' }}">
                                                             <flux:icon.shopping-bag class="size-7 text-neutral-300 dark:text-zinc-500" />
                                                         </div>
+                                                    @endif
+                                                    @if ($inComandaQty > 0)
+                                                        <span class="absolute -top-1.5 -right-1.5 flex items-center justify-center size-5 rounded-full bg-amber-500 text-white text-[11px] font-bold shadow dark:bg-amber-400">
+                                                            {{ $inComandaQty }}
+                                                        </span>
                                                     @endif
                                                 </button>
                                             </td>
@@ -458,8 +464,9 @@
                                     }
                                     $stockQty = $this->productStocks[$product->id] ?? null;
                                     $stockOut = $stockQty !== null && $pdvCartQty >= $stockQty;
+                                    $inComandaQty = $this->activeTabProductQuantities[$product->id] ?? 0;
                                 @endphp
-                                <div class="flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+                                <div class="flex flex-col overflow-hidden rounded-xl border bg-white dark:bg-zinc-900 {{ $inComandaQty > 0 ? 'border-amber-400 ring-1 ring-amber-400 dark:border-amber-500 dark:ring-amber-500' : 'border-neutral-200 dark:border-zinc-800' }}">
                                     <button
                                         type="button"
                                         @if (!$stockOut)
@@ -470,7 +477,7 @@
                                             @endif
                                         @endif
                                         {{ $stockOut ? 'disabled' : '' }}
-                                        class="block w-full disabled:cursor-not-allowed"
+                                        class="relative block w-full disabled:cursor-not-allowed"
                                     >
                                         @if ($product->image_path)
                                             <img
@@ -482,6 +489,12 @@
                                             <div class="aspect-square w-full bg-neutral-100 flex items-center justify-center dark:bg-zinc-800">
                                                 <flux:icon.shopping-bag class="size-6 text-neutral-300 dark:text-zinc-500" />
                                             </div>
+                                        @endif
+                                        @if ($inComandaQty > 0)
+                                            <span class="absolute top-1.5 right-1.5 flex items-center gap-0.5 rounded-full bg-amber-500 text-white text-[11px] font-bold px-1.5 py-0.5 shadow dark:bg-amber-400">
+                                                <flux:icon.check class="size-3" />
+                                                {{ $inComandaQty }}
+                                            </span>
                                         @endif
                                     </button>
                                     <div class="flex flex-1 flex-col p-2">
@@ -883,9 +896,17 @@
                     </div>
                     <button
                         @click="mobileCartOpen = true"
-                        class="shrink-0 inline-flex items-center gap-2 rounded-lg bg-white/15 px-4 py-2.5 text-sm font-bold hover:bg-white/25 transition-colors"
+                        class="relative shrink-0 inline-flex items-center gap-2 rounded-lg bg-white/15 px-4 py-2.5 text-sm font-bold hover:bg-white/25 transition-colors"
                     >
-                        <flux:icon.shopping-cart class="size-4" />
+                        <span class="relative">
+                            <flux:icon.shopping-cart class="size-4" />
+                            @php $activeTabItemCount = $this->activeTabItems->sum('quantity'); @endphp
+                            @if ($activeTabItemCount > 0)
+                                <span class="absolute -top-2 -right-2 flex items-center justify-center min-w-[1.1rem] h-[1.1rem] rounded-full bg-white text-amber-600 text-[10px] font-black leading-none px-0.5 dark:bg-zinc-900 dark:text-amber-400">
+                                    {{ $activeTabItemCount }}
+                                </span>
+                            @endif
+                        </span>
                         Ver comanda
                     </button>
                 </div>
