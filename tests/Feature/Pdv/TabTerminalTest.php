@@ -539,6 +539,418 @@ test('fechar comanda com dinheiro cobra e marca como paga', function () {
     expect($payment->status)->toBe('paid');
 });
 
+test('fechar comanda com pagamento dividido cria split e um payment por parte', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+    $table = openTable($company, $branch);
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    $orderId = Order::withoutGlobalScopes()->first()->id;
+
+    $component
+        ->call('proceedToCloseTab', $orderId)
+        ->assertSet('step', 'payment')
+        ->set('isSplitPayment', true)
+        ->set('splitPayments.0.method', 'cash')
+        ->set('splitPayments.0.amount', '3.00')
+        ->set('splitPayments.0.cash_received', '3.00')
+        ->set('splitPayments.1.method', 'credit_card')
+        ->set('splitPayments.1.amount', '5.00')
+        ->call('confirmCloseTab')
+        ->assertHasNoErrors()
+        ->assertSet('step', 'catalog');
+
+    $order = Order::withoutGlobalScopes()->find($orderId);
+    expect($order->is_open_tab)->toBeFalse();
+    expect($order->status)->toBe('paid');
+    expect($order->payment_method)->toBe('split');
+    expect((float) $order->cash_received)->toBe(3.0);
+
+    $payments = Payment::where('order_id', $orderId)->orderBy('id')->get();
+    expect($payments)->toHaveCount(2);
+    expect($payments[0]->payment_gateway)->toBe('cash');
+    expect((float) $payments[0]->amount)->toBe(3.0);
+    expect($payments[1]->payment_gateway)->toBe('card_machine');
+    expect((float) $payments[1]->amount)->toBe(5.0);
+});
+
+// ─── Pagar todas as comandas da mesa juntas ────────────────────────────────────
+
+test('pagar todas as comandas da mesa em dinheiro fecha e paga cada uma pelo seu próprio total', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+    $table = openTable($company, $branch);
+
+    $this->actingAs($admin);
+
+    // Comanda A: 1x produto = 8.00
+    Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    // Comanda B (mesma mesa): 2x produto = 16.00
+    $component = Livewire::test(TabTerminal::class)
+        ->call('deselectOpenTab')
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    $orders = Order::withoutGlobalScopes()->where('restaurant_table_id', $table->id)->orderBy('id')->get();
+    expect($orders)->toHaveCount(2);
+    [$orderA, $orderB] = [$orders[0], $orders[1]];
+    expect((float) $orderA->total)->toBe(8.0);
+    expect((float) $orderB->total)->toBe(16.0);
+
+    $component
+        ->call('proceedToCloseTableTabs', $table->id)
+        ->assertSet('step', 'payment')
+        // proceedToCloseTableTabs já pré-preenche o split (1 parte por comanda) — aqui testamos
+        // o caminho sem split, então desliga antes de escolher um método único pra tudo.
+        ->set('isSplitPayment', false)
+        ->set('paymentMethod', 'cash')
+        ->set('cashReceivedInput', '24.00')
+        ->call('confirmCloseTableTabs')
+        ->assertHasNoErrors()
+        ->assertSet('step', 'catalog');
+
+    $orderA->refresh();
+    $orderB->refresh();
+    expect($orderA->status)->toBe('paid');
+    expect($orderA->is_open_tab)->toBeFalse();
+    expect($orderB->status)->toBe('paid');
+    expect($orderB->is_open_tab)->toBeFalse();
+
+    $paymentsA = Payment::where('order_id', $orderA->id)->get();
+    expect($paymentsA)->toHaveCount(1);
+    expect($paymentsA->first()->payment_gateway)->toBe('cash');
+    expect((float) $paymentsA->first()->amount)->toBe(8.0);
+
+    $paymentsB = Payment::where('order_id', $orderB->id)->get();
+    expect($paymentsB)->toHaveCount(1);
+    expect($paymentsB->first()->payment_gateway)->toBe('cash');
+    expect((float) $paymentsB->first()->amount)->toBe(16.0);
+});
+
+test('abrir pagamento da mesa toda já pré-preenche o split com uma parte por comanda no valor exato dela', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+    $table = openTable($company, $branch);
+
+    $this->actingAs($admin);
+
+    // Comanda A: 1x produto = 8.00
+    Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    // Comanda B (mesma mesa): 2x produto = 16.00
+    $component = Livewire::test(TabTerminal::class)
+        ->call('deselectOpenTab')
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    $component
+        ->call('proceedToCloseTableTabs', $table->id)
+        ->assertSet('isSplitPayment', true)
+        ->assertSet('splitPayments.0.method', 'cash')
+        ->assertSet('splitPayments.0.amount', '8.00')
+        ->assertSet('splitPayments.0.cash_received', '8.00')
+        ->assertSet('splitPayments.1.method', 'credit_card')
+        ->assertSet('splitPayments.1.amount', '16.00');
+
+    // Confirmar sem editar nada já cobra cada comanda exatamente pelo que veio pré-preenchido.
+    $component->call('confirmCloseTableTabs')->assertHasNoErrors();
+
+    $orders = Order::withoutGlobalScopes()->where('restaurant_table_id', $table->id)->orderBy('id')->get();
+    expect($orders->every(fn ($o) => $o->status === 'paid'))->toBeTrue();
+});
+
+test('pagar todas as comandas da mesa com split aloca as partes em sequência, uma comanda de cada vez', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+    $table = openTable($company, $branch);
+
+    $this->actingAs($admin);
+
+    // Comanda A: 1x produto = 8.00
+    Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    // Comanda B (mesma mesa): 2x produto = 16.00 — total combinado 24.00
+    $component = Livewire::test(TabTerminal::class)
+        ->call('deselectOpenTab')
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    $orders = Order::withoutGlobalScopes()->where('restaurant_table_id', $table->id)->orderBy('id')->get();
+    [$orderA, $orderB] = [$orders[0], $orders[1]];
+
+    $component
+        ->call('proceedToCloseTableTabs', $table->id)
+        ->assertSet('step', 'payment')
+        ->set('isSplitPayment', true)
+        ->set('splitPayments.0.method', 'cash')
+        ->set('splitPayments.0.amount', '10.00')
+        ->set('splitPayments.0.cash_received', '10.00')
+        ->set('splitPayments.1.method', 'credit_card')
+        ->set('splitPayments.1.amount', '14.00')
+        ->call('confirmCloseTableTabs')
+        ->assertHasNoErrors()
+        ->assertSet('step', 'catalog')
+        ->assertSet('changeAmount', 0.0);
+
+    $orderA->refresh();
+    $orderB->refresh();
+    expect($orderA->payment_method)->toBe('split');
+    expect($orderB->payment_method)->toBe('split');
+
+    // Comanda A (8.00) sai inteira do dinheiro: 8 dos 10 do pool cash, sem sobra de cartão.
+    $paymentsA = Payment::where('order_id', $orderA->id)->orderBy('id')->get();
+    expect($paymentsA)->toHaveCount(1);
+    expect($paymentsA[0]->payment_gateway)->toBe('cash');
+    expect((float) $paymentsA[0]->amount)->toBe(8.0);
+    expect((float) $orderA->cash_change)->toBe(0.0);
+
+    // Comanda B (16.00) fecha o resto do dinheiro (2.00) + cartão (14.00).
+    $paymentsB = Payment::where('order_id', $orderB->id)->orderBy('id')->get();
+    expect($paymentsB)->toHaveCount(2);
+    expect($paymentsB[0]->payment_gateway)->toBe('cash');
+    expect((float) $paymentsB[0]->amount)->toBe(2.0);
+    expect($paymentsB[1]->payment_gateway)->toBe('card_machine');
+    expect((float) $paymentsB[1]->amount)->toBe(14.0);
+    expect((float) $orderB->cash_change)->toBe(0.0);
+});
+
+test('pagar todas as comandas da mesa com soma errada no split bloqueia e não altera nenhuma comanda', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+    $table = openTable($company, $branch);
+
+    $this->actingAs($admin);
+
+    Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    $component = Livewire::test(TabTerminal::class)
+        ->call('deselectOpenTab')
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    $orders = Order::withoutGlobalScopes()->where('restaurant_table_id', $table->id)->orderBy('id')->get();
+    [$orderA, $orderB] = [$orders[0], $orders[1]];
+
+    $component
+        ->call('proceedToCloseTableTabs', $table->id)
+        ->set('isSplitPayment', true)
+        ->set('splitPayments.0.method', 'cash')
+        ->set('splitPayments.0.amount', '10.00')
+        ->set('splitPayments.1.method', 'credit_card')
+        ->set('splitPayments.1.amount', '10.00')
+        ->call('confirmCloseTableTabs')
+        ->assertHasErrors('order');
+
+    $orderA->refresh();
+    $orderB->refresh();
+    expect($orderA->is_open_tab)->toBeTrue();
+    expect($orderB->is_open_tab)->toBeTrue();
+    expect(Payment::where('order_id', $orderA->id)->count())->toBe(0);
+    expect(Payment::where('order_id', $orderB->id)->count())->toBe(0);
+});
+
+test('pagar todas as comandas da mesa cobra a taxa uma única vez, não soma por comanda', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+    $table = openTable($company, $branch);
+
+    BranchServiceCharge::create([
+        'branch_id' => $branch->id,
+        'company_id' => $branch->company_id,
+        'service_fee_enabled' => true,
+        'service_fee_type' => 'percent',
+        'service_fee_value' => 10,
+        'couvert_enabled' => true,
+        'couvert_type' => 'fixed',
+        'couvert_value' => 5,
+    ]);
+
+    $this->actingAs($admin);
+
+    // Comanda A: 1x produto = 8.00 subtotal, +0.80 taxa serviço +5.00 couvert = 13.80 (individual)
+    Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    // Comanda B (mesma mesa): idem, 13.80 individual
+    $component = Livewire::test(TabTerminal::class)
+        ->call('deselectOpenTab')
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    $orders = Order::withoutGlobalScopes()->where('restaurant_table_id', $table->id)->orderBy('id')->get();
+    [$orderA, $orderB] = [$orders[0], $orders[1]];
+    expect((float) $orderA->total)->toBe(13.8);
+    expect((float) $orderB->total)->toBe(13.8);
+
+    // Subtotal combinado = 16.00 → serviço 10% = 1.60 (uma vez) + couvert 5.00 (uma vez) = 22.60,
+    // NÃO 27.60 (que seria 13.80 × 2, dobrando o couvert fixo por comanda).
+    $component
+        ->call('proceedToCloseTableTabs', $table->id)
+        ->set('isSplitPayment', false)
+        ->set('paymentMethod', 'cash')
+        ->call('confirmCloseTableTabs')
+        ->assertHasNoErrors();
+
+    $orderA->refresh();
+    $orderB->refresh();
+    expect((float) $orderA->service_fee)->toBe(1.6);
+    expect((float) $orderA->couvert_fee)->toBe(5.0);
+    expect((float) $orderA->total)->toBe(14.6);
+    expect((float) $orderB->service_fee)->toBe(0.0);
+    expect((float) $orderB->couvert_fee)->toBe(0.0);
+    expect((float) $orderB->total)->toBe(8.0);
+
+    $paymentsA = Payment::where('order_id', $orderA->id)->get();
+    expect($paymentsA)->toHaveCount(1);
+    expect((float) $paymentsA->first()->amount)->toBe(14.6);
+
+    $paymentsB = Payment::where('order_id', $orderB->id)->get();
+    expect($paymentsB)->toHaveCount(1);
+    expect((float) $paymentsB->first()->amount)->toBe(8.0);
+});
+
+test('desmarcar isenção de taxa no split redistribui o valor removido proporcionalmente entre as partes', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+    $table = openTable($company, $branch);
+
+    BranchServiceCharge::create([
+        'branch_id' => $branch->id,
+        'company_id' => $branch->company_id,
+        'service_fee_enabled' => true,
+        'service_fee_type' => 'percent',
+        'service_fee_value' => 10,
+        'couvert_enabled' => true,
+        'couvert_type' => 'fixed',
+        'couvert_value' => 5,
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    $component = Livewire::test(TabTerminal::class)
+        ->call('deselectOpenTab')
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    $orders = Order::withoutGlobalScopes()->where('restaurant_table_id', $table->id)->orderBy('id')->get();
+    [$orderA, $orderB] = [$orders[0], $orders[1]];
+
+    $component->call('proceedToCloseTableTabs', $table->id);
+
+    $sumOf = fn () => collect($component->get('splitPayments'))
+        ->sum(fn ($part) => (float) str_replace(',', '.', $part['amount'] ?: 0));
+
+    // Pré-preenchido com a taxa (16.00 de itens + 6.60 de taxa = 22.60).
+    expect(round($sumOf(), 2))->toBe(22.6);
+
+    // Remove as duas taxas — os campos já preenchidos do split encolhem proporcionalmente,
+    // sem precisar de ajuste manual pra soma voltar a bater com o novo total (16.00).
+    $component
+        ->set('serviceFeeWaived', true)
+        ->set('couvertFeeWaived', true);
+
+    expect(round($sumOf(), 2))->toBe(16.0);
+
+    $component->call('confirmCloseTableTabs')->assertHasNoErrors();
+
+    $orderA->refresh();
+    $orderB->refresh();
+    expect((float) $orderA->total + (float) $orderB->total)->toBe(16.0);
+    expect((float) Payment::whereIn('order_id', [$orderA->id, $orderB->id])->sum('amount'))->toBe(16.0);
+});
+
+test('pagar todas as comandas da mesa com isenção de taxa aplica a todas de uma vez', function () {
+    ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
+    $table = openTable($company, $branch);
+
+    BranchServiceCharge::create([
+        'branch_id' => $branch->id,
+        'company_id' => $branch->company_id,
+        'service_fee_enabled' => true,
+        'service_fee_type' => 'percent',
+        'service_fee_value' => 10,
+        'couvert_enabled' => true,
+        'couvert_type' => 'fixed',
+        'couvert_value' => 5,
+    ]);
+
+    $this->actingAs($admin);
+
+    // Comanda A: 1x produto = 8.00 subtotal, +0.80 taxa serviço (10%) +5.00 couvert = 13.80
+    Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    // Comanda B (mesma mesa): idem, 13.80
+    $component = Livewire::test(TabTerminal::class)
+        ->call('deselectOpenTab')
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    $orders = Order::withoutGlobalScopes()->where('restaurant_table_id', $table->id)->orderBy('id')->get();
+    [$orderA, $orderB] = [$orders[0], $orders[1]];
+    expect((float) $orderA->total)->toBe(13.8);
+    expect((float) $orderB->total)->toBe(13.8);
+
+    // Marca isenção de taxa no modal combinado e paga sem split — vale pras duas comandas.
+    $component
+        ->call('proceedToCloseTableTabs', $table->id)
+        ->set('isSplitPayment', false)
+        ->set('serviceFeeWaived', true)
+        ->set('couvertFeeWaived', true)
+        ->set('paymentMethod', 'cash')
+        ->call('confirmCloseTableTabs')
+        ->assertHasNoErrors();
+
+    $orderA->refresh();
+    $orderB->refresh();
+    expect((float) $orderA->service_fee)->toBe(0.0);
+    expect((float) $orderA->couvert_fee)->toBe(0.0);
+    expect((float) $orderA->total)->toBe(8.0);
+    expect((float) $orderB->service_fee)->toBe(0.0);
+    expect((float) $orderB->couvert_fee)->toBe(0.0);
+    expect((float) $orderB->total)->toBe(8.0);
+
+    $paymentsA = Payment::where('order_id', $orderA->id)->get();
+    expect($paymentsA)->toHaveCount(1);
+    expect((float) $paymentsA->first()->amount)->toBe(8.0);
+
+    $paymentsB = Payment::where('order_id', $orderB->id)->get();
+    expect($paymentsB)->toHaveCount(1);
+    expect((float) $paymentsB->first()->amount)->toBe(8.0);
+});
+
 test('fechar comanda vinculando cliente informado pelo mesário salva o cliente no pedido', function () {
     ['admin' => $admin, 'product' => $product, 'company' => $company, 'branch' => $branch] = pdvContext();
     $table = openTable($company, $branch);

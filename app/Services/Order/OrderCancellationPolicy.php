@@ -63,8 +63,6 @@ class OrderCancellationPolicy
             return false;
         }
 
-        $payment = $order->payment;
-
-        return $payment && $payment->status === 'paid';
+        return $order->payments()->where('status', 'paid')->exists();
     }
 }

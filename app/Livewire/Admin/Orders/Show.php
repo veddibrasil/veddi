@@ -134,7 +134,7 @@ class Show extends Component
             $this->userStation = in_array($roleSlug, ['cozinha', 'bar', 'entrega']) ? $roleSlug : null;
         }
 
-        $this->order->loadMissing('items.product.category');
+        $this->order->loadMissing('items.product.category', 'payments');
     }
 
     /**
@@ -963,9 +963,9 @@ class Show extends Component
     {
         abort_unless($this->canUpdate, 403);
 
-        $this->order->loadMissing('payment');
+        $this->order->loadMissing('payments');
 
-        if (! $this->order->payment || $this->order->payment->status !== 'paid') {
+        if ($this->order->payments->where('status', 'paid')->isEmpty()) {
             session()->flash('error', 'Pagamento não elegível para reembolso.');
 
             return;
@@ -992,11 +992,11 @@ class Show extends Component
                 : ['nullable'],
         ]);
 
-        $this->order->loadMissing('payment');
+        $this->order->loadMissing('payments');
 
-        $payment = $this->order->payment;
+        $payments = $this->order->payments->where('status', 'paid');
 
-        if (! $payment || $payment->status !== 'paid') {
+        if ($payments->isEmpty()) {
             session()->flash('error', 'Pagamento não elegível para reembolso.');
             $this->showManualRefundModal = false;
 
@@ -1014,31 +1014,34 @@ class Show extends Component
             ? 'store_issue'
             : 'customer_request';
 
-        $refund = app(RefundServiceInterface::class)->initiateRefund(
-            $this->order,
-            $payment,
-            (float) $payment->amount,
-            'admin',
-            auth()->id(),
-            $reason,
-        );
+        foreach ($payments as $payment) {
+            $refund = app(RefundServiceInterface::class)->initiateRefund(
+                $this->order,
+                $payment,
+                (float) $payment->amount,
+                'admin',
+                auth()->id(),
+                $reason,
+            );
 
-        if ($this->manualRefundType === 'offline') {
-            // Mark immediately as succeeded — no gateway call needed
-            app(RefundServiceInterface::class)->markSucceeded($refund, [
-                'external_refund_id' => null,
-                'external_status' => 'OFFLINE',
-                'raw' => ['justification' => $this->manualRefundJustification],
+            if ($this->manualRefundType === 'offline') {
+                // Mark immediately as succeeded — no gateway call needed
+                app(RefundServiceInterface::class)->markSucceeded($refund, [
+                    'external_refund_id' => null,
+                    'external_status' => 'OFFLINE',
+                    'raw' => ['justification' => $this->manualRefundJustification],
+                ]);
+            }
+
+            Log::channel('payments')->info('Reembolso manual iniciado pelo admin', [
+                'order_id' => $this->order->id,
+                'admin_id' => auth()->id(),
+                'refund_id' => $refund->id,
+                'payment_id' => $payment->id,
+                'type' => $this->manualRefundType,
+                'amount' => $payment->amount,
             ]);
         }
-
-        Log::channel('payments')->info('Reembolso manual iniciado pelo admin', [
-            'order_id' => $this->order->id,
-            'admin_id' => auth()->id(),
-            'refund_id' => $refund->id,
-            'type' => $this->manualRefundType,
-            'amount' => $payment->amount,
-        ]);
 
         $this->showManualRefundModal = false;
         session()->flash('status', $this->manualRefundType === 'offline'

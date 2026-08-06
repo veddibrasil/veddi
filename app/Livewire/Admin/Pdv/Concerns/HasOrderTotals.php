@@ -15,6 +15,10 @@ trait HasOrderTotals
     #[Computed]
     public function cartTotal(): float
     {
+        if (property_exists($this, 'closingTableId') && $this->closingTableId) {
+            return (float) $this->closingTableOrders->sum('subtotal');
+        }
+
         if ($this->closingTabOrderId) {
             return (float) ($this->closingTabOrder?->subtotal ?? 0.0);
         }
@@ -34,6 +38,15 @@ trait HasOrderTotals
     #[Computed]
     public function cartTotalAfterDiscount(): float
     {
+        // Fechamento em grupo (todas as comandas de uma mesa juntas): mesma fórmula do
+        // fechamento individual, só que somando subtotal/taxas de todas as comandas —
+        // os toggles de isenção de taxa (serviceFeeWaived/couvertFeeWaived) se aplicam
+        // a todas de uma vez (ver HasOpenTabs::closeTableTabs()). Desconto manual não
+        // entra aqui — isso continua sendo feito comanda por comanda, antes de agrupar.
+        if (property_exists($this, 'closingTableId') && $this->closingTableId) {
+            return max(0.0, round($this->cartTotal + $this->serviceFeeAmount + $this->couvertFeeAmount, 2));
+        }
+
         if ($this->closingTabOrderId) {
             return max(0.0, round($this->cartTotal + $this->serviceFeeAmount + $this->couvertFeeAmount - $this->manualDiscountAmount, 2));
         }
@@ -54,6 +67,13 @@ trait HasOrderTotals
     #[Computed]
     public function rawServiceFeeAmount(): float
     {
+        // Taxa única por mesa: calcula uma vez sobre o subtotal combinado de todas as comandas,
+        // não soma a taxa que cada comanda já carrega individualmente (senão taxa fixa, tipo
+        // couvert, dobraria/triplicaria conforme o número de comandas abertas na mesa).
+        if (property_exists($this, 'closingTableId') && $this->closingTableId) {
+            return $this->branchServiceCharge?->calculateServiceFee($this->cartTotal) ?? 0.0;
+        }
+
         if ($this->closingTabOrderId) {
             return (float) ($this->closingTabOrder?->service_fee ?? 0.0);
         }
@@ -68,6 +88,11 @@ trait HasOrderTotals
     #[Computed]
     public function rawCouvertFeeAmount(): float
     {
+        // Idem rawServiceFeeAmount(): couvert único por mesa, não soma por comanda.
+        if (property_exists($this, 'closingTableId') && $this->closingTableId) {
+            return $this->branchServiceCharge?->calculateCouvert($this->cartTotal) ?? 0.0;
+        }
+
         if ($this->closingTabOrderId) {
             return (float) ($this->closingTabOrder?->couvert_fee ?? 0.0);
         }

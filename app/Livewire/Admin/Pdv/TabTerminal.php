@@ -10,6 +10,7 @@ use App\Livewire\Admin\Pdv\Concerns\HasOpenTabs;
 use App\Livewire\Admin\Pdv\Concerns\HasOrderTotals;
 use App\Livewire\Admin\Pdv\Concerns\HasPaymentState;
 use App\Livewire\Admin\Pdv\Concerns\HasProductLookup;
+use App\Livewire\Admin\Pdv\Concerns\HasSplitPayment;
 use App\Models\Branch;
 use App\Models\PdvAuditLog;
 use App\Models\Product;
@@ -29,6 +30,7 @@ class TabTerminal extends Component
     use HasOrderTotals;
     use HasPaymentState;
     use HasProductLookup;
+    use HasSplitPayment;
 
     // ── Estado da interface ──────────────────────────────────────────────────
     public string $step = 'catalog'; // catalog | payment | pix
@@ -133,6 +135,10 @@ class TabTerminal extends Component
     public ?int $openTabOrderId = null;
 
     public ?int $closingTabOrderId = null;
+
+    // Fechamento em grupo: paga todas as comandas abertas de uma mesa de uma vez, num
+    // único modal — mutuamente exclusivo com $closingTabOrderId (só um dos dois setado).
+    public ?int $closingTableId = null;
 
     public ?int $viewingTabItemsOrderId = null;
 
@@ -338,6 +344,7 @@ class TabTerminal extends Component
     public function backToCatalog(): void
     {
         $this->closingTabOrderId = null;
+        $this->closingTableId = null;
         $this->step = 'catalog';
         $this->resetPaymentState();
     }
@@ -346,6 +353,12 @@ class TabTerminal extends Component
     public function confirmCloseTab(): void
     {
         $this->closeTab();
+    }
+
+    /** Confirma o pagamento combinado de todas as comandas da mesa — wrapper público pro closeTableTabs() privado de HasOpenTabs. */
+    public function confirmCloseTableTabs(): void
+    {
+        $this->closeTableTabs();
     }
 
     public function resetTerminal(): void
@@ -365,6 +378,7 @@ class TabTerminal extends Component
         $this->selectedTableId = null;
         $this->openTabOrderId = null;
         $this->closingTabOrderId = null;
+        $this->closingTableId = null;
         $this->tabCustomerName = '';
         $this->openingNewTabForTable = false;
         $this->resetPaymentState();

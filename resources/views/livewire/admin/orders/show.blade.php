@@ -735,26 +735,52 @@
                         @if ($order->payment_method === 'pix') PIX
                         @elseif ($order->payment_method === 'card') Cartão de Crédito
                         @elseif ($order->payment_method === 'cash') Dinheiro
+                        @elseif ($order->payment_method === 'split') Dividido
                         @else {{ $order->payment_method }}
                         @endif
                     </div>
-                    @if ($order->payment)
+                    @if ($order->payments->count() === 1)
+                        @php $singlePayment = $order->payments->first(); @endphp
                         <div class="text-neutral-500 dark:text-neutral-400">Status</div>
                         <div>
                             <span class="px-2 py-0.5 rounded-full text-xs
-                                {{ $order->payment->status == 'paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-400' }}">
-                                {{ $order->payment->status == 'paid' ? 'Pago' : ($order->payment->status == 'pending' ? 'Pendente' : ucfirst($order->payment->status)) }}
+                                {{ $singlePayment->status == 'paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-400' }}">
+                                {{ $singlePayment->status == 'paid' ? 'Pago' : ($singlePayment->status == 'pending' ? 'Pendente' : ucfirst($singlePayment->status)) }}
                             </span>
                         </div>
-                        @if ($order->payment->paid_at)
+                        @if ($singlePayment->paid_at)
                             <div class="text-neutral-500 dark:text-neutral-400">Pago em</div>
-                            <div class="text-neutral-700 dark:text-neutral-300">{{ $order->payment->paid_at->format('d/m/Y H:i') }}</div>
+                            <div class="text-neutral-700 dark:text-neutral-300">{{ $singlePayment->paid_at->format('d/m/Y H:i') }}</div>
                         @endif
                         <div class="text-neutral-500 dark:text-neutral-400">Valor</div>
-                        <div class="font-bold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($order->payment->amount, 2, ',', '.') }}</div>
+                        <div class="font-bold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($singlePayment->amount, 2, ',', '.') }}</div>
                     @endif
                 </div>
-                @if (! $order->payment && $order->order_type === 'pdv' && $order->status === 'awaiting_payment')
+
+                @if ($order->payments->count() > 1)
+                    <div class="mt-3 space-y-1.5">
+                        @foreach ($order->payments as $partPayment)
+                            <div class="flex items-center justify-between text-sm border rounded-lg px-3 py-1.5 dark:border-zinc-700">
+                                <span class="text-neutral-600 dark:text-neutral-300">
+                                    @if ($partPayment->payment_gateway === 'cash') Dinheiro
+                                    @elseif ($partPayment->payment_gateway === 'card_machine') Cartão
+                                    @elseif ($partPayment->payment_gateway === 'pix_manual') PIX
+                                    @else {{ $partPayment->payment_gateway }}
+                                    @endif
+                                </span>
+                                <span class="flex items-center gap-2">
+                                    <span class="px-2 py-0.5 rounded-full text-xs
+                                        {{ $partPayment->status == 'paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-400' }}">
+                                        {{ $partPayment->status == 'paid' ? 'Pago' : ($partPayment->status == 'pending' ? 'Pendente' : ucfirst($partPayment->status)) }}
+                                    </span>
+                                    <span class="font-bold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($partPayment->amount, 2, ',', '.') }}</span>
+                                </span>
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
+
+                @if ($order->payments->isEmpty() && $order->order_type === 'pdv' && $order->status === 'awaiting_payment')
                     <div class="mt-3 bg-yellow-50 border border-yellow-200 rounded-xl p-3 dark:bg-yellow-900/20 dark:border-yellow-700">
                         <p class="text-xs text-yellow-700 dark:text-yellow-400 mb-2">A receber na entrega.</p>
                         <button wire:click="confirmPayment"
@@ -764,7 +790,7 @@
                         </button>
                     </div>
                 @endif
-                @if ($order->payment && $order->payment->status === 'paid')
+                @if ($order->payments->where('status', 'paid')->isNotEmpty())
                     <button wire:click="openManualRefundModal"
                             class="mt-3 w-full text-sm bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 px-4 py-2 rounded-lg transition-colors">
                         Iniciar Reembolso

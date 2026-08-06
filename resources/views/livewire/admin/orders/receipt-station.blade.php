@@ -99,6 +99,7 @@
                     @if ($order->payment_method === 'pix') PIX
                     @elseif (in_array($order->payment_method, ['card', 'credit_card'])) Cartao
                     @elseif ($order->payment_method === 'cash') Dinheiro
+                    @elseif ($order->payment_method === 'split') Dividido
                     @else {{ $order->payment_method }}
                     @endif
                 </td>

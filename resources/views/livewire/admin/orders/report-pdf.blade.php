@@ -53,6 +53,7 @@
             'pix'  => 'PIX',
             'card' => 'Cartão',
             'cash' => 'Dinheiro',
+            'split' => 'Dividido',
             default => $topPayment ?? '—',
         };
     @endphp
@@ -93,6 +94,7 @@
                         'pix'  => 'PIX',
                         'card' => 'Cartão',
                         'cash' => 'Dinheiro',
+                        'split' => 'Dividido',
                         default => $order->payment_method,
                     };
                 @endphp

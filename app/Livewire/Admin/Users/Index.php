@@ -31,6 +31,8 @@ class Index extends Component
 
     public int $newBranchId = 0;
 
+    public string $newPassword = '';
+
     public bool $showCreateForm = false;
 
     // Edição de role de um usuário existente
@@ -82,16 +84,19 @@ class Index extends Component
             'newName' => 'required|string|max:255',
             'newEmail' => 'required|email|unique:users,email',
             'newRole' => 'required|string',
+            'newPassword' => 'required|string|min:8',
         ], [
             'newName.required' => 'Informe o nome.',
             'newEmail.required' => 'Informe o e-mail.',
             'newEmail.unique' => 'Este e-mail já está em uso.',
             'newRole.required' => 'Selecione o tipo de usuário.',
+            'newPassword.required' => 'Informe a senha.',
+            'newPassword.min' => 'A senha deve ter no mínimo 8 caracteres.',
         ]);
 
-        UserCreationService::create(app('current.company'), $this->newName, $this->newEmail, $this->newRole, $this->newBranchId);
+        UserCreationService::create(app('current.company'), $this->newName, $this->newEmail, $this->newRole, $this->newBranchId, $this->newPassword);
 
-        $this->reset(['newName', 'newEmail', 'newRole', 'newBranchId', 'showCreateForm']);
+        $this->reset(['newName', 'newEmail', 'newRole', 'newBranchId', 'newPassword', 'showCreateForm']);
         session()->flash('status', 'Usuário criado e e-mail de boas-vindas enviado.');
     }
 

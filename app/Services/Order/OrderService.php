@@ -340,17 +340,39 @@ class OrderService implements OrderServiceInterface
     }
 
     /**
-     * Recalcula subtotal/total/fee/net_value a partir dos OrderItem e do manual_discount atuais. Sem
-     * cupom/frete — usado pelo fluxo de comanda do PDV, que não tem esses conceitos.
+     * Aplica taxa de serviço/couvert já calculadas por fora (fechamento em grupo de todas as
+     * comandas de uma mesa no PDV — a taxa é única por mesa, não por comanda, então quem chama
+     * decide o valor uma vez e manda aqui só pra uma comanda "carregar" a fatia; as demais do
+     * grupo recebem 0/0). Sem desconto manual — isso continua sendo feito comanda por comanda.
      */
-    private function recalculateOrderTotals(Order $order, bool $waiveServiceFee = false, bool $waiveCouvertFee = false, ?string $summary = null): void
+    public function applyGroupFeesToOrder(Order $order, float $serviceFee, float $couvertFee): Order
     {
+        $order->manual_discount = 0.0;
+        $this->recalculateOrderTotals($order, serviceFeeOverride: $serviceFee, couvertFeeOverride: $couvertFee);
+
+        return $order->fresh();
+    }
+
+    /**
+     * Recalcula subtotal/total/fee/net_value a partir dos OrderItem e do manual_discount atuais. Sem
+     * cupom/frete — usado pelo fluxo de comanda do PDV, que não tem esses conceitos. Os overrides de
+     * taxa existem só pro fechamento em grupo (ver {@see applyGroupFeesToOrder}); no fechamento normal
+     * a taxa é sempre recalculada a partir do subtotal da própria comanda.
+     */
+    private function recalculateOrderTotals(
+        Order $order,
+        bool $waiveServiceFee = false,
+        bool $waiveCouvertFee = false,
+        ?string $summary = null,
+        ?float $serviceFeeOverride = null,
+        ?float $couvertFeeOverride = null,
+    ): void {
         $subtotal = (float) $order->items()->sum('subtotal');
         $manualDiscount = (float) $order->manual_discount;
 
         $charge = $order->branch?->serviceCharge;
-        $serviceFee = ($charge && ! $waiveServiceFee) ? $charge->calculateServiceFee($subtotal) : 0.0;
-        $couvertFee = ($charge && ! $waiveCouvertFee) ? $charge->calculateCouvert($subtotal) : 0.0;
+        $serviceFee = $serviceFeeOverride ?? (($charge && ! $waiveServiceFee) ? $charge->calculateServiceFee($subtotal) : 0.0);
+        $couvertFee = $couvertFeeOverride ?? (($charge && ! $waiveCouvertFee) ? $charge->calculateCouvert($subtotal) : 0.0);
 
         $total = max(0, $subtotal - $manualDiscount + $serviceFee + $couvertFee);
 
@@ -429,22 +451,23 @@ class OrderService implements OrderServiceInterface
         ]);
 
         if ($policy->requiresRefund($order)) {
-            $payment = $order->payment;
+            foreach ($order->payments()->where('status', 'paid')->get() as $payment) {
+                Log::channel('orders')->info('Cancelamento do cliente disparando reembolso', [
+                    'order_id' => $order->id,
+                    'customer_id' => $customerId,
+                    'payment_id' => $payment->id,
+                    'payment_amount' => $payment->amount,
+                ]);
 
-            Log::channel('orders')->info('Cancelamento do cliente disparando reembolso', [
-                'order_id' => $order->id,
-                'customer_id' => $customerId,
-                'payment_amount' => $payment->amount,
-            ]);
-
-            app(RefundServiceInterface::class)->initiateRefund(
-                $order,
-                $payment,
-                (float) $payment->amount,
-                'customer',
-                $customerId,
-                'customer_request',
-            );
+                app(RefundServiceInterface::class)->initiateRefund(
+                    $order,
+                    $payment,
+                    (float) $payment->amount,
+                    'customer',
+                    $customerId,
+                    'customer_request',
+                );
+            }
         }
     }
 
@@ -468,22 +491,23 @@ class OrderService implements OrderServiceInterface
         ]);
 
         if ($policy->requiresRefund($order)) {
-            $payment = $order->payment;
+            foreach ($order->payments()->where('status', 'paid')->get() as $payment) {
+                Log::channel('orders')->info('Cancelamento do admin disparando reembolso', [
+                    'order_id' => $order->id,
+                    'admin_id' => $adminUserId,
+                    'payment_id' => $payment->id,
+                    'payment_amount' => $payment->amount,
+                ]);
 
-            Log::channel('orders')->info('Cancelamento do admin disparando reembolso', [
-                'order_id' => $order->id,
-                'admin_id' => $adminUserId,
-                'payment_amount' => $payment->amount,
-            ]);
-
-            app(RefundServiceInterface::class)->initiateRefund(
-                $order,
-                $payment,
-                (float) $payment->amount,
-                'admin',
-                $adminUserId,
-                'admin_cancel',
-            );
+                app(RefundServiceInterface::class)->initiateRefund(
+                    $order,
+                    $payment,
+                    (float) $payment->amount,
+                    'admin',
+                    $adminUserId,
+                    'admin_cancel',
+                );
+            }
         }
     }
 

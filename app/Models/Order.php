@@ -128,6 +128,12 @@ class Order extends Model
         return $this->hasOne(Payment::class)->latestOfMany();
     }
 
+    /** Todas as pernas de pagamento do pedido — normal (1 registro) ou split (2+). */
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class)->orderBy('id');
+    }
+
     public function pdvCashSession(): BelongsTo
     {
         return $this->belongsTo(PdvCashSession::class, 'pdv_cash_session_id');

@@ -330,6 +330,36 @@ trait HasOpenTabs
         $this->resetPaymentState();
     }
 
+    /**
+     * Pega todas as comandas abertas de uma mesa pra pagar/dividir tudo junto num modal só.
+     * Já entra com o split pré-preenchido, uma parte por comanda no valor dos itens dela — a
+     * taxa de serviço/couvert (única por mesa, calculada uma vez sobre o subtotal combinado)
+     * entra inteira na primeira parte, não em cada comanda. O operador só ajusta o método (ou
+     * o valor, se quiser combinar diferente) antes de confirmar.
+     */
+    public function proceedToCloseTableTabs(int $tableId): void
+    {
+        abort_unless(! $this->isWaiter, 403);
+
+        $this->closingTableId = $tableId;
+        $this->step = 'payment';
+        $this->resetPaymentState();
+
+        $tableFees = $this->serviceFeeAmount + $this->couvertFeeAmount;
+
+        $this->isSplitPayment = true;
+        $this->splitPayments = $this->closingTableOrders->values()->map(function (Order $order, int $index) use ($tableFees) {
+            $amount = number_format((float) $order->subtotal + ($index === 0 ? $tableFees : 0.0), 2, '.', '');
+
+            return [
+                'method' => $index === 0 ? 'cash' : 'credit_card',
+                'amount' => $amount,
+                'cash_received' => $index === 0 ? $amount : '',
+                'paid' => false,
+            ];
+        })->all();
+    }
+
     private function closeTab(): void
     {
         abort_unless(! $this->isWaiter, 403);
@@ -346,9 +376,17 @@ trait HasOpenTabs
             return;
         }
 
+        if ($this->isSplitPayment) {
+            if ($error = $this->validateSplitPayments()) {
+                $this->addError('order', $error);
+
+                return;
+            }
+        }
+
         DB::beginTransaction();
         try {
-            $isPaidOnCreate = in_array($this->paymentMethod, ['cash', 'credit_card', 'pix']);
+            $isPaidOnCreate = $this->isSplitPayment || in_array($this->paymentMethod, ['cash', 'credit_card', 'pix']);
 
             app(OrderService::class)->applyManualDiscountToOrder(
                 $order,
@@ -358,7 +396,7 @@ trait HasOpenTabs
             );
 
             $order->update([
-                'payment_method' => $this->paymentMethod,
+                'payment_method' => $this->effectivePaymentMethod(),
                 'status' => $isPaidOnCreate ? 'paid' : 'awaiting_payment',
                 'is_open_tab' => false,
                 'notes' => $this->notes,
@@ -372,7 +410,19 @@ trait HasOpenTabs
                 ...($this->customerId ? ['customer_id' => $this->customerId] : []),
             ]);
 
-            if ($this->paymentMethod === 'cash') {
+            if ($this->isSplitPayment) {
+                $parts = $this->buildSplitPartsForOrchestrator();
+                $cashPart = collect($parts)->firstWhere('method', 'cash');
+
+                if ($cashPart) {
+                    $order->cash_received = $cashPart['cash_received'];
+                    $order->cash_change = max(0.0, round($cashPart['cash_received'] - $cashPart['amount'], 2));
+                    $order->save();
+                }
+
+                $results = app(PaymentOrchestrator::class)->processSplit($order, $parts);
+                $this->changeAmount = collect($results)->sum('change');
+            } elseif ($this->paymentMethod === 'cash') {
                 $cashReceived = (float) str_replace(',', '.', $this->cashReceivedInput ?: $order->total);
                 $order->cash_received = $cashReceived;
                 $order->cash_change = max(0.0, round($cashReceived - (float) $order->total, 2));
@@ -400,7 +450,7 @@ trait HasOpenTabs
             $this->audit('tab_closed', [
                 'order_id' => $order->id,
                 'amount' => (float) $order->total,
-                'metadata' => ['payment_method' => $this->paymentMethod],
+                'metadata' => ['payment_method' => $this->effectivePaymentMethod()],
             ]);
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -417,6 +467,168 @@ trait HasOpenTabs
         // sucesso — volta direto pra seleção de comandas (mesaNotCommitted volta a
         // true) e o card flutuante do header mostra o resultado por cima, sem
         // bloquear o operador de já abrir a próxima mesa.
+        $this->selectedTableId = null;
+        $this->step = 'catalog';
+    }
+
+    /**
+     * Fecha e paga TODAS as comandas abertas de uma mesa de uma vez, num único pagamento
+     * (dividido ou não). Cada comanda continua sendo um Order separado — o que muda é só
+     * o momento da cobrança. As partes do pagamento (a soma bate com o total combinado)
+     * são consumidas em sequência, uma comanda de cada vez, até cobrir o total de cada uma
+     * (como um caixa contando dinheiro): evita fragmentar toda comanda em pedacinho de cada
+     * método. Taxa de serviço/couvert é única por mesa (calculada uma vez sobre o subtotal
+     * combinado, não somada comanda por comanda) e entra inteira na primeira comanda do grupo;
+     * as demais ficam só com o próprio subtotal. Isenção de taxa (mesmos toggles do fechamento
+     * individual) se aplica à mesa toda. Não mexe em desconto manual — isso continua sendo
+     * feito comanda por comanda, antes de agrupar.
+     */
+    private function closeTableTabs(): void
+    {
+        abort_unless(! $this->isWaiter, 403);
+
+        $orders = $this->closingTableOrders;
+
+        if ($orders->isEmpty()) {
+            $this->addError('order', 'Nenhuma comanda aberta encontrada para esta mesa.');
+            $this->closingTableId = null;
+
+            return;
+        }
+
+        if ($this->isSplitPayment) {
+            if ($error = $this->validateSplitPayments()) {
+                $this->addError('order', $error);
+
+                return;
+            }
+        }
+
+        // Pool de partes em centavos — evita erro de arredondamento de float ao fatiar
+        // o pagamento combinado entre N comandas. Pagamento único vira um "split" de 1
+        // parte só, reaproveitando o mesmo mecanismo de distribuição.
+        $pool = $this->isSplitPayment
+            ? array_map(fn ($part) => [
+                'method' => $part['method'],
+                'cents' => (int) round($part['amount'] * 100),
+                'cash_received_cents' => array_key_exists('cash_received', $part) ? (int) round($part['cash_received'] * 100) : null,
+            ], $this->buildSplitPartsForOrchestrator())
+            : [[
+                'method' => $this->paymentMethod,
+                'cents' => (int) round($this->cartTotalAfterDiscount * 100),
+                'cash_received_cents' => $this->paymentMethod === 'cash'
+                    ? (int) round((float) str_replace(',', '.', $this->cashReceivedInput ?: $this->cartTotalAfterDiscount) * 100)
+                    : null,
+            ]];
+
+        // Capturado antes do loop: taxa única da mesa (subtotal combinado, taxa calculada uma
+        // vez), pra não recalcular em cima de totais já mutados comanda a comanda no meio dele.
+        $tableServiceFee = $this->serviceFeeAmount;
+        $tableCouvertFee = $this->couvertFeeAmount;
+
+        DB::beginTransaction();
+        try {
+            $closedOrders = [];
+            $totalChangeCents = 0;
+            $lastMethod = $pool[0]['method'];
+
+            foreach ($orders as $orderIndex => $order) {
+                $order = app(OrderService::class)->applyGroupFeesToOrder(
+                    $order,
+                    $orderIndex === 0 ? $tableServiceFee : 0.0,
+                    $orderIndex === 0 ? $tableCouvertFee : 0.0,
+                );
+
+                $orderCents = (int) round((float) $order->total * 100);
+                $orderParts = [];
+
+                while ($orderCents > 0) {
+                    if ($pool === []) {
+                        // Defesa contra resíduo de 1 centavo por arredondamento de float —
+                        // não deveria acontecer (validateSplitPayments já garante soma bater),
+                        // mas evita RuntimeException no processSplit por diferença ínfima.
+                        $orderParts[] = ['method' => $lastMethod, 'amount' => $orderCents / 100];
+                        $orderCents = 0;
+
+                        break;
+                    }
+
+                    $take = min($pool[0]['cents'], $orderCents);
+                    $piece = ['method' => $pool[0]['method'], 'amount' => $take / 100];
+                    $lastMethod = $pool[0]['method'];
+
+                    if ($pool[0]['method'] === 'cash') {
+                        // Só a fatia que esgota a parte cash do pool carrega o "recebido" de
+                        // verdade — troco só existe uma vez, no fim do dinheiro do pool.
+                        $isLastCashSlice = $take === $pool[0]['cents'];
+                        $piece['cash_received'] = $isLastCashSlice
+                            ? ($pool[0]['cash_received_cents'] ?? $pool[0]['cents']) / 100
+                            : $take / 100;
+                    }
+
+                    $orderParts[] = $piece;
+
+                    $pool[0]['cents'] -= $take;
+                    if ($pool[0]['cash_received_cents'] !== null) {
+                        $pool[0]['cash_received_cents'] -= $take;
+                    }
+                    $orderCents -= $take;
+
+                    if ($pool[0]['cents'] <= 0) {
+                        array_shift($pool);
+                    }
+                }
+
+                $cashPiece = collect($orderParts)->firstWhere('method', 'cash');
+                if ($cashPiece) {
+                    $order->cash_received = $cashPiece['cash_received'];
+                    $order->cash_change = max(0.0, round($cashPiece['cash_received'] - $cashPiece['amount'], 2));
+                    $totalChangeCents += (int) round($order->cash_change * 100);
+                }
+
+                $order->update([
+                    'payment_method' => $this->effectivePaymentMethod(),
+                    'status' => 'paid',
+                    'is_open_tab' => false,
+                    'pdv_cash_session_id' => $this->cashSessionId,
+                    ...($this->customerId ? ['customer_id' => $this->customerId] : []),
+                ]);
+
+                app(PaymentOrchestrator::class)->processSplit($order, $orderParts);
+
+                $closedOrders[] = $order;
+            }
+
+            DB::commit();
+
+            foreach ($closedOrders as $order) {
+                OrderStatusUpdated::dispatch($order);
+                $this->dispatchAutoPrintPayload($order, includeReceiptStations: false);
+            }
+
+            $this->changeAmount = $totalChangeCents / 100;
+            $this->lastOrderTotal = (float) collect($closedOrders)->sum('total');
+            $this->lastOrderNumber = $closedOrders[0]->order_number;
+            $this->lastOrderId = $closedOrders[0]->id;
+
+            foreach ($closedOrders as $order) {
+                $this->audit('tab_closed', [
+                    'order_id' => $order->id,
+                    'amount' => (float) $order->total,
+                    'metadata' => ['payment_method' => $this->effectivePaymentMethod(), 'table_group' => true],
+                ]);
+            }
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            $this->addError('order', $e->getMessage());
+
+            return;
+        }
+
+        $this->dispatch('pdv-toast', message: count($closedOrders).' comanda(s) da mesa fechada(s) e pagas.');
+
+        $this->openTabOrderId = null;
+        $this->closingTableId = null;
         $this->selectedTableId = null;
         $this->step = 'catalog';
     }
@@ -453,6 +665,23 @@ trait HasOpenTabs
         }
 
         return Order::withoutGlobalScopes()->find($this->closingTabOrderId);
+    }
+
+    /** Todas as comandas abertas da mesa em fechamento em grupo — memoizado (usado nos totais e no closeTableTabs()). */
+    #[Computed]
+    public function closingTableOrders(): Collection
+    {
+        if (! $this->closingTableId) {
+            return collect();
+        }
+
+        return Order::withoutGlobalScopes()
+            ->with('items')
+            ->where('branch_id', $this->selectedBranchId)
+            ->where('restaurant_table_id', $this->closingTableId)
+            ->where('is_open_tab', true)
+            ->orderBy('id')
+            ->get();
     }
 
     #[Computed]

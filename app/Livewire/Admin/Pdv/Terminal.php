@@ -15,6 +15,7 @@ use App\Livewire\Admin\Pdv\Concerns\HasPaymentFlow;
 use App\Livewire\Admin\Pdv\Concerns\HasPaymentState;
 use App\Livewire\Admin\Pdv\Concerns\HasProductLookup;
 use App\Livewire\Admin\Pdv\Concerns\HasScheduling;
+use App\Livewire\Admin\Pdv\Concerns\HasSplitPayment;
 use App\Models\Branch;
 use App\Models\PdvAuditLog;
 use Livewire\Component;
@@ -35,6 +36,7 @@ class Terminal extends Component
     use HasPaymentState;
     use HasProductLookup;
     use HasScheduling;
+    use HasSplitPayment;
 
     // ── Estado da interface ──────────────────────────────────────────────────
     public string $step = 'catalog'; // open_cash | catalog | payment | pix | success | close_cash

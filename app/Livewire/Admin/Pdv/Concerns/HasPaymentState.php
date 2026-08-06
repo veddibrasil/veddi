@@ -20,5 +20,7 @@ trait HasPaymentState
         $this->serviceFeeWaived = false;
         $this->couvertFeeWaived = false;
         $this->printFiscalNote = false;
+        $this->isSplitPayment = false;
+        $this->splitPayments = [];
     }
 }

@@ -149,11 +149,26 @@
                 @if ($order->payment_method === 'pix') PIX
                 @elseif (in_array($order->payment_method, ['card', 'credit_card'])) Cartao
                 @elseif ($order->payment_method === 'cash') Dinheiro
+                @elseif ($order->payment_method === 'split') Dividido
                 @else {{ $order->payment_method }}
                 @endif
             </td>
         </tr>
-        @if ($order->payment_method === 'cash' && $order->cash_received > 0)
+        @if ($order->payment_method === 'split')
+            @foreach ($order->payments as $partPayment)
+                <tr>
+                    <td class="sm">
+                        @if ($partPayment->payment_gateway === 'cash') Dinheiro
+                        @elseif ($partPayment->payment_gateway === 'card_machine') Cartao
+                        @elseif ($partPayment->payment_gateway === 'pix_manual') PIX
+                        @else {{ $partPayment->payment_gateway }}
+                        @endif
+                    </td>
+                    <td class="right sm">R$ {{ number_format($partPayment->amount, 2, ',', '.') }}</td>
+                </tr>
+            @endforeach
+        @endif
+        @if (in_array($order->payment_method, ['cash', 'split']) && $order->cash_received > 0)
             <tr>
                 <td class="sm">Recebido</td>
                 <td class="right sm">R$ {{ number_format($order->cash_received, 2, ',', '.') }}</td>

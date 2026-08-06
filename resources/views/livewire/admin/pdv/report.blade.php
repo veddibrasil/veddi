@@ -204,6 +204,7 @@
                                             'pix' => 'PIX',
                                             'credit_card' => 'Cartão',
                                             'cash' => 'Dinheiro',
+                                            'split' => 'Dividido',
                                             default => $order->payment_method,
                                         };
                                     @endphp

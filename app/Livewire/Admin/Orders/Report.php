@@ -132,6 +132,7 @@ class Report extends Component
             'pix' => 'PIX',
             'card' => 'Cartão',
             'cash' => 'Dinheiro',
+            'split' => 'Dividido',
             default => $method,
         };
     }

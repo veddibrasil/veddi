@@ -43,6 +43,10 @@
                     @error('newEmail') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
                 <div>
+                    <flux:input wire:model="newPassword" label="Senha" type="password" placeholder="Mínimo 8 caracteres" viewable />
+                    @error('newPassword') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                </div>
+                <div>
                     <flux:select wire:model.live="newRole" label="Tipo de usuário">
                         <flux:select.option value="">Selecione...</flux:select.option>
                         @foreach($roles as $role)

@@ -461,25 +461,26 @@ class PaymentOrchestrator
      * Pagamento em dinheiro (PDV). Cria Payment marcado como pago imediatamente.
      * Troco calculado com base em cash_received salvo no pedido.
      */
-    public function processCash(Order $order): array
+    public function processCash(Order $order, ?float $amount = null, ?float $cashReceived = null): array
     {
-        $cashReceived = (float) ($order->cash_received ?? $order->total);
-        $change = max(0.0, round($cashReceived - (float) $order->total, 2));
+        $chargeAmount = $amount ?? (float) $order->total;
+        $received = $cashReceived ?? (float) ($order->cash_received ?? $chargeAmount);
+        $change = max(0.0, round($received - $chargeAmount, 2));
 
         $payment = Payment::create([
             'order_id' => $order->id,
             'payment_gateway' => 'cash',
-            'amount' => (float) $order->total,
+            'amount' => $chargeAmount,
             'pix_fee' => 0.0,
             'status' => 'paid',
             'paid_at' => now(),
-            'payment_token' => hash('sha256', 'cash'.$order->id.now()->timestamp),
+            'payment_token' => hash('sha256', 'cash'.$order->id.now()->timestamp.Str::random(8)),
         ]);
 
         Log::channel('payments')->info('Pagamento em dinheiro registrado (PDV)', [
             'order_id' => $order->id,
-            'amount' => $order->total,
-            'cash_received' => $cashReceived,
+            'amount' => $chargeAmount,
+            'cash_received' => $received,
             'change' => $change,
         ]);
 
@@ -548,21 +549,23 @@ class PaymentOrchestrator
     /**
      * Maquininha física no PDV — operador cobrou no terminal externo, só registra.
      */
-    public function processCardMachine(Order $order): array
+    public function processCardMachine(Order $order, ?float $amount = null): array
     {
+        $chargeAmount = $amount ?? (float) $order->total;
+
         $payment = Payment::create([
             'order_id' => $order->id,
             'payment_gateway' => 'card_machine',
-            'amount' => (float) $order->total,
+            'amount' => $chargeAmount,
             'pix_fee' => 0.0,
             'status' => 'paid',
             'paid_at' => now(),
-            'payment_token' => hash('sha256', 'card'.$order->id.now()->timestamp),
+            'payment_token' => hash('sha256', 'card'.$order->id.now()->timestamp.Str::random(8)),
         ]);
 
         Log::channel('payments')->info('Pagamento em cartão (maquininha PDV) registrado', [
             'order_id' => $order->id,
-            'amount' => $order->total,
+            'amount' => $chargeAmount,
         ]);
 
         return [
@@ -577,21 +580,23 @@ class PaymentOrchestrator
      * Pix manual no PDV — operador confirmou o recebimento (ex: pix na maquininha
      * ou QR estático da empresa), só registra. Sem geração de cobrança no gateway.
      */
-    public function processPixManual(Order $order): array
+    public function processPixManual(Order $order, ?float $amount = null): array
     {
+        $chargeAmount = $amount ?? (float) $order->total;
+
         $payment = Payment::create([
             'order_id' => $order->id,
             'payment_gateway' => 'pix_manual',
-            'amount' => (float) $order->total,
+            'amount' => $chargeAmount,
             'pix_fee' => 0.0,
             'status' => 'paid',
             'paid_at' => now(),
-            'payment_token' => hash('sha256', 'pix'.$order->id.now()->timestamp),
+            'payment_token' => hash('sha256', 'pix'.$order->id.now()->timestamp.Str::random(8)),
         ]);
 
         Log::channel('payments')->info('Pagamento Pix manual (PDV) registrado', [
             'order_id' => $order->id,
-            'amount' => $order->total,
+            'amount' => $chargeAmount,
         ]);
 
         return [
@@ -600,5 +605,35 @@ class PaymentOrchestrator
             'method' => 'pix',
             'gateway' => 'pix_manual',
         ];
+    }
+
+    /**
+     * Processa múltiplas partes de pagamento pro mesmo pedido (split no PDV). Cada
+     * parte vira um Payment próprio via processCash/processCardMachine/processPixManual.
+     * A soma já foi validada na camada Livewire antes de abrir a transação — aqui é
+     * defesa em profundidade, não a validação principal.
+     *
+     * @param  array<int, array{method: string, amount: float, cash_received?: float}>  $parts
+     * @return array<int, array>
+     */
+    public function processSplit(Order $order, array $parts): array
+    {
+        $sum = round(array_sum(array_column($parts, 'amount')), 2);
+
+        if (abs($sum - (float) $order->total) > 0.01) {
+            throw new \RuntimeException('Soma das partes do pagamento não bate com o total do pedido.');
+        }
+
+        $results = [];
+        foreach ($parts as $part) {
+            $results[] = match ($part['method']) {
+                'cash' => $this->processCash($order, (float) $part['amount'], $part['cash_received'] ?? null),
+                'credit_card' => $this->processCardMachine($order, (float) $part['amount']),
+                'pix' => $this->processPixManual($order, (float) $part['amount']),
+                default => throw new \RuntimeException("Método inválido no split: {$part['method']}"),
+            };
+        }
+
+        return $results;
     }
 }

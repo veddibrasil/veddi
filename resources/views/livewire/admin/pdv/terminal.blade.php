@@ -1411,7 +1411,7 @@
                                     </div>
                                 @endif
 
-                                <div class="grid gap-4 md:grid-cols-2">
+                                <div class="grid gap-4 md:grid-cols-[1fr_2fr]">
                                     @if ($deliveryType === 'entrega')
                                         <div class="space-y-1.5">
                                             <flux:label class="text-xs font-semibold">Pagamento na entrega</flux:label>
@@ -1426,35 +1426,7 @@
                                         </div>
                                     @endif
 
-                                    <div class="space-y-1.5">
-                                        <flux:label class="text-xs font-semibold">Método de pagamento</flux:label>
-                                        <flux:radio.group wire:model.live="paymentMethod" variant="segmented" class="w-full">
-                                            <flux:radio value="cash" label="Dinheiro" />
-                                            <flux:radio value="pix" label="PIX" />
-                                            <flux:radio value="credit_card" label="Cartão" />
-                                        </flux:radio.group>
-
-                                        @if ($paymentMethod === 'cash')
-                                            <div class="pt-3 space-y-1.5">
-                                                <flux:label class="text-xs font-semibold">Valor recebido</flux:label>
-                                                <flux:input
-                                                    wire:model.live.debounce.500ms="cashReceivedInput"
-                                                    placeholder="Em branco = valor exato"
-                                                    type="number"
-                                                    step="0.01"
-                                                    min="{{ $this->cartTotalAfterDiscount }}"
-                                                />
-                                                @if (filled($cashReceivedInput) && (float) str_replace(',', '.', $cashReceivedInput) >= $this->cartTotalAfterDiscount)
-                                                    @php $changePreview = max(0, (float) str_replace(',', '.', $cashReceivedInput) - $this->cartTotalAfterDiscount); @endphp
-                                                    <div class="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 dark:bg-amber-900/20 dark:border-amber-700">
-                                                        <p class="text-sm text-amber-700 dark:text-amber-300 font-semibold">
-                                                            Troco: R$ {{ number_format($changePreview, 2, ',', '.') }}
-                                                        </p>
-                                                    </div>
-                                                @endif
-                                            </div>
-                                        @endif
-                                    </div>
+                                    @include('livewire.admin.pdv._split-payment')
                                 </div>
 
                                 <div class="space-y-1.5">
@@ -1557,6 +1529,7 @@
                                                 variant="primary"
                                                 size="base"
                                                 wire:loading.attr="disabled"
+                                                :disabled="$isSplitPayment && abs($this->splitPaymentsRemaining) > 0.01"
                                             >
                                                 <span wire:loading.remove>Confirmar</span>
                                                 <span wire:loading>Processando...</span>

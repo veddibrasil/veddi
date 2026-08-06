@@ -99,11 +99,25 @@ trait HasPaymentFlow
         $company = app('current.company');
         $customerId = $this->resolveCustomerId($company);
 
+        if ($this->isSplitPayment) {
+            if ($this->deliveryType === 'entrega' && $this->deliveryPaymentStatus === 'on_delivery') {
+                $this->addError('order', 'Split não está disponível para pagamento coletado na entrega.');
+
+                return;
+            }
+
+            if ($error = $this->validateSplitPayments()) {
+                $this->addError('order', $error);
+
+                return;
+            }
+        }
+
         $orderCart = $this->buildOrderCart();
 
         DB::beginTransaction();
         try {
-            $isPaidOnCreate = in_array($this->paymentMethod, ['cash', 'credit_card', 'pix'])
+            $isPaidOnCreate = ($this->isSplitPayment || in_array($this->paymentMethod, ['cash', 'credit_card', 'pix']))
                 && ! ($this->deliveryType === 'entrega' && $this->deliveryPaymentStatus === 'on_delivery');
 
             // Pedido agendado: pagamento pode ser coletado agora, mas o status fica 'scheduled'
@@ -118,7 +132,7 @@ trait HasPaymentFlow
                 branchId: $this->selectedBranchId,
                 cart: $orderCart,
                 notes: $this->notes,
-                paymentMethod: $this->paymentMethod,
+                paymentMethod: $this->effectivePaymentMethod(),
                 orderType: 'pdv',
                 status: $status,
                 deliveryFee: $this->deliveryFeeAmount,
@@ -145,7 +159,19 @@ trait HasPaymentFlow
             }
 
             if ($isPaidOnCreate) {
-                if ($this->paymentMethod === 'cash') {
+                if ($this->isSplitPayment) {
+                    $parts = $this->buildSplitPartsForOrchestrator();
+                    $cashPart = collect($parts)->firstWhere('method', 'cash');
+
+                    if ($cashPart) {
+                        $order->cash_received = $cashPart['cash_received'];
+                        $order->cash_change = max(0.0, round($cashPart['cash_received'] - $cashPart['amount'], 2));
+                        $order->save();
+                    }
+
+                    $results = app(PaymentOrchestrator::class)->processSplit($order, $parts);
+                    $this->changeAmount = collect($results)->sum('change');
+                } elseif ($this->paymentMethod === 'cash') {
                     $cashReceived = (float) str_replace(',', '.', $this->cashReceivedInput ?: $order->total);
                     $order->cash_received = $cashReceived;
                     $order->cash_change = max(0.0, round($cashReceived - (float) $order->total, 2));
@@ -182,7 +208,7 @@ trait HasPaymentFlow
                 'order_id' => $order->id,
                 'amount' => (float) $order->total,
                 'metadata' => [
-                    'payment_method' => $this->paymentMethod,
+                    'payment_method' => $this->effectivePaymentMethod(),
                     'cart_count' => $this->cartCount,
                     'manual_discount' => $this->manualDiscountAmount,
                 ],

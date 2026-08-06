@@ -154,6 +154,7 @@
                         @if($order->payment_method === 'pix') PIX
                         @elseif($order->payment_method === 'card') Cartão
                         @elseif($order->payment_method === 'cash') Dinheiro
+                        @elseif($order->payment_method === 'split') Dividido
                         @else {{ $order->payment_method }}
                         @endif
                     </p>

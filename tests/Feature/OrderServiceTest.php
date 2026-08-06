@@ -225,6 +225,53 @@ test('cancelOrder lança exceção se pedido não pode ser cancelado', function 
         ->toThrow(\RuntimeException::class);
 });
 
+test('cancelOrder de pedido com pagamento dividido dispara um reembolso por payment pago', function () {
+    \Illuminate\Support\Facades\Bus::fake();
+
+    ['customer' => $customer, 'branch' => $branch, 'product' => $product] = setupOrderContext();
+
+    $order = Order::withoutGlobalScopes()->create([
+        'company_id' => app('current.company')->id,
+        'customer_id' => $customer->id,
+        'branch_id' => $branch->id,
+        'subtotal' => 50.00,
+        'total' => 50.00,
+        'status' => 'paid',
+        'payment_method' => 'split',
+        'order_type' => 'pdv',
+        'order_number' => 'TST-2026-00003',
+    ]);
+
+    $cashPayment = \App\Models\Payment::create([
+        'order_id' => $order->id,
+        'payment_gateway' => 'cash',
+        'amount' => 20.00,
+        'status' => 'paid',
+        'paid_at' => now(),
+        'payment_token' => 'test-split-cash-token',
+    ]);
+
+    $cardPayment = \App\Models\Payment::create([
+        'order_id' => $order->id,
+        'payment_gateway' => 'card_machine',
+        'amount' => 30.00,
+        'status' => 'paid',
+        'paid_at' => now(),
+        'payment_token' => 'test-split-card-token',
+    ]);
+
+    app(OrderService::class)->cancelOrder($order, $customer->id);
+
+    expect($order->fresh()->status)->toBe('cancelled');
+
+    $refunds = \App\Models\PaymentRefund::where('order_id', $order->id)->orderBy('payment_id')->get();
+    expect($refunds)->toHaveCount(2);
+    expect((float) $refunds->firstWhere('payment_id', $cashPayment->id)->amount)->toBe(20.00);
+    expect((float) $refunds->firstWhere('payment_id', $cardPayment->id)->amount)->toBe(30.00);
+
+    \Illuminate\Support\Facades\Bus::assertDispatched(\App\Jobs\ProcessRefund::class, 2);
+});
+
 test('buildOrderSummaryFromOrder usa preços reais dos order_items', function () {
     ['customer' => $customer, 'branch' => $branch, 'product' => $product] = setupOrderContext();
 

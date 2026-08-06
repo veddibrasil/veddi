@@ -199,3 +199,56 @@ test('cancelados não entram no total de vendas do fechamento e retiradas aparec
         ->and($report['withdrawals'])->toBe(15.0)
         ->and($report['movements'])->toHaveCount(1);
 });
+
+test('pedido com pagamento dividido bate por gateway no fechamento de caixa, não por pedido inteiro', function () {
+    ['admin' => $admin, 'company' => $company, 'branch' => $branch, 'customer' => $customer] = cashClosingContext();
+
+    $session = PdvCashSession::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'user_id' => $admin->id,
+        'opening_amount' => 0.00,
+    ]);
+
+    $order = Order::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'customer_id' => $customer->id,
+        'branch_id' => $branch->id,
+        'pdv_cash_session_id' => $session->id,
+        'subtotal' => 50.00,
+        'total' => 50.00,
+        'fee' => 0,
+        'net_value' => 50.00,
+        'status' => 'paid',
+        'payment_method' => 'split',
+        'order_type' => 'pdv',
+        'is_open_tab' => false,
+    ]);
+
+    \App\Models\Payment::create([
+        'order_id' => $order->id,
+        'payment_gateway' => 'cash',
+        'amount' => 20.00,
+        'status' => 'paid',
+        'paid_at' => now(),
+        'payment_token' => 'test-cashreport-cash-token',
+    ]);
+
+    \App\Models\Payment::create([
+        'order_id' => $order->id,
+        'payment_gateway' => 'card_machine',
+        'amount' => 30.00,
+        'status' => 'paid',
+        'paid_at' => now(),
+        'payment_token' => 'test-cashreport-card-token',
+    ]);
+
+    $report = app(\App\Services\Pdv\CashClosingReportService::class)->build($session->fresh());
+
+    // Só a perna cash entra no "esperado no caixa" — não os R$50 inteiros do pedido.
+    expect($report['cash_sales'])->toBe(20.0)
+        ->and($report['expected'])->toBe(20.0)
+        ->and($report['payments']['cash'])->toBe(20.0)
+        ->and($report['payments']['credit_card'])->toBe(30.0)
+        ->and($report['payments']['pix'])->toBe(0.0);
+});

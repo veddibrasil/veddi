@@ -285,6 +285,28 @@ class EscPosPrinterService implements PrinterServiceInterface
 
     private function printPayment(Printer $printer, Order $order): void
     {
+        if ($order->payment_method === 'split') {
+            $printer->text("Pagamento: Dividido\n");
+
+            foreach ($order->payments as $partPayment) {
+                $partLabel = match ($partPayment->payment_gateway) {
+                    'cash' => 'Dinheiro',
+                    'card_machine' => 'Cartao',
+                    'pix_manual' => 'PIX',
+                    default => $partPayment->payment_gateway,
+                };
+
+                $printer->text("  {$partLabel}: R$ ".number_format((float) $partPayment->amount, 2, ',', '.')."\n");
+            }
+
+            if ((float) $order->cash_received > 0) {
+                $printer->text('Recebido: R$ '.number_format((float) $order->cash_received, 2, ',', '.')."\n");
+                $printer->text('Troco: R$ '.number_format((float) ($order->cash_change ?? 0), 2, ',', '.')."\n");
+            }
+
+            return;
+        }
+
         $method = match (true) {
             $order->payment_method === 'pix' => 'PIX',
             in_array($order->payment_method, ['card', 'credit_card'], true) => 'Cartao',

@@ -221,6 +221,84 @@ test('pedido PDV com pagamento em dinheiro cria order e payment', function () {
     expect($payment->payment_gateway)->toBe('cash');
 });
 
+// ─── Terminal: pagamento dividido (split) ─────────────────────────────────────
+
+test('pedido PDV com pagamento dividido cria order split e um payment por parte', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->assertSet('step', 'payment')
+        ->set('isSplitPayment', true)
+        ->set('splitPayments.0.method', 'cash')
+        ->set('splitPayments.0.amount', '3.00')
+        ->set('splitPayments.0.cash_received', '3.00')
+        ->set('splitPayments.1.method', 'credit_card')
+        ->set('splitPayments.1.amount', '5.00')
+        ->call('processOrder')
+        ->assertHasNoErrors()
+        ->assertSet('step', 'catalog');
+
+    expect(Order::withoutGlobalScopes()->count())->toBe(1);
+
+    $order = Order::withoutGlobalScopes()->first();
+    expect($order->payment_method)->toBe('split');
+    expect($order->status)->toBe('paid');
+    expect((float) $order->total)->toBe(8.0);
+    expect((float) $order->cash_received)->toBe(3.0);
+    expect((float) $order->cash_change)->toBe(0.0);
+
+    $payments = Payment::where('order_id', $order->id)->orderBy('id')->get();
+    expect($payments)->toHaveCount(2);
+    expect($payments[0]->payment_gateway)->toBe('cash');
+    expect((float) $payments[0]->amount)->toBe(3.0);
+    expect($payments[1]->payment_gateway)->toBe('card_machine');
+    expect((float) $payments[1]->amount)->toBe(5.0);
+});
+
+test('pagamento dividido com soma diferente do total bloqueia e não cria pedido', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('isSplitPayment', true)
+        ->set('splitPayments.0.method', 'cash')
+        ->set('splitPayments.0.amount', '3.00')
+        ->set('splitPayments.1.method', 'credit_card')
+        ->set('splitPayments.1.amount', '4.00')
+        ->call('processOrder')
+        ->assertHasErrors('order');
+
+    expect(Order::withoutGlobalScopes()->count())->toBe(0);
+});
+
+test('pagamento dividido com duas partes em dinheiro bloqueia e não cria pedido', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('isSplitPayment', true)
+        ->set('splitPayments.0.method', 'cash')
+        ->set('splitPayments.0.amount', '4.00')
+        ->set('splitPayments.0.cash_received', '4.00')
+        ->set('splitPayments.1.method', 'cash')
+        ->set('splitPayments.1.amount', '4.00')
+        ->set('splitPayments.1.cash_received', '4.00')
+        ->call('processOrder')
+        ->assertHasErrors('order');
+
+    expect(Order::withoutGlobalScopes()->count())->toBe(0);
+});
+
 test('pedido PDV pago em dinheiro dispara emissão automática de nota fiscal', function () {
     ['admin' => $admin, 'product' => $product, 'company' => $company] = pdvContext();
 

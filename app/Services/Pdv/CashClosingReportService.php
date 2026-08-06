@@ -39,7 +39,7 @@ class CashClosingReportService
         $cashSales = (float) DB::table('orders')
             ->join('payments', 'payments.order_id', '=', 'orders.id')
             ->where('orders.pdv_cash_session_id', $session->id)
-            ->where('orders.payment_method', 'cash')
+            ->where('payments.payment_gateway', 'cash')
             ->where('payments.status', 'paid')
             ->sum('payments.amount');
 
@@ -73,20 +73,28 @@ class CashClosingReportService
             ->get(['action', 'amount', 'reason', 'created_at']);
     }
 
+    /** Agrega por payments.payment_gateway (não orders.payment_method) — necessário pra pedidos com
+     * pagamento dividido (payment_method='split') caírem no bucket certo de cada parte. */
     private function paymentTotals(int $sessionId): array
     {
         $rows = DB::table('orders')
-            ->where('pdv_cash_session_id', $sessionId)
-            ->where('is_open_tab', false)
-            ->whereNotIn('status', ['cancelled', 'refunded'])
-            ->selectRaw('payment_method, COUNT(*) as orders_count, COALESCE(SUM(total), 0) as total')
-            ->groupBy('payment_method')
+            ->join('payments', 'payments.order_id', '=', 'orders.id')
+            ->where('orders.pdv_cash_session_id', $sessionId)
+            ->where('orders.is_open_tab', false)
+            ->whereNotIn('orders.status', ['cancelled', 'refunded'])
+            ->where('payments.status', 'paid')
+            ->selectRaw('payments.payment_gateway, COALESCE(SUM(payments.amount), 0) as total')
+            ->groupBy('payments.payment_gateway')
             ->get();
 
         $totals = ['cash' => 0.0, 'pix' => 0.0, 'credit_card' => 0.0];
+        $gatewayMap = ['cash' => 'cash', 'card_machine' => 'credit_card', 'pix_manual' => 'pix'];
 
         foreach ($rows as $row) {
-            $totals[$row->payment_method] = (float) $row->total;
+            $key = $gatewayMap[$row->payment_gateway] ?? null;
+            if ($key) {
+                $totals[$key] += (float) $row->total;
+            }
         }
 
         return $totals;

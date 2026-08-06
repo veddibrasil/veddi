@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 
 class UserCreationService
 {
@@ -16,9 +17,9 @@ class UserCreationService
     /**
      * Cria um novo usuário, vincula à empresa com o papel informado e envia o e-mail de boas-vindas.
      */
-    public static function create(Company $company, string $name, string $email, string $role, ?int $branchId): User
+    public static function create(Company $company, string $name, string $email, string $role, ?int $branchId, ?string $password = null): User
     {
-        $temporaryPassword = 'password';
+        $temporaryPassword = $password ?? Str::password(12);
 
         $user = User::create([
             'name' => $name,

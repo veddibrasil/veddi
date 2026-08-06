@@ -227,6 +227,16 @@
                             </div>
                         </div>
 
+                        @if (! $isWaiter && $selectedTableOpenTabs->count() > 1)
+                            <button
+                                type="button"
+                                wire:click="proceedToCloseTableTabs({{ $selectedTableId }})"
+                                class="w-full rounded-xl border-2 border-amber-400 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 px-4 py-2.5 text-sm font-bold text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+                            >
+                                Pagar todas as comandas da mesa ({{ $selectedTableOpenTabs->count() }})
+                            </button>
+                        @endif
+
                         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                             @foreach ($selectedTableOpenTabs as $tab)
                                 <div
@@ -897,7 +907,11 @@
                                     <div class="min-w-0">
                                         <p class="text-[11px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Checkout</p>
                                         <h2 class="text-lg font-black text-neutral-900 dark:text-neutral-100">
-                                            Fechar comanda: {{ $this->openTabs->firstWhere('id', $closingTabOrderId)?->table_label }}
+                                            @if ($closingTableId)
+                                                Pagar mesa: {{ $this->closingTableOrders->count() }} comanda(s)
+                                            @else
+                                                Fechar comanda: {{ $this->openTabs->firstWhere('id', $closingTabOrderId)?->table_label }}
+                                            @endif
                                         </h2>
                                     </div>
                                 </div>
@@ -912,8 +926,16 @@
 
                         <div class="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto xl:grid-cols-[minmax(0,1fr)_22rem]">
                             <div class="space-y-5 p-4 lg:p-5">
+                                @if ($closingTableId)
+                                    <div class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-800 dark:bg-amber-900/20">
+                                        <p class="text-xs text-amber-800 dark:text-amber-300">
+                                            Pagamento combinado de todas as comandas abertas desta mesa. Isenção de taxa de serviço/couvert vale pra todas de uma vez. Desconto manual não se aplica aqui — ajuste comanda por comanda antes de agrupar, se precisar.
+                                        </p>
+                                    </div>
+                                @endif
+
                                 <div class="grid gap-4 md:grid-cols-2">
-                                    @if ($manualDiscountAllowed)
+                                    @if ($manualDiscountAllowed && ! $closingTableId)
                                         <div class="space-y-1.5">
                                             <flux:label class="text-xs font-semibold">Desconto manual (opcional)</flux:label>
                                             @if ($manualDiscountAmount > 0)
@@ -973,40 +995,12 @@
                                     </div>
                                 @endif
 
-                                <div class="grid gap-4 md:grid-cols-2">
+                                <div class="grid gap-4 md:grid-cols-[1fr_2fr]">
                                     <div class="space-y-1.5">
                                         @include('livewire.admin.pdv._customer-search')
                                     </div>
 
-                                    <div class="space-y-1.5">
-                                        <flux:label class="text-xs font-semibold">Método de pagamento</flux:label>
-                                        <flux:radio.group wire:model.live="paymentMethod" variant="segmented" class="w-full">
-                                            <flux:radio value="cash" label="Dinheiro" />
-                                            <flux:radio value="pix" label="PIX" />
-                                            <flux:radio value="credit_card" label="Cartão" />
-                                        </flux:radio.group>
-
-                                        @if ($paymentMethod === 'cash')
-                                            <div class="pt-3 space-y-1.5">
-                                                <flux:label class="text-xs font-semibold">Valor recebido</flux:label>
-                                                <flux:input
-                                                    wire:model.live.debounce.500ms="cashReceivedInput"
-                                                    placeholder="Em branco = valor exato"
-                                                    type="number"
-                                                    step="0.01"
-                                                    min="{{ $this->cartTotalAfterDiscount }}"
-                                                />
-                                                @if (filled($cashReceivedInput) && (float) str_replace(',', '.', $cashReceivedInput) >= $this->cartTotalAfterDiscount)
-                                                    @php $changePreview = max(0, (float) str_replace(',', '.', $cashReceivedInput) - $this->cartTotalAfterDiscount); @endphp
-                                                    <div class="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 dark:bg-amber-900/20 dark:border-amber-700">
-                                                        <p class="text-sm text-amber-700 dark:text-amber-300 font-semibold">
-                                                            Troco: R$ {{ number_format($changePreview, 2, ',', '.') }}
-                                                        </p>
-                                                    </div>
-                                                @endif
-                                            </div>
-                                        @endif
-                                    </div>
+                                    @include('livewire.admin.pdv._split-payment')
                                 </div>
 
                                 <div class="space-y-1.5">
@@ -1029,19 +1023,46 @@
                                     <div>
                                         <p class="text-[11px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Resumo do pedido</p>
                                         <div class="mt-3 max-h-64 overflow-y-auto rounded-xl border border-neutral-200 bg-white divide-y divide-neutral-100 dark:border-zinc-800 dark:bg-zinc-900 dark:divide-zinc-800">
-                                            @foreach ($this->closingTabItems as $tabItem)
-                                                <div class="px-3 py-2">
-                                                    <div class="flex items-start justify-between gap-3 text-sm">
-                                                        <span class="font-medium text-neutral-800 dark:text-neutral-100">{{ $tabItem->quantity }}x {{ $tabItem->product_name }}</span>
-                                                        <span class="shrink-0 font-semibold text-neutral-900 dark:text-neutral-100">R$ {{ number_format($tabItem->subtotal, 2, ',', '.') }}</span>
+                                            @if ($closingTableId)
+                                                @foreach ($this->closingTableOrders as $tableOrder)
+                                                    <div class="px-3 py-2">
+                                                        <div class="flex items-start justify-between gap-3 text-sm">
+                                                            <span class="font-bold text-neutral-800 dark:text-neutral-100">{{ $tableOrder->table_label }}</span>
+                                                            @php
+                                                                // Taxa de serviço/couvert da mesa é única (cobrada uma vez, não por comanda) e
+                                                                // entra só na primeira — mesma regra usada em proceedToCloseTableTabs() pro
+                                                                // pré-preenchimento do split. Exibir $tableOrder->total aqui (taxa própria já
+                                                                // gravada na criação de cada comanda) diverge do valor pré-preenchido.
+                                                                $tableOrderDisplayAmount = (float) $tableOrder->subtotal + ($loop->first ? $this->serviceFeeAmount + $this->couvertFeeAmount : 0.0);
+                                                            @endphp
+                                                            <span class="shrink-0 font-semibold text-neutral-900 dark:text-neutral-100">R$ {{ number_format($tableOrderDisplayAmount, 2, ',', '.') }}</span>
+                                                        </div>
+                                                        <div class="mt-1 space-y-0.5 pl-2">
+                                                            @foreach ($tableOrder->items as $tableOrderItem)
+                                                                <div class="flex items-start justify-between gap-3 text-xs text-neutral-500 dark:text-neutral-400">
+                                                                    <span>{{ $tableOrderItem->quantity }}x {{ $tableOrderItem->product_name }}</span>
+                                                                    <span class="shrink-0">R$ {{ number_format($tableOrderItem->subtotal, 2, ',', '.') }}</span>
+                                                                </div>
+                                                            @endforeach
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            @endforeach
+                                                @endforeach
+                                            @else
+                                                @foreach ($this->closingTabItems as $tabItem)
+                                                    <div class="px-3 py-2">
+                                                        <div class="flex items-start justify-between gap-3 text-sm">
+                                                            <span class="font-medium text-neutral-800 dark:text-neutral-100">{{ $tabItem->quantity }}x {{ $tabItem->product_name }}</span>
+                                                            <span class="shrink-0 font-semibold text-neutral-900 dark:text-neutral-100">R$ {{ number_format($tabItem->subtotal, 2, ',', '.') }}</span>
+                                                        </div>
+                                                    </div>
+                                                @endforeach
+                                            @endif
                                         </div>
                                     </div>
 
                                     <div class="mt-auto space-y-3">
-                                        @if ($manualDiscountAmount > 0 || $this->serviceFeeAmount > 0 || $this->couvertFeeAmount > 0)
+                                        @php $groupManualDiscount = $closingTableId ? (float) $this->closingTableOrders->sum('manual_discount') : 0.0; @endphp
+                                        @if ($closingTableId ? ($groupManualDiscount > 0 || $this->serviceFeeAmount > 0 || $this->couvertFeeAmount > 0) : ($manualDiscountAmount > 0 || $this->serviceFeeAmount > 0 || $this->couvertFeeAmount > 0))
                                             <div class="space-y-1 text-sm">
                                                 <div class="flex justify-between text-neutral-500 dark:text-neutral-400">
                                                     <span>Subtotal</span>
@@ -1059,7 +1080,14 @@
                                                         <span>+ R$ {{ number_format($this->couvertFeeAmount, 2, ',', '.') }}</span>
                                                     </div>
                                                 @endif
-                                                @if ($manualDiscountAmount > 0)
+                                                @if ($closingTableId)
+                                                    @if ($groupManualDiscount > 0)
+                                                        <div class="flex justify-between text-green-600 dark:text-green-400">
+                                                            <span>Desconto manual</span>
+                                                            <span>- R$ {{ number_format($groupManualDiscount, 2, ',', '.') }}</span>
+                                                        </div>
+                                                    @endif
+                                                @elseif ($manualDiscountAmount > 0)
                                                     <div class="flex justify-between text-green-600 dark:text-green-400">
                                                         <span>Desconto manual</span>
                                                         <span>- R$ {{ number_format($manualDiscountAmount, 2, ',', '.') }}</span>
@@ -1089,10 +1117,11 @@
                                                 Voltar
                                             </flux:button>
                                             <flux:button
-                                                wire:click="confirmCloseTab"
+                                                wire:click="{{ $closingTableId ? 'confirmCloseTableTabs' : 'confirmCloseTab' }}"
                                                 variant="primary"
                                                 size="base"
                                                 wire:loading.attr="disabled"
+                                                :disabled="$isSplitPayment && abs($this->splitPaymentsRemaining) > 0.01"
                                             >
                                                 <span wire:loading.remove>Confirmar</span>
                                                 <span wire:loading>Processando...</span>

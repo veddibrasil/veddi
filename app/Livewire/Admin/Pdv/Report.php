@@ -5,6 +5,7 @@ namespace App\Livewire\Admin\Pdv;
 use App\Models\Branch;
 use App\Models\Order;
 use App\Models\PdvCashSession;
+use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -61,11 +62,36 @@ class Report extends Component
 
         $activeOrders = $allOrders->whereNotIn('status', ['cancelled', 'refunded']);
         $totalRevenue = $activeOrders->sum('total');
-        $cashTotal = $activeOrders->where('payment_method', 'cash')->sum('total');
-        $pixTotal = $activeOrders->where('payment_method', 'pix')->sum('total');
-        $cardTotal = $activeOrders->where('payment_method', 'credit_card')->sum('total');
         $cancelledCount = $allOrders->whereIn('status', ['cancelled', 'refunded'])->count();
         $totalDiscounts = $activeOrders->sum(fn ($o) => ($o->discount ?? 0) + ($o->manual_discount ?? 0));
+
+        // Agrega por payments.payment_gateway (não orders.payment_method) — pedidos com pagamento
+        // dividido (payment_method='split') têm cada parte contada no bucket certo.
+        $paymentRows = DB::table('orders')
+            ->join('payments', 'payments.order_id', '=', 'orders.id')
+            ->where('orders.order_type', 'pdv')
+            ->whereNotIn('orders.status', ['cancelled', 'refunded'])
+            ->where('payments.status', 'paid')
+            ->when($this->dateStart, fn ($q) => $q->whereDate('orders.created_at', '>=', $this->dateStart))
+            ->when($this->dateEnd, fn ($q) => $q->whereDate('orders.created_at', '<=', $this->dateEnd))
+            ->when($this->branchFilter, fn ($q) => $q->where('orders.branch_id', $this->branchFilter))
+            ->selectRaw('payments.payment_gateway, COALESCE(SUM(payments.amount), 0) as total')
+            ->groupBy('payments.payment_gateway')
+            ->get();
+
+        $gatewayMap = ['cash' => 'cash', 'card_machine' => 'credit_card', 'pix_manual' => 'pix'];
+        $paymentTotals = ['cash' => 0.0, 'pix' => 0.0, 'credit_card' => 0.0];
+
+        foreach ($paymentRows as $row) {
+            $key = $gatewayMap[$row->payment_gateway] ?? null;
+            if ($key) {
+                $paymentTotals[$key] += (float) $row->total;
+            }
+        }
+
+        $cashTotal = $paymentTotals['cash'];
+        $pixTotal = $paymentTotals['pix'];
+        $cardTotal = $paymentTotals['credit_card'];
 
         $orders = (clone $this->buildOrderQuery())->latest()->paginate(25);
 
