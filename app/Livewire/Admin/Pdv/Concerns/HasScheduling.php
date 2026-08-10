@@ -34,31 +34,10 @@ trait HasScheduling
             return [];
         }
 
-        $dayOfWeek = (int) $date->format('w');
-        $availableDays = $branch->available_days;
-        if ($availableDays !== null && ! in_array($dayOfWeek, $availableDays)) {
-            return [];
-        }
-
         $company = app()->bound('current.company') ? app('current.company') : null;
         $minMinutes = $company?->schedule_min_advance_minutes ?? 60;
-        $minTime = now(config('app.timezone'))->addMinutes($minMinutes);
 
-        [$openHour, $openMin] = explode(':', $branch->opens_at);
-        [$closeHour, $closeMin] = explode(':', $branch->closes_at);
-
-        $cursor = $date->copy()->setTime((int) $openHour, (int) $openMin, 0);
-        $end = $date->copy()->setTime((int) $closeHour, (int) $closeMin, 0);
-
-        $slots = [];
-        while ($cursor->lte($end)) {
-            if ($cursor->gt($minTime)) {
-                $slots[] = $cursor->format('H:i');
-            }
-            $cursor->addMinutes(30);
-        }
-
-        return $slots;
+        return $branch->scheduleTimeSlotsForDate($date, $minMinutes);
     }
 
     public function updatedIsScheduled(): void
@@ -126,9 +105,15 @@ trait HasScheduling
             return null;
         }
 
-        $hours = $branch->hoursForDay($dayOfWeek);
-        if ($hours['opens_at'] && $hours['closes_at'] && ($timeStr < $hours['opens_at'] || $timeStr > $hours['closes_at'])) {
-            $this->addError('scheduledAt', "A filial funciona entre {$hours['opens_at']} e {$hours['closes_at']}.");
+        if (! $branch->isWithinSchedulingSlot($dayOfWeek, $timeStr)) {
+            $this->addError('scheduledAt', 'Não há agendamento disponível nesse horário.');
+
+            return null;
+        }
+
+        if ($pause = $branch->activePauseAt($scheduled)) {
+            $reasonText = $pause->reason ? " Motivo: {$pause->reason}." : '';
+            $this->addError('scheduledAt', "A filial estará fechada nesse período.{$reasonText}");
 
             return null;
         }

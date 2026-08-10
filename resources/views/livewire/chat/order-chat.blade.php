@@ -1686,7 +1686,7 @@
                                             @endif
                                         </div>
                                         @if ($product->description)
-                                            <p class="text-[11px] text-gray-400 leading-snug mt-0.5 cursor-pointer" :class="expanded ? '' : 'line-clamp-2'" @click="expanded = !expanded">{{ $product->description }}</p>
+                                            <p class="text-[11px] text-gray-400 leading-snug mt-0.5 cursor-pointer" :class="expanded ? '' : 'line-clamp-2'" @click="expanded = !expanded">{!! $product->description_html !!}</p>
                                         @endif
                                      
                                         @if ($product->is_variant && $product->optionGroups->isNotEmpty())
@@ -1877,7 +1877,7 @@
                                                 </div>
                                                 <p class="text-xs text-gray-500 mt-0.5 leading-snug"
                                                     x-show="option.description && !option.paused"
-                                                    x-text="option.description"></p>
+                                                    x-html="option.description"></p>
                                                 <p class="text-xs text-gray-400 mt-0.5"
                                                     x-show="option.additional_price > 0 && !option.paused"
                                                     x-text="'+R$ ' + option.additional_price.toFixed(2).replace('.', ',')"></p>

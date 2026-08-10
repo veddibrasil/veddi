@@ -131,6 +131,7 @@ Route::middleware(['auth', 'verified', 'company.active'])
         Route::get('/branches/{branch}/printer', \App\Livewire\Admin\Branches\PrinterSettings::class)->name('branches.printer');
         Route::get('/branches/{branch}/service-charges', \App\Livewire\Admin\Branches\ServiceCharges::class)->name('branches.service-charges');
         Route::get('/branches/{branch}/tables', \App\Livewire\Admin\Branches\RestaurantTables::class)->name('branches.tables');
+        Route::get('/branches/{branch}/pauses', \App\Livewire\Admin\Branches\Pauses::class)->name('branches.pauses');
 
         Route::get('/coupons', \App\Livewire\Admin\Coupons\Index::class)->name('coupons.index');
 

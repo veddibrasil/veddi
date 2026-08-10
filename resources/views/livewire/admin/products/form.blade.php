@@ -147,7 +147,7 @@
                     </div>
                 </div>
                 <div>
-                    <flux:textarea wire:model="description" label="Descrição (opcional)" placeholder="Breve descrição..." rows="3" />
+                    <flux:textarea wire:model="description" label="Descrição (opcional)" placeholder="Descrição do produto. Aceita HTML simples (b, i, u, br, p, ul, ol, li, a)." rows="10" />
                     @error('description') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
 
@@ -609,8 +609,9 @@
                                     {{-- Linha 2: descrição + campos numéricos --}}
                                     <div class="flex items-start gap-2">
                                         <div class="flex-1">
-                                            <flux:input wire:model="optionGroups.{{ $gi }}.options.{{ $oi }}.description"
-                                                placeholder="Descrição (opcional)"
+                                            <flux:textarea wire:model="optionGroups.{{ $gi }}.options.{{ $oi }}.description"
+                                                placeholder="Descrição (opcional). Aceita HTML simples."
+                                                rows="3"
                                                 class="text-xs text-neutral-500" />
                                         </div>
                                         @if (($isVariant && $gi === 0) || empty($group['fixed']))

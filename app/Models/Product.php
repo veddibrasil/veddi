@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToCompany;
+use App\Services\Html\DescriptionSanitizer;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -59,6 +60,11 @@ class Product extends Model
         }
 
         return (float) $this->promo_price_value;
+    }
+
+    public function getDescriptionHtmlAttribute(): string
+    {
+        return DescriptionSanitizer::sanitize($this->description);
     }
 
     public function getImageUrlAttribute(): ?string

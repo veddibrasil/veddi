@@ -212,6 +212,10 @@ class OrderChat extends Component
                 }
             }
 
+            if ($this->step === 'CLOSED') {
+                $this->initialize();
+            }
+
             return;
         }
         session()->forget('chat_state');
@@ -234,7 +238,7 @@ class OrderChat extends Component
                 $nowTime = $now->format('H:i:s');
                 $currentDay = (int) $now->format('w');
 
-                return Branch::withoutGlobalScopes()
+                $candidates = Branch::withoutGlobalScopes()
                     ->where('active', true)
                     ->where('company_id', $companyId)
                     ->where(function ($query) use ($currentDay) {
@@ -255,7 +259,10 @@ class OrderChat extends Component
                                     });
                             });
                     })
-                    ->exists();
+                    ->with('pauses')
+                    ->get();
+
+                return $candidates->contains(fn (Branch $branch) => ! $branch->isPaused($now));
             }
         );
 
@@ -420,31 +427,10 @@ class OrderChat extends Component
             return [];
         }
 
-        $dayOfWeek = (int) $date->format('w');
-        $availableDays = $branch->available_days;
-        if ($availableDays !== null && ! in_array($dayOfWeek, $availableDays)) {
-            return [];
-        }
-
         $company = $this->currentCompany();
         $minMinutes = $company?->schedule_min_advance_minutes ?? 60;
-        $minTime = now(config('app.timezone'))->addMinutes($minMinutes);
 
-        [$openHour, $openMin] = explode(':', $branch->opens_at);
-        [$closeHour, $closeMin] = explode(':', $branch->closes_at);
-
-        $cursor = $date->copy()->setTime((int) $openHour, (int) $openMin, 0);
-        $end = $date->copy()->setTime((int) $closeHour, (int) $closeMin, 0);
-
-        $slots = [];
-        while ($cursor->lte($end)) {
-            if ($cursor->gt($minTime)) {
-                $slots[] = $cursor->format('H:i');
-            }
-            $cursor->addMinutes(30);
-        }
-
-        return $slots;
+        return $branch->scheduleTimeSlotsForDate($date, $minMinutes);
     }
 
     public function getSupportWhatsAppUrlProperty(): ?string
@@ -556,7 +542,7 @@ class OrderChat extends Component
                             'id' => $o->id,
                             'name' => $o->name,
                             'image_url' => $o->image_url,
-                            'description' => $o->description,
+                            'description' => $o->description_html,
                             'additional_price' => $resolvePrice($o),
                             'max_qty' => $o->max_qty,
                             'paused' => false,
@@ -568,7 +554,7 @@ class OrderChat extends Component
                             'id' => $o->id,
                             'name' => $o->name,
                             'image_url' => $o->image_url,
-                            'description' => $o->description,
+                            'description' => $o->description_html,
                             'additional_price' => $resolvePrice($o),
                             'paused' => true,
                             'prefilledQty' => 0,

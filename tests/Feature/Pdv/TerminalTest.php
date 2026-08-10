@@ -1334,6 +1334,39 @@ test('pedido agendado exige cliente selecionado', function () {
     expect(Order::withoutGlobalScopes()->count())->toBe(0);
 });
 
+test('agendamento rejeita horário fora dos horários de agendamento configurados na filial', function () {
+    ['admin' => $admin, 'company' => $company, 'branch' => $branch, 'product' => $product] = pdvContext();
+
+    $company->update(['schedule_min_advance_minutes' => 30]);
+
+    $customer = Customer::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Cliente Agendado',
+        'phone' => '11999990002',
+    ]);
+
+    $scheduled = now()->addDay()->setTime(12, 0);
+    $dayOfWeek = (int) $scheduled->format('w');
+
+    $branch->update([
+        'scheduling_slots' => [$dayOfWeek => [['opens_at' => '06:00', 'closes_at' => '07:00']]],
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('customerId', $customer->id)
+        ->set('isScheduled', true)
+        ->set('scheduleDate', $scheduled->format('Y-m-d'))
+        ->set('scheduleTime', $scheduled->format('H:i'))
+        ->call('processOrder')
+        ->assertHasErrors('scheduledAt');
+
+    expect(Order::withoutGlobalScopes()->count())->toBe(0);
+});
+
 test('agendamento rejeita horário no passado', function () {
     ['admin' => $admin, 'company' => $company, 'product' => $product] = pdvContext();
 

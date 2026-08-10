@@ -88,6 +88,23 @@
         </div>
     </x-admin.form-card>
 
+    <x-admin.form-card title="Horários de agendamento">
+        <p class="text-xs text-neutral-500 dark:text-neutral-400">
+            Defina os intervalos em que os clientes podem agendar pedidos. Usado apenas quando o agendamento estiver habilitado nas configurações da empresa. Se nenhum horário for definido para um dia, o agendamento usará o horário de funcionamento normal daquele dia.
+        </p>
+
+        <div class="divide-y divide-neutral-100 dark:divide-zinc-700">
+            @foreach ([0 => 'Domingo', 1 => 'Segunda', 2 => 'Terça', 3 => 'Quarta', 4 => 'Quinta', 5 => 'Sexta', 6 => 'Sábado'] as $dayIndex => $dayLabel)
+                <x-admin.scheduling-slots-row
+                    :day-index="$dayIndex"
+                    :day-label="$dayLabel"
+                    :is-active="in_array($dayIndex, $available_days)"
+                    :slots="$scheduling_slots[$dayIndex] ?? []"
+                />
+            @endforeach
+        </div>
+    </x-admin.form-card>
+
     <x-admin.form-actions
         :save-label="$isEditing ? 'Salvar alterações' : 'Criar filial'"
         :cancel-route="route('admin.branches.index')"

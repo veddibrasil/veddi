@@ -553,21 +553,30 @@ trait HasOrderFlow
                 return;
             }
 
-            $hours = $branch->hoursForDay($dayOfWeek);
-            if ($hours['opens_at'] && $hours['closes_at']) {
-                if ($timeStr < $hours['opens_at'] || $timeStr > $hours['closes_at']) {
-                    $this->addError('scheduledAt', "A filial funciona entre {$hours['opens_at']} e {$hours['closes_at']}.");
+            if (! $branch->isWithinSchedulingSlot($dayOfWeek, $timeStr)) {
+                $this->addError('scheduledAt', 'Não há agendamento disponível nesse horário.');
 
-                    Log::channel('chat')->info('Agendamento rejeitado: fora do horário de funcionamento', [
-                        'customer_id' => $this->customerId,
-                        'branch_id' => $this->selectedBranchId,
-                        'attempted_time' => $timeStr,
-                        'opens_at' => $hours['opens_at'],
-                        'closes_at' => $hours['closes_at'],
-                    ]);
+                Log::channel('chat')->info('Agendamento rejeitado: fora dos horários de agendamento', [
+                    'customer_id' => $this->customerId,
+                    'branch_id' => $this->selectedBranchId,
+                    'attempted_time' => $timeStr,
+                ]);
 
-                    return;
-                }
+                return;
+            }
+
+            if ($pause = $branch->activePauseAt($scheduled)) {
+                $reasonText = $pause->reason ? " Motivo: {$pause->reason}." : '';
+                $this->addError('scheduledAt', "A filial estará fechada nesse período.{$reasonText}");
+
+                Log::channel('chat')->info('Agendamento rejeitado: filial em pausa', [
+                    'customer_id' => $this->customerId,
+                    'branch_id' => $this->selectedBranchId,
+                    'attempted_at' => $scheduled->toIso8601String(),
+                    'pause_id' => $pause->id,
+                ]);
+
+                return;
             }
         }
 

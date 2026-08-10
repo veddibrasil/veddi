@@ -27,7 +27,7 @@
                 @error('name') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
             <div>
-                <flux:input wire:model="slug" label="Slug (URL)" placeholder="minha-lanchonete" />
+                <flux:input wire:model="slug" label="Slug (URL)" placeholder="minha-lanchonete" disabled />
                 @error('slug') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
         </div>

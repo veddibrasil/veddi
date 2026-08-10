@@ -647,7 +647,7 @@
                                                         </div>
                                                         <p class="text-xs text-neutral-500 mt-0.5 leading-snug"
                                                             x-show="option.description && !option.paused"
-                                                            x-text="option.description"></p>
+                                                            x-html="option.description"></p>
                                                         <p class="text-xs text-amber-600 mt-0.5"
                                                             x-show="option.additional_price > 0 && !option.paused"
                                                             x-text="'+R$ ' + option.additional_price.toFixed(2).replace('.', ',')"></p>

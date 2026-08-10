@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Html\DescriptionSanitizer;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -16,6 +17,11 @@ class ProductOption extends Model
         'max_qty' => 'integer',
         'sort_order' => 'integer',
     ];
+
+    public function getDescriptionHtmlAttribute(): string
+    {
+        return DescriptionSanitizer::sanitize($this->description);
+    }
 
     public function getImageUrlAttribute(): ?string
     {

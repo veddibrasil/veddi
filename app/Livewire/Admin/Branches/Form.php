@@ -46,6 +46,12 @@ class Form extends Component
         6 => ['opens_at' => '08:00', 'closes_at' => '20:00'],
     ];
 
+    public array $scheduling_slots = [0 => [], 1 => [], 2 => [], 3 => [], 4 => [], 5 => [], 6 => []];
+
+    public array $newSlotOpensAt = [0 => '', 1 => '', 2 => '', 3 => '', 4 => '', 5 => '', 6 => ''];
+
+    public array $newSlotClosesAt = [0 => '', 1 => '', 2 => '', 3 => '', 4 => '', 5 => '', 6 => ''];
+
     public bool $needsCompanySelect = false;
 
     public bool $canSave = false;
@@ -124,6 +130,7 @@ class Form extends Component
 
         $businessHours = $this->buildBusinessHours($validated['available_days']);
         $validated['business_hours'] = $businessHours;
+        $validated['scheduling_slots'] = $this->buildSchedulingSlots($validated['available_days']);
 
         $opens = array_column(array_values($businessHours), 'opens_at');
         $closes = array_column(array_values($businessHours), 'closes_at');
@@ -204,6 +211,53 @@ class Form extends Component
         $this->available_days = $branch->available_days ?? [0, 1, 2, 3, 4, 5, 6];
 
         $this->loadBusinessHours($branch);
+        $this->loadSchedulingSlots($branch);
+    }
+
+    public function addSchedulingSlot(int $day): void
+    {
+        $this->validate([
+            "newSlotOpensAt.{$day}" => ['required', 'date_format:H:i'],
+            "newSlotClosesAt.{$day}" => ['required', 'date_format:H:i', 'after:newSlotOpensAt.'.$day],
+        ], [
+            "newSlotOpensAt.{$day}.required" => 'Informe o horário de início.',
+            "newSlotClosesAt.{$day}.required" => 'Informe o horário de fim.',
+            "newSlotClosesAt.{$day}.after" => 'O horário de fim deve ser após o início.',
+        ]);
+
+        $this->scheduling_slots[$day][] = [
+            'opens_at' => $this->newSlotOpensAt[$day],
+            'closes_at' => $this->newSlotClosesAt[$day],
+        ];
+
+        $this->newSlotOpensAt[$day] = '';
+        $this->newSlotClosesAt[$day] = '';
+    }
+
+    public function removeSchedulingSlot(int $day, int $index): void
+    {
+        unset($this->scheduling_slots[$day][$index]);
+        $this->scheduling_slots[$day] = array_values($this->scheduling_slots[$day]);
+    }
+
+    private function loadSchedulingSlots(Branch $branch): void
+    {
+        $stored = $branch->scheduling_slots ?? [];
+
+        foreach (range(0, 6) as $day) {
+            $this->scheduling_slots[$day] = $stored[$day] ?? $stored[(string) $day] ?? [];
+        }
+    }
+
+    private function buildSchedulingSlots(array $availableDays): array
+    {
+        $slots = [];
+
+        foreach ($availableDays as $day) {
+            $slots[$day] = $this->scheduling_slots[$day] ?? [];
+        }
+
+        return $slots;
     }
 
     private function loadBusinessHours(Branch $branch): void

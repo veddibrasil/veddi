@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToCompany;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -32,12 +33,14 @@ class Branch extends Model
         'closes_at',
         'available_days',
         'business_hours',
+        'scheduling_slots',
     ];
 
     protected $casts = [
         'active' => 'boolean',
         'available_days' => 'array',
         'business_hours' => 'array',
+        'scheduling_slots' => 'array',
     ];
 
     /**
@@ -210,6 +213,23 @@ class Branch extends Model
         return $this->hasOne(BranchServiceCharge::class);
     }
 
+    public function pauses(): HasMany
+    {
+        return $this->hasMany(BranchPause::class);
+    }
+
+    public function activePauseAt(?CarbonInterface $at = null): ?BranchPause
+    {
+        $at ??= now(config('app.timezone'));
+
+        return $this->pauses->first(fn (BranchPause $pause) => $pause->coversAt($at));
+    }
+
+    public function isPaused(?CarbonInterface $at = null): bool
+    {
+        return $this->activePauseAt($at) !== null;
+    }
+
     public function hoursForDay(int $day): array
     {
         $perDay = $this->business_hours[$day] ?? $this->business_hours[(string) $day] ?? null;
@@ -222,6 +242,10 @@ class Branch extends Model
 
     public function isOpen(): bool
     {
+        if ($this->isPaused()) {
+            return false;
+        }
+
         $now = now(config('app.timezone'));
         $currentDay = (int) $now->format('w');
         $currentTime = $now->format('H:i');
@@ -234,5 +258,69 @@ class Branch extends Model
         $hours = $this->hoursForDay($currentDay);
 
         return $currentTime >= $hours['opens_at'] && $currentTime <= $hours['closes_at'];
+    }
+
+    /**
+     * Janelas de horário em que a filial aceita agendamento no dia informado.
+     * Sem configuração específica, cai na janela única de funcionamento do dia.
+     */
+    public function schedulingSlotsForDay(int $day): array
+    {
+        $slots = $this->scheduling_slots[$day] ?? $this->scheduling_slots[(string) $day] ?? [];
+
+        return $slots !== [] ? $slots : [$this->hoursForDay($day)];
+    }
+
+    public function isWithinSchedulingSlot(int $day, string $timeStr): bool
+    {
+        foreach ($this->schedulingSlotsForDay($day) as $slot) {
+            if (($slot['opens_at'] ?? null) && ($slot['closes_at'] ?? null)
+                && $timeStr >= $slot['opens_at'] && $timeStr <= $slot['closes_at']) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Horários de agendamento disponíveis (intervalos de 30min) para a data informada,
+     * unindo e deduplicando todas as janelas configuradas para o dia da semana.
+     */
+    public function scheduleTimeSlotsForDate(CarbonInterface $date, int $minAdvanceMinutes, ?CarbonInterface $now = null): array
+    {
+        $dayOfWeek = (int) $date->format('w');
+
+        $availableDays = $this->available_days;
+        if ($availableDays !== null && ! in_array($dayOfWeek, $availableDays)) {
+            return [];
+        }
+
+        $now ??= now(config('app.timezone'));
+        $minTime = $now->copy()->addMinutes($minAdvanceMinutes);
+
+        $slots = [];
+        foreach ($this->schedulingSlotsForDay($dayOfWeek) as $slot) {
+            if (! ($slot['opens_at'] ?? null) || ! ($slot['closes_at'] ?? null)) {
+                continue;
+            }
+
+            [$openHour, $openMin] = explode(':', $slot['opens_at']);
+            [$closeHour, $closeMin] = explode(':', $slot['closes_at']);
+
+            $cursor = $date->copy()->setTime((int) $openHour, (int) $openMin, 0);
+            $end = $date->copy()->setTime((int) $closeHour, (int) $closeMin, 0);
+
+            while ($cursor->lte($end)) {
+                if ($cursor->gt($minTime) && ! $this->isPaused($cursor)) {
+                    $slots[$cursor->format('H:i')] = true;
+                }
+                $cursor->addMinutes(30);
+            }
+        }
+
+        ksort($slots);
+
+        return array_keys($slots);
     }
 }

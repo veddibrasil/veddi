@@ -133,6 +133,7 @@ class CompanySettings extends Component
             $data['chat_highlights'] = $this->chat_highlights ?: null;
         }
 
+        $data['slug'] = $company->slug;
         $data['pix_fee_absorbed_by_company'] = $this->pixFeeAbsorbedByCompany;
         $data['card_fee_absorbed_by_company'] = $this->cardFeeAbsorbedByCompany;
         $data['pdv_manual_discount_enabled'] = $this->pdvManualDiscountEnabled;
