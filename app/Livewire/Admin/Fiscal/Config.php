@@ -8,6 +8,7 @@ use App\Models\Company;
 use App\Models\CompanyFiscalConfig;
 use App\Services\Fiscal\FocusNfeService;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -44,11 +45,12 @@ class Config extends Component
 
     public ?string $focusNfeCompanyId = null;
 
-    // Campo que falta no cadastro (não existe tela de edição de CNPJ hoje) — só fica
-    // editável aqui enquanto a empresa não tiver um CNPJ válido cadastrado.
-    public string $ownerCpfCnpj = '';
+    // CNPJ é da FILIAL selecionada, não da empresa — cada filial pode emitir com um
+    // CNPJ próprio. Só fica editável enquanto a filial não tiver um CNPJ válido
+    // registrado na Focus NFe (ver hasBranchCnpj).
+    public string $branchCnpj = '';
 
-    public bool $hasOwnerCpfCnpj = false;
+    public bool $hasBranchCnpj = false;
 
     public string $inscricaoMunicipal = '';
 
@@ -57,6 +59,11 @@ class Config extends Component
     public bool $hasCscNfceProducao = false;
 
     public string $idTokenNfceProducao = '';
+
+    // Marca esta config como a "padrão" da empresa — usada como fallback quando um
+    // pedido é de uma filial sem config fiscal própria. Só é escolha do usuário
+    // quando há mais de uma filial; com filial única, é sempre true (ver save()).
+    public bool $isDefault = false;
 
     // Dados já cadastrados em outras telas (empresa/filial) — exibidos aqui como
     // somente leitura para conferência, sem duplicar o ponto de edição.
@@ -82,8 +89,9 @@ class Config extends Component
 
     public bool $hasBranch = false;
 
-    // Empresa pode ter mais de uma filial — o registro na Focus NFe usa o endereço
-    // de uma única filial, então o usuário escolhe qual quando houver mais de uma.
+    // Cada filial tem sua própria configuração fiscal completa (CNPJ, certificado,
+    // token, série, ambiente) — trocar a filial selecionada troca o registro
+    // inteiro carregado/salvo pelo formulário, não só o endereço exibido.
     public ?int $branchId = null;
 
     /** @var array<int, array{id: int, name: string}> */
@@ -98,40 +106,20 @@ class Config extends Component
 
         $this->companyName = $company->name;
         $this->companyEmail = $company->email ?? '';
-        // Trava só depois que o CNPJ já foi registrado na Focus NFe (não apenas
-        // preenchido) — antes disso, corrigir um CNPJ digitado errado não pode
-        // exigir suporte, já que a Focus ainda nem conhece esse emissor.
-        $this->hasOwnerCpfCnpj = $company->fiscalConfig?->isRegisteredWithFocus() ?? false;
-        $this->ownerCpfCnpj = $company->owner_cpf_cnpj ?? '';
 
         $branches = Branch::withoutGlobalScopes()->where('company_id', $company->id)->orderBy('name')->get();
         $this->hasBranch = $branches->isNotEmpty();
         $this->branchOptions = $branches->map(fn (Branch $b) => ['id' => $b->id, 'name' => $b->name])->all();
 
-        $config = $company->fiscalConfig;
-
-        // Preserva a filial escolhida em um save anterior; sem escolha prévia, assume
-        // a primeira só como ponto de partida — o usuário troca no select se precisar.
-        $selectedBranch = $config?->branch_id ? $branches->firstWhere('id', $config->branch_id) : null;
+        // Sem filial explícita ainda escolhida, começa pela que já é a config padrão
+        // da empresa; sem nenhuma config salva, cai na primeira filial como ponto de
+        // partida — o usuário troca no select se precisar.
+        $defaultConfig = CompanyFiscalConfig::where('company_id', $company->id)->where('is_default', true)->first();
+        $selectedBranch = $defaultConfig?->branch_id ? $branches->firstWhere('id', $defaultConfig->branch_id) : null;
         $branch = $selectedBranch ?? $branches->first();
 
         $this->branchId = $branch?->id;
-        $this->fillBranchAddressFields($branch);
-
-        if ($config) {
-            $this->crt = $config->crt;
-            $this->enabled = $config->enabled;
-            $this->inscricaoEstadual = $config->inscricao_estadual ?? '';
-            $this->inscricaoMunicipal = $config->inscricao_municipal ?? '';
-            $this->provider = $config->provider;
-            $this->environment = $config->environment;
-            $this->nfceSerie = (string) $config->nfce_serie;
-            $this->hasProviderToken = filled($config->provider_token);
-            $this->hasCertificate = filled($config->certificate_path);
-            $this->focusNfeCompanyId = $config->focus_nfe_company_id;
-            $this->hasCscNfceProducao = filled($config->csc_nfce_producao);
-            $this->idTokenNfceProducao = $config->id_token_nfce_producao ?? '';
-        }
+        $this->loadConfigIntoForm($company, $branch);
     }
 
     public function updatedBranchId(): void
@@ -140,12 +128,59 @@ class Config extends Component
         $branch = Branch::withoutGlobalScopes()->where('company_id', $company->id)->find($this->branchId);
 
         // Ignora seleção de filial que não pertence à empresa atual (branchId é
-        // propriedade pública, então chega do cliente sem garantia de origem).
+        // propriedade pública, então chega do cliente sem garantia de origem) —
+        // cai de volta pra primeira filial da empresa em vez de deixar o
+        // formulário sem nenhuma filial selecionada.
         if (! $branch) {
-            $this->branchId = null;
+            $branch = Branch::withoutGlobalScopes()->where('company_id', $company->id)->orderBy('name')->first();
+            $this->branchId = $branch?->id;
         }
 
+        $this->loadConfigIntoForm($company, $branch);
+    }
+
+    /**
+     * Popula todo o formulário a partir da config da filial informada (ou reseta
+     * pros defaults quando a filial ainda não tem config própria). Compartilhado
+     * por mount() e updatedBranchId() — trocar de filial troca o registro inteiro.
+     */
+    private function loadConfigIntoForm(Company $company, ?Branch $branch): void
+    {
         $this->fillBranchAddressFields($branch);
+
+        $config = $branch
+            ? CompanyFiscalConfig::where('company_id', $company->id)->where('branch_id', $branch->id)->first()
+            : null;
+
+        // Trava só depois que o CNPJ já foi registrado na Focus NFe (não apenas
+        // preenchido) — antes disso, corrigir um CNPJ digitado errado não pode
+        // exigir suporte, já que a Focus ainda nem conhece esse emissor.
+        $this->hasBranchCnpj = $config?->isRegisteredWithFocus() ?? false;
+        // Sem CNPJ próprio ainda, sugere o da empresa como ponto de partida (caso
+        // comum de filial que opera sob o CNPJ da matriz).
+        $this->branchCnpj = $branch?->cnpj ?? ($company->owner_cpf_cnpj ?? '');
+
+        $this->isDefault = $config?->is_default ?? false;
+
+        $this->crt = $config?->crt ?? 1;
+        $this->enabled = $config?->enabled ?? false;
+        $this->inscricaoEstadual = $config?->inscricao_estadual ?? '';
+        $this->inscricaoMunicipal = $config?->inscricao_municipal ?? '';
+        $this->provider = $config?->provider ?? 'focus_nfe';
+        $this->environment = $config?->environment ?? 'homologacao';
+        $this->nfceSerie = (string) ($config?->nfce_serie ?? '1');
+        $this->hasProviderToken = filled($config?->provider_token);
+        $this->hasCertificate = filled($config?->certificate_path);
+        $this->focusNfeCompanyId = $config?->focus_nfe_company_id;
+        $this->hasCscNfceProducao = filled($config?->csc_nfce_producao);
+        $this->idTokenNfceProducao = $config?->id_token_nfce_producao ?? '';
+
+        // Segredos nunca são reexibidos — campo fica em branco mesmo já havendo
+        // valor salvo (placeholder na view avisa disso).
+        $this->certificateFile = null;
+        $this->certificatePassword = '';
+        $this->providerToken = '';
+        $this->cscNfceProducao = '';
     }
 
     private function fillBranchAddressFields(?Branch $branch): void
@@ -172,7 +207,7 @@ class Config extends Component
             'nfceSerie' => ['required', 'integer', 'min:1'],
             'inscricaoEstadual' => ['nullable', 'string', 'max:50'],
             'inscricaoMunicipal' => ['nullable', 'string', 'max:50'],
-            'ownerCpfCnpj' => ['nullable', 'string'],
+            'branchCnpj' => ['nullable', 'string'],
             'cscNfceProducao' => ['nullable', 'string', 'max:255'],
             'idTokenNfceProducao' => ['nullable', 'string', 'max:20'],
             'certificateFile' => ['nullable', 'file', 'mimes:pfx,p12', 'max:2048'],
@@ -189,31 +224,58 @@ class Config extends Component
         }
         $this->inscricaoEstadual = $ie !== '' ? mb_strtoupper($ie) : '';
 
-        // CNPJ não tem tela própria de edição — só é gravável aqui enquanto a empresa
-        // ainda não foi registrada na Focus NFe; uma vez registrada, o campo fica
-        // travado (disabled na view) para não divergir do que a Focus já reconhece
-        // como emissor. Antes disso, digitar errado e corrigir não deve depender de suporte.
-        if (! $this->hasOwnerCpfCnpj && $this->ownerCpfCnpj !== '') {
-            $digits = preg_replace('/\D/', '', $this->ownerCpfCnpj);
-
-            if (strlen($digits) !== 14) {
-                $this->addError('ownerCpfCnpj', 'CNPJ deve ter 14 dígitos.');
-
-                return;
-            }
-
-            $company->update(['owner_cpf_cnpj' => $digits]);
-            $this->ownerCpfCnpj = $digits;
-        }
-
-        $config = $company->fiscalConfig ?? new CompanyFiscalConfig(['company_id' => $company->id]);
-
         // Reconfirma que a filial pertence à empresa atual antes de gravar — branchId
         // é propriedade pública do componente, não dado validado por relacionamento.
         $branch = $this->branchId
             ? Branch::withoutGlobalScopes()->where('company_id', $company->id)->find($this->branchId)
             : null;
-        $config->branch_id = $branch?->id;
+
+        if (! $branch) {
+            $this->addError('branchId', 'Selecione uma filial antes de salvar a configuração fiscal.');
+
+            return;
+        }
+
+        // CNPJ não tem tela própria de edição — só é gravável aqui enquanto a filial
+        // ainda não foi registrada na Focus NFe; uma vez registrada, o campo fica
+        // travado (disabled na view) para não divergir do que a Focus já reconhece
+        // como emissor. Antes disso, digitar errado e corrigir não deve depender de suporte.
+        if (! $this->hasBranchCnpj && $this->branchCnpj !== '') {
+            $digits = preg_replace('/\D/', '', $this->branchCnpj);
+
+            if (strlen($digits) !== 14) {
+                $this->addError('branchCnpj', 'CNPJ deve ter 14 dígitos.');
+
+                return;
+            }
+
+            $branch->update(['cnpj' => $digits]);
+            $this->branchCnpj = $digits;
+        }
+
+        $config = CompanyFiscalConfig::where('company_id', $company->id)
+            ->where('branch_id', $branch->id)
+            ->first() ?? new CompanyFiscalConfig(['company_id' => $company->id, 'branch_id' => $branch->id]);
+
+        // Com filial única, essa config é sempre a padrão da empresa (sem exigir
+        // ação manual — cobre o caso majoritário hoje). Com múltiplas filiais, o
+        // usuário escolhe via toggle; não é permitido desmarcar a única default
+        // existente sem antes marcar outra, senão a empresa fica sem fallback.
+        $requestedDefault = count($this->branchOptions) > 1 ? $this->isDefault : true;
+        $wasDefault = $config->exists && $config->is_default;
+
+        if (! $requestedDefault && $wasDefault) {
+            $hasOtherDefault = CompanyFiscalConfig::where('company_id', $company->id)
+                ->where('id', '!=', $config->id)
+                ->where('is_default', true)
+                ->exists();
+
+            if (! $hasOtherDefault) {
+                $this->addError('isDefault', 'Marque outra filial como padrão antes de desmarcar esta.');
+
+                return;
+            }
+        }
 
         $config->crt = $this->crt;
         $config->enabled = $this->enabled;
@@ -225,7 +287,7 @@ class Config extends Component
         $config->id_token_nfce_producao = $this->idTokenNfceProducao ?: null;
 
         // Token/senha/CSC só são sobrescritos quando o usuário digita um novo valor —
-        // o campo fica em branco no mount() para não expor o segredo já salvo.
+        // o campo fica em branco no formulário para não expor o segredo já salvo.
         if ($this->providerToken !== '') {
             $config->provider_token = $this->providerToken;
         }
@@ -240,13 +302,13 @@ class Config extends Component
 
         // Habilitar o módulo exige registrar (ou atualizar) o CNPJ emissor na Focus NFe
         // (POST/PUT /v2/empresas) antes de qualquer coisa ser persistida localmente —
-        // do contrário a empresa fica "habilitada" sem a Focus reconhecer o emissor,
+        // do contrário a filial fica "habilitada" sem a Focus reconhecer o emissor,
         // e a emissão de nota real falha silenciosamente.
         if ($this->enabled) {
-            $cnpj = preg_replace('/\D/', '', $company->owner_cpf_cnpj ?? '');
+            $cnpj = preg_replace('/\D/', '', $branch->cnpj ?? $company->owner_cpf_cnpj ?? '');
 
             if (strlen($cnpj) !== 14) {
-                $this->addError('enabled', 'Cadastre o CNPJ da empresa antes de habilitar a emissão fiscal.');
+                $this->addError('enabled', 'Cadastre o CNPJ da filial (ou da empresa) antes de habilitar a emissão fiscal.');
 
                 return;
             }
@@ -260,6 +322,7 @@ class Config extends Component
             } catch (ConnectionException|\Throwable $e) {
                 Log::channel('fiscal')->error('Focus NFe: falha ao registrar empresa', [
                     'company_id' => $company->id,
+                    'branch_id' => $branch->id,
                     'error' => $e->getMessage(),
                 ]);
 
@@ -274,14 +337,26 @@ class Config extends Component
                 Storage::disk('local')->delete($config->certificate_path);
             }
 
+            // Nome do arquivo inclui a filial — cada uma tem certificado próprio,
+            // sem isso o certificado de uma filial sobrescreveria o de outra.
             $config->certificate_path = $this->certificateFile->storeAs(
                 'fiscal-certificates',
-                "company-{$company->id}.".$this->certificateFile->getClientOriginalExtension(),
+                "company-{$company->id}-branch-{$branch->id}.".$this->certificateFile->getClientOriginalExtension(),
                 'local',
             );
         }
 
-        $config->save();
+        $config->is_default = $requestedDefault;
+
+        DB::transaction(function () use ($company, $config, $requestedDefault) {
+            if ($requestedDefault) {
+                CompanyFiscalConfig::where('company_id', $company->id)
+                    ->where('id', '!=', $config->id)
+                    ->update(['is_default' => false]);
+            }
+
+            $config->save();
+        });
 
         $this->certificateFile = null;
         $this->certificatePassword = '';
@@ -291,7 +366,8 @@ class Config extends Component
         $this->hasCertificate = filled($config->certificate_path);
         $this->hasCscNfceProducao = filled($config->csc_nfce_producao);
         $this->focusNfeCompanyId = $config->focus_nfe_company_id;
-        $this->hasOwnerCpfCnpj = $config->isRegisteredWithFocus();
+        $this->hasBranchCnpj = $config->isRegisteredWithFocus();
+        $this->isDefault = $config->is_default;
 
         session()->flash('status', 'Configurações fiscais salvas.');
     }
@@ -359,7 +435,7 @@ class Config extends Component
         }
 
         // Registro é feito pela conta integradora da plataforma na Focus NFe
-        // (o token por empresa só existe depois do registro, para emissão de nota).
+        // (o token por filial só existe depois do registro, para emissão de nota).
         $service = new FocusNfeService(
             config('fiscal.focus_nfe.token'),
             $this->baseUrlForRegistration(),
@@ -378,11 +454,11 @@ class Config extends Component
     }
 
     /**
-     * Registra o webhook de status assíncrono (POST /v2/hooks) pro CNPJ da empresa,
+     * Registra o webhook de status assíncrono (POST /v2/hooks) pro CNPJ da filial,
      * pra Focus NFe avisar autorização/rejeição de NFC-e no FiscalWebhookController
      * em vez de depender só de query() manual.
      *
-     * Best-effort: não bloqueia o cadastro da empresa (já feito acima) se falhar —
+     * Best-effort: não bloqueia o cadastro da filial (já feito acima) se falhar —
      * sem webhook o sistema ainda funciona via consulta manual, só perde a
      * atualização automática de status.
      */

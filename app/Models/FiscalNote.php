@@ -13,6 +13,7 @@ class FiscalNote extends Model
     protected $fillable = [
         'company_id',
         'order_id',
+        'branch_id',
         'status',
         'provider_reference',
         'access_key',
@@ -26,6 +27,11 @@ class FiscalNote extends Model
     public function order(): BelongsTo
     {
         return $this->belongsTo(Order::class);
+    }
+
+    public function branch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class);
     }
 
     public function getDanfeUrlAttribute(): ?string

@@ -3,12 +3,21 @@
     x-init="$watch(() => $wire.deletingId, val => val ? $flux.modal('confirm-delete-product').show() : $flux.modal('confirm-delete-product').close())">
     <div class="flex items-center justify-between">
         <h1 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100">Produtos</h1>
-        @if($canCreate)
-        <a href="{{ route('admin.products.create') }}"
-            class="inline-flex items-center gap-1 bg-amber-500 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-amber-600 transition-colors">
-            + Novo produto
-        </a>
-        @endif
+        <div class="flex items-center gap-2">
+            @if($canUpdate && $canReorder)
+            <button type="button" wire:click="toggleReorderMode"
+                class="inline-flex items-center gap-1 text-sm font-medium px-4 py-2 rounded-lg border transition-colors
+                    {{ $reorderMode ? 'bg-amber-500 text-white border-amber-500 hover:bg-amber-600' : 'bg-white text-neutral-600 border-neutral-200 hover:bg-neutral-50 dark:bg-zinc-800 dark:text-neutral-300 dark:border-zinc-700 dark:hover:bg-zinc-700' }}">
+                {{ $reorderMode ? 'Concluir reordenação' : 'Reordenar' }}
+            </button>
+            @endif
+            @if($canCreate)
+            <a href="{{ route('admin.products.create') }}"
+                class="inline-flex items-center gap-1 bg-amber-500 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-amber-600 transition-colors">
+                + Novo produto
+            </a>
+            @endif
+        </div>
     </div>
 
     @if (session('status'))
@@ -23,6 +32,54 @@
         </div>
     @endif
 
+    @if ($reorderMode)
+        <div class="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg text-sm dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-300">
+            Esta é a mesma ordem que o cliente vê no chat. Arraste o cabeçalho <span class="font-bold">⠿</span> pra reordenar categorias, e cada produto pelo ícone pra reordenar dentro da categoria.
+        </div>
+
+        <div x-data="productsReorder('{{ $this->getId() }}', @js($canUpdate))" class="space-y-4">
+            <div data-reorder-categories class="space-y-4">
+            @forelse ($reorderGroups as $group)
+                <div wire:key="reorder-group-{{ $group->id }}" data-category-id="{{ $group->id }}" class="bg-white border rounded-xl shadow-sm overflow-hidden dark:bg-zinc-800 dark:border-zinc-700">
+                    <div data-category-drag-handle class="flex items-center gap-2 px-4 py-2 border-b bg-neutral-50 dark:bg-zinc-700/50 dark:border-zinc-700 {{ $canUpdate ? 'cursor-grab active:cursor-grabbing' : '' }}">
+                        <span class="text-neutral-400 text-lg shrink-0 select-none">⠿</span>
+                        <span class="text-sm font-semibold text-neutral-700 dark:text-neutral-200">{{ $group->name }}</span>
+                        @if (! $group->active)
+                            <span class="text-xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-500 dark:bg-zinc-700 dark:text-neutral-400">Inativa</span>
+                        @endif
+                    </div>
+                    <div data-reorder-group="{{ $group->id }}" class="divide-y dark:divide-zinc-700">
+                        @forelse ($group->products as $product)
+                            <div wire:key="reorder-product-{{ $product->id }}" data-product-id="{{ $product->id }}"
+                                class="flex items-center gap-4 px-4 py-3 {{ $canUpdate ? 'cursor-grab active:cursor-grabbing' : '' }}">
+                                <span class="text-neutral-400 text-lg shrink-0 select-none">⠿</span>
+                                @if ($product->image_path)
+                                    <img src="{{ $product->image_url }}"
+                                        class="w-10 h-10 rounded-lg object-cover shrink-0" />
+                                @else
+                                    <div class="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center shrink-0 text-lg dark:bg-zinc-700">
+                                        🥟
+                                    </div>
+                                @endif
+                                <div class="flex-1 min-w-0">
+                                    <p class="font-semibold text-sm text-neutral-800 dark:text-neutral-100">{{ $product->name }}</p>
+                                </div>
+                                <p class="font-bold text-sm text-amber-600 dark:text-amber-400 shrink-0">R$ {{ number_format($product->price, 2, ',', '.') }}</p>
+                            </div>
+                        @empty
+                            <div class="px-4 py-6 text-center text-sm text-neutral-400 dark:text-neutral-500">Nenhum produto nesta categoria.</div>
+                        @endforelse
+                    </div>
+                </div>
+            @empty
+                <div class="px-4 py-12 text-center">
+                    <div class="text-3xl mb-2">🛍️</div>
+                    <p class="text-sm text-neutral-500 dark:text-neutral-400">Nenhuma categoria encontrada.</p>
+                </div>
+            @endforelse
+            </div>
+        </div>
+    @else
     <div class="flex gap-2">
         <div class="flex-1">
             <flux:input wire:model.live="search" placeholder="Buscar produto..." />
@@ -152,6 +209,7 @@
         <div class="mt-2">
             {{ $products->links() }}
         </div>
+    @endif
     @endif
 
     {{-- Modal de confirmação de exclusão --}}

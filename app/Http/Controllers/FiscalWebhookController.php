@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\FiscalNote;
+use App\Services\Fiscal\FiscalConfigResolver;
 use App\Services\Fiscal\FiscalNoteService;
 use App\Services\Fiscal\FocusNfeService;
 use Illuminate\Http\JsonResponse;
@@ -17,15 +18,17 @@ class FiscalWebhookController extends Controller
         $ref = $data['ref'] ?? null;
         $event = $data['evento'] ?? null;
 
-        // O segredo é por empresa (CompanyFiscalConfig::webhook_token), então a nota
+        // O segredo é por filial (CompanyFiscalConfig::webhook_token), então a nota
         // precisa ser resolvida antes da checagem de autorização — sem ref ainda não
-        // dá pra saber qual empresa validar, então cai no token global como fallback.
+        // dá pra saber qual filial validar, então cai no token global como fallback.
         $note = $ref
-            ? FiscalNote::withoutGlobalScopes()->with('company.fiscalConfig')->where('provider_reference', $ref)->first()
+            ? FiscalNote::withoutGlobalScopes()->with('company')->where('provider_reference', $ref)->first()
             : null;
 
+        $config = $note ? app(FiscalConfigResolver::class)->forNote($note) : null;
+
         $token = $request->header('x-focus-nfe-token', '');
-        $expected = $note?->company?->fiscalConfig?->resolveWebhookToken() ?: config('fiscal.focus_nfe.webhook_token');
+        $expected = $config?->resolveWebhookToken() ?: config('fiscal.focus_nfe.webhook_token');
 
         if (empty($expected) || ! hash_equals((string) $expected, (string) $token)) {
             Log::channel('fiscal')->warning('Focus NFe webhook: token inválido', [
@@ -60,7 +63,7 @@ class FiscalWebhookController extends Controller
         };
 
         if ($status) {
-            $configuredEnvironment = $note->company->fiscalConfig?->environment ?: config('fiscal.environment');
+            $configuredEnvironment = $config?->environment ?: config('fiscal.environment');
             $effectiveEnvironment = FiscalNoteService::resolveEffectiveEnvironment($configuredEnvironment);
             $baseUrl = FiscalNoteService::resolveBaseUrl($effectiveEnvironment);
 

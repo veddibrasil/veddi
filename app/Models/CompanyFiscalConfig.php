@@ -10,6 +10,7 @@ class CompanyFiscalConfig extends Model
     protected $fillable = [
         'company_id',
         'branch_id',
+        'is_default',
         'enabled',
         'inscricao_estadual',
         'inscricao_municipal',
@@ -32,6 +33,7 @@ class CompanyFiscalConfig extends Model
 
     protected $casts = [
         'enabled' => 'boolean',
+        'is_default' => 'boolean',
         'crt' => 'integer',
         'nfce_serie' => 'integer',
         'provider_token' => 'encrypted',

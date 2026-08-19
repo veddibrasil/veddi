@@ -16,6 +16,7 @@ class FiscalNoteService
 {
     public function __construct(
         private readonly FiscalNoteProviderInterface $provider,
+        private readonly FiscalConfigResolver $resolver,
     ) {}
 
     public function issue(Order $order, ?string $customerDocument = null): FiscalNote
@@ -31,10 +32,14 @@ class FiscalNoteService
             throw new \RuntimeException('Módulo de nota fiscal não habilitado para esta empresa.');
         }
 
-        $companyConfig = $company->fiscalConfig;
+        $companyConfig = $this->resolver->forBranch($company, $order->branch_id);
 
-        if (! $companyConfig || ! $companyConfig->enabled) {
-            throw new \RuntimeException('Configuração fiscal não habilitada para esta empresa.');
+        if (! $companyConfig) {
+            throw new \RuntimeException('Nenhuma configuração fiscal encontrada para esta filial. Configure a filial ou marque uma configuração padrão.');
+        }
+
+        if (! $companyConfig->enabled) {
+            throw new \RuntimeException('Configuração fiscal não habilitada para esta filial.');
         }
 
         $environment = $companyConfig->environment ?: config('fiscal.environment');
@@ -50,7 +55,7 @@ class FiscalNoteService
         $branch = Branch::withoutGlobalScopes()->find($order->branch_id);
 
         $dto = new FiscalNoteDTO(
-            emitenteCnpj: $company->owner_cpf_cnpj ?? '',
+            emitenteCnpj: $branch?->cnpj ?: $company->owner_cpf_cnpj ?? '',
             emitenteNome: $company->name,
             emitenteLogradouro: $branch?->address ?? '',
             emitenteNumero: $branch?->number ?? 'S/N',
@@ -70,7 +75,7 @@ class FiscalNoteService
             orderType: $order->order_type,
         );
 
-        $fiscalNote = $this->createPendingNoteExclusively($order, $company->id);
+        $fiscalNote = $this->createPendingNoteExclusively($order, $company->id, $order->branch_id);
 
         try {
             $result = $provider->issue($dto);
@@ -118,9 +123,9 @@ class FiscalNoteService
      * de pagamento duplicado, retry de job) passam ambos pelo "existe nota?" antes que
      * qualquer um grave a sua, e a empresa acaba emitindo duas NFC-e reais pro mesmo pedido.
      */
-    private function createPendingNoteExclusively(Order $order, int $companyId): FiscalNote
+    private function createPendingNoteExclusively(Order $order, int $companyId, ?int $branchId): FiscalNote
     {
-        return DB::transaction(function () use ($order, $companyId) {
+        return DB::transaction(function () use ($order, $companyId, $branchId) {
             Order::withoutGlobalScopes()->whereKey($order->id)->lockForUpdate()->first();
 
             $hasActiveNote = FiscalNote::withoutGlobalScopes()
@@ -137,6 +142,7 @@ class FiscalNoteService
             return FiscalNote::create([
                 'company_id' => $companyId,
                 'order_id' => $order->id,
+                'branch_id' => $branchId,
                 'status' => 'pending',
             ]);
         });
@@ -156,7 +162,7 @@ class FiscalNoteService
             return $note;
         }
 
-        $companyConfig = $note->company?->fiscalConfig;
+        $companyConfig = $this->resolver->forNote($note);
         $environment = $companyConfig?->environment ?: config('fiscal.environment');
         $effectiveEnvironment = $this->effectiveEnvironment($environment);
         $token = $companyConfig?->tokenFor($effectiveEnvironment) ?: config('fiscal.focus_nfe.token');
@@ -207,7 +213,7 @@ class FiscalNoteService
             throw new \RuntimeException('Nota fiscal sem referência do provider.');
         }
 
-        $companyConfig = $note->company->fiscalConfig;
+        $companyConfig = $this->resolver->forNote($note);
         $environment = $companyConfig?->environment ?: config('fiscal.environment');
         $effectiveEnvironment = $this->effectiveEnvironment($environment);
 

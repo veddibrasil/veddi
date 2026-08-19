@@ -34,11 +34,6 @@ function fiscalTestContext(): array
 
     config(['fiscal.focus_nfe.token' => 'token_test']);
 
-    $config = CompanyFiscalConfig::create([
-        'company_id' => $company->id,
-        'enabled' => true,
-    ]);
-
     app()->instance('current.company', $company);
 
     $branch = Branch::withoutGlobalScopes()->create([
@@ -53,6 +48,13 @@ function fiscalTestContext(): array
         'active' => true,
         'opens_at' => '00:00:00',
         'closes_at' => '23:59:59',
+    ]);
+
+    $config = CompanyFiscalConfig::create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'is_default' => true,
+        'enabled' => true,
     ]);
 
     $customer = Customer::withoutGlobalScopes()->create([
@@ -376,6 +378,97 @@ test('CompanyFiscalConfig::tokenFor retorna o token do ambiente certo e cai para
 
     expect($config->tokenFor('producao'))->toBe('tok-legado');
     expect($config->tokenFor('homologacao'))->toBe('tok-legado');
+});
+
+test('FiscalNoteService isola CNPJ/token/série entre filiais da mesma empresa', function () {
+    ['order' => $orderA, 'company' => $company, 'config' => $configA, 'branch' => $branchA] = fiscalTestContext();
+
+    // Update via instância do model (não Builder::update()) — token_homologacao é
+    // cast "encrypted", mass update pelo query builder grava em texto puro e quebra
+    // a decriptação na leitura seguinte.
+    $configA->update([
+        'token_homologacao' => 'token-filial-a',
+        'nfce_serie' => 1,
+    ]);
+    $branchA->update(['cnpj' => '11111111000101']);
+
+    $branchB = Branch::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Filial B',
+        'cnpj' => '22222222000102',
+        'address' => 'Rua B',
+        'number' => '200',
+        'neighborhood' => 'Centro',
+        'city' => 'São Paulo',
+        'state' => 'SP',
+        'cep' => '01310000',
+        'active' => true,
+        'opens_at' => '00:00:00',
+        'closes_at' => '23:59:59',
+    ]);
+
+    CompanyFiscalConfig::create([
+        'company_id' => $company->id,
+        'branch_id' => $branchB->id,
+        'is_default' => false,
+        'enabled' => true,
+        'token_homologacao' => 'token-filial-b',
+        'nfce_serie' => 9,
+    ]);
+
+    $product = Product::withoutGlobalScopes()->where('company_id', $company->id)->first();
+
+    $orderB = Order::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'branch_id' => $branchB->id,
+        'customer_id' => $orderA->customer_id,
+        'subtotal' => 30.00,
+        'delivery_fee' => 0,
+        'total' => 30.00,
+        'fee' => 0,
+        'net_value' => 30.00,
+        'status' => 'paid',
+        'payment_method' => 'PIX',
+        'order_type' => 'delivery',
+    ]);
+
+    OrderItem::create([
+        'order_id' => $orderB->id,
+        'product_id' => $product->id,
+        'product_name' => 'Coxinha',
+        'unit_price' => 10.00,
+        'quantity' => 3,
+        'subtotal' => 30.00,
+    ]);
+
+    Http::fake([
+        '*' => Http::response(['status' => 'autorizado', 'chave_nfe' => str_repeat('1', 44)], 200),
+    ]);
+
+    app(FiscalNoteService::class)->issue($orderA);
+    app(FiscalNoteService::class)->issue($orderB);
+
+    Http::assertSent(function (\Illuminate\Http\Client\Request $request) {
+        $data = $request->data();
+
+        return $request->hasHeader('Authorization', 'Basic '.base64_encode('token-filial-a:'))
+            && ($data['cnpj_emitente'] ?? null) === '11111111000101'
+            && ($data['serie'] ?? null) === 1;
+    });
+
+    Http::assertSent(function (\Illuminate\Http\Client\Request $request) {
+        $data = $request->data();
+
+        return $request->hasHeader('Authorization', 'Basic '.base64_encode('token-filial-b:'))
+            && ($data['cnpj_emitente'] ?? null) === '22222222000102'
+            && ($data['serie'] ?? null) === 9;
+    });
+
+    $noteA = \App\Models\FiscalNote::where('order_id', $orderA->id)->first();
+    $noteB = \App\Models\FiscalNote::where('order_id', $orderB->id)->first();
+
+    expect($noteA->branch_id)->toBe($branchA->id);
+    expect($noteB->branch_id)->toBe($branchB->id);
 });
 
 test('IssueFiscalNote cria CompanyNotification quando o job falha definitivamente', function () {

@@ -46,6 +46,11 @@ function fiscalConfigTestCompany(): Company
     return $company;
 }
 
+function fiscalConfigTestBranch(Company $company): \App\Models\Branch
+{
+    return \App\Models\Branch::withoutGlobalScopes()->where('company_id', $company->id)->orderBy('id')->first();
+}
+
 function fakeFocusNfeEmpresaCreated(): void
 {
     Http::fake([
@@ -128,6 +133,8 @@ test('token não é sobrescrito quando campo fica em branco no reenvio', functio
 
     CompanyFiscalConfig::create([
         'company_id' => $company->id,
+        'branch_id' => fiscalConfigTestBranch($company)->id,
+        'is_default' => true,
         'enabled' => true,
         'provider_token' => 'token-existente',
     ]);
@@ -189,6 +196,8 @@ test('salvar novamente com empresa já registrada dispara PUT em vez de POST', f
 
     CompanyFiscalConfig::create([
         'company_id' => $company->id,
+        'branch_id' => fiscalConfigTestBranch($company)->id,
+        'is_default' => true,
         'enabled' => true,
         'focus_nfe_company_id' => 'focus-empresa-1',
     ]);
@@ -272,6 +281,8 @@ test('desabilitar módulo fiscal não chama Focus NFe e sempre salva', function 
 
     CompanyFiscalConfig::create([
         'company_id' => $company->id,
+        'branch_id' => fiscalConfigTestBranch($company)->id,
+        'is_default' => true,
         'enabled' => true,
     ]);
 
@@ -330,7 +341,7 @@ test('upload de certificado salva arquivo no disco privado', function () {
     \Illuminate\Support\Facades\Storage::disk('local')->assertExists($config->certificate_path);
 });
 
-test('CNPJ fica editável e persistido enquanto a empresa não foi registrada na Focus NFe', function () {
+test('CNPJ fica editável e persistido enquanto a filial não foi registrada na Focus NFe', function () {
     $company = Company::create([
         'name' => 'Empresa Sem CNPJ',
         'slug' => 'empresa-sem-cnpj-'.uniqid(),
@@ -338,6 +349,13 @@ test('CNPJ fica editável e persistido enquanto a empresa não foi registrada na
         'active' => true,
         'status' => 'ACTIVE',
         'fiscal_notes_enabled' => true,
+    ]);
+    $branch = \App\Models\Branch::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Filial',
+        'active' => true,
+        'opens_at' => '00:00:00',
+        'closes_at' => '23:59:59',
     ]);
     app()->instance('current.company', $company);
 
@@ -347,31 +365,26 @@ test('CNPJ fica editável e persistido enquanto a empresa não foi registrada na
 
     Livewire::actingAs($admin)
         ->test(Config::class)
-        ->assertSet('hasOwnerCpfCnpj', false)
-        ->set('ownerCpfCnpj', '12.345.678/0001-99')
+        ->assertSet('hasBranchCnpj', false)
+        ->set('branchCnpj', '12.345.678/0001-99')
         ->call('save')
         ->assertHasNoErrors()
-        // Sem registrar a empresa na Focus NFe (enabled=true não foi acionado), o
+        // Sem registrar a filial na Focus NFe (enabled=true não foi acionado), o
         // campo continua editável — um CNPJ digitado errado não deveria travar pra
         // sempre exigindo suporte antes de a Focus sequer conhecer esse emissor.
-        ->assertSet('hasOwnerCpfCnpj', false);
+        ->assertSet('hasBranchCnpj', false);
 
-    expect($company->fresh()->owner_cpf_cnpj)->toBe('12345678000199');
-
-    // Rebinda a empresa recém-carregada — o objeto anterior guarda em cache a
-    // relação fiscalConfig como null (era null no primeiro mount()), e reusá-lo
-    // faria o segundo save() tentar criar outro CompanyFiscalConfig pro mesmo company_id.
-    app()->instance('current.company', $company->fresh());
+    expect($branch->fresh()->cnpj)->toBe('12345678000199');
 
     // Corrige o CNPJ numa segunda submissão — segue destravado.
     Livewire::actingAs($admin)
         ->test(Config::class)
-        ->set('ownerCpfCnpj', '98.765.432/0001-10')
+        ->set('branchCnpj', '98.765.432/0001-10')
         ->call('save')
         ->assertHasNoErrors()
-        ->assertSet('hasOwnerCpfCnpj', false);
+        ->assertSet('hasBranchCnpj', false);
 
-    expect($company->fresh()->owner_cpf_cnpj)->toBe('98765432000110');
+    expect($branch->fresh()->cnpj)->toBe('98765432000110');
 });
 
 test('CNPJ trava para edição depois que a empresa é registrada na Focus NFe', function () {
@@ -386,11 +399,11 @@ test('CNPJ trava para edição depois que a empresa é registrada na Focus NFe',
 
     Livewire::actingAs($admin)
         ->test(Config::class)
-        ->assertSet('hasOwnerCpfCnpj', false)
+        ->assertSet('hasBranchCnpj', false)
         ->set('enabled', true)
         ->call('save')
         ->assertHasNoErrors()
-        ->assertSet('hasOwnerCpfCnpj', true);
+        ->assertSet('hasBranchCnpj', true);
 });
 
 test('CNPJ inválido (menos de 14 dígitos) mostra erro e não salva nada', function () {
@@ -402,6 +415,13 @@ test('CNPJ inválido (menos de 14 dígitos) mostra erro e não salva nada', func
         'status' => 'ACTIVE',
         'fiscal_notes_enabled' => true,
     ]);
+    $branch = \App\Models\Branch::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Filial',
+        'active' => true,
+        'opens_at' => '00:00:00',
+        'closes_at' => '23:59:59',
+    ]);
     app()->instance('current.company', $company);
 
     $admin = User::factory()->create();
@@ -410,11 +430,11 @@ test('CNPJ inválido (menos de 14 dígitos) mostra erro e não salva nada', func
 
     Livewire::actingAs($admin)
         ->test(Config::class)
-        ->set('ownerCpfCnpj', '123')
+        ->set('branchCnpj', '123')
         ->call('save')
-        ->assertHasErrors(['ownerCpfCnpj']);
+        ->assertHasErrors(['branchCnpj']);
 
-    expect($company->fresh()->owner_cpf_cnpj)->toBeNull();
+    expect($branch->fresh()->cnpj)->toBeNull();
     expect(CompanyFiscalConfig::where('company_id', $company->id)->first())->toBeNull();
 });
 
@@ -638,6 +658,8 @@ test('salvar em produção não recria webhook quando já existe um pro cnpj+eve
 
     CompanyFiscalConfig::create([
         'company_id' => $company->id,
+        'branch_id' => fiscalConfigTestBranch($company)->id,
+        'is_default' => true,
         'enabled' => true,
         'focus_nfe_company_id' => 'focus-empresa-1',
     ]);

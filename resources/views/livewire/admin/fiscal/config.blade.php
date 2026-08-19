@@ -34,25 +34,34 @@
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                    @if($hasOwnerCpfCnpj)
-                        <flux:input value="{{ $ownerCpfCnpj }}" label="CNPJ" disabled />
+                    @if($hasBranchCnpj)
+                        <flux:input value="{{ $branchCnpj }}" label="CNPJ da filial" disabled />
                         <p class="text-xs text-green-600 dark:text-green-400 mt-1">CNPJ já cadastrado.</p>
                     @else
-                        <flux:input wire:model="ownerCpfCnpj" label="CNPJ" placeholder="Só números" :disabled="!$canManage" />
-                        <p class="text-xs text-yellow-600 dark:text-yellow-400 mt-1">Campo obrigatório e ainda não cadastrado — necessário para habilitar a emissão fiscal.</p>
+                        <flux:input wire:model="branchCnpj" label="CNPJ da filial" placeholder="Só números" :disabled="!$canManage" />
+                        <p class="text-xs text-yellow-600 dark:text-yellow-400 mt-1">Campo obrigatório e ainda não cadastrado — necessário para habilitar a emissão fiscal desta filial.</p>
                     @endif
-                    @error('ownerCpfCnpj') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                    @error('branchCnpj') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
                 <div>
                     @if(count($branchOptions) > 1)
-                        <flux:select wire:model.live="branchId" label="Filial usada no cadastro fiscal" :disabled="!$canManage">
+                        <flux:select wire:model.live="branchId" label="Filial" :disabled="!$canManage">
                             @foreach($branchOptions as $option)
                                 <option value="{{ $option['id'] }}">{{ $option['name'] }}</option>
                             @endforeach
                         </flux:select>
+                        <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">Cada filial tem sua própria configuração fiscal — trocar aqui troca todo o formulário abaixo.</p>
                     @endif
                 </div>
             </div>
+
+            @if(count($branchOptions) > 1)
+                <div class="flex items-center gap-3">
+                    <flux:switch wire:model="isDefault" :disabled="!$canManage" />
+                    <span class="text-sm text-neutral-600 dark:text-neutral-300">Usar como configuração padrão da empresa (fallback para filiais sem config própria)</span>
+                </div>
+                @error('isDefault') <p class="text-red-500 text-xs">{{ $message }}</p> @enderror
+            @endif
 
             @if(!$hasBranch)
                 <p class="text-xs text-yellow-600 dark:text-yellow-400">
@@ -123,7 +132,7 @@
 
             <div class="flex items-center gap-3">
                 <flux:switch wire:model="enabled" :disabled="!$canManage" />
-                <span class="text-sm text-neutral-600 dark:text-neutral-300">Habilitar emissão de NFC-e para esta empresa</span>
+                <span class="text-sm text-neutral-600 dark:text-neutral-300">Habilitar emissão de NFC-e para esta filial</span>
             </div>
             @error('enabled') <p class="text-red-500 text-xs">{{ $message }}</p> @enderror
 

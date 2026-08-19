@@ -991,7 +991,7 @@ test('fechar comanda com dinheiro dispara emissão automática de nota fiscal', 
     $table = openTable($company, $branch);
 
     $company->update(['fiscal_notes_enabled' => true]);
-    CompanyFiscalConfig::create(['company_id' => $company->id, 'enabled' => true]);
+    CompanyFiscalConfig::create(['company_id' => $company->id, 'branch_id' => $branch->id, 'is_default' => true, 'enabled' => true]);
 
     $this->actingAs($admin);
 

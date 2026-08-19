@@ -32,11 +32,6 @@ function reconcileTestContext(): array
 
     config(['fiscal.focus_nfe.token' => 'token_test']);
 
-    CompanyFiscalConfig::create([
-        'company_id' => $company->id,
-        'enabled' => true,
-    ]);
-
     app()->instance('current.company', $company);
 
     $customer = Customer::withoutGlobalScopes()->create([
@@ -52,6 +47,13 @@ function reconcileTestContext(): array
         'active' => true,
         'opens_at' => '00:00:00',
         'closes_at' => '23:59:59',
+    ]);
+
+    CompanyFiscalConfig::create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'is_default' => true,
+        'enabled' => true,
     ]);
 
     $order = Order::withoutGlobalScopes()->create([

@@ -109,6 +109,7 @@ class Form extends Component
             'optionGroups.*.total_qty' => ['required_with:optionGroups.*', 'integer', 'min:1'],
             'optionGroups.*.min_qty' => ['required_with:optionGroups.*', 'integer', 'min:0'],
             'optionGroups.*.fixed' => ['boolean'],
+            'optionGroups.*.allow_skip' => ['boolean'],
             'optionGroups.*.options' => ['array'],
             'optionGroups.*.options.*.name' => ['required_with:optionGroups.*.options.*', 'string', 'max:150'],
             'optionGroups.*.options.*.active' => ['boolean'],
@@ -204,6 +205,7 @@ class Form extends Component
                     'total_qty' => (string) $group->total_qty,
                     'min_qty' => (string) $group->min_qty,
                     'fixed' => (bool) $group->fixed,
+                    'allow_skip' => (bool) $group->allow_skip,
                     'sort_order' => $group->pivot->sort_order,
                     'options' => $group->options->map(fn ($opt) => [
                         'key' => 'oid-'.$opt->id,
@@ -304,6 +306,7 @@ class Form extends Component
             'total_qty' => '100',
             'min_qty' => '0',
             'fixed' => false,
+            'allow_skip' => false,
             'sort_order' => count($this->optionGroups),
             'options' => [],
         ];
@@ -333,6 +336,7 @@ class Form extends Component
             'total_qty' => (string) $group->total_qty,
             'min_qty' => (string) $group->min_qty,
             'fixed' => (bool) $group->fixed,
+            'allow_skip' => (bool) $group->allow_skip,
             'sort_order' => count($this->optionGroups),
             'options' => $group->options->map(fn ($opt) => [
                 'key' => 'oid-'.$opt->id,
@@ -739,6 +743,7 @@ class Form extends Component
                 'total_qty' => (int) $groupData['total_qty'],
                 'min_qty' => (int) ($groupData['min_qty'] ?? 0),
                 'fixed' => (bool) ($groupData['fixed'] ?? false),
+                'allow_skip' => (bool) ($groupData['allow_skip'] ?? false),
                 'sort_order' => $i,
             ]);
 

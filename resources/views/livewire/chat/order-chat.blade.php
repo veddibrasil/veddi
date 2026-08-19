@@ -1753,13 +1753,28 @@
 	                                                        class="w-6 h-6 rounded-full mc-bg-primary-light mc-text-primary font-bold text-sm flex items-center justify-center">−</button>
 	                                                    <span class="w-5 text-center text-xs font-bold text-gray-800">{{ $sbCartQty }}</span>
 	                                                @endif
-	                                                <button
-	                                                    @if (! $sbInsufficientStock)
-                                                        @click="addOrOpenOptionSelector(@js($productData), $wire)"
-                                                    @endif
-                                                    @disabled($sbInsufficientStock)
-                                                    class="w-6 h-6 rounded-full font-bold text-sm flex items-center justify-center transition-colors {{ $sbInsufficientStock ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white active:scale-90' }}"
-                                                >+</button>
+	                                                @if ($sbCartQty > 0)
+                                                    <button
+                                                        @if (! $sbInsufficientStock)
+                                                            @click="addOrOpenOptionSelector(@js($productData), $wire)"
+                                                        @endif
+                                                        @disabled($sbInsufficientStock)
+                                                        class="w-6 h-6 rounded-full font-bold text-sm flex items-center justify-center transition-colors {{ $sbInsufficientStock ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white active:scale-90' }}"
+                                                    >+</button>
+                                                @else
+                                                    <button
+                                                        @if (! $sbInsufficientStock)
+                                                            @click="addOrOpenOptionSelector(@js($productData), $wire)"
+                                                        @endif
+                                                        @disabled($sbInsufficientStock)
+                                                        class="px-3 h-8 rounded-full font-bold text-xs flex items-center justify-center gap-1 transition-colors {{ $sbInsufficientStock ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white active:scale-95' }}"
+                                                    >
+                                                        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+                                                        </svg>
+                                                        Adicionar
+                                                    </button>
+                                                @endif
                                             @else
                                                 {{-- Produtos simples: controles de quantidade normais --}}
                                                 @if ($sbCartQty > 0)
@@ -1811,10 +1826,12 @@
             {{-- Header --}}
             <div class="shrink-0 px-4 py-3 flex items-center gap-3" style="background: linear-gradient(135deg, var(--mc-red-dark) 0%, var(--mc-red) 60%, var(--mc-red-light) 100%);">
                 <button @click="selectingProduct = null; pendingSelections = {}"
-                    class="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    aria-label="Voltar"
+                    class="flex flex-col items-center gap-0.5 shrink-0 -ml-1.5 px-2.5 py-1.5 rounded-lg text-white/90 hover:text-white hover:bg-white/10 active:scale-95 transition-all">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
                     </svg>
+                    <span class="text-[10px] font-bold leading-none">Voltar</span>
                 </button>
                 <div class="flex-1 min-w-0">
                     <p class="text-white font-bold text-sm truncate" x-text="selectingProduct?.name"></p>
@@ -1827,7 +1844,7 @@
                 <template x-if="selectingProduct">
                     <div class="space-y-5">
                         <template x-for="group in selectingProduct.groups" :key="group.id">
-                            <div>
+                            <div :id="'option-group-' + group.id">
                                 {{-- Cabeçalho do grupo --}}
                                 <div class="flex items-center justify-between mb-3">
                                     <div class="flex items-center gap-2.5 min-w-0">
@@ -1853,6 +1870,20 @@
                                         <span x-text="getGroupTotal(group.id)"></span>/<span x-text="group.total_qty"></span>
                                     </span>
                                 </div>
+
+                                {{-- Não quero (habilitado pelo restaurante no cadastro do produto) --}}
+                                <template x-if="!group.fixed && group.allow_skip">
+                                    <button type="button"
+                                        @click="clearGroup(group)"
+                                        class="w-full flex items-center gap-2.5 p-2.5 rounded-xl border mb-1.5 text-left transition-colors"
+                                        :class="getGroupTotal(group.id) === 0 ? 'mc-border-primary mc-bg-primary-light mc-text-primary' : 'border-gray-100 bg-gray-50 text-gray-500'">
+                                        <span class="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0"
+                                            :class="getGroupTotal(group.id) === 0 ? 'border-current' : 'border-gray-300'">
+                                            <span x-show="getGroupTotal(group.id) === 0" class="w-2.5 h-2.5 rounded-full bg-current"></span>
+                                        </span>
+                                        <span class="text-sm font-semibold">Não quero</span>
+                                    </button>
+                                </template>
 
                                 {{-- Opções --}}
                                 <div class="space-y-1">
@@ -1893,12 +1924,12 @@
                                                     {{-- Variável: controles de quantidade --}}
                                                     <div class="flex items-center gap-1.5">
                                                         <button
-                                                            @click="if ((pendingSelections[group.id]?.[option.id] || 0) > 0) pendingSelections[group.id][option.id]--"
+                                                            @click="decrementOption(group, option)"
                                                             class="w-7 h-7 rounded-full mc-bg-primary-light mc-text-primary font-bold text-base flex items-center justify-center">−</button>
                                                         <span class="w-7 text-center text-sm font-bold text-gray-800"
                                                             x-text="pendingSelections[group.id]?.[option.id] || 0"></span>
                                                         <button
-                                                            @click="if (getGroupTotal(group.id) < group.total_qty && (!option.max_qty || (pendingSelections[group.id]?.[option.id] || 0) < option.max_qty)) { if (!pendingSelections[group.id]) pendingSelections[group.id] = {}; pendingSelections[group.id][option.id] = (pendingSelections[group.id]?.[option.id] || 0) + 1 }"
+                                                            @click="incrementOption(group, option)"
                                                             :disabled="getGroupTotal(group.id) >= group.total_qty || (option.max_qty && (pendingSelections[group.id]?.[option.id] || 0) >= option.max_qty)"
                                                             :class="(getGroupTotal(group.id) >= group.total_qty || (option.max_qty && (pendingSelections[group.id]?.[option.id] || 0) >= option.max_qty)) ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white'"
                                                             class="w-7 h-7 rounded-full font-bold text-base flex items-center justify-center">+</button>

@@ -1,6 +1,8 @@
 <?php
 
+use App\Models\Branch;
 use App\Models\Company;
+use App\Models\CompanyFiscalConfig;
 use App\Models\FiscalNote;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -51,6 +53,75 @@ test('webhook fiscal retorna 401 com token inválido', function () {
 
     $this->postJson('/webhooks/fiscal', ['ref' => 'x'], ['x-focus-nfe-token' => 'wrong'])
         ->assertStatus(401);
+});
+
+test('webhook fiscal recusa token de uma filial autenticando nota de outra filial da mesma empresa', function () {
+    $company = Company::create([
+        'name' => 'Empresa Webhook Multi',
+        'slug' => 'empresa-webhook-multi-'.uniqid(),
+        'order_prefix' => 'WHM',
+        'active' => true,
+        'status' => 'ACTIVE',
+    ]);
+
+    $branchA = Branch::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Filial A',
+        'active' => true,
+        'opens_at' => '00:00:00',
+        'closes_at' => '23:59:59',
+    ]);
+
+    $branchB = Branch::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Filial B',
+        'active' => true,
+        'opens_at' => '00:00:00',
+        'closes_at' => '23:59:59',
+    ]);
+
+    CompanyFiscalConfig::create([
+        'company_id' => $company->id,
+        'branch_id' => $branchA->id,
+        'is_default' => true,
+        'enabled' => true,
+        'webhook_token' => 'token-filial-a',
+    ]);
+
+    CompanyFiscalConfig::create([
+        'company_id' => $company->id,
+        'branch_id' => $branchB->id,
+        'is_default' => false,
+        'enabled' => true,
+        'webhook_token' => 'token-filial-b',
+    ]);
+
+    $noteB = FiscalNote::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'branch_id' => $branchB->id,
+        'order_id' => null,
+        'status' => 'pending',
+        'provider_reference' => 'ref_branch_b',
+    ]);
+
+    // Token da filial A não autentica webhook de nota da filial B.
+    $this->postJson('/webhooks/fiscal', [
+        'ref' => 'ref_branch_b',
+        'status' => 'autorizado',
+    ], ['x-focus-nfe-token' => 'token-filial-a'])
+        ->assertStatus(401);
+
+    expect($noteB->fresh()->status)->toBe('pending');
+
+    // Token certo da própria filial autentica normalmente.
+    $this->postJson('/webhooks/fiscal', [
+        'ref' => 'ref_branch_b',
+        'status' => 'autorizado',
+        'chave_nfe' => str_repeat('2', 44),
+    ], ['x-focus-nfe-token' => 'token-filial-b'])
+        ->assertOk();
+
+    expect($noteB->fresh()->status)->toBe('authorized');
 });
 
 test('webhook fiscal ignora ref desconhecida sem erro', function () {

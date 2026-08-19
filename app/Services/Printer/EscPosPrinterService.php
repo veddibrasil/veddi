@@ -64,6 +64,14 @@ class EscPosPrinterService implements PrinterServiceInterface
         $printer->setJustification(Printer::JUSTIFY_LEFT);
         $this->divider($printer);
 
+        if ($order->isDeliveryOrder()) {
+            $printer->setJustification(Printer::JUSTIFY_CENTER);
+            $printer->setEmphasis(true);
+            $printer->text("*** ENTREGA ***\n");
+            $printer->setEmphasis(false);
+            $printer->setJustification(Printer::JUSTIFY_LEFT);
+        }
+
         $printer->text("Pedido: {$order->order_number}\n");
 
         if ($order->table_label) {
@@ -303,23 +311,26 @@ class EscPosPrinterService implements PrinterServiceInterface
                 $printer->text('Recebido: R$ '.number_format((float) $order->cash_received, 2, ',', '.')."\n");
                 $printer->text('Troco: R$ '.number_format((float) ($order->cash_change ?? 0), 2, ',', '.')."\n");
             }
+        } else {
+            $method = match (true) {
+                $order->payment_method === 'pix' => 'PIX',
+                in_array($order->payment_method, ['card', 'credit_card'], true) => 'Cartao',
+                $order->payment_method === 'cash' => 'Dinheiro',
+                default => $order->payment_method,
+            };
 
-            return;
+            $printer->text("Pagamento: {$method}\n");
+
+            if ($order->payment_method === 'cash' && (float) $order->cash_received > 0) {
+                $printer->text('Recebido: R$ '.number_format((float) $order->cash_received, 2, ',', '.')."\n");
+                $printer->text('Troco: R$ '.number_format((float) ($order->cash_change ?? 0), 2, ',', '.')."\n");
+            }
         }
 
-        $method = match (true) {
-            $order->payment_method === 'pix' => 'PIX',
-            in_array($order->payment_method, ['card', 'credit_card'], true) => 'Cartao',
-            $order->payment_method === 'cash' => 'Dinheiro',
-            default => $order->payment_method,
-        };
-
-        $printer->text("Pagamento: {$method}\n");
-
-        if ($order->payment_method === 'cash' && (float) $order->cash_received > 0) {
-            $printer->text('Recebido: R$ '.number_format((float) $order->cash_received, 2, ',', '.')."\n");
-            $printer->text('Troco: R$ '.number_format((float) ($order->cash_change ?? 0), 2, ',', '.')."\n");
-        }
+        $isPaid = $order->payment?->status === 'paid';
+        $printer->setEmphasis(true);
+        $printer->text($isPaid ? "Status: PAGO\n" : "Status: NAO PAGO\n");
+        $printer->setEmphasis(false);
     }
 
     private function printCustomerAndAddress(Printer $printer, Order $order): void

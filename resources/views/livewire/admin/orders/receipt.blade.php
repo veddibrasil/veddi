@@ -38,10 +38,10 @@
     <div class="divider"></div>
 
     {{-- Tipo de pedido em destaque --}}
-    @if ($order->order_type === 'pdv')
-        <div class="type-banner">BALCAO / PDV</div>
-    @elseif ($order->order_type === 'delivery')
+    @if ($order->isDeliveryOrder())
         <div class="type-banner">ENTREGA</div>
+    @elseif ($order->order_type === 'pdv')
+        <div class="type-banner">BALCAO / PDV</div>
     @else
         <div class="type-banner">RETIRADA NO LOCAL</div>
     @endif
@@ -184,6 +184,10 @@
                 <td class="right sm muted">{{ $order->payment->paid_at->format('d/m/Y H:i') }}</td>
             </tr>
         @endif
+        <tr>
+            <td class="bold">Status</td>
+            <td class="right bold">{{ $order->payment?->status === 'paid' ? 'PAGO' : 'NAO PAGO' }}</td>
+        </tr>
     </table>
 
     <div class="divider"></div>

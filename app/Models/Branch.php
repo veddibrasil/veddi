@@ -17,6 +17,7 @@ class Branch extends Model
     protected $fillable = [
         'company_id',
         'name',
+        'cnpj',
         'address_id',
         // virtual address fields (persisted on addresses table)
         'address',
@@ -191,6 +192,11 @@ class Branch extends Model
     public function deliverySetting(): HasOne
     {
         return $this->hasOne(DeliverySetting::class);
+    }
+
+    public function fiscalConfig(): HasOne
+    {
+        return $this->hasOne(CompanyFiscalConfig::class);
     }
 
     public function printers(): HasMany

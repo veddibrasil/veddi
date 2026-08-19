@@ -4,6 +4,7 @@ namespace App\Listeners;
 
 use App\Events\OrderStatusUpdated;
 use App\Jobs\IssueFiscalNote;
+use App\Services\Fiscal\FiscalConfigResolver;
 use Illuminate\Support\Facades\Log;
 
 class IssueFiscalNoteOnPaid
@@ -22,7 +23,7 @@ class IssueFiscalNoteOnPaid
             return;
         }
 
-        if (! $company->fiscalConfig?->enabled) {
+        if (! app(FiscalConfigResolver::class)->forBranch($company, $order->branch_id)?->enabled) {
             return;
         }
 

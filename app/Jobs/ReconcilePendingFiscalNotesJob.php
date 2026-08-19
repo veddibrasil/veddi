@@ -21,7 +21,7 @@ class ReconcilePendingFiscalNotesJob implements ShouldQueue
     public function handle(FiscalNoteService $service): void
     {
         $notes = FiscalNote::withoutGlobalScopes()
-            ->with('company.fiscalConfig')
+            ->with('company')
             ->where('status', 'pending')
             ->whereNotNull('provider_reference')
             ->where('created_at', '<=', now()->subMinutes(10))

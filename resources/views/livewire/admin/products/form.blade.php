@@ -368,6 +368,16 @@
                                         @endif
                                     </div>
                                 </div>
+                                @if (empty($group['fixed']))
+                                <div class="sm:col-span-2 flex items-start gap-2">
+                                    <flux:checkbox wire:model="optionGroups.{{ $gi }}.allow_skip"
+                                        id="allow-skip-{{ $gi }}" class="mt-0.5" />
+                                    <label for="allow-skip-{{ $gi }}" class="text-sm text-neutral-600 dark:text-neutral-300 cursor-pointer select-none">
+                                        Permitir "Não quero"
+                                        <span class="text-xs text-neutral-400 dark:text-neutral-500 ml-1">(mostra opção de pular este grupo no chat do cliente)</span>
+                                    </label>
+                                </div>
+                                @endif
                             </div>
                             <div class="mt-6 flex items-center gap-1">
                                 <button type="button" wire:click="moveOptionGroupUp({{ $gi }})"

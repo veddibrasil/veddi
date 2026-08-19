@@ -2,11 +2,13 @@
 
 namespace App\Livewire\Admin\Products;
 
+use App\Models\Branch;
 use App\Models\Company;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\Scopes\CompanyScope;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -33,6 +35,8 @@ class Index extends Component
     public bool $canDelete = false;
 
     public ?int $lockedBranchId = null; // branch_manager: escopo fixo de filial
+
+    public bool $reorderMode = false;
 
     public function mount(): void
     {
@@ -81,6 +85,77 @@ class Index extends Component
     public function cancelDelete(): void
     {
         $this->deletingId = null;
+    }
+
+    public function toggleReorderMode(): void
+    {
+        $this->reorderMode = ! $this->reorderMode;
+    }
+
+    public function updateOrder(int $categoryId, array $orderedIds): void
+    {
+        if (! $this->canUpdate) {
+            abort(403);
+        }
+
+        $category = $this->isSuperAdmin
+            ? ProductCategory::withoutGlobalScope(CompanyScope::class)->findOrFail($categoryId)
+            : ProductCategory::findOrFail($categoryId);
+
+        DB::transaction(function () use ($category, $orderedIds) {
+            foreach ($orderedIds as $index => $productId) {
+                Product::withoutGlobalScope(CompanyScope::class)
+                    ->where('id', $productId)
+                    ->where('product_category_id', $category->id)
+                    ->where('company_id', $category->company_id)
+                    ->update(['sort_order' => $index]);
+            }
+        });
+
+        $this->forgetMenuCache($category->company_id);
+    }
+
+    public function updateCategoryOrder(array $orderedIds): void
+    {
+        if (! $this->canUpdate) {
+            abort(403);
+        }
+
+        $categories = ($this->isSuperAdmin
+            ? ProductCategory::withoutGlobalScope(CompanyScope::class)
+            : ProductCategory::query()
+        )->whereIn('id', $orderedIds)->get()->keyBy('id');
+
+        if ($categories->isEmpty()) {
+            return;
+        }
+
+        $companyId = $categories->first()->company_id;
+
+        DB::transaction(function () use ($orderedIds, $categories, $companyId) {
+            foreach ($orderedIds as $index => $categoryId) {
+                $category = $categories->get($categoryId);
+
+                if (! $category || $category->company_id !== $companyId) {
+                    continue;
+                }
+
+                $category->update(['sort_order' => $index]);
+            }
+        });
+
+        $this->forgetMenuCache($companyId);
+    }
+
+    private function forgetMenuCache(int $companyId): void
+    {
+        $branchIds = Branch::where('company_id', $companyId)->pluck('id');
+
+        foreach ($branchIds as $branchId) {
+            Cache::forget("menu:branch:{$branchId}:company:{$companyId}");
+            Cache::forget("pdv:products:branch:{$branchId}");
+            Cache::forget("pdv:categories:branch:{$branchId}");
+        }
     }
 
     public function delete(): void
@@ -138,6 +213,16 @@ class Index extends Component
                 ->orderBy('name')
             : ProductCategory::orderBy('name');
 
+        $canReorder = ! $this->isSuperAdmin || $this->companyFilter;
+
+        $reorderGroups = ($this->reorderMode && $canReorder)
+            ? (clone $categoryQuery)->reorder('sort_order')->with(['products' => function ($q) {
+                $q->when($this->isSuperAdmin, fn ($qq) => $qq->withoutGlobalScope(CompanyScope::class))
+                    ->when($this->lockedBranchId, fn ($qq) => $qq->whereHas('branches', fn ($bq) => $bq->where('branches.id', $this->lockedBranchId)))
+                    ->orderBy('sort_order')->orderBy('name');
+            }])->get()
+            : collect();
+
         $companies = $this->isSuperAdmin
             ? Cache::remember('companies:active', now()->addHours(24), fn () => Company::withoutGlobalScope(CompanyScope::class)
                 ->where('active', true)
@@ -148,6 +233,8 @@ class Index extends Component
 
         return view('livewire.admin.products.index', [
             'products' => $products,
+            'reorderGroups' => $reorderGroups,
+            'canReorder' => $canReorder,
             'categories' => $categoryQuery->get(),
             'companies' => $companies,
             'isSuperAdmin' => $this->isSuperAdmin,

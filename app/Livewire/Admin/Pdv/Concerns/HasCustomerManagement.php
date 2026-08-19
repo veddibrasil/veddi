@@ -13,6 +13,20 @@ trait HasCustomerManagement
         $this->lookupCustomer();
     }
 
+    public function updatedDeliveryType(): void
+    {
+        if ($this->deliveryType !== 'entrega' || ! $this->customerId) {
+            return;
+        }
+
+        $company = app('current.company');
+        $customer = Customer::where('company_id', $company->id)->find($this->customerId);
+
+        if ($customer) {
+            $this->fillDeliveryAddressFromCustomer($customer);
+        }
+    }
+
     public function lookupCustomer(): void
     {
         $this->customerFound = false;

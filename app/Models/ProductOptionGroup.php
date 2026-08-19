@@ -9,12 +9,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ProductOptionGroup extends Model
 {
-    protected $fillable = ['company_id', 'name', 'image_path', 'total_qty', 'min_qty', 'fixed', 'sort_order'];
+    protected $fillable = ['company_id', 'name', 'image_path', 'total_qty', 'min_qty', 'fixed', 'allow_skip', 'sort_order'];
 
     protected $casts = [
         'total_qty' => 'integer',
         'min_qty' => 'integer',
         'fixed' => 'boolean',
+        'allow_skip' => 'boolean',
         'sort_order' => 'integer',
     ];
 

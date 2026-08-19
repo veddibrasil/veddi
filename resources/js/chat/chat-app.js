@@ -59,11 +59,51 @@ Alpine.data('chatApp', () => ({
         return Object.values(sels).reduce((sum, qty) => sum + (parseInt(qty) || 0), 0);
     },
 
+    incrementOption(group, option) {
+        if (this.getGroupTotal(group.id) >= group.total_qty) return;
+        if (option.max_qty && (this.pendingSelections[group.id]?.[option.id] || 0) >= option.max_qty) return;
+
+        const wasSatisfied = this.getGroupTotal(group.id) >= (group.min_qty || 0);
+
+        if (!this.pendingSelections[group.id]) this.pendingSelections[group.id] = {};
+        this.pendingSelections[group.id][option.id] = (this.pendingSelections[group.id]?.[option.id] || 0) + 1;
+
+        const nowSatisfied = this.getGroupTotal(group.id) >= (group.min_qty || 0);
+        if (nowSatisfied && !wasSatisfied) {
+            this.scrollToNextGroup(group.id);
+        }
+    },
+
+    decrementOption(group, option) {
+        if ((this.pendingSelections[group.id]?.[option.id] || 0) > 0) {
+            this.pendingSelections[group.id][option.id]--;
+        }
+    },
+
+    clearGroup(group) {
+        this.pendingSelections[group.id] = {};
+        group.options.forEach(opt => { this.pendingSelections[group.id][opt.id] = 0; });
+        this.scrollToNextGroup(group.id);
+    },
+
+    scrollToNextGroup(currentGroupId) {
+        if (!this.selectingProduct) return;
+        const groups = this.selectingProduct.groups;
+        const idx = groups.findIndex(g => g.id === currentGroupId);
+        const next = groups.slice(idx + 1).find(g => !g.fixed && this.getGroupTotal(g.id) < (g.min_qty || 0));
+        if (!next) return;
+
+        this.$nextTick(() => {
+            document.getElementById('option-group-' + next.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    },
+
     canConfirm() {
         if (!this.selectingProduct) return false;
         return this.selectingProduct.groups.every(group => {
             if (group.fixed) return true;
             const total = this.getGroupTotal(group.id);
+            if (group.allow_skip && total === 0) return true;
 
             return total <= group.total_qty && total >= (group.min_qty || 0);
         });

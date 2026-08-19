@@ -300,10 +300,10 @@ test('pagamento dividido com duas partes em dinheiro bloqueia e não cria pedido
 });
 
 test('pedido PDV pago em dinheiro dispara emissão automática de nota fiscal', function () {
-    ['admin' => $admin, 'product' => $product, 'company' => $company] = pdvContext();
+    ['admin' => $admin, 'product' => $product, 'company' => $company, 'branch' => $branch] = pdvContext();
 
     $company->update(['fiscal_notes_enabled' => true]);
-    CompanyFiscalConfig::create(['company_id' => $company->id, 'enabled' => true]);
+    CompanyFiscalConfig::create(['company_id' => $company->id, 'branch_id' => $branch->id, 'is_default' => true, 'enabled' => true]);
 
     Bus::fake();
     $this->actingAs($admin);
@@ -438,6 +438,43 @@ test('selecionar cliente com entrega preenche o endereço a partir do cadastro d
         ->set('deliveryType', 'entrega')
         ->call('selectCustomer', $customer->id)
         ->assertSet('customerId', $customer->id)
+        ->assertSet('deliveryAddress', 'Av. Brasil')
+        ->assertSet('deliveryNumber', '500')
+        ->assertSet('deliveryComplement', 'Fundos')
+        ->assertSet('deliveryNeighborhood', 'Zona 7')
+        ->assertSet('deliveryCity', 'Maringá')
+        ->assertSet('deliveryCep', '87050-000');
+});
+
+test('selecionar cliente no balcão e depois trocar para entrega preenche o endereço a partir do cadastro dele', function () {
+    ['admin' => $admin, 'product' => $product, 'company' => $company] = pdvContext();
+
+    $address = \App\Models\Address::create([
+        'line1' => 'Av. Brasil',
+        'number' => '500',
+        'complement' => 'Fundos',
+        'neighborhood' => 'Zona 7',
+        'city' => 'Maringá',
+        'state' => 'PR',
+        'cep' => '87050-000',
+    ]);
+
+    $customer = Customer::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Cliente Cadastrado',
+        'phone' => '11955556666',
+        'address_id' => $address->id,
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->call('selectCustomer', $customer->id)
+        ->assertSet('customerId', $customer->id)
+        ->assertSet('deliveryAddress', '')
+        ->set('deliveryType', 'entrega')
         ->assertSet('deliveryAddress', 'Av. Brasil')
         ->assertSet('deliveryNumber', '500')
         ->assertSet('deliveryComplement', 'Fundos')

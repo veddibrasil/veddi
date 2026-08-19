@@ -537,6 +537,7 @@ class OrderChat extends Component
                     'total_qty' => $g->total_qty,
                     'min_qty' => $g->min_qty,
                     'fixed' => (bool) $g->fixed,
+                    'allow_skip' => (bool) $g->allow_skip,
                     'options' => [
                         ...$g->options->map(fn ($o) => [
                             'id' => $o->id,

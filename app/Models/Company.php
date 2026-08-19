@@ -340,9 +340,25 @@ class Company extends Model
         return (bool) $this->fiscal_notes_enabled;
     }
 
+    /**
+     * @deprecated Ambígua desde que passou a existir 1 config por filial — retorna
+     * qualquer uma das configs da empresa sem garantia de qual. Use
+     * FiscalConfigResolver::forBranch()/forNote(), Branch::fiscalConfig() ou
+     * Company::defaultFiscalConfig() em código de negócio novo.
+     */
     public function fiscalConfig(): HasOne
     {
         return $this->hasOne(CompanyFiscalConfig::class);
+    }
+
+    public function fiscalConfigs(): HasMany
+    {
+        return $this->hasMany(CompanyFiscalConfig::class);
+    }
+
+    public function defaultFiscalConfig(): HasOne
+    {
+        return $this->hasOne(CompanyFiscalConfig::class)->where('is_default', true);
     }
 
     public function fiscalNotes(): HasMany

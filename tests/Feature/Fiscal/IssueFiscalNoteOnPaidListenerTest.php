@@ -29,11 +29,6 @@ function autoIssueTestContext(bool $planEnabled = true, bool $configEnabled = tr
         'fiscal_notes_enabled' => $planEnabled,
     ]);
 
-    CompanyFiscalConfig::create([
-        'company_id' => $company->id,
-        'enabled' => $configEnabled,
-    ]);
-
     app()->instance('current.company', $company);
 
     $branch = Branch::withoutGlobalScopes()->create([
@@ -48,6 +43,13 @@ function autoIssueTestContext(bool $planEnabled = true, bool $configEnabled = tr
         'active' => true,
         'opens_at' => '00:00:00',
         'closes_at' => '23:59:59',
+    ]);
+
+    CompanyFiscalConfig::create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'is_default' => true,
+        'enabled' => $configEnabled,
     ]);
 
     $customer = Customer::withoutGlobalScopes()->create([
