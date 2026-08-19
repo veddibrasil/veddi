@@ -33,9 +33,9 @@ máquina.
 
 ## Passo a passo (uma vez por estação) — override.crt
 
-1. Baixe o conteúdo do certificado da própria empresa: acesse
+1. Baixe o certificado da própria empresa: acesse
    `https://SEU-DOMINIO/admin/pdv/qz-certificate` (autenticado, mesma
-   sessão do admin) e salve o texto retornado como `override.crt`.
+   sessão do admin) — o navegador já baixa o arquivo como `override.crt`.
 2. Feche o QZ Tray (ícone na bandeja > Exit).
 3. Copie `override.crt` para a pasta de instalação do QZ Tray:
    - **Windows**: `C:\Program Files\QZ Tray\` (mesma pasta do `qz-tray.exe`).

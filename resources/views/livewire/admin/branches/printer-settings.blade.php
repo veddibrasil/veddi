@@ -38,9 +38,9 @@
                 <ol class="list-[lower-alpha] list-inside pl-4 pt-1 space-y-1">
                     <li>
                         Baixe o certificado desta empresa clicando em
-                        <a href="{{ route('admin.pdv.qz-certificate') }}" target="_blank"
+                        <a href="{{ route('admin.pdv.qz-certificate') }}"
                             class="text-blue-600 hover:underline dark:text-blue-400">baixar certificado</a>
-                        e salve o arquivo com o nome exato <code class="px-1 py-0.5 rounded bg-neutral-100 dark:bg-zinc-700">override.crt</code>.
+                        (já baixa com o nome <code class="px-1 py-0.5 rounded bg-neutral-100 dark:bg-zinc-700">override.crt</code>).
                     </li>
                     <li>Feche o QZ Tray (ícone na bandeja &gt; Exit).</li>
                     <li>

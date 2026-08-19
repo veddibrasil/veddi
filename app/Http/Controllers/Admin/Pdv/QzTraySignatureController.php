@@ -32,7 +32,10 @@ class QzTraySignatureController extends Controller
 
         abort_unless($certificate !== null, 404);
 
-        return response($certificate, 200, ['Content-Type' => 'text/plain']);
+        return response($certificate, 200, [
+            'Content-Type' => 'text/plain',
+            'Content-Disposition' => 'attachment; filename="override.crt"',
+        ]);
     }
 
     public function sign(Request $request)
