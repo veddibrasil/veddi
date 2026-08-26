@@ -227,6 +227,7 @@
                     </a>
                     <a href="{{ route('admin.orders.receipt', $userStation ? ['order' => $order->id, 'station' => $userStation] : $order) }}" target="_blank"
                        title="{{ $userStation ? 'Imprimir cupom '.$userStation : 'Imprimir cupom' }}"
+                       @click.prevent="printStation({{ $order->id }}, '{{ $userStation ?: 'geral' }}', $el.href)"
                        class="ml-3 shrink-0 p-1.5 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded-lg hover:bg-neutral-100 dark:hover:bg-zinc-700 transition-colors">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
@@ -308,6 +309,7 @@
                         </a>
                         <a href="{{ route('admin.orders.receipt', $userStation ? ['order' => $order->id, 'station' => $userStation] : $order) }}" target="_blank"
                            title="{{ $userStation ? 'Imprimir cupom '.$userStation : 'Imprimir cupom' }}"
+                           @click.prevent="printStation({{ $order->id }}, '{{ $userStation ?: 'geral' }}', $el.href)"
                            class="shrink-0 p-0.5 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded transition-colors">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />

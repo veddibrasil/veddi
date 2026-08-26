@@ -1,35 +1,37 @@
-<div class="space-y-4 {{ $userStation === 'entrega' ? 'pb-24 lg:pb-4' : '' }}">
+<div class="space-y-4 {{ $userStation === 'entrega' ? 'pb-24 lg:pb-4' : '' }}" x-data="stationPrintListener()">
     <x-admin.page-header :back-route="route('admin.orders.index')" :title="$order->order_number" title-class="font-mono">
         <x-slot:actions>
             @if (! $userStation)
                 <a href="{{ route('admin.orders.receipt', $order) }}" target="_blank"
+                   @click.prevent="printStation({{ $order->id }}, 'geral', $el.href)"
                    class="inline-flex items-center gap-1.5 text-sm font-medium bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-zinc-700 dark:text-neutral-300 dark:hover:bg-zinc-600 px-3 py-2 rounded-lg transition-colors">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                     </svg>
                     Imprimir cupom
                 </a>
-                @else
+            @endif
             @if ($order->isDeliveryOrder() && ($userStation === 'entrega' || ! $userStation))
                 <a href="{{ route('admin.orders.receipt', ['order' => $order->id, 'station' => 'entrega']) }}" target="_blank"
+                   @click.prevent="printStation({{ $order->id }}, 'entrega', $el.href)"
                    class="inline-flex items-center gap-1.5 text-sm font-medium bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 px-3 py-2 rounded-lg transition-colors">
                     Cupom entrega
                 </a>
             @endif
             @if ($userStation === 'cozinha' || ! $userStation)
                 <a href="{{ route('admin.orders.receipt', ['order' => $order->id, 'station' => 'cozinha']) }}" target="_blank"
+                   @click.prevent="printStation({{ $order->id }}, 'cozinha', $el.href)"
                    class="inline-flex items-center gap-1.5 text-sm font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:hover:bg-orange-900/50 px-3 py-2 rounded-lg transition-colors">
                     Cupom cozinha
                 </a>
             @endif
             @if ($userStation === 'bar' || ! $userStation)
                 <a href="{{ route('admin.orders.receipt', ['order' => $order->id, 'station' => 'bar']) }}" target="_blank"
+                   @click.prevent="printStation({{ $order->id }}, 'bar', $el.href)"
                    class="inline-flex items-center gap-1.5 text-sm font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 px-3 py-2 rounded-lg transition-colors">
                     Cupom bar
                 </a>
             @endif
-         @endif
-
         </x-slot:actions>
     </x-admin.page-header>
 
