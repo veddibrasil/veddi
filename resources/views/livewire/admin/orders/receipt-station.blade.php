@@ -5,19 +5,19 @@
     <title>Cupom {{ strtoupper($station) }} {{ $order->order_number }}</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: DejaVu Sans Mono, monospace; font-size: 10px; color: #1a0025; background: #fff; padding: 10px 10px; }
+        body { font-family: DejaVu Sans Mono, monospace; font-size: 9px; color: #1a0025; background: #fff; padding: 10px 10px; }
         .center { text-align: center; }
         .bold { font-weight: bold; }
-        .sm { font-size: 9px; }
+        .sm { font-size: 8px; }
         .muted { color: #8b5a9e; }
         .divider { border-top: 1px dashed #c06eec; margin: 5px 0; }
-        .type-banner { text-align: center; font-weight: bold; font-size: 14px; letter-spacing: 2px; padding: 6px 0; margin-bottom: 5px; background-color: {{ ['cozinha' => '#c2410c', 'bar' => '#1d4ed8', 'entrega' => '#15803d'][$station] }}; color: #ffffff; }
+        .type-banner { text-align: center; font-weight: bold; font-size: 11px; letter-spacing: 2px; padding: 5px 0; margin-bottom: 5px; background-color: {{ ['cozinha' => '#c2410c', 'bar' => '#1d4ed8', 'entrega' => '#15803d'][$station] }}; color: #ffffff; }
         .order-number { font-weight: bold; }
-        .item-name { font-weight: bold; font-size: 12px; }
+        .item-name { font-weight: bold; font-size: 10px; }
         .item-block { margin: 6px 0; }
         .address-bar { margin-top: 4px; border-left: 3px solid #15803d; padding-left: 5px; }
-        .total-label { font-weight: bold; font-size: 12px; }
-        .total-value { font-weight: bold; font-size: 12px; text-align: right; }
+        .total-label { font-weight: bold; font-size: 11px; }
+        .total-value { font-weight: bold; font-size: 11px; text-align: right; }
     </style>
 </head>
 <body>
@@ -56,7 +56,7 @@
         @endif
 
         <div class="address-bar">
-            <div class="bold" style="font-size: 9px; letter-spacing: 1px;">ENDERECO DE ENTREGA</div>
+            <div class="bold" style="font-size: 8px; letter-spacing: 1px;">ENDERECO DE ENTREGA</div>
             <div style="margin-top: 1px;">
                 {{ $order->delivery_address }}{{ $order->delivery_number ? ', '.$order->delivery_number : '' }}
             </div>

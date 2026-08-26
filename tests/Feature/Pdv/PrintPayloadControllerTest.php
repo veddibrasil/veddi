@@ -232,6 +232,62 @@ test('nota fiscal retorna payload quando autorizada e há impressora marcada', f
     expect(base64_decode($response['payload']))->toContain('DANFE NFC-e')->toContain('Coxinha');
 });
 
+test('fechamento retorna payload quando empresa tem uma única filial ativa com impressora geral', function () {
+    ['admin' => $admin, 'branch' => $branch, 'company' => $company] = printPayloadContext();
+
+    BranchPrinter::create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'station' => 'geral',
+        'ip_address' => '192.168.0.60',
+        'port' => 9100,
+        'paper_width' => 80,
+        'active' => true,
+    ]);
+
+    $response = $this->actingAs($admin)
+        ->get(route('admin.pdv.print.closing', ['company_id' => $company->id]))
+        ->assertOk()
+        ->json();
+
+    expect($response['printer'])->toBe(['connection_type' => 'network', 'ip' => '192.168.0.60', 'port' => 9100, 'name' => null]);
+    expect(base64_decode($response['payload']))->toContain('FECHAMENTO DE PEDIDOS');
+});
+
+test('fechamento retorna 404 quando empresa tem mais de uma filial ativa (impressora ambígua)', function () {
+    ['admin' => $admin, 'branch' => $branch, 'company' => $company] = printPayloadContext();
+
+    BranchPrinter::create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'station' => 'geral',
+        'ip_address' => '192.168.0.60',
+        'port' => 9100,
+        'paper_width' => 80,
+        'active' => true,
+    ]);
+
+    Branch::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Filial 2',
+        'address' => 'Rua B, 2',
+        'city' => 'SP',
+        'active' => true,
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('admin.pdv.print.closing', ['company_id' => $company->id]))
+        ->assertNotFound();
+});
+
+test('fechamento retorna 404 quando a única filial ativa não tem impressora geral', function () {
+    ['admin' => $admin, 'company' => $company] = printPayloadContext();
+
+    $this->actingAs($admin)
+        ->get(route('admin.pdv.print.closing', ['company_id' => $company->id]))
+        ->assertNotFound();
+});
+
 test('usuário sem permissão de pdv/pedidos não acessa o payload de impressão', function () {
     // branch_manager tem orders.view por padrão via role (ver CLAUDE.md), então pra
     // testar o 403 é preciso um usuário sem nenhum vínculo com a empresa — assim

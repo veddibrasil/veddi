@@ -35,4 +35,11 @@ interface PrinterServiceInterface
      * code), a ser impresso quando a nota é autorizada.
      */
     public function buildFiscalNoteReceipt(FiscalNote $note, Order $order, ?Company $company = null): string;
+
+    /**
+     * Monta os bytes ESC/POS do fechamento de pedidos do dia (delivery, PDV e
+     * geral), no mesmo formato do relatório em PDF gerado por
+     * OrderClosingReportService::build().
+     */
+    public function buildClosingReceipt(array $report, ?Company $company = null): string;
 }

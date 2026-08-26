@@ -256,6 +256,59 @@ class EscPosPrinterService implements PrinterServiceInterface
         return $data;
     }
 
+    public function buildClosingReceipt(array $report, ?Company $company = null): string
+    {
+        $connector = new MemoryPrintConnector;
+        $printer = new Printer($connector);
+
+        $printer->setJustification(Printer::JUSTIFY_CENTER);
+        $printer->setEmphasis(true);
+        $printer->text($company?->name ?? config('app.name')."\n");
+        $printer->setEmphasis(false);
+
+        $printer->feed();
+        $printer->setEmphasis(true);
+        $printer->text("== FECHAMENTO DE PEDIDOS ==\n");
+        $printer->setEmphasis(false);
+        $printer->setJustification(Printer::JUSTIFY_LEFT);
+
+        $this->divider($printer);
+        $printer->text('Data: '.$report['date']->format('d/m/Y')."\n");
+        $printer->text('Emitido em: '.now()->format('d/m/Y H:i:s')."\n");
+
+        foreach (['delivery' => 'DELIVERY', 'pdv' => 'PDV', 'geral' => 'GERAL'] as $key => $label) {
+            $channel = $report[$key];
+
+            $this->divider($printer);
+            $printer->setEmphasis(true);
+            $printer->text("{$label}\n");
+            $printer->setEmphasis(false);
+
+            $printer->text("Pedidos: {$channel['count']}\n");
+            $printer->text("Cancelados/reembolsados: {$channel['cancelled_count']}\n");
+            $printer->text('Descontos: R$ '.number_format((float) $channel['discounts'], 2, ',', '.')."\n");
+            $printer->text('Dinheiro: R$ '.number_format((float) $channel['payments']['cash'], 2, ',', '.')."\n");
+            $printer->text('PIX: R$ '.number_format((float) $channel['payments']['pix'], 2, ',', '.')."\n");
+            $printer->text('Cartao: R$ '.number_format((float) $channel['payments']['card'], 2, ',', '.')."\n");
+
+            $printer->setEmphasis(true);
+            $printer->text("TOTAL {$label}: R$ ".number_format((float) $channel['revenue'], 2, ',', '.')."\n");
+            $printer->setEmphasis(false);
+        }
+
+        $this->divider($printer);
+        $printer->setJustification(Printer::JUSTIFY_CENTER);
+        $printer->text('Fim do fechamento de pedidos - '.$report['date']->format('d/m/Y')."\n");
+
+        $printer->feed(2);
+        $printer->cut();
+
+        $data = $connector->getData();
+        $printer->close();
+
+        return $data;
+    }
+
     private function divider(Printer $printer): void
     {
         $printer->text(str_repeat('-', 32)."\n");

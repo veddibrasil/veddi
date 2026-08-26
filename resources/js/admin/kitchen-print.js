@@ -1,4 +1,4 @@
-import { autoPrintTabOrderTicket } from './pdv-printer.js';
+import { autoPrintTabOrderTicket, printStationReceipt, printClosingReport } from './pdv-printer.js';
 
 // Fila de cozinha/bar ("Minha fila", fora do PDV) — versão mínima do binding de
 // impressão que o Terminal/Mesas usa (pdv-app.js). Sem carrinho, código de barras
@@ -24,6 +24,12 @@ const registerStationPrintListener = () => {
     Alpine.data('stationPrintListener', () => ({
         init() {
             bindKitchenPrintListenerOnce();
+        },
+        printStation(orderId, station, fallbackUrl) {
+            printStationReceipt(orderId, station, fallbackUrl);
+        },
+        printClosing(query, fallbackUrl) {
+            printClosingReport(query, fallbackUrl);
         },
     }));
 };

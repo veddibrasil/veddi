@@ -204,6 +204,47 @@ export function autoPrintFiscalNote(orderId, onError) {
     });
 }
 
+// Botao manual de "imprimir cupom" (fila de cozinha/bar/entrega e fechamento
+// do dia): tenta imprimir sozinho na impressora pareada da estacao; se nao
+// tiver impressora configurada (404) ou o QZ Tray falhar por qualquer motivo,
+// cai pro comportamento antigo (abre a tela/PDF de impressao manual) em vez
+// de deixar o operador sem cupom nenhum.
+async function printOrFallback(url, fallbackUrl) {
+    let res;
+
+    try {
+        res = await fetch(url, { headers: { Accept: 'application/json' } });
+    } catch (err) {
+        console.warn('[print] falha de rede ao buscar payload, abrindo impressao manual', url, err);
+        window.open(fallbackUrl, '_blank');
+
+        return;
+    }
+
+    if (!res.ok) {
+        console.warn('[print] sem impressora configurada, abrindo impressao manual', url, res.status);
+        window.open(fallbackUrl, '_blank');
+
+        return;
+    }
+
+    try {
+        const { printer, payload } = await res.json();
+        await sendToPrinter(printer, payload);
+    } catch (err) {
+        console.warn('[print] falha ao imprimir (QZ Tray fechado/offline?), abrindo impressao manual', url, err);
+        window.open(fallbackUrl, '_blank');
+    }
+}
+
+export function printStationReceipt(orderId, station, fallbackUrl) {
+    return printOrFallback(`/admin/pdv/print/receipt/${orderId}/${station}`, fallbackUrl);
+}
+
+export function printClosingReport(query, fallbackUrl) {
+    return printOrFallback(`/admin/pdv/print/closing${query}`, fallbackUrl);
+}
+
 // Assina o canal do pedido so ate a nota autorizar (ou por no maximo 15min,
 // pra nao acumular inscricoes indefinidamente num turno longo de caixa).
 export function listenForFiscalNoteAuthorization(orderId, onError) {

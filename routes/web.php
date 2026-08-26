@@ -142,6 +142,7 @@ Route::middleware(['auth', 'verified', 'company.active'])
         Route::get('/pdv/report', \App\Livewire\Admin\Pdv\Report::class)->name('pdv.report');
         Route::get('/pdv/cash-sessions/{cashSession}/print', \App\Http\Controllers\Admin\Pdv\CashClosingReportController::class)->name('pdv.cash-session.print');
         Route::get('/pdv/print/receipt/{order}/{station?}', [\App\Http\Controllers\Admin\Pdv\PrintPayloadController::class, 'receipt'])->name('pdv.print.receipt');
+        Route::get('/pdv/print/closing', [\App\Http\Controllers\Admin\Pdv\PrintPayloadController::class, 'closing'])->name('pdv.print.closing');
         Route::get('/pdv/print/fiscal-note/{order}', [\App\Http\Controllers\Admin\Pdv\PrintPayloadController::class, 'fiscalNote'])->name('pdv.print.fiscal-note');
         Route::get('/pdv/qz-certificate', [\App\Http\Controllers\Admin\Pdv\QzTraySignatureController::class, 'certificate'])->name('pdv.qz-certificate');
         Route::post('/pdv/qz-sign', [\App\Http\Controllers\Admin\Pdv\QzTraySignatureController::class, 'sign'])->name('pdv.qz-sign');
