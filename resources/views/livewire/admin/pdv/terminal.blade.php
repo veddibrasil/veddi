@@ -100,11 +100,11 @@
                 </span>
             @endif
 
-            @unless ($isWaiter)
+            @if ($canManageClosing)
                 <flux:button wire:click="openClosingReports" variant="outline" size="sm" icon="document-text" class="hidden sm:flex" title="Relatórios de fechamento" />
-            @endunless
+            @endif
 
-            @if ($cashSessionId && !in_array($step, ['open_cash', 'close_cash']))
+            @if ($canManageClosing && $cashSessionId && !in_array($step, ['open_cash', 'close_cash']))
                 <flux:button wire:click="proceedToCloseCash" variant="outline" size="sm" icon="lock-closed" class="hover:text-red-600">
                     Fechar caixa
                 </flux:button>

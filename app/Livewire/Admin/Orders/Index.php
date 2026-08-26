@@ -33,6 +33,8 @@ class Index extends Component
 
     public bool $canUpdate = false;
 
+    public bool $canManageClosing = false;
+
     public int $companyId = 0;
 
     /** Estação do usuário logado ('cozinha'|'bar'|'entrega') quando o papel é restrito a uma estação, senão null. */
@@ -71,11 +73,13 @@ class Index extends Component
 
         if ($this->isSuperAdmin) {
             $this->canView = $this->canUpdate = true;
+            $this->canManageClosing = true;
         } elseif (app()->bound('current.company')) {
             $company = app('current.company');
             $this->companyId = $company->id;
             $this->canView = $user->hasPermission('orders.view', $company);
             $this->canUpdate = $user->hasPermission('orders.update', $company);
+            $this->canManageClosing = $user->canManageClosing($company);
 
             $roleSlug = $user->roleForCompany($company);
             $this->userStation = in_array($roleSlug, ['cozinha', 'bar', 'entrega']) ? $roleSlug : null;

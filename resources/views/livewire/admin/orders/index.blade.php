@@ -106,12 +106,14 @@
 @else
     <div class="flex items-center justify-between gap-2">
         <h1 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100">Pedidos</h1>
-        <a href="{{ route('admin.orders.closing.pdf', $isSuperAdmin && $companyFilter ? ['company_id' => $companyFilter] : []) }}"
-           target="_blank"
-           @click.prevent="printClosing('{{ $isSuperAdmin && $companyFilter ? '?company_id='.$companyFilter : '' }}', $el.href)"
-           class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-colors shrink-0">
-            📄 Fechamento do dia (PDF)
-        </a>
+        @if ($canManageClosing)
+            <a href="{{ route('admin.orders.closing.pdf', $isSuperAdmin && $companyFilter ? ['company_id' => $companyFilter] : []) }}"
+               target="_blank"
+               @click.prevent="printClosing('{{ $isSuperAdmin && $companyFilter ? '?company_id='.$companyFilter : '' }}', $el.href)"
+               class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-colors shrink-0">
+                📄 Fechamento do dia (PDF)
+            </a>
+        @endif
     </div>
 
     {{-- ── Fechamento do dia ───────────────────────────────────────────────── --}}

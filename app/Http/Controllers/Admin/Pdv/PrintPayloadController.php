@@ -74,6 +74,7 @@ class PrintPayloadController extends Controller
         }
 
         abort_unless($company, 404);
+        abort_unless($isSuperAdmin || $user->canManageClosing($company), 403);
 
         $branches = $company->branches()->where('active', true)->get();
 

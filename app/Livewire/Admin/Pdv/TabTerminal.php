@@ -184,12 +184,18 @@ class TabTerminal extends Component
         $this->waiterModuleEnabled = (bool) $company->waiter_module_enabled;
         $this->canUseFiscalNotes = $company->canUseFiscalNotes();
 
-        $branch = $this->isWaiter && $user->branchIdForCompany($company)
-            ? Branch::where('company_id', $company->id)->find($user->branchIdForCompany($company))
-            : Branch::where('company_id', $company->id)
+        $userBranchId = $user->branchIdForCompany($company);
+
+        $branch = $userBranchId
+            ? Branch::where('company_id', $company->id)->where('active', true)->find($userBranchId)
+            : null;
+
+        if (! $branch) {
+            $branch = Branch::where('company_id', $company->id)
                 ->where('active', true)
                 ->orderBy('id')
                 ->first();
+        }
 
         $this->selectedBranchId = $branch?->id;
 

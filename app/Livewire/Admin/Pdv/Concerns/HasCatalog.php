@@ -28,7 +28,7 @@ trait HasCatalog
 
         // Mesma chave usada em OrderChat::getBranchesProperty() — invalidada em
         // Branches/Form.php, DeliverySettings.php e ServiceCharges.php.
-        return Cache::remember(
+        $branches = Cache::remember(
             "branches:company:{$company->id}",
             now()->addMinutes(10),
             fn () => Branch::where('company_id', $company->id)
@@ -37,6 +37,15 @@ trait HasCatalog
                 ->orderBy('name')
                 ->get()
         );
+
+        // Usuário com papel vinculado a uma filial (caixa, garçom, branch_manager etc.)
+        // só pode operar a própria filial — não vê nem pode trocar pra outra.
+        $user = auth()->user();
+        if ($user && $user->isBranchScoped($company) && $user->branchIdForCompany($company)) {
+            return $branches->where('id', $user->branchIdForCompany($company))->values();
+        }
+
+        return $branches;
     }
 
     #[Computed]

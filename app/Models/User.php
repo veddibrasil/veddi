@@ -86,6 +86,16 @@ class User extends Authenticatable
         return $this->roleForCompany($company) === 'branch_manager';
     }
 
+    public function isCompanyAdmin(Company $company): bool
+    {
+        return $this->roleForCompany($company) === 'company_admin';
+    }
+
+    public function canManageClosing(Company $company): bool
+    {
+        return $this->isSuperAdmin() || $this->isCompanyAdmin($company) || $this->isBranchManager($company);
+    }
+
     public function isBranchScoped(Company $company): bool
     {
         return in_array($this->roleForCompany($company), ['branch_manager', 'cozinha', 'caixa', 'bar', 'entrega', 'garcom']);

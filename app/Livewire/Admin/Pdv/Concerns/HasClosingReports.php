@@ -25,6 +25,7 @@ trait HasClosingReports
     public function openClosingReports(): void
     {
         abort_unless(! $this->isWaiter, 403);
+        $this->abortUnlessCanManageClosing();
 
         $this->showClosingReports = true;
         $this->viewingClosedSessionId = null;

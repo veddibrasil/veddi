@@ -20,7 +20,7 @@ class OrderClosingPdfController extends Controller
         if ($isSuperAdmin) {
             $canView = true;
         } elseif (app()->bound('current.company')) {
-            $canView = $user->hasPermission('orders.view', app('current.company'));
+            $canView = $user->canManageClosing(app('current.company'));
         } else {
             $canView = false;
         }
