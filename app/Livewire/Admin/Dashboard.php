@@ -42,6 +42,8 @@ class Dashboard extends Component
 
         $can = fn (string $perm) => $isSuperAdmin || ($company && $user?->hasPermission($perm, $company));
 
+        $isCaixa = $company && $user?->roleForCompany($company) === 'caixa';
+
         $canViewOrders = $can('orders.view');
         $canViewBranches = $can('branches.view') && ! ($company && $user?->isBranchScoped($company));
         $canViewProducts = $can('products.view');
@@ -100,7 +102,7 @@ class Dashboard extends Component
         }
 
         return view('livewire.admin.dashboard', compact(
-            'todayOrders', 'todayRevenue', 'pendingOrders', 'totalOrders',
+            'todayOrders', 'todayRevenue', 'pendingOrders', 'totalOrders', 'isCaixa',
             'canViewOrders', 'canViewBranches', 'canViewProducts', 'canSettings',
             'monthlyOrderCount', 'monthlyOrderLimit'
         ) + ['currentCompany' => $company])->layout('layouts.app', ['title' => 'Dashboard Admin']);

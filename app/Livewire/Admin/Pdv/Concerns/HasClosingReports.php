@@ -24,8 +24,7 @@ trait HasClosingReports
 
     public function openClosingReports(): void
     {
-        abort_unless(! $this->isWaiter, 403);
-        $this->abortUnlessCanManageClosing();
+        abort_unless(! $this->isWaiter && ! $this->isCaixa, 403);
 
         $this->showClosingReports = true;
         $this->viewingClosedSessionId = null;
@@ -39,11 +38,24 @@ trait HasClosingReports
 
     public function viewClosedSession(int $sessionId): void
     {
+        // Caixa só vê o detalhe da própria sessão, aberto direto por closeCashSession() —
+        // nunca navega pra cá escolhendo um id de outro operador.
+        abort_unless(! $this->isCaixa, 403);
+
         $this->viewingClosedSessionId = $sessionId;
     }
 
     public function backToClosingReportsList(): void
     {
+        // Caixa não tem acesso à listagem de fechamentos de todos os operadores da filial —
+        // o "voltar" da tela de detalhe (aberta só logo após ele fechar o próprio caixa) sai
+        // do overlay inteiro em vez de cair na lista.
+        if ($this->isCaixa) {
+            $this->backFromClosingReports();
+
+            return;
+        }
+
         $this->viewingClosedSessionId = null;
     }
 

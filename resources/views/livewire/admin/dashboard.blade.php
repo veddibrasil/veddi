@@ -226,10 +226,12 @@
                 <p class="text-xs text-neutral-500 uppercase tracking-wide dark:text-neutral-400">Pedidos hoje</p>
                 <p class="text-3xl font-bold text-amber-600 mt-1 dark:text-amber-400">{{ $todayOrders->count() }}</p>
             </div>
-            <div class="bg-white border rounded-xl p-4 shadow-sm dark:bg-zinc-800 dark:border-zinc-700">
-                <p class="text-xs text-neutral-500 uppercase tracking-wide dark:text-neutral-400">Receita hoje</p>
-                <p class="text-2xl font-bold text-green-600 mt-1 dark:text-green-400">R$ {{ number_format($todayRevenue, 2, ',', '.') }}</p>
-            </div>
+            @unless ($isCaixa)
+                <div class="bg-white border rounded-xl p-4 shadow-sm dark:bg-zinc-800 dark:border-zinc-700">
+                    <p class="text-xs text-neutral-500 uppercase tracking-wide dark:text-neutral-400">Receita hoje</p>
+                    <p class="text-2xl font-bold text-green-600 mt-1 dark:text-green-400">R$ {{ number_format($todayRevenue, 2, ',', '.') }}</p>
+                </div>
+            @endunless
             <div class="bg-white border rounded-xl p-4 shadow-sm dark:bg-zinc-800 dark:border-zinc-700">
                 <p class="text-xs text-neutral-500 uppercase tracking-wide dark:text-neutral-400">Em preparo</p>
                 <p class="text-3xl font-bold text-blue-600 mt-1 dark:text-blue-400">{{ $pendingOrders }}</p>
@@ -254,7 +256,9 @@
                             <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ $order->customer->name ?? '—' }}</p>
                         </div>
                         <div class="text-right">
-                            <p class="text-sm font-bold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($order->total, 2, ',', '.') }}</p>
+                            @unless ($isCaixa)
+                                <p class="text-sm font-bold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($order->total, 2, ',', '.') }}</p>
+                            @endunless
                             <span class="text-xs px-2 py-0.5 rounded-full
                                 @if($order->status === 'paid') bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400
                                 @elseif($order->status === 'preparing') bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-400

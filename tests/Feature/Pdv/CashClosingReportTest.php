@@ -101,6 +101,27 @@ test('operador consegue imprimir fechamento de sessão fechada', function () {
         ->assertHeader('content-type', 'application/pdf');
 });
 
+test('caixa não consegue imprimir fechamento (só visualiza)', function () {
+    ['company' => $company, 'branch' => $branch] = cashClosingContext();
+
+    $caixa = User::factory()->create();
+    $caixa->companies()->attach($company->id, ['role' => 'caixa', 'branch_id' => $branch->id]);
+
+    $session = PdvCashSession::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'user_id' => $caixa->id,
+        'opening_amount' => 50.00,
+        'closing_amount' => 80.00,
+        'expected_amount' => 80.00,
+        'closed_at' => now(),
+    ]);
+
+    $this->actingAs($caixa)
+        ->get(route('admin.pdv.cash-session.print', $session))
+        ->assertForbidden();
+});
+
 test('sessão de outra empresa não pode ser impressa', function () {
     ['admin' => $admin] = cashClosingContext();
 

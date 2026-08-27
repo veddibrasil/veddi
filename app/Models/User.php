@@ -91,9 +91,10 @@ class User extends Authenticatable
         return $this->roleForCompany($company) === 'company_admin';
     }
 
+    /** Totais e relatórios de fechamento (financeiro) só pra administrador da empresa. */
     public function canManageClosing(Company $company): bool
     {
-        return $this->isSuperAdmin() || $this->isCompanyAdmin($company) || $this->isBranchManager($company);
+        return $this->isSuperAdmin() || $this->isCompanyAdmin($company);
     }
 
     public function isBranchScoped(Company $company): bool

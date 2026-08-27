@@ -11,14 +11,6 @@ use Livewire\Attributes\Computed;
 
 trait HasCashSession
 {
-    /** Fechar caixa é restrito a administrador da empresa e gerente de filial. */
-    private function abortUnlessCanManageClosing(): void
-    {
-        $company = app()->bound('current.company') ? app('current.company') : null;
-
-        abort_unless($company && auth()->user()->canManageClosing($company), 403);
-    }
-
     private function syncCashSession(): void
     {
         if (! $this->selectedBranchId) {
@@ -80,7 +72,6 @@ trait HasCashSession
     public function proceedToCloseCash(): void
     {
         abort_unless(! $this->isWaiter, 403);
-        $this->abortUnlessCanManageClosing();
 
         $this->closingAmountInput = '';
         $this->reconciliationNotes = '';
@@ -137,7 +128,6 @@ trait HasCashSession
     public function closeCashSession(): void
     {
         abort_unless(! $this->isWaiter, 403);
-        $this->abortUnlessCanManageClosing();
 
         if (! $this->cashSessionId) {
             $this->step = 'catalog';

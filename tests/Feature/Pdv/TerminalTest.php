@@ -1007,6 +1007,65 @@ test('relatório de fechamento lista sessões encerradas e exibe detalhe', funct
         ->assertSet('viewingClosedSessionId', null);
 });
 
+test('caixa não vê o botão de relatórios de fechamento e recebe 403 se chamar direto', function () {
+    ['company' => $company, 'branch' => $branch] = pdvContext();
+
+    $caixa = \App\Models\User::factory()->create();
+    $caixa->companies()->attach($company->id, ['role' => 'caixa', 'branch_id' => $branch->id]);
+
+    $this->actingAs($caixa);
+
+    Livewire::test(Terminal::class)
+        ->assertDontSee('Relatórios de fechamento')
+        ->call('openClosingReports')
+        ->assertForbidden();
+});
+
+test('caixa fecha o próprio caixa, vê só o próprio resumo e o "voltar" não revela os fechamentos dos outros', function () {
+    ['company' => $company, 'branch' => $branch] = pdvContext();
+
+    $caixa = \App\Models\User::factory()->create();
+    $caixa->companies()->attach($company->id, ['role' => 'caixa', 'branch_id' => $branch->id]);
+
+    \App\Models\PdvCashSession::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'user_id' => $caixa->id,
+        'opening_amount' => 0,
+    ]);
+
+    // Sessão fechada de outro operador na mesma filial — não pode aparecer pro caixa.
+    $otherSession = \App\Models\PdvCashSession::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'user_id' => \App\Models\User::factory()->create()->id,
+        'opening_amount' => 40.00,
+        'closing_amount' => 40.00,
+        'expected_amount' => 40.00,
+        'terminal_name' => 'Terminal do outro caixa',
+        'closed_at' => now(),
+    ]);
+
+    $this->actingAs($caixa);
+
+    $component = Livewire::test(Terminal::class);
+    $session = \App\Models\PdvCashSession::withoutGlobalScopes()->find($component->get('cashSessionId'));
+
+    $component->set('closingAmountInput', (string) $component->instance()->cashSessionExpected($session))
+        ->call('closeCashSession')
+        ->assertSet('showClosingReports', true)
+        ->assertSet('viewingClosedSessionId', $session->id)
+        ->assertDontSee('Terminal do outro caixa')
+        ->call('backToClosingReportsList')
+        ->assertSet('showClosingReports', false)
+        ->assertDontSee('Terminal do outro caixa');
+
+    // Furar direto pelo id de outra sessão também é bloqueado.
+    Livewire::test(Terminal::class)
+        ->call('viewClosedSession', $otherSession->id)
+        ->assertForbidden();
+});
+
 // ─── Mesa/Comanda ─────────────────────────────────────────────────────────────
 
 test('taxa de serviço e couvert da filial são aplicados automaticamente no pedido de balcão', function () {

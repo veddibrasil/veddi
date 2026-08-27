@@ -335,7 +335,7 @@ class Index extends Component
 
     public function render()
     {
-        $closing = $this->todayClosing();
+        $closing = $this->canManageClosing ? $this->todayClosing() : [];
 
         $companies = $this->isSuperAdmin
             ? Cache::remember('companies:active', now()->addHours(24), fn () => Company::withoutGlobalScope(CompanyScope::class)

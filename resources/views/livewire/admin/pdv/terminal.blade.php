@@ -100,11 +100,11 @@
                 </span>
             @endif
 
-            @if ($canManageClosing)
+            @unless ($isWaiter || $isCaixa)
                 <flux:button wire:click="openClosingReports" variant="outline" size="sm" icon="document-text" class="hidden sm:flex" title="Relatórios de fechamento" />
-            @endif
+            @endunless
 
-            @if ($canManageClosing && $cashSessionId && !in_array($step, ['open_cash', 'close_cash']))
+            @if ($cashSessionId && !in_array($step, ['open_cash', 'close_cash']))
                 <flux:button wire:click="proceedToCloseCash" variant="outline" size="sm" icon="lock-closed" class="hover:text-red-600">
                     Fechar caixa
                 </flux:button>
@@ -212,15 +212,17 @@
                                 </div>
                             @endif
 
-                            <flux:button
-                                href="{{ route('admin.pdv.cash-session.print', $closedSession) }}"
-                                target="_blank"
-                                variant="ghost"
-                                icon="printer"
-                                class="w-full"
-                            >
-                                Imprimir fechamento
-                            </flux:button>
+                            @unless ($isCaixa)
+                                <flux:button
+                                    href="{{ route('admin.pdv.cash-session.print', $closedSession) }}"
+                                    target="_blank"
+                                    variant="ghost"
+                                    icon="printer"
+                                    class="w-full"
+                                >
+                                    Imprimir fechamento
+                                </flux:button>
+                            @endunless
                         </div>
                     @endif
                 @else

@@ -116,24 +116,26 @@
         @endif
     </div>
 
-    {{-- ── Fechamento do dia ───────────────────────────────────────────────── --}}
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div class="bg-white border rounded-xl shadow-sm px-4 py-3 dark:bg-zinc-800 dark:border-zinc-700">
-            <p class="text-xs font-medium text-neutral-400 uppercase tracking-wide">Delivery hoje</p>
-            <p class="text-xl font-bold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($closing['delivery']['total'], 2, ',', '.') }}</p>
-            <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ $closing['delivery']['count'] }} pedido(s)</p>
+    @if ($canManageClosing)
+        {{-- ── Fechamento do dia ───────────────────────────────────────────────── --}}
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div class="bg-white border rounded-xl shadow-sm px-4 py-3 dark:bg-zinc-800 dark:border-zinc-700">
+                <p class="text-xs font-medium text-neutral-400 uppercase tracking-wide">Delivery hoje</p>
+                <p class="text-xl font-bold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($closing['delivery']['total'], 2, ',', '.') }}</p>
+                <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ $closing['delivery']['count'] }} pedido(s)</p>
+            </div>
+            <div class="bg-white border rounded-xl shadow-sm px-4 py-3 dark:bg-zinc-800 dark:border-zinc-700">
+                <p class="text-xs font-medium text-neutral-400 uppercase tracking-wide">PDV hoje</p>
+                <p class="text-xl font-bold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($closing['pdv']['total'], 2, ',', '.') }}</p>
+                <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ $closing['pdv']['count'] }} pedido(s)</p>
+            </div>
+            <div class="bg-white border rounded-xl shadow-sm px-4 py-3 dark:bg-zinc-800 dark:border-zinc-700">
+                <p class="text-xs font-medium text-neutral-400 uppercase tracking-wide">Geral hoje</p>
+                <p class="text-xl font-bold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($closing['geral']['total'], 2, ',', '.') }}</p>
+                <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ $closing['geral']['count'] }} pedido(s)</p>
+            </div>
         </div>
-        <div class="bg-white border rounded-xl shadow-sm px-4 py-3 dark:bg-zinc-800 dark:border-zinc-700">
-            <p class="text-xs font-medium text-neutral-400 uppercase tracking-wide">PDV hoje</p>
-            <p class="text-xl font-bold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($closing['pdv']['total'], 2, ',', '.') }}</p>
-            <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ $closing['pdv']['count'] }} pedido(s)</p>
-        </div>
-        <div class="bg-white border rounded-xl shadow-sm px-4 py-3 dark:bg-zinc-800 dark:border-zinc-700">
-            <p class="text-xs font-medium text-neutral-400 uppercase tracking-wide">Geral hoje</p>
-            <p class="text-xl font-bold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($closing['geral']['total'], 2, ',', '.') }}</p>
-            <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ $closing['geral']['count'] }} pedido(s)</p>
-        </div>
-    </div>
+    @endif
 
     <div class="flex flex-wrap gap-2">
         <div class="flex-1 min-w-[12rem]">

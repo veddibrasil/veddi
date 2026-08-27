@@ -17,8 +17,10 @@
                 <flux:input wire:model.live="dateEnd" type="date" />
             </div>
             <div>
-                <flux:select wire:model.live="branchFilter" label="Filial">
-                    <flux:select.option value="">Todas</flux:select.option>
+                <flux:select wire:model.live="branchFilter" label="Filial" :disabled="$isCaixa">
+                    @unless ($isCaixa)
+                        <flux:select.option value="">Todas</flux:select.option>
+                    @endunless
                     @foreach ($branches as $branch)
                         <flux:select.option value="{{ $branch->id }}">{{ $branch->name }}</flux:select.option>
                     @endforeach
@@ -27,45 +29,47 @@
         </div>
     </div>
 
-    {{-- Cards de resumo --}}
-    <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        <div class="bg-white border rounded-xl p-4 dark:bg-zinc-800 dark:border-zinc-700 col-span-2 lg:col-span-1 xl:col-span-2">
-            <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Total PDV</p>
-            <p class="text-2xl font-bold text-neutral-800 dark:text-neutral-100 mt-1">
-                R$ {{ number_format($totalRevenue, 2, ',', '.') }}
-            </p>
+    @unless ($isCaixa)
+        {{-- Cards de resumo --}}
+        <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+            <div class="bg-white border rounded-xl p-4 dark:bg-zinc-800 dark:border-zinc-700 col-span-2 lg:col-span-1 xl:col-span-2">
+                <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Total PDV</p>
+                <p class="text-2xl font-bold text-neutral-800 dark:text-neutral-100 mt-1">
+                    R$ {{ number_format($totalRevenue, 2, ',', '.') }}
+                </p>
+            </div>
+            <div class="bg-white border rounded-xl p-4 dark:bg-zinc-800 dark:border-zinc-700">
+                <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Dinheiro</p>
+                <p class="text-2xl font-bold text-green-600 dark:text-green-400 mt-1">
+                    R$ {{ number_format($cashTotal, 2, ',', '.') }}
+                </p>
+            </div>
+            <div class="bg-white border rounded-xl p-4 dark:bg-zinc-800 dark:border-zinc-700">
+                <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">PIX</p>
+                <p class="text-2xl font-bold text-blue-600 dark:text-blue-400 mt-1">
+                    R$ {{ number_format($pixTotal, 2, ',', '.') }}
+                </p>
+            </div>
+            <div class="bg-white border rounded-xl p-4 dark:bg-zinc-800 dark:border-zinc-700">
+                <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Cartão</p>
+                <p class="text-2xl font-bold text-purple-600 dark:text-purple-400 mt-1">
+                    R$ {{ number_format($cardTotal, 2, ',', '.') }}
+                </p>
+            </div>
+            <div class="bg-white border rounded-xl p-4 dark:bg-zinc-800 dark:border-zinc-700">
+                <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Descontos</p>
+                <p class="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">
+                    R$ {{ number_format($totalDiscounts, 2, ',', '.') }}
+                </p>
+            </div>
+            <div class="bg-white border rounded-xl p-4 dark:bg-zinc-800 dark:border-zinc-700">
+                <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Cancelados</p>
+                <p class="text-2xl font-bold {{ $cancelledCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-neutral-400' }} mt-1">
+                    {{ $cancelledCount }}
+                </p>
+            </div>
         </div>
-        <div class="bg-white border rounded-xl p-4 dark:bg-zinc-800 dark:border-zinc-700">
-            <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Dinheiro</p>
-            <p class="text-2xl font-bold text-green-600 dark:text-green-400 mt-1">
-                R$ {{ number_format($cashTotal, 2, ',', '.') }}
-            </p>
-        </div>
-        <div class="bg-white border rounded-xl p-4 dark:bg-zinc-800 dark:border-zinc-700">
-            <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">PIX</p>
-            <p class="text-2xl font-bold text-blue-600 dark:text-blue-400 mt-1">
-                R$ {{ number_format($pixTotal, 2, ',', '.') }}
-            </p>
-        </div>
-        <div class="bg-white border rounded-xl p-4 dark:bg-zinc-800 dark:border-zinc-700">
-            <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Cartão</p>
-            <p class="text-2xl font-bold text-purple-600 dark:text-purple-400 mt-1">
-                R$ {{ number_format($cardTotal, 2, ',', '.') }}
-            </p>
-        </div>
-        <div class="bg-white border rounded-xl p-4 dark:bg-zinc-800 dark:border-zinc-700">
-            <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Descontos</p>
-            <p class="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">
-                R$ {{ number_format($totalDiscounts, 2, ',', '.') }}
-            </p>
-        </div>
-        <div class="bg-white border rounded-xl p-4 dark:bg-zinc-800 dark:border-zinc-700">
-            <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Cancelados</p>
-            <p class="text-2xl font-bold {{ $cancelledCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-neutral-400' }} mt-1">
-                {{ $cancelledCount }}
-            </p>
-        </div>
-    </div>
+    @endunless
 
     {{-- Tabela de sessões de caixa --}}
     <div class="bg-white border rounded-xl shadow-sm dark:bg-zinc-800 dark:border-zinc-700">
@@ -87,6 +91,9 @@
                             <th class="px-4 py-2 text-right">Contado</th>
                             <th class="px-4 py-2 text-right">Diferença</th>
                             <th class="px-4 py-2 text-center">Status</th>
+                            @unless ($isCaixa)
+                                <th class="px-4 py-2 text-center">Ações</th>
+                            @endunless
                         </tr>
                     </thead>
                     <tbody class="divide-y dark:divide-zinc-700">
@@ -158,6 +165,20 @@
                                         </span>
                                     @endif
                                 </td>
+                                @unless ($isCaixa)
+                                    <td class="px-4 py-3 text-center">
+                                        @if ($session->closed_at)
+                                            <flux:button
+                                                href="{{ route('admin.pdv.cash-session.print', $session) }}"
+                                                target="_blank"
+                                                variant="ghost"
+                                                size="sm"
+                                                icon="printer"
+                                                title="Imprimir fechamento"
+                                            />
+                                        @endif
+                                    </td>
+                                @endunless
                             </tr>
                         @endforeach
                     </tbody>

@@ -179,7 +179,8 @@ class Terminal extends Component
     // ── Permissões ────────────────────────────────────────────────────────────
     public bool $canOperate = false;
 
-    public bool $canManageClosing = false;
+    /** Caixa não vê o botão de imprimir fechamento (relatório é só visualização pra ele). */
+    public bool $isCaixa = false;
 
     // Sempre false no Terminal: garçom (pdv.waiter_operate sem pdv.operate) é redirecionado pro
     // TabTerminal (mesa/comanda) já no Selector, antes de chegar aqui. Propriedade continua
@@ -200,7 +201,7 @@ class Terminal extends Component
         abort_unless($canFullyOperate, 403);
 
         $this->canOperate = true;
-        $this->canManageClosing = $user->canManageClosing($company);
+        $this->isCaixa = $user->roleForCompany($company) === 'caixa';
         $this->manualDiscountAllowed = (bool) $company->pdv_manual_discount_enabled;
         $this->canUseFiscalNotes = $company->canUseFiscalNotes();
 

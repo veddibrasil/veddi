@@ -181,3 +181,144 @@ test('sessões de caixa aparecem na listagem do relatório PDV', function () {
         ->assertSee('Balcão')
         ->assertSee('Fechado');
 });
+
+test('admin consegue imprimir o fechamento de qualquer sessão a partir do relatório PDV', function () {
+    ['admin' => $admin, 'company' => $company, 'branch' => $branch] = pdvReportContext();
+
+    $session = PdvCashSession::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'user_id' => $admin->id,
+        'opening_amount' => 50.00,
+        'closing_amount' => 120.00,
+        'expected_amount' => 115.00,
+        'closed_at' => now(),
+    ]);
+
+    $openSession = PdvCashSession::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'user_id' => $admin->id,
+        'opening_amount' => 30.00,
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Report::class)
+        ->assertSeeHtml(route('admin.pdv.cash-session.print', $session))
+        ->assertDontSeeHtml(route('admin.pdv.cash-session.print', $openSession));
+
+    $this->get(route('admin.pdv.cash-session.print', $session))
+        ->assertOk()
+        ->assertHeader('content-type', 'application/pdf');
+});
+
+// ─── Restrição do caixa ─────────────────────────────────────────────────────────
+
+test('caixa não vê os cards de totais financeiros e fica travado na própria filial', function () {
+    ['company' => $company, 'branch' => $branch] = pdvReportContext();
+
+    $otherBranch = Branch::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Outra Filial',
+        'address' => 'Rua B, 2',
+        'city' => 'SP',
+        'active' => true,
+        'opens_at' => '00:00:00',
+        'closes_at' => '23:59:59',
+    ]);
+
+    $caixa = User::factory()->create();
+    $caixa->companies()->attach($company->id, ['role' => 'caixa', 'branch_id' => $branch->id]);
+
+    $this->actingAs($caixa);
+
+    $component = Livewire::test(Report::class);
+
+    $component->assertDontSee('Total PDV')
+        ->assertDontSee('Dinheiro')
+        ->assertDontSee('PIX')
+        ->assertDontSee('Cartão')
+        ->assertDontSee('Descontos')
+        ->assertDontSee('Outra Filial');
+
+    expect($component->get('branchFilter'))->toBe((string) $branch->id);
+
+    // Tentativa de manipular o filtro pra outra filial via Livewire é ignorada.
+    $component->set('branchFilter', (string) $otherBranch->id);
+    expect($component->get('branchFilter'))->toBe((string) $branch->id);
+});
+
+test('caixa só vê pedidos e sessões do próprio caixa, não os de outro operador na mesma filial', function () {
+    ['company' => $company, 'branch' => $branch] = pdvReportContext();
+
+    $caixa = User::factory()->create();
+    $caixa->companies()->attach($company->id, ['role' => 'caixa', 'branch_id' => $branch->id]);
+
+    $outroCaixa = User::factory()->create();
+    $outroCaixa->companies()->attach($company->id, ['role' => 'caixa', 'branch_id' => $branch->id]);
+
+    $ownSession = PdvCashSession::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'user_id' => $caixa->id,
+        'opening_amount' => 0,
+        'closing_amount' => 50,
+        'expected_amount' => 50,
+        'closed_at' => now(),
+    ]);
+
+    $otherSession = PdvCashSession::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'user_id' => $outroCaixa->id,
+        'terminal_name' => 'Terminal do outro',
+        'opening_amount' => 0,
+        'closing_amount' => 90,
+        'expected_amount' => 90,
+        'closed_at' => now(),
+    ]);
+
+    $customer = \App\Models\Customer::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Balcão',
+        'phone' => 'pdv-report-scoped',
+    ]);
+
+    $ownOrder = Order::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'customer_id' => $customer->id,
+        'branch_id' => $branch->id,
+        'pdv_cash_session_id' => $ownSession->id,
+        'order_number' => 'RPT-OWN',
+        'subtotal' => 15.00,
+        'total' => 15.00,
+        'fee' => 0,
+        'net_value' => 15.00,
+        'status' => 'paid',
+        'payment_method' => 'cash',
+        'order_type' => 'pdv',
+    ]);
+
+    Order::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'customer_id' => $customer->id,
+        'branch_id' => $branch->id,
+        'pdv_cash_session_id' => $otherSession->id,
+        'order_number' => 'RPT-OTHER',
+        'subtotal' => 25.00,
+        'total' => 25.00,
+        'fee' => 0,
+        'net_value' => 25.00,
+        'status' => 'paid',
+        'payment_method' => 'cash',
+        'order_type' => 'pdv',
+    ]);
+
+    $this->actingAs($caixa);
+
+    Livewire::test(Report::class)
+        ->assertSee($ownOrder->order_number)
+        ->assertDontSee('RPT-OTHER')
+        ->assertDontSee('Terminal do outro');
+});

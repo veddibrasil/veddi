@@ -17,6 +17,7 @@ class CashClosingReportController extends Controller
         abort_unless($company, 403);
         abort_unless($company->pdv_module_enabled, 403, 'Módulo PDV não está habilitado para esta empresa.');
         abort_unless($user?->hasPermission('pdv.operate', $company), 403);
+        abort_unless($user->roleForCompany($company) !== 'caixa', 403);
         abort_unless($cashSession->closed_at, 404);
 
         $report = $service->build($cashSession);
