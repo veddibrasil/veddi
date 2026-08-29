@@ -1,5 +1,6 @@
 <?php
 
+use App\Contracts\AsaasServiceInterface;
 use App\Contracts\WalletServiceInterface;
 use App\Jobs\ProcessRefund;
 use App\Models\Branch;
@@ -403,6 +404,85 @@ test('ProcessRefund cria CompanyNotification quando gateway rejeita o estorno', 
     expect($notification)->not->toBeNull()
         ->and($notification->subtitle)->toContain('Token inválido')
         ->and($notification->link)->toBe(route('admin.orders.show', $ctx['order']->id));
+});
+
+test('ProcessRefund falha de forma controlada quando pagamento Asaas não tem ID externo', function () {
+    $ctx = vindiRefundContext();
+    $ctx['payment']->update([
+        'asaas_payment_id' => null,
+        'vindi_transaction_id' => null,
+        'vindi_transaction_token' => null,
+        'payment_gateway' => 'asaas',
+    ]);
+
+    $this->mock(AsaasServiceInterface::class, function ($mock) {
+        $mock->shouldNotReceive('getBalance');
+        $mock->shouldNotReceive('refundPayment');
+    });
+
+    $refund = PaymentRefund::create([
+        'company_id' => $ctx['company']->id,
+        'order_id' => $ctx['order']->id,
+        'payment_id' => $ctx['payment']->id,
+        'gateway' => 'asaas',
+        'amount' => 80.00,
+        'status' => 'requested',
+        'reason' => 'customer_request',
+        'requested_by_type' => 'system',
+        'requested_at' => now(),
+    ]);
+
+    $job = new ProcessRefund($refund);
+    $job->handle(app(RefundService::class));
+
+    $refund->refresh();
+
+    expect($refund->status)->toBe('failed')
+        ->and($refund->failure_code)->toBe('MISSING_ASAAS_PAYMENT_ID')
+        ->and($refund->failure_message)->toBe('Pagamento Asaas sem ID externo para estorno.');
+
+    $notification = CompanyNotification::where('company_id', $ctx['company']->id)
+        ->where('type', 'refund_failed')
+        ->first();
+
+    expect($notification)->not->toBeNull()
+        ->and($notification->subtitle)->toBe('Pagamento Asaas sem ID externo para estorno.');
+});
+
+test('ProcessRefund não usa Asaas como fallback para pagamento offline', function () {
+    $ctx = vindiRefundContext();
+    $ctx['payment']->update([
+        'asaas_payment_id' => null,
+        'vindi_transaction_id' => null,
+        'vindi_transaction_token' => null,
+        'payment_gateway' => 'card_machine',
+    ]);
+
+    $this->mock(AsaasServiceInterface::class, function ($mock) {
+        $mock->shouldNotReceive('getBalance');
+        $mock->shouldNotReceive('refundPayment');
+    });
+
+    $refund = PaymentRefund::create([
+        'company_id' => $ctx['company']->id,
+        'order_id' => $ctx['order']->id,
+        'payment_id' => $ctx['payment']->id,
+        'gateway' => 'card_machine',
+        'amount' => 80.00,
+        'status' => 'requested',
+        'reason' => 'customer_request',
+        'requested_by_type' => 'system',
+        'requested_at' => now(),
+    ]);
+
+    $job = new ProcessRefund($refund);
+    $job->handle(app(RefundService::class));
+
+    $refund->refresh();
+
+    expect($refund->status)->toBe('failed')
+        ->and($refund->failure_code)->toBe('GATEWAY_REJECTED')
+        ->and($refund->failure_message)->toContain('Pagamento offline/manual requer estorno operacional fora do gateway.');
 });
 
 test('ProcessRefund cria CompanyNotification em failed() quando refund ainda não foi resolvido', function () {

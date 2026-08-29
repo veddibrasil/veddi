@@ -115,14 +115,19 @@ class RefundService implements RefundServiceInterface
             return 'vindi';
         }
 
-        return 'asaas'; // legado
+        if ($payment->asaas_payment_id) {
+            return 'asaas';
+        }
+
+        return 'offline';
     }
 
     public function getGatewayDriver(string $gateway): PaymentRefundGatewayInterface
     {
         return match ($gateway) {
             'vindi' => app(VindiRefundGateway::class),
-            default => app(AsaasRefundGateway::class),
+            'asaas' => app(AsaasRefundGateway::class),
+            default => app(OfflineRefundGateway::class),
         };
     }
 }

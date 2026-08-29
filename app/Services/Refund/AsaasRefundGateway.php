@@ -5,6 +5,7 @@ namespace App\Services\Refund;
 use App\Contracts\AsaasServiceInterface;
 use App\Contracts\PaymentRefundGatewayInterface;
 use App\Models\Payment;
+use Illuminate\Support\Facades\Log;
 
 class AsaasRefundGateway implements PaymentRefundGatewayInterface
 {
@@ -12,7 +13,25 @@ class AsaasRefundGateway implements PaymentRefundGatewayInterface
 
     public function requestRefund(Payment $payment, float $amount, ?string $reason = null): array
     {
-        $raw = $this->asaas->refundPayment($payment->asaas_payment_id, $amount);
+        $asaasPaymentId = $payment->asaas_payment_id;
+
+        if (blank($asaasPaymentId)) {
+            Log::channel('payments')->error('Asaas estorno falhou: asaas_payment_id ausente', [
+                'payment_id' => $payment->id,
+            ]);
+
+            return [
+                'external_refund_id' => null,
+                'status' => 'failed',
+                'raw' => [
+                    'errors' => [
+                        ['description' => 'Pagamento Asaas sem ID externo para estorno.'],
+                    ],
+                ],
+            ];
+        }
+
+        $raw = $this->asaas->refundPayment($asaasPaymentId, $amount);
 
         $status = $raw['status'] ?? '';
         $succeeded = in_array($status, ['REFUND_REQUESTED', 'REFUNDED', 'REFUND_IN_PROGRESS']);

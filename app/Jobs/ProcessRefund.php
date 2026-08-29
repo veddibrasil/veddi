@@ -5,7 +5,6 @@ namespace App\Jobs;
 use App\Exceptions\AsaasCircuitOpenException;
 use App\Models\CompanyNotification;
 use App\Models\PaymentRefund;
-use App\Services\Finance\RefundCoverageService;
 use App\Services\Refund\RefundService;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -71,19 +70,18 @@ class ProcessRefund implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        // Asaas credit card refunds require sufficient balance before proceeding
-        if ($this->refund->gateway === 'asaas') {
-            $ready = app(RefundCoverageService::class)->ensureCoverage($this->refund);
+        if ($this->refund->gateway === 'asaas' && blank($payment->asaas_payment_id)) {
+            $message = 'Pagamento Asaas sem ID externo para estorno.';
 
-            if (! $ready) {
-                Log::channel('payments')->info('ProcessRefund: aguardando cobertura Asaas — reagendando', [
-                    'refund_id' => $this->refund->id,
-                    'coverage_status' => $this->refund->coverage_status,
-                ]);
-                $this->release(600); // retry in 10 min while coverage is being arranged
+            Log::channel('payments')->error('ProcessRefund falhou: asaas_payment_id ausente', [
+                'refund_id' => $this->refund->id,
+                'payment_id' => $payment->id,
+            ]);
 
-                return;
-            }
+            $refundService->markFailed($this->refund, 'MISSING_ASAAS_PAYMENT_ID', $message);
+            $this->notifyCompany($message);
+
+            return;
         }
 
         // Simulated payments (dev environment)
