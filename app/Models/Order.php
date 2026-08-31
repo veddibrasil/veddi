@@ -15,7 +15,7 @@ class Order extends Model
 
     protected $fillable = [
         'company_id', 'order_number', 'customer_id', 'branch_id', 'subtotal', 'delivery_fee', 'total',
-        'status', 'notes', 'scheduled_at', 'payment_method', 'order_type', 'coupon_id', 'discount', 'fee', 'net_value',
+        'status', 'notes', 'scheduled_at', 'payment_method', 'order_type', 'delivery_type', 'coupon_id', 'discount', 'fee', 'net_value',
         'delivery_address_id',
         'cash_received', 'cash_change',
         'manual_discount', 'service_fee', 'couvert_fee',
@@ -312,6 +312,10 @@ class Order extends Model
         if ($this->order_type === 'pdv') {
             if ($this->is_open_tab) {
                 return $this->restaurant_table_id ? 'Mesa' : 'Comanda';
+            }
+
+            if ($this->delivery_type === 'retirar') {
+                return 'Retirada (PDV)';
             }
 
             if ($this->delivery_address_id) {

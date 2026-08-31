@@ -40,6 +40,8 @@
     {{-- Tipo de pedido em destaque --}}
     @if ($order->isDeliveryOrder())
         <div class="type-banner">ENTREGA</div>
+    @elseif ($order->order_type === 'pdv' && $order->delivery_type === 'retirar')
+        <div class="type-banner">RETIRADA NO LOCAL</div>
     @elseif ($order->order_type === 'pdv')
         <div class="type-banner">BALCAO / PDV</div>
     @else

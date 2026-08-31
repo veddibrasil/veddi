@@ -406,6 +406,39 @@ test('ProcessRefund cria CompanyNotification quando gateway rejeita o estorno', 
         ->and($notification->link)->toBe(route('admin.orders.show', $ctx['order']->id));
 });
 
+test('duas tentativas de estorno falhadas para o mesmo pagamento e valor nao violam unique constraint', function () {
+    $ctx = vindiRefundContext();
+
+    $firstAttempt = PaymentRefund::create([
+        'company_id' => $ctx['company']->id,
+        'order_id' => $ctx['order']->id,
+        'payment_id' => $ctx['payment']->id,
+        'gateway' => 'vindi',
+        'amount' => 80.00,
+        'status' => 'failed',
+        'failure_code' => 'GATEWAY_REJECTED',
+        'failure_message' => 'primeira tentativa',
+        'requested_at' => now(),
+        'processed_at' => now(),
+    ]);
+
+    $secondAttempt = PaymentRefund::create([
+        'company_id' => $ctx['company']->id,
+        'order_id' => $ctx['order']->id,
+        'payment_id' => $ctx['payment']->id,
+        'gateway' => 'vindi',
+        'amount' => 80.00,
+        'status' => 'requested',
+        'requested_at' => now(),
+    ]);
+
+    app(RefundService::class)->markFailed($secondAttempt, 'GATEWAY_REJECTED', 'segunda tentativa');
+
+    expect($firstAttempt->fresh()->status)->toBe('failed')
+        ->and($secondAttempt->fresh()->status)->toBe('failed')
+        ->and($secondAttempt->id)->not->toBe($firstAttempt->id);
+});
+
 test('ProcessRefund falha de forma controlada quando pagamento Asaas não tem ID externo', function () {
     $ctx = vindiRefundContext();
     $ctx['payment']->update([

@@ -694,6 +694,121 @@ test('pedido PDV de entrega salva endereço e taxa na order', function () {
     expect($order->delivery_neighborhood)->toBe('Centro');
 });
 
+// ─── Retirar na loja ────────────────────────────────────────────────────────
+
+test('pedido PDV de retirada já pago cai no caixa imediatamente', function () {
+    ['admin' => $admin, 'product' => $product, 'company' => $company] = pdvContext();
+
+    $customer = Customer::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Cliente Retirada',
+        'phone' => '11999990000',
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('customerId', $customer->id)
+        ->set('deliveryType', 'retirar')
+        ->set('pickupPaymentStatus', 'paid')
+        ->set('paymentMethod', 'cash')
+        ->set('cashReceivedInput', '10.00')
+        ->call('processOrder')
+        ->assertSet('step', 'catalog')
+        ->assertHasNoErrors();
+
+    $order = Order::withoutGlobalScopes()->first();
+    expect($order->order_type)->toBe('pdv');
+    expect($order->delivery_type)->toBe('retirar');
+    expect($order->status)->toBe('paid');
+    expect($order->getOriginLabelAttribute())->toBe('Retirada (PDV)');
+
+    $payment = Payment::where('order_id', $order->id)->first();
+    expect($payment)->not->toBeNull();
+    expect($payment->status)->toBe('paid');
+});
+
+test('pedido PDV de retirada com "pagar na retirada" não lança caixa na criação, só na confirmação', function () {
+    ['admin' => $admin, 'product' => $product, 'company' => $company] = pdvContext();
+
+    $customer = Customer::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Cliente Retirada',
+        'phone' => '11999990000',
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('customerId', $customer->id)
+        ->set('deliveryType', 'retirar')
+        ->set('pickupPaymentStatus', 'on_pickup')
+        ->set('paymentMethod', 'cash')
+        ->call('processOrder')
+        ->assertSet('step', 'catalog')
+        ->assertHasNoErrors();
+
+    $order = Order::withoutGlobalScopes()->first();
+    expect($order->delivery_type)->toBe('retirar');
+    expect($order->status)->toBe('awaiting_payment');
+    expect(Payment::where('order_id', $order->id)->exists())->toBeFalse();
+
+    // Confirmar retirada + pagamento (ação do operador) só agora cria o Payment e move o caixa.
+    app(PaymentOrchestrator::class)->confirmDeliveryPayment($order->fresh());
+
+    $order->refresh();
+    expect($order->status)->toBe('paid');
+
+    $payment = Payment::where('order_id', $order->id)->first();
+    expect($payment)->not->toBeNull();
+    expect($payment->status)->toBe('paid');
+    expect((float) $payment->amount)->toBe((float) $order->total);
+});
+
+test('pedido PDV de retirada exige cliente selecionado', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('deliveryType', 'retirar')
+        ->set('paymentMethod', 'cash')
+        ->call('processOrder')
+        ->assertHasErrors('order');
+
+    expect(Order::withoutGlobalScopes()->count())->toBe(0);
+});
+
+test('split não está disponível para pedido de retirada com pagamento coletado na retirada', function () {
+    ['admin' => $admin, 'product' => $product, 'company' => $company] = pdvContext();
+
+    $customer = Customer::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Cliente Retirada',
+        'phone' => '11999990000',
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('customerId', $customer->id)
+        ->set('deliveryType', 'retirar')
+        ->set('pickupPaymentStatus', 'on_pickup')
+        ->set('isSplitPayment', true)
+        ->call('processOrder')
+        ->assertHasErrors('order');
+
+    expect(Order::withoutGlobalScopes()->count())->toBe(0);
+});
+
 test('taxa de entrega é calculada automaticamente conforme o endereço é preenchido, sem botão manual', function () {
     ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
 

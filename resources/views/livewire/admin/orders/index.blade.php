@@ -333,8 +333,7 @@
                         <p class="text-xs text-amber-600 dark:text-amber-400 font-medium mt-1">🕐 {{ $order->scheduled_at->setTimezone(config('app.timezone'))->format('d/m H:i') }}</p>
                     @endif
                     @if ($canUpdate && $order->order_type === 'pdv' && $order->status === 'awaiting_payment')
-                        <button wire:click.stop="confirmPayment({{ $order->id }})"
-                                wire:confirm="Confirmar que o pagamento foi recebido na entrega?"
+                        <button wire:click.stop="openConfirmPaymentModal({{ $order->id }})"
                                 class="w-full mt-2 py-1 text-xs font-medium rounded-lg bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 transition-colors">
                             Confirmar pagamento
                         </button>
@@ -362,5 +361,36 @@
         @endforeach
     </div>
     @endif
+@endif
+
+@if ($confirmingPaymentOrderId)
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-xl p-6 w-full max-w-md mx-4 space-y-5">
+            <div class="flex items-start gap-4">
+                <div class="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
+                    <svg class="w-5 h-5 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-neutral-800 dark:text-neutral-100">Confirmar pagamento</h3>
+                    <p class="text-sm text-neutral-500 dark:text-neutral-400 mt-1">Confirmar que o pagamento foi recebido na entrega?</p>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-1">
+                <button wire:click="closeConfirmPaymentModal"
+                        class="px-4 py-2 text-sm text-neutral-600 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200">
+                    Cancelar
+                </button>
+                <button wire:click="confirmPayment({{ $confirmingPaymentOrderId }})"
+                        wire:loading.attr="disabled"
+                        class="px-4 py-2 text-sm font-medium bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg transition-colors">
+                    <span wire:loading.remove wire:target="confirmPayment({{ $confirmingPaymentOrderId }})">Confirmar pagamento</span>
+                    <span wire:loading wire:target="confirmPayment({{ $confirmingPaymentOrderId }})">Confirmando...</span>
+                </button>
+            </div>
+        </div>
+    </div>
 @endif
 </div>

@@ -635,6 +635,130 @@ test('NotificationBell só mostra notificações de entrega pra estação entreg
         ->assertSee('Novo pedido: entrega');
 });
 
+test('NotificationBell escuta OrderStatusUpdated pra atualizar em tempo real (aviso de pedido agendado usa esse evento)', function () {
+    ['company' => $company, 'admin' => $admin] = stationOrderContext();
+
+    $this->actingAs($admin);
+    $listeners = Livewire::test(\App\Livewire\Admin\NotificationBell::class)->instance()->getListeners();
+
+    expect($listeners)->toHaveKey("echo:orders.{$company->id},OrderStatusUpdated");
+});
+
+test('NotifyScheduledOrderJob cria notificação que aparece no sino do restaurante', function () {
+    ['company' => $company, 'admin' => $admin, 'branch' => $branch] = stationOrderContext();
+
+    $customer = \App\Models\Customer::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Cliente Agendado',
+        'phone' => '11999990000',
+    ]);
+
+    $order = \App\Models\Order::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'customer_id' => $customer->id,
+        'subtotal' => 30.00,
+        'total' => 30.00,
+        'net_value' => 30.00,
+        'status' => 'scheduled',
+        'scheduled_at' => now()->addMinutes(15),
+        'notes' => '',
+        'payment_method' => 'pix',
+        'order_type' => 'delivery',
+    ]);
+
+    app(\App\Jobs\NotifyScheduledOrderJob::class, ['orderId' => $order->id])->handle();
+
+    expect(\App\Models\CompanyNotification::where('company_id', $company->id)->where('type', 'scheduled_order')->exists())->toBeTrue();
+
+    $this->actingAs($admin);
+    Livewire::test(\App\Livewire\Admin\NotificationBell::class)
+        ->assertSee('Pedido agendado: hora de preparar!')
+        ->assertSee($order->order_number);
+});
+
+// ─── Modal "Confirmar pagamento" (recebido na entrega) ─────────────────────
+
+function pdvAwaitingPaymentOrder(Company $company, Branch $branch): Order
+{
+    $customer = Customer::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Cliente PDV',
+        'phone' => '11999990003',
+    ]);
+
+    return Order::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'customer_id' => $customer->id,
+        'subtotal' => 25.00,
+        'total' => 25.00,
+        'net_value' => 25.00,
+        'status' => 'awaiting_payment',
+        'notes' => '',
+        'payment_method' => 'cash',
+        'order_type' => 'pdv',
+    ]);
+}
+
+test('kanban: abrir e fechar o modal de confirmar pagamento não confirma nada', function () {
+    ['company' => $company, 'admin' => $admin, 'branch' => $branch] = stationOrderContext();
+    $order = pdvAwaitingPaymentOrder($company, $branch);
+
+    $this->actingAs($admin);
+
+    Livewire::test(OrdersIndex::class)
+        ->call('openConfirmPaymentModal', $order->id)
+        ->assertSet('confirmingPaymentOrderId', $order->id)
+        ->call('closeConfirmPaymentModal')
+        ->assertSet('confirmingPaymentOrderId', null);
+
+    expect($order->fresh()->status)->toBe('awaiting_payment');
+    expect(\App\Models\Payment::where('order_id', $order->id)->exists())->toBeFalse();
+});
+
+test('kanban: confirmar no modal marca pagamento como recebido e move pro caixa', function () {
+    ['company' => $company, 'admin' => $admin, 'branch' => $branch] = stationOrderContext();
+    $order = pdvAwaitingPaymentOrder($company, $branch);
+
+    $this->actingAs($admin);
+
+    Livewire::test(OrdersIndex::class)
+        ->call('openConfirmPaymentModal', $order->id)
+        ->call('confirmPayment', $order->id)
+        ->assertSet('confirmingPaymentOrderId', null);
+
+    $order->refresh();
+    expect($order->status)->toBe('paid');
+    $payment = \App\Models\Payment::where('order_id', $order->id)->first();
+    expect($payment)->not->toBeNull();
+    expect($payment->status)->toBe('paid');
+});
+
+test('show: abrir modal, cancelar não confirma; confirmar no modal marca pagamento', function () {
+    ['company' => $company, 'admin' => $admin, 'branch' => $branch] = stationOrderContext();
+    $order = pdvAwaitingPaymentOrder($company, $branch);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Show::class, ['order' => $order])
+        ->call('openConfirmPaymentModal')
+        ->assertSet('showConfirmPaymentModal', true)
+        ->call('closeConfirmPaymentModal')
+        ->assertSet('showConfirmPaymentModal', false);
+
+    expect($order->fresh()->status)->toBe('awaiting_payment');
+
+    Livewire::test(Show::class, ['order' => $order])
+        ->call('openConfirmPaymentModal')
+        ->call('confirmPayment')
+        ->assertSet('showConfirmPaymentModal', false);
+
+    $order->refresh();
+    expect($order->status)->toBe('paid');
+    expect(\App\Models\Payment::where('order_id', $order->id)->where('status', 'paid')->exists())->toBeTrue();
+});
+
 test('Notifications (toast) ignora pedido não-entrega pra estação entrega', function () {
     ['company' => $company] = stationOrderContext();
     $entrega = makeStationUser($company, 'entrega');

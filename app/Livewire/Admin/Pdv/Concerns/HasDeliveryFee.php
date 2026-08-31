@@ -135,5 +135,6 @@ trait HasDeliveryFee
         $this->deliveryFeeAmount = 0.0;
         $this->deliveryFeeError = null;
         $this->deliveryPaymentStatus = 'paid';
+        $this->pickupPaymentStatus = 'paid';
     }
 }

@@ -67,8 +67,10 @@ trait HasPaymentFlow
 
     private function doProcessOrder(): void
     {
-        if ($this->deliveryType === 'entrega' && ! $this->customerId) {
-            $this->addError('order', 'Selecione ou cadastre um cliente para entrega.');
+        if (in_array($this->deliveryType, ['entrega', 'retirar']) && ! $this->customerId) {
+            $this->addError('order', $this->deliveryType === 'entrega'
+                ? 'Selecione ou cadastre um cliente para entrega.'
+                : 'Selecione ou cadastre um cliente para retirada.');
 
             return;
         }
@@ -106,6 +108,12 @@ trait HasPaymentFlow
                 return;
             }
 
+            if ($this->deliveryType === 'retirar' && $this->pickupPaymentStatus === 'on_pickup') {
+                $this->addError('order', 'Split não está disponível para pagamento coletado na retirada.');
+
+                return;
+            }
+
             if ($error = $this->validateSplitPayments()) {
                 $this->addError('order', $error);
 
@@ -118,7 +126,8 @@ trait HasPaymentFlow
         DB::beginTransaction();
         try {
             $isPaidOnCreate = ($this->isSplitPayment || in_array($this->paymentMethod, ['cash', 'credit_card', 'pix']))
-                && ! ($this->deliveryType === 'entrega' && $this->deliveryPaymentStatus === 'on_delivery');
+                && ! ($this->deliveryType === 'entrega' && $this->deliveryPaymentStatus === 'on_delivery')
+                && ! ($this->deliveryType === 'retirar' && $this->pickupPaymentStatus === 'on_pickup');
 
             // Pedido agendado: pagamento pode ser coletado agora, mas o status fica 'scheduled'
             // (não 'paid') pra não disparar preparo/nota fiscal antes da hora combinada — mesma
@@ -142,11 +151,14 @@ trait HasPaymentFlow
                 couvertFee: $this->couvertFeeAmount,
             );
 
+            $order->delivery_type = $this->deliveryType;
+
             // Link order to current cash session
             if ($this->cashSessionId) {
                 $order->pdv_cash_session_id = $this->cashSessionId;
-                $order->save();
             }
+
+            $order->save();
 
             if ($this->deliveryType === 'entrega') {
                 $order->delivery_address = $this->deliveryAddress;

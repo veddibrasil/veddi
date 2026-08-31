@@ -143,7 +143,11 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
                     'idempotency_key' => $idempotencyKey,
                 ]);
 
-                $order->update(['status' => 'paid']);
+                // Pedido agendado: pagamento confirma normalmente (carteira/transação abaixo), mas o
+                // status do pedido só vira 'paid' se a hora agendada já passou — senão fica 'scheduled'
+                // pra não disparar preparo/nota fiscal antes da hora (mesma regra do webhook Asaas).
+                $newStatus = ($order->scheduled_at && $order->scheduled_at->isFuture()) ? 'scheduled' : 'paid';
+                $order->update(['status' => $newStatus]);
 
                 Log::channel('payments')->info('Pagamento Vindi confirmado', [
                     'order_id' => $order->id,

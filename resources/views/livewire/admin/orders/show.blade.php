@@ -785,8 +785,7 @@
                 @if ($order->payments->isEmpty() && $order->order_type === 'pdv' && $order->status === 'awaiting_payment')
                     <div class="mt-3 bg-yellow-50 border border-yellow-200 rounded-xl p-3 dark:bg-yellow-900/20 dark:border-yellow-700">
                         <p class="text-xs text-yellow-700 dark:text-yellow-400 mb-2">A receber na entrega.</p>
-                        <button wire:click="confirmPayment"
-                                wire:confirm="Confirmar que o pagamento foi recebido na entrega?"
+                        <button wire:click="openConfirmPaymentModal"
                                 class="w-full text-sm bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 px-4 py-2 rounded-lg transition-colors">
                             Confirmar pagamento
                         </button>
@@ -934,6 +933,37 @@
     @endif
 
     {{-- Manual Refund Modal --}}
+    @if ($showConfirmPaymentModal)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-xl p-6 w-full max-w-md mx-4 space-y-5">
+                <div class="flex items-start gap-4">
+                    <div class="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-neutral-800 dark:text-neutral-100">Confirmar pagamento</h3>
+                        <p class="text-sm text-neutral-500 dark:text-neutral-400 mt-1">Confirmar que o pagamento foi recebido na entrega?</p>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-3 pt-1">
+                    <button wire:click="closeConfirmPaymentModal"
+                            class="px-4 py-2 text-sm text-neutral-600 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200">
+                        Cancelar
+                    </button>
+                    <button wire:click="confirmPayment"
+                            wire:loading.attr="disabled"
+                            class="px-4 py-2 text-sm font-medium bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg transition-colors">
+                        <span wire:loading.remove wire:target="confirmPayment">Confirmar pagamento</span>
+                        <span wire:loading wire:target="confirmPayment">Confirmando...</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    @endif
+
     @if ($showManualRefundModal)
         <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
             <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-xl p-6 w-full max-w-md mx-4 space-y-5">

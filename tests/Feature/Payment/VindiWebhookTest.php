@@ -130,6 +130,39 @@ test('ProcessVindiWebhook marca pagamento como pago e atualiza pedido', function
         ->and($ctx['order']->status)->toBe('paid');
 });
 
+test('ProcessVindiWebhook confirma pagamento mas mantém pedido agendado como scheduled, não paid', function () {
+    $ctx = vindiWebhookContext();
+    $ctx['order']->update(['scheduled_at' => now()->addDays(2)]);
+
+    $wallet = Mockery::mock(WalletServiceInterface::class);
+    $wallet->shouldReceive('creditForOrder')->once();
+    app()->instance(WalletServiceInterface::class, $wallet);
+
+    $transactions = Mockery::mock(TransactionServiceInterface::class);
+    $transactions->shouldReceive('createForPayment')->once();
+    app()->instance(TransactionServiceInterface::class, $transactions);
+
+    $payload = [
+        'token_account' => 'tok_test',
+        'transaction' => [
+            'token' => 'vindi_tok_wh_001',
+            'status_name' => 'Aprovada',
+            'order_number' => (string) $ctx['order']->id,
+        ],
+    ];
+
+    $job = new ProcessVindiWebhook('vindi_tok_wh_001', 'Aprovada', $payload);
+    $job->handle();
+
+    $ctx['payment']->refresh();
+    $ctx['order']->refresh();
+
+    // Pagamento confirma normalmente (carteira/transação já foram creditadas acima) — só o
+    // status do pedido fica em 'scheduled' pra não disparar preparo/nota fiscal antes da hora.
+    expect($ctx['payment']->status)->toBe('paid')
+        ->and($ctx['order']->status)->toBe('scheduled');
+});
+
 test('ProcessVindiWebhook fallback por order_number namespaced (sem token local ainda) encontra o pedido', function () {
     $ctx = vindiWebhookContext();
     $ctx['payment']->update(['vindi_transaction_token' => null]);

@@ -46,6 +46,9 @@ class Index extends Component
     #[Url]
     public string $viewMode = 'list';
 
+    /** Pedido com o modal "Confirmar pagamento" (recebido na entrega) aberto, ou null. */
+    public ?int $confirmingPaymentOrderId = null;
+
     const KANBAN_STATUSES = ['scheduled', 'pending', 'awaiting_payment', 'paid', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled'];
 
     const KANBAN_PER_PAGE = 15;
@@ -282,9 +285,23 @@ class Index extends Component
      * do PDV pra não abranger pedidos online aguardando webhook Vindi/Asaas (mesmo status
      * 'awaiting_payment' é usado nesse fluxo, mas ali quem confirma é o gateway, não o admin).
      */
+    public function openConfirmPaymentModal(int $orderId): void
+    {
+        abort_unless($this->canUpdate, 403);
+
+        $this->confirmingPaymentOrderId = $orderId;
+    }
+
+    public function closeConfirmPaymentModal(): void
+    {
+        $this->confirmingPaymentOrderId = null;
+    }
+
     public function confirmPayment(int $orderId): void
     {
         abort_unless($this->canUpdate, 403);
+
+        $this->confirmingPaymentOrderId = null;
 
         $order = $this->isSuperAdmin
             ? Order::withoutGlobalScope(CompanyScope::class)->findOrFail($orderId)

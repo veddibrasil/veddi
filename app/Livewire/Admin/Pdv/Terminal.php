@@ -93,7 +93,7 @@ class Terminal extends Component
     public bool $canUseFiscalNotes = false;
 
     // ── Entrega ───────────────────────────────────────────────────────────────
-    public string $deliveryType = 'balcao'; // 'balcao' | 'entrega'
+    public string $deliveryType = 'balcao'; // 'balcao' | 'entrega' | 'retirar'
 
     public string $deliveryAddress = '';
 
@@ -112,6 +112,8 @@ class Terminal extends Component
     public ?string $deliveryFeeError = null;
 
     public string $deliveryPaymentStatus = 'paid'; // 'paid' | 'on_delivery' — só relevante quando deliveryType === 'entrega'
+
+    public string $pickupPaymentStatus = 'paid'; // 'paid' | 'on_pickup' — só relevante quando deliveryType === 'retirar'
 
     // ── Agendamento ───────────────────────────────────────────────────────────
     public bool $isScheduled = false;

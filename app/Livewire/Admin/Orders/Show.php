@@ -25,6 +25,10 @@ class Show extends Component
 
     public bool $canUpdate = false;
 
+    // ── Confirmar pagamento na entrega ──────────────────────────────────────
+
+    public bool $showConfirmPaymentModal = false;
+
     // ── Manual refund ────────────────────────────────────────────────────────
 
     public bool $showManualRefundModal = false;
@@ -211,9 +215,23 @@ class Show extends Component
      * do PDV pra não abranger pedidos online aguardando webhook Vindi/Asaas (mesmo status
      * 'awaiting_payment' é usado nesse fluxo, mas ali quem confirma é o gateway, não o admin).
      */
+    public function openConfirmPaymentModal(): void
+    {
+        abort_unless($this->canUpdate, 403);
+
+        $this->showConfirmPaymentModal = true;
+    }
+
+    public function closeConfirmPaymentModal(): void
+    {
+        $this->showConfirmPaymentModal = false;
+    }
+
     public function confirmPayment(): void
     {
         abort_unless($this->canUpdate, 403);
+
+        $this->showConfirmPaymentModal = false;
 
         if ($this->order->order_type !== 'pdv' || $this->order->status !== 'awaiting_payment') {
             $this->addError('status', 'Este pedido não está aguardando confirmação de pagamento na entrega.');

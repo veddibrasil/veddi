@@ -1121,6 +1121,7 @@
                                         <flux:radio.group wire:model.live="deliveryType" variant="segmented" class="w-full">
                                             <flux:radio value="balcao" label="Balcão" />
                                             <flux:radio value="entrega" label="Entrega" />
+                                            <flux:radio value="retirar" label="Retirar" />
                                         </flux:radio.group>
                                     </div>
 
@@ -1233,7 +1234,7 @@
                                     </div>
                                 @endif
 
-                                @if ($deliveryType === 'entrega')
+                                @if (in_array($deliveryType, ['entrega', 'retirar']))
                                     <div class="space-y-1.5">
                                         @include('livewire.admin.pdv._customer-search')
                                     </div>
@@ -1297,6 +1298,14 @@
                                             <flux:radio.group wire:model.live="deliveryPaymentStatus" variant="segmented" class="w-full">
                                                 <flux:radio value="paid" label="Já está pago" />
                                                 <flux:radio value="on_delivery" label="Receber na entrega" />
+                                            </flux:radio.group>
+                                        </div>
+                                    @elseif ($deliveryType === 'retirar')
+                                        <div class="space-y-1.5">
+                                            <flux:label class="text-xs font-semibold">Pagamento na retirada</flux:label>
+                                            <flux:radio.group wire:model.live="pickupPaymentStatus" variant="segmented" class="w-full">
+                                                <flux:radio value="paid" label="Já está pago" />
+                                                <flux:radio value="on_pickup" label="Pagar na retirada" />
                                             </flux:radio.group>
                                         </div>
                                     @else
