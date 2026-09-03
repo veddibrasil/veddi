@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Admin\Pdv;
 
+use App\Livewire\Admin\Pdv\Concerns\HasBranchContext;
 use App\Livewire\Admin\Pdv\Concerns\HasCashSession;
 use App\Livewire\Admin\Pdv\Concerns\HasCatalog;
 use App\Livewire\Admin\Pdv\Concerns\HasCustomerManagement;
@@ -11,7 +12,6 @@ use App\Livewire\Admin\Pdv\Concerns\HasOrderTotals;
 use App\Livewire\Admin\Pdv\Concerns\HasPaymentState;
 use App\Livewire\Admin\Pdv\Concerns\HasProductLookup;
 use App\Livewire\Admin\Pdv\Concerns\HasSplitPayment;
-use App\Models\Branch;
 use App\Models\PdvAuditLog;
 use App\Models\Product;
 use App\Models\User;
@@ -22,6 +22,7 @@ use Livewire\Component;
 /** Mesa/comanda. Venda direta/balcão fica em {@see Terminal}. */
 class TabTerminal extends Component
 {
+    use HasBranchContext;
     use HasCashSession;
     use HasCatalog;
     use HasCustomerManagement;
@@ -184,20 +185,7 @@ class TabTerminal extends Component
         $this->waiterModuleEnabled = (bool) $company->waiter_module_enabled;
         $this->canUseFiscalNotes = $company->canUseFiscalNotes();
 
-        $userBranchId = $user->branchIdForCompany($company);
-
-        $branch = $userBranchId
-            ? Branch::where('company_id', $company->id)->where('active', true)->find($userBranchId)
-            : null;
-
-        if (! $branch) {
-            $branch = Branch::where('company_id', $company->id)
-                ->where('active', true)
-                ->orderBy('id')
-                ->first();
-        }
-
-        $this->selectedBranchId = $branch?->id;
+        $this->selectedBranchId = $this->resolveInitialBranch($company, $user)?->id;
 
         if ($this->isWaiter) {
             $this->step = 'catalog';
@@ -230,6 +218,11 @@ class TabTerminal extends Component
         $this->tabCustomerName = '';
         $this->openingNewTabForTable = false;
         unset($this->branchServiceCharge);
+
+        $company = app()->bound('current.company') ? app('current.company') : null;
+        if ($company) {
+            $this->rememberSelectedBranch($company->id);
+        }
 
         if ($this->isWaiter) {
             $this->step = 'catalog';

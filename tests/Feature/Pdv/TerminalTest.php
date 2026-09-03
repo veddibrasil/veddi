@@ -83,6 +83,32 @@ test('terminal exibe produtos disponíveis na filial', function () {
         ->assertSee($product->name);
 });
 
+test('operador sem filial fixa que troca de filial no PDV continua nela ao recarregar a página', function () {
+    ['company' => $company, 'admin' => $admin, 'branch' => $branch] = pdvContext();
+
+    $otherBranch = Branch::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Outra filial',
+        'address' => 'Rua B, 2',
+        'city' => 'SP',
+        'active' => true,
+        'opens_at' => '00:00:00',
+        'closes_at' => '23:59:59',
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->assertSet('selectedBranchId', $branch->id)
+        ->set('selectedBranchId', $otherBranch->id)
+        ->assertSet('selectedBranchId', $otherBranch->id);
+
+    // Sem esse fix, uma nova carga da página (novo mount) sempre voltava
+    // pra filial de menor id em vez de manter a última escolhida.
+    Livewire::test(Terminal::class)
+        ->assertSet('selectedBranchId', $otherBranch->id);
+});
+
 test('produtos no terminal seguem ordem da categoria e depois do produto', function () {
     ['admin' => $admin, 'company' => $company, 'branch' => $branch] = pdvContext();
 

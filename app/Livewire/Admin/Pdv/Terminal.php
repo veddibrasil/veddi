@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Admin\Pdv;
 
+use App\Livewire\Admin\Pdv\Concerns\HasBranchContext;
 use App\Livewire\Admin\Pdv\Concerns\HasCartManagement;
 use App\Livewire\Admin\Pdv\Concerns\HasCashSession;
 use App\Livewire\Admin\Pdv\Concerns\HasCatalog;
@@ -16,13 +17,13 @@ use App\Livewire\Admin\Pdv\Concerns\HasPaymentState;
 use App\Livewire\Admin\Pdv\Concerns\HasProductLookup;
 use App\Livewire\Admin\Pdv\Concerns\HasScheduling;
 use App\Livewire\Admin\Pdv\Concerns\HasSplitPayment;
-use App\Models\Branch;
 use App\Models\PdvAuditLog;
 use Livewire\Component;
 
 /** Venda direta / balcão. Fluxo de mesa/comanda fica em {@see TabTerminal}. */
 class Terminal extends Component
 {
+    use HasBranchContext;
     use HasCartManagement;
     use HasCashSession;
     use HasCatalog;
@@ -207,20 +208,7 @@ class Terminal extends Component
         $this->manualDiscountAllowed = (bool) $company->pdv_manual_discount_enabled;
         $this->canUseFiscalNotes = $company->canUseFiscalNotes();
 
-        $userBranchId = $user->branchIdForCompany($company);
-
-        $branch = $userBranchId
-            ? Branch::where('company_id', $company->id)->where('active', true)->find($userBranchId)
-            : null;
-
-        if (! $branch) {
-            $branch = Branch::where('company_id', $company->id)
-                ->where('active', true)
-                ->orderBy('id')
-                ->first();
-        }
-
-        $this->selectedBranchId = $branch?->id;
+        $this->selectedBranchId = $this->resolveInitialBranch($company, $user)?->id;
 
         $this->syncCashSession();
     }
@@ -233,6 +221,11 @@ class Terminal extends Component
         $this->activeCategoryId = null;
         $this->search = '';
         unset($this->branchServiceCharge);
+
+        $company = app()->bound('current.company') ? app('current.company') : null;
+        if ($company) {
+            $this->rememberSelectedBranch($company->id);
+        }
 
         $this->syncCashSession();
     }
