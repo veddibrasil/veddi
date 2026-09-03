@@ -72,6 +72,14 @@ class EscPosPrinterService implements PrinterServiceInterface
             $printer->setJustification(Printer::JUSTIFY_LEFT);
         }
 
+        if ($order->scheduled_at) {
+            $printer->setJustification(Printer::JUSTIFY_CENTER);
+            $printer->setEmphasis(true);
+            $printer->text('*** AGENDADO: '.$order->scheduled_at->setTimezone(config('app.timezone'))->format('d/m/Y H:i')." ***\n");
+            $printer->setEmphasis(false);
+            $printer->setJustification(Printer::JUSTIFY_LEFT);
+        }
+
         $printer->text("Pedido: {$order->order_number}\n");
 
         if ($order->table_label) {

@@ -29,6 +29,12 @@
 
     <div class="type-banner">{{ ['cozinha' => 'COZINHA', 'bar' => 'BAR', 'entrega' => 'ENTREGA'][$station] }}</div>
 
+    @if ($order->scheduled_at)
+        <div class="type-banner" style="background-color: #b45309;">
+            AGENDADO: {{ $order->scheduled_at->setTimezone(config('app.timezone'))->format('d/m/Y H:i') }}
+        </div>
+    @endif
+
     <table style="width: 100%;">
         <tr>
             <td>Pedido</td>

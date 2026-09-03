@@ -48,6 +48,12 @@
         <div class="type-banner">RETIRADA NO LOCAL</div>
     @endif
 
+    @if ($order->scheduled_at)
+        <div class="type-banner" style="background-color: #b45309;">
+            AGENDADO: {{ $order->scheduled_at->setTimezone(config('app.timezone'))->format('d/m/Y H:i') }}
+        </div>
+    @endif
+
     {{-- Informações do pedido --}}
     <table class="row">
         <tr>
