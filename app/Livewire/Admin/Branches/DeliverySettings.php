@@ -138,6 +138,7 @@ class DeliverySettings extends Component
             'number' => $address->number ?? '',
             'neighborhood' => $address->neighborhood ?? '',
             'city' => $address->city ?? '',
+            'state' => $address->state ?? '',
             'cep' => $address->cep ?? '',
         ]);
 
