@@ -416,6 +416,8 @@
                 </button>
             </div>
 
+            @error('distanceTiers') <p class="text-red-500 text-xs">{{ $message }}</p> @enderror
+
             @if (count($distanceTiers) === 0)
                 <p class="text-sm text-neutral-400 dark:text-neutral-500">Nenhuma faixa cadastrada. Clique em "Adicionar faixa" para começar.</p>
             @else

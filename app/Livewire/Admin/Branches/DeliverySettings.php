@@ -207,6 +207,53 @@ class DeliverySettings extends Component
         [$this->zones[$index + 1], $this->zones[$index]] = [$this->zones[$index], $this->zones[$index + 1]];
     }
 
+    /**
+     * Garante que as faixas de distância comecem em 0 km e não tenham lacunas entre si,
+     * senão endereços muito próximos da filial (ex.: mesma rua) ficam sem faixa e são
+     * recusados como "fora da área de entrega".
+     */
+    private function distanceTiersAreContiguous(): bool
+    {
+        $tiers = collect($this->distanceTiers)
+            ->map(fn ($t) => ['min_km' => (float) $t['min_km'], 'max_km' => $t['max_km'] !== '' ? (float) $t['max_km'] : null])
+            ->sortBy('min_km')
+            ->values();
+
+        if ($tiers->isEmpty()) {
+            $this->addError('distanceTiers', 'Adicione ao menos uma faixa de distância.');
+
+            return false;
+        }
+
+        if ($tiers->first()['min_km'] !== 0.0) {
+            $this->addError('distanceTiers', 'A primeira faixa de distância precisa começar em 0 km, senão endereços muito próximos da filial ficam fora da área de entrega.');
+
+            return false;
+        }
+
+        foreach ($tiers as $index => $tier) {
+            $next = $tiers->get($index + 1);
+
+            if ($next === null) {
+                continue;
+            }
+
+            if ($tier['max_km'] === null) {
+                $this->addError('distanceTiers', 'Só a última faixa de distância pode ficar sem km máximo.');
+
+                return false;
+            }
+
+            if ($tier['max_km'] !== $next['min_km']) {
+                $this->addError('distanceTiers', 'As faixas de distância precisam ser contínuas, sem lacunas entre elas.');
+
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public function save(): void
     {
         abort_unless($this->canSave, 403);
@@ -221,6 +268,10 @@ class DeliverySettings extends Component
                     return;
                 }
             }
+        }
+
+        if ($this->fee_type === 'distance' && ! $this->distanceTiersAreContiguous()) {
+            return;
         }
 
         $companyId = $this->branch->company_id;
