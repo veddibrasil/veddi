@@ -87,7 +87,7 @@ class Index extends Component
             $roleSlug = $user->roleForCompany($company);
             $this->userStation = in_array($roleSlug, ['cozinha', 'bar', 'entrega']) ? $roleSlug : null;
 
-            if ($this->userStation !== null) {
+            if ($user->isBranchScoped($company)) {
                 $this->userBranchId = $user->branchIdForCompany($company);
             }
         }
@@ -332,6 +332,7 @@ class Index extends Component
 
         $base = $base
             ->whereDate('created_at', today())
+            ->when($this->userBranchId, fn ($q) => $q->where('branch_id', $this->userBranchId))
             ->when($this->isSuperAdmin && $this->companyFilter, fn ($q) => $q->where('company_id', $this->companyFilter));
 
         $summarize = function (\Illuminate\Database\Eloquent\Builder $query): array {
@@ -372,6 +373,7 @@ class Index extends Component
             $baseQuery = $baseQuery
                 ->when($this->userStation === 'entrega', fn ($q) => $q->deliveryOnly())
                 ->when(in_array($this->userStation, ['cozinha', 'bar']), fn ($q) => $q->forStation($this->userStation))
+                ->when($this->userBranchId, fn ($q) => $q->where('branch_id', $this->userBranchId))
                 ->when($this->search, fn ($q) => $q
                     ->where('order_number', 'like', "%{$this->search}%")
                     ->orWhereHas('customer', fn ($cq) => $cq->where('name', 'like', "%{$this->search}%"))
@@ -419,6 +421,7 @@ class Index extends Component
         $orders = $query
             ->when($this->userStation === 'entrega', fn ($q) => $q->deliveryOnly())
             ->when(in_array($this->userStation, ['cozinha', 'bar']), fn ($q) => $q->forStation($this->userStation))
+            ->when($this->userBranchId, fn ($q) => $q->where('branch_id', $this->userBranchId))
             ->when($this->statusFilter === 'new', fn ($q) => $q->whereIn('status', ['pending', 'awaiting_payment', 'paid']))
             ->when($this->statusFilter && $this->statusFilter !== 'new', fn ($q) => $q->where('status', $this->statusFilter))
             ->when($this->search, fn ($q) => $q

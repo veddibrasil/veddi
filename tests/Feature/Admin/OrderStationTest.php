@@ -578,6 +578,59 @@ test('entrega só vê pedidos de entrega na listagem (lista e kanban), admin vê
         ->assertSee($deliveryOrder->order_number);
 });
 
+// ─── Listagem de pedidos: usuário não-admin vê só a própria filial ───────────
+
+test('branch_manager só vê pedidos da própria filial na listagem (lista e kanban), company_admin vê todas', function () {
+    ['company' => $company, 'admin' => $admin, 'branch' => $branchA, 'customer' => $customer, 'order' => $orderBranchA] = stationOrderContext();
+
+    $branchB = Branch::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Filial Norte',
+        'address' => 'Rua C, 20',
+        'city' => 'SP',
+        'active' => true,
+        'opens_at' => '00:00:00',
+        'closes_at' => '23:59:59',
+    ]);
+
+    $orderBranchB = Order::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'customer_id' => $customer->id,
+        'branch_id' => $branchB->id,
+        'subtotal' => 25.00,
+        'delivery_fee' => 0,
+        'discount' => 0,
+        'total' => 25.00,
+        'fee' => 0,
+        'net_value' => 25.00,
+        'status' => 'pending',
+        'notes' => '',
+        'payment_method' => 'pix',
+        'order_type' => 'pdv',
+    ]);
+
+    $companyAdmin = User::factory()->create();
+    $companyAdmin->companies()->attach($company->id, ['role' => 'company_admin']);
+
+    $manager = User::factory()->create();
+    $manager->companies()->attach($company->id, ['role' => 'branch_manager', 'branch_id' => $branchA->id]);
+
+    $this->actingAs($companyAdmin);
+    Livewire::test(OrdersIndex::class)
+        ->assertSee($orderBranchA->order_number)
+        ->assertSee($orderBranchB->order_number);
+
+    $this->actingAs($manager);
+    Livewire::test(OrdersIndex::class)
+        ->assertSee($orderBranchA->order_number)
+        ->assertDontSee($orderBranchB->order_number);
+
+    Livewire::test(OrdersIndex::class)
+        ->set('viewMode', 'kanban')
+        ->assertSee($orderBranchA->order_number)
+        ->assertDontSee($orderBranchB->order_number);
+});
+
 // ─── Notificações: entrega só é notificado de pedidos de entrega ─────────────
 
 test('CreateOrderNotification marca is_delivery de acordo com o pedido', function () {
