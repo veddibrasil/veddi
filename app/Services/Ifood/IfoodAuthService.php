@@ -2,6 +2,7 @@
 
 namespace App\Services\Ifood;
 
+use App\Exceptions\IfoodMerchantAlreadyLinkedException;
 use App\Models\IfoodIntegration;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -173,6 +174,8 @@ class IfoodAuthService
         $integration->user_code_expires_at = null;
 
         if (count($merchants) === 1) {
+            $this->assertMerchantNotLinkedElsewhere($integration, $merchants[0]['id']);
+
             $integration->merchant_id = $merchants[0]['id'];
             $integration->available_merchants = null;
             $integration->status = 'active';
@@ -207,10 +210,44 @@ class IfoodAuthService
             throw new RuntimeException("iFood: merchant_id '{$merchantId}' não está entre os merchants autorizados desta integração (integration_id={$integration->id}).");
         }
 
+        $this->assertMerchantNotLinkedElsewhere($integration, $merchantId);
+
         $integration->merchant_id = $merchantId;
         $integration->available_merchants = null;
         $integration->status = 'active';
         $integration->save();
+    }
+
+    /**
+     * Um merchant_id do iFood só pode estar ativo numa empresa Veddi por vez —
+     * sem essa checagem, duas empresas conectando a mesma loja iFood (troca de
+     * conta, erro do lojista, etc.) fazem o polling correr em paralelo pro mesmo
+     * merchant e o pedido cai aleatoriamente numa empresa ou outra (bug real
+     * encontrado em sandbox em 2026-09-04, ver [[ifood_integration]]).
+     */
+    private function assertMerchantNotLinkedElsewhere(IfoodIntegration $integration, string $merchantId): void
+    {
+        $conflict = IfoodIntegration::withoutGlobalScopes()
+            ->where('merchant_id', $merchantId)
+            ->where('status', 'active')
+            ->where('id', '!=', $integration->id)
+            ->first();
+
+        if (! $conflict) {
+            return;
+        }
+
+        Log::channel('ifood')->error('iFood: merchant já conectado em outra empresa, bloqueando nova ativação', [
+            'merchant_id' => $merchantId,
+            'ifood_integration_id' => $integration->id,
+            'company_id' => $integration->company_id,
+            'conflicting_ifood_integration_id' => $conflict->id,
+            'conflicting_company_id' => $conflict->company_id,
+        ]);
+
+        throw new IfoodMerchantAlreadyLinkedException(
+            'iFood: esta loja já está conectada em outra empresa da plataforma. Desconecte a integração anterior antes de conectar aqui.'
+        );
     }
 
     /**

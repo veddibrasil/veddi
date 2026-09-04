@@ -242,6 +242,38 @@ test('completeAuthorization lança exceção quando o código de autorização �
         ->and($integration->user_code)->toBe('ABCD-1234');
 });
 
+test('completeAuthorization bloqueia quando o merchant já está ativo em outra empresa', function () {
+    $other = makeIfoodIntegration('conflict-existing');
+    $other->update(['merchant_id' => 'merchant-shared', 'status' => 'active']);
+
+    $integration = makeIfoodIntegration('conflict-new');
+    $integration->update([
+        'merchant_id' => null,
+        'user_code' => 'ABCD-1234',
+        'authorization_code_verifier' => 'verifier-xyz',
+        'user_code_expires_at' => now()->addMinutes(5),
+        'status' => 'disconnected',
+    ]);
+
+    Http::fake([
+        '*/authentication/v1.0/oauth/token' => Http::response([
+            'accessToken' => 'access-final',
+            'refreshToken' => 'refresh-final',
+            'expiresIn' => 21600,
+        ], 200),
+        '*/merchant/v1.0/merchants' => Http::response([
+            ['id' => 'merchant-shared', 'name' => 'Loja Compartilhada'],
+        ], 200),
+    ]);
+
+    expect(fn () => (new IfoodAuthService)->completeAuthorization($integration, 'HTLM-KWVR'))
+        ->toThrow(\App\Exceptions\IfoodMerchantAlreadyLinkedException::class);
+
+    $integration->refresh();
+    expect($integration->merchant_id)->toBeNull()
+        ->and($integration->status)->toBe('disconnected');
+});
+
 test('completeAuthorization com mais de um merchant guarda a lista e não ativa sozinho', function () {
     $integration = makeIfoodIntegration('exchange-multi');
     $integration->update([
@@ -293,6 +325,28 @@ test('selectMerchant confirma um merchant válido da lista e ativa a integraçã
     expect($integration->merchant_id)->toBe('merchant-b')
         ->and($integration->available_merchants)->toBeNull()
         ->and($integration->status)->toBe('active');
+});
+
+test('selectMerchant bloqueia quando o merchant escolhido já está ativo em outra empresa', function () {
+    $other = makeIfoodIntegration('select-conflict-existing');
+    $other->update(['merchant_id' => 'merchant-b', 'status' => 'active']);
+
+    $integration = makeIfoodIntegration('select-conflict-new');
+    $integration->update([
+        'merchant_id' => null,
+        'available_merchants' => [
+            ['id' => 'merchant-a', 'name' => 'Loja A'],
+            ['id' => 'merchant-b', 'name' => 'Loja B'],
+        ],
+        'status' => 'disconnected',
+    ]);
+
+    expect(fn () => (new IfoodAuthService)->selectMerchant($integration, 'merchant-b'))
+        ->toThrow(\App\Exceptions\IfoodMerchantAlreadyLinkedException::class);
+
+    $integration->refresh();
+    expect($integration->merchant_id)->toBeNull()
+        ->and($integration->status)->toBe('disconnected');
 });
 
 test('selectMerchant rejeita merchant_id que não está entre os autorizados', function () {

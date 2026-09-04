@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Admin\Settings;
 
+use App\Exceptions\IfoodMerchantAlreadyLinkedException;
 use App\Jobs\SyncIfoodCatalogJob;
 use App\Models\Branch;
 use App\Models\Company;
@@ -133,6 +134,10 @@ class IfoodIntegrationSettings extends Component
 
         try {
             app(IfoodAuthService::class)->completeAuthorization($integration, $this->authorizationCode);
+        } catch (IfoodMerchantAlreadyLinkedException $e) {
+            $this->addError('authorizationCode', $e->getMessage());
+
+            return;
         } catch (\Throwable) {
             $this->addError('authorizationCode', 'Código inválido ou expirado. Confira o que o iFood mostrou e tente de novo.');
 
@@ -175,6 +180,10 @@ class IfoodIntegrationSettings extends Component
 
         try {
             app(IfoodAuthService::class)->selectMerchant($integration, $this->selectedMerchantId);
+        } catch (IfoodMerchantAlreadyLinkedException $e) {
+            $this->addError('selectedMerchantId', $e->getMessage());
+
+            return;
         } catch (\Throwable) {
             $this->addError('selectedMerchantId', 'Não foi possível confirmar essa loja. Tente novamente.');
 
