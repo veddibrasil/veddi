@@ -86,6 +86,14 @@ test('branch_manager não acessa settings (somente company_admin)', function () 
         ->assertForbidden();
 });
 
+test('branch_manager não acessa integrações (somente company_admin)', function () {
+    [, $user] = makeUserWithRole('branch_manager');
+
+    $this->actingAs($user)
+        ->get(route('admin.integrations.index'))
+        ->assertForbidden();
+});
+
 test('branch_manager não acessa gerenciamento de papéis (somente company_admin)', function () {
     [, $user] = makeUserWithRole('branch_manager');
 

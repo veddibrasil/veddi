@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Contracts\AsaasServiceInterface;
 use App\Contracts\FiscalNoteProviderInterface;
+use App\Contracts\IfoodGatewayContract;
 use App\Contracts\OrderServiceInterface;
 use App\Contracts\PrinterServiceInterface;
 use App\Contracts\RefundServiceInterface;
@@ -14,6 +15,7 @@ use App\Events\NewOrderPlaced;
 use App\Events\OrderStatusUpdated;
 use App\Listeners\CreateVindiPartnerAccountOnActivation;
 use App\Listeners\IssueFiscalNoteOnPaid;
+use App\Listeners\PropagateIfoodOrderStatus;
 use App\Listeners\SendOrderConfirmationEmail;
 use App\Listeners\SendOrderDeliveredEmail;
 use App\Listeners\SendWelcomeSubscriptionEmail;
@@ -29,6 +31,7 @@ use App\Models\ProductCategory;
 use App\Models\Role;
 use App\Models\User;
 use App\Observers\FiscalNoteObserver;
+use App\Observers\ProductObserver;
 use App\Policies\BranchPolicy;
 use App\Policies\CompanyPolicy;
 use App\Policies\CouponPolicy;
@@ -40,6 +43,7 @@ use App\Policies\UserPolicy;
 use App\Services\Finance\TransactionService;
 use App\Services\Finance\WalletService;
 use App\Services\Fiscal\FocusNfeService;
+use App\Services\Ifood\IfoodGatewayService;
 use App\Services\Order\OrderService;
 use App\Services\Payment\AsaasService;
 use App\Services\Printer\EscPosPrinterService;
@@ -92,6 +96,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(TransactionServiceInterface::class, TransactionService::class);
         $this->app->bind(RefundServiceInterface::class, RefundService::class);
         $this->app->bind(PrinterServiceInterface::class, EscPosPrinterService::class);
+        $this->app->bind(IfoodGatewayContract::class, IfoodGatewayService::class);
     }
 
     /**
@@ -105,6 +110,7 @@ class AppServiceProvider extends ServiceProvider
         $this->configureEvents();
 
         FiscalNote::observe(FiscalNoteObserver::class);
+        Product::observe(ProductObserver::class);
     }
 
     protected function configureEvents(): void
@@ -116,6 +122,7 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(OrderStatusUpdated::class, SendWhatsAppStatusNotification::class);
         Event::listen(OrderStatusUpdated::class, SendOrderDeliveredEmail::class);
         Event::listen(OrderStatusUpdated::class, IssueFiscalNoteOnPaid::class);
+        Event::listen(OrderStatusUpdated::class, PropagateIfoodOrderStatus::class);
     }
 
     protected function registerPolicies(): void

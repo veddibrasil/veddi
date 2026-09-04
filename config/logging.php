@@ -206,6 +206,20 @@ return [
             'tap' => [\App\Logging\DiscordWebhookTap::class],
         ],
 
+        'ifood' => [
+            'driver' => 'stack',
+            'channels' => ['ifood_target', 'nightwatch'],
+            'ignore_exceptions' => false,
+            'tap' => [\App\Logging\DiscordWebhookTap::class],
+        ],
+
+        'ifood_target' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/laravel.log'),
+            'level' => 'debug',
+            'replace_placeholders' => true,
+        ],
+
         'webhook_target' => [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),

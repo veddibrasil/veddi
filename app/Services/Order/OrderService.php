@@ -4,6 +4,7 @@ namespace App\Services\Order;
 
 use App\Contracts\OrderServiceInterface;
 use App\Contracts\RefundServiceInterface;
+use App\Enums\OrderChannel;
 use App\Events\OrderItemsUpdated;
 use App\Jobs\NotifyScheduledOrderJob;
 use App\Models\CompanyNotification;
@@ -39,14 +40,20 @@ class OrderService implements OrderServiceInterface
         float $extraDiscount = 0.0,
         float $serviceFee = 0.0,
         float $couvertFee = 0.0,
+        string $channel = 'chat',
+        ?string $externalOrderId = null,
+        ?array $externalMetadata = null,
     ): Order {
         $currentCompany = app()->bound('current.company') ? app('current.company') : null;
 
-        $products = $this->resolveProducts($cart, $branchId, $orderType === 'pdv' ? 'available_in_pdv' : 'available_in_delivery');
+        $channelColumn = $channel === OrderChannel::Ifood->value
+            ? 'available_in_ifood'
+            : ($orderType === 'pdv' ? 'available_in_pdv' : 'available_in_delivery');
+        $products = $this->resolveProducts($cart, $branchId, $channelColumn);
 
         $customer = \App\Models\Customer::withoutGlobalScopes()->find($customerId);
 
-        $order = $this->transactionRetryingOnOrderNumberCollision(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer, $extraDiscount, $serviceFee, $couvertFee) {
+        $order = $this->transactionRetryingOnOrderNumberCollision(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer, $extraDiscount, $serviceFee, $couvertFee, $channel, $externalOrderId, $externalMetadata) {
             $subtotal = 0.0;
             $optionPricing = app(CartOptionPricing::class);
             foreach ($cart as $cartKey => $item) {
@@ -109,6 +116,9 @@ class OrderService implements OrderServiceInterface
                 'payment_method' => strtolower($paymentMethod),
                 'order_type' => $orderType,
                 'coupon_id' => $coupon?->id,
+                'channel' => $channel,
+                'external_order_id' => $externalOrderId,
+                'external_metadata' => $externalMetadata,
             ]);
 
             if ($orderType === 'delivery' && $customer) {

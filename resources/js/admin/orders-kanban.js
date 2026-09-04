@@ -36,6 +36,7 @@ const registerOrdersKanban = () => {
                     this._drag = {
                         orderId: parseInt(card.dataset.orderId, 10),
                         oldStatus: column?.dataset?.kanbanCol,
+                        channel: card.dataset.channel,
                     };
 
                     event.dataTransfer.effectAllowed = 'move';
@@ -63,6 +64,7 @@ const registerOrdersKanban = () => {
 
                     const orderId = this._drag.orderId || parseInt(event.dataTransfer.getData('text/plain'), 10);
                     const oldStatus = this._drag.oldStatus;
+                    const channel = this._drag.channel;
                     const newStatus = col.dataset.kanbanCol;
 
                     if (!orderId || !newStatus || newStatus === oldStatus) {
@@ -71,7 +73,13 @@ const registerOrdersKanban = () => {
                     }
 
                     try {
-                        await wire.call('updateOrderStatus', orderId, newStatus);
+                        // Cancelar pedido iFood exige motivo fechado — abre modal em vez
+                        // de aplicar o cancelamento direto do drag.
+                        if (newStatus === 'cancelled' && channel === 'ifood') {
+                            await wire.call('openIfoodCancelModal', orderId);
+                        } else {
+                            await wire.call('updateOrderStatus', orderId, newStatus);
+                        }
                     } catch (error) {
                         await wire.$refresh();
                     } finally {

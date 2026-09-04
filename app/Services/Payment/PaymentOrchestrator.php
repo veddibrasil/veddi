@@ -531,6 +531,37 @@ class PaymentOrchestrator
         ];
     }
 
+    /**
+     * Pedido do iFood chega pré-pago — o iFood já custodiou o pagamento, não a
+     * Vindi/Asaas do Veddi. Só registra o Payment local (mesmo racional de
+     * processCash/processCardMachine); não credita carteira aqui — o crédito
+     * líquido real (descontada a comissão do iFood) vem só da conciliação de
+     * repasses (Fase 5.2), que lê o extrato real da Financial API do iFood.
+     */
+    public function processIfoodPrepaid(Order $order): array
+    {
+        $payment = Payment::create([
+            'order_id' => $order->id,
+            'payment_gateway' => 'ifood',
+            'amount' => (float) $order->total,
+            'pix_fee' => 0.0,
+            'status' => 'paid',
+            'paid_at' => now(),
+            'payment_token' => hash('sha256', 'ifood'.$order->id.now()->timestamp.Str::random(8)),
+        ]);
+
+        Log::channel('payments')->info('Pagamento iFood (pré-pago) registrado', [
+            'order_id' => $order->id,
+            'amount' => $order->total,
+        ]);
+
+        return [
+            'id' => $payment->id,
+            'status' => 'paid',
+            'gateway' => 'ifood',
+        ];
+    }
+
     private function vindiAddressFromOrder(Order $order, Customer $customer): array
     {
         $branch = $order->branch;

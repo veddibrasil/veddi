@@ -4,6 +4,7 @@ use App\Helpers\Validation;
 use App\Http\Controllers\AsaasSimulatePaymentController;
 use App\Http\Controllers\AsaasWebhookController;
 use App\Http\Controllers\FiscalWebhookController;
+use App\Http\Controllers\IfoodWebhookController;
 use App\Http\Controllers\RegisterCompanyController;
 use App\Http\Controllers\VindiSimulatePaymentController;
 use App\Http\Controllers\VindiWebhookController;
@@ -47,6 +48,11 @@ Route::post('/webhooks/vindi', VindiWebhookController::class)
 Route::post('/webhooks/fiscal', FiscalWebhookController::class)
     ->middleware('throttle:60,1')
     ->name('webhook.fiscal');
+
+// --- Webhook iFood (sem auth, sem CSRF — coberto por webhooks/* em bootstrap/app.php) ---
+Route::post('/webhooks/ifood', IfoodWebhookController::class)
+    ->middleware('throttle:120,1')
+    ->name('webhook.ifood');
 
 // --- API pública ---
 Route::post('/api/validate-cpf', function (Request $request) {
@@ -116,6 +122,8 @@ Route::middleware(['auth', 'verified', 'company.active'])
         Route::middleware('company.role:company_admin')->group(function () {
             Route::get('/settings', \App\Livewire\Admin\Settings\CompanySettings::class)->name('settings');
             // Route::get('/settings/whatsapp', \App\Livewire\Admin\Settings\WhatsAppSettings::class)->name('settings.whatsapp');
+            Route::get('/settings/ifood', \App\Livewire\Admin\Settings\IfoodIntegrationSettings::class)->name('settings.ifood');
+            Route::get('/integrations', \App\Livewire\Admin\Integrations\Index::class)->name('integrations.index');
 
             Route::get('/roles', \App\Livewire\Admin\Roles\Index::class)->name('roles.index');
 

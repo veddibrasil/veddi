@@ -16,6 +16,7 @@ class Order extends Model
     protected $fillable = [
         'company_id', 'order_number', 'customer_id', 'branch_id', 'subtotal', 'delivery_fee', 'total',
         'status', 'notes', 'scheduled_at', 'payment_method', 'order_type', 'delivery_type', 'coupon_id', 'discount', 'fee', 'net_value',
+        'channel', 'external_order_id', 'external_metadata',
         'delivery_address_id',
         'cash_received', 'cash_change',
         'manual_discount', 'service_fee', 'couvert_fee',
@@ -30,6 +31,7 @@ class Order extends Model
         'confirmation_email_sent_at' => 'datetime',
         'scheduled_at' => 'datetime',
         'is_open_tab' => 'boolean',
+        'external_metadata' => 'array',
     ];
 
     protected static function booted(): void
@@ -309,6 +311,10 @@ class Order extends Model
     /** Human-readable label for the order's origin/channel (chat, PDV balcão, mesa/comanda, delivery via PDV). */
     public function getOriginLabelAttribute(): string
     {
+        if ($this->channel === 'ifood') {
+            return 'iFood';
+        }
+
         if ($this->order_type === 'pdv') {
             if ($this->is_open_tab) {
                 return $this->restaurant_table_id ? 'Mesa' : 'Comanda';

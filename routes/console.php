@@ -54,6 +54,42 @@ Schedule::job(new \App\Jobs\ReconcilePendingFiscalNotesJob)
 //     ->withoutOverlapping()
 //     ->onOneServer();
 
+// Comentado: reconciliação depende do endpoint da Financial API do iFood — não confirmado em sandbox ainda.
+// Schedule::job(new \App\Jobs\ReconcileIfoodSettlementsJob)
+//     ->name('reconcile-ifood-settlements')
+//     ->dailyAt('04:00')
+//     ->withoutOverlapping()
+//     ->onOneServer();
+
+// Fallback de polling iFood — só cobre integrações não saudáveis via webhook
+// (pula as demais, ver PollIfoodEventsJob).
+Schedule::job(new \App\Jobs\PollIfoodEventsJob)
+    ->name('poll-ifood-events')
+    ->everyThirtySeconds()
+    ->withoutOverlapping(expiresAt: 1)
+    ->onOneServer();
+
+// Detecta integrações iFood cujo webhook parou de chegar e aciona o fallback
+// de polling acima (via webhook_status=degraded).
+Schedule::job(new \App\Jobs\MonitorIfoodWebhookHealthJob)
+    ->name('monitor-ifood-webhook-health')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(expiresAt: 3)
+    ->onOneServer();
+
+// Sync completo de catálogo iFood (preço/cardápio) — segurança além do sync em
+// tempo real de disponibilidade (ProductObserver -> SyncIfoodCatalogJob por item).
+Schedule::call(function () {
+    \App\Models\IfoodIntegration::withoutGlobalScopes()
+        ->where('status', 'active')
+        ->pluck('branch_id')
+        ->each(fn ($branchId) => \App\Jobs\SyncIfoodCatalogJob::dispatch($branchId));
+})
+    ->name('sync-ifood-catalog-full')
+    ->dailyAt('05:00')
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // Probe de recovery automático do Asaas — executa apenas se o circuit não estiver fechado
 Schedule::call(function () {
     $cb = app(\App\Services\Payment\AsaasCircuitBreaker::class);

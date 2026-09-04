@@ -20,6 +20,11 @@ interface OrderServiceInterface
         ?Coupon $coupon = null,
         ?Carbon $scheduledAt = null,
         float $extraDiscount = 0.0,
+        float $serviceFee = 0.0,
+        float $couvertFee = 0.0,
+        string $channel = 'chat',
+        ?string $externalOrderId = null,
+        ?array $externalMetadata = null,
     ): Order;
 
     public function cancelOrder(Order $order, int $customerId): void;

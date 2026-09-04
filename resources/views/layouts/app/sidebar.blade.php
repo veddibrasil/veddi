@@ -187,6 +187,9 @@
                             <flux:sidebar.item icon="banknotes" :href="route('admin.wallet')" :current="request()->routeIs('admin.wallet')" wire:navigate target="_blank">
                                 Carteira (Yapay)
                             </flux:sidebar.item>
+                            <flux:sidebar.item icon="link" :href="route('admin.integrations.index')" :current="request()->routeIs('admin.integrations.*') || request()->routeIs('admin.settings.ifood')" wire:navigate>
+                                Integrações
+                            </flux:sidebar.item>
                             {{-- <flux:sidebar.item icon="chat-bubble-left-ellipsis" :href="route('admin.settings.whatsapp')" :current="request()->routeIs('admin.settings.whatsapp')" wire:navigate>
                                 WhatsApp
                             </flux:sidebar.item> --}}

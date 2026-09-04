@@ -2,10 +2,13 @@
 
 namespace App\Livewire\Admin\Orders;
 
+use App\Enums\IfoodRejectReason;
+use App\Enums\OrderChannel;
 use App\Events\OrderStatusUpdated;
 use App\Models\Company;
 use App\Models\Order;
 use App\Models\Scopes\CompanyScope;
+use App\Services\Ifood\IfoodOrderActionService;
 use App\Services\Order\OrderService;
 use App\Services\Payment\PaymentOrchestrator;
 use Illuminate\Support\Facades\Cache;
@@ -13,6 +16,7 @@ use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithPagination;
+use Throwable;
 
 class Index extends Component
 {
@@ -48,6 +52,11 @@ class Index extends Component
 
     /** Pedido com o modal "Confirmar pagamento" (recebido na entrega) aberto, ou null. */
     public ?int $confirmingPaymentOrderId = null;
+
+    /** Pedido iFood com o modal de recusa/cancelamento aberto, ou null. */
+    public ?int $ifoodCancelOrderId = null;
+
+    public string $ifoodCancelReason = '';
 
     const KANBAN_STATUSES = ['scheduled', 'pending', 'awaiting_payment', 'paid', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled'];
 
@@ -178,7 +187,8 @@ class Index extends Component
         return $query
             ->when($this->channelFilter === 'pdv', fn ($q) => $q->where('order_type', 'pdv'))
             ->when($this->channelFilter === 'chat', fn ($q) => $q->whereIn('order_type', ['delivery', 'pickup']))
-            ->when($this->channelFilter === 'delivery', fn ($q) => $q->deliveryOnly());
+            ->when($this->channelFilter === 'delivery', fn ($q) => $q->deliveryOnly())
+            ->when($this->channelFilter === 'ifood', fn ($q) => $q->where('channel', 'ifood'));
     }
 
     public function setViewMode(string $mode): void
@@ -254,6 +264,28 @@ class Index extends Component
 
         $previousStatus = $order->status;
 
+        // Pedido iFood: aceitar/recusar precisa chamar a API do iFood (senão o
+        // pedido nunca é confirmado lá e acaba expirando/cancelando sozinho do
+        // lado deles, mesmo que aqui pareça "preparando"). Cancelamento de pedido
+        // iFood exige motivo fechado — passa pelo modal em vez do drag direto.
+        if ($order->channel === OrderChannel::Ifood->value) {
+            if ($newStatus === 'cancelled') {
+                $this->openIfoodCancelModal($order->id);
+
+                return;
+            }
+
+            if ($newStatus === 'preparing' && $previousStatus !== 'preparing') {
+                try {
+                    app(IfoodOrderActionService::class)->accept($order);
+                } catch (Throwable $e) {
+                    session()->flash('error', $e->getMessage());
+                }
+
+                return;
+            }
+        }
+
         try {
             if ($newStatus === 'cancelled') {
                 if ($previousStatus !== 'cancelled') {
@@ -320,6 +352,66 @@ class Index extends Component
         Log::channel('orders')->info('Pagamento na entrega confirmado pelo admin via kanban', [
             'order_id' => $order->id,
             'admin_id' => auth()->id(),
+        ]);
+    }
+
+    public function openIfoodCancelModal(int $orderId): void
+    {
+        abort_unless($this->canUpdate, 403);
+
+        $this->ifoodCancelOrderId = $orderId;
+        $this->ifoodCancelReason = '';
+    }
+
+    public function closeIfoodCancelModal(): void
+    {
+        $this->ifoodCancelOrderId = null;
+        $this->ifoodCancelReason = '';
+    }
+
+    /**
+     * Recusa (pedido ainda não aceito) ou solicita cancelamento (pedido já
+     * aceito, aguarda confirmação assíncrona do iFood — status local não muda
+     * aqui, ver IfoodOrderActionService::requestCancellation) do pedido iFood.
+     */
+    public function confirmIfoodCancel(): void
+    {
+        abort_unless($this->canUpdate, 403);
+
+        if (! $this->ifoodCancelOrderId || ! IfoodRejectReason::tryFrom($this->ifoodCancelReason)) {
+            return;
+        }
+
+        $order = $this->isSuperAdmin
+            ? Order::withoutGlobalScope(CompanyScope::class)->findOrFail($this->ifoodCancelOrderId)
+            : Order::findOrFail($this->ifoodCancelOrderId);
+
+        $orderId = $order->id;
+        $reason = $this->ifoodCancelReason;
+        $wasAccepted = in_array($order->status, ['preparing', 'ready', 'out_for_delivery'], true);
+
+        $this->closeIfoodCancelModal();
+
+        try {
+            $service = app(IfoodOrderActionService::class);
+
+            if ($wasAccepted) {
+                $service->requestCancellation($order, $reason);
+                session()->flash('status', 'Cancelamento solicitado ao iFood — aguardando confirmação.');
+            } else {
+                $service->reject($order, $reason);
+            }
+        } catch (Throwable $e) {
+            session()->flash('error', $e->getMessage());
+
+            return;
+        }
+
+        Log::channel('ifood')->info('iFood: recusa/cancelamento acionado pelo admin via kanban', [
+            'order_id' => $orderId,
+            'admin_id' => auth()->id(),
+            'reason' => $reason,
+            'ja_aceito' => $wasAccepted,
         ]);
     }
 

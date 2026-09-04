@@ -964,6 +964,46 @@
         </div>
     @endif
 
+    @if ($showIfoodCancelModal)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-xl p-6 w-full max-w-md mx-4 space-y-5">
+                <div class="flex items-start gap-4">
+                    <div class="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-neutral-800 dark:text-neutral-100">Recusar/cancelar pedido iFood</h3>
+                        <p class="text-sm text-neutral-500 dark:text-neutral-400 mt-1">O iFood exige um motivo fechado para recusa ou cancelamento.</p>
+                    </div>
+                </div>
+
+                <select wire:model.live="ifoodCancelReason"
+                        class="w-full rounded-lg border-neutral-300 dark:border-zinc-600 dark:bg-zinc-900 text-sm">
+                    <option value="">Selecione um motivo</option>
+                    @foreach (\App\Enums\IfoodRejectReason::cases() as $reason)
+                        <option value="{{ $reason->value }}">{{ $reason->label() }}</option>
+                    @endforeach
+                </select>
+
+                <div class="flex justify-end gap-3 pt-1">
+                    <button wire:click="closeIfoodCancelModal"
+                            class="px-4 py-2 text-sm text-neutral-600 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200">
+                        Voltar
+                    </button>
+                    <button wire:click="confirmIfoodCancel"
+                            wire:loading.attr="disabled"
+                            @disabled(! $ifoodCancelReason)
+                            class="px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg transition-colors">
+                        <span wire:loading.remove wire:target="confirmIfoodCancel">Confirmar</span>
+                        <span wire:loading wire:target="confirmIfoodCancel">Enviando...</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    @endif
+
     @if ($showManualRefundModal)
         <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
             <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-xl p-6 w-full max-w-md mx-4 space-y-5">

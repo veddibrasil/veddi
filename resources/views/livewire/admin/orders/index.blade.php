@@ -1,4 +1,16 @@
 <div class="space-y-4" x-data="stationPrintListener()">
+@if (session('status'))
+    <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm dark:bg-green-900/30 dark:border-green-700 dark:text-green-400">
+        {{ session('status') }}
+    </div>
+@endif
+
+@if (session('error'))
+    <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm dark:bg-red-900/30 dark:border-red-700 dark:text-red-400">
+        {{ session('error') }}
+    </div>
+@endif
+
 @if ($userStation === 'entrega')
     {{-- ── ENTREGA: fila mobile em cards, sem kanban ──────────────────────── --}}
     <div class="flex items-center justify-between">
@@ -154,6 +166,7 @@
             <flux:select.option value="chat">Chat</flux:select.option>
             <flux:select.option value="pdv">PDV</flux:select.option>
             <flux:select.option value="delivery">Entrega</flux:select.option>
+            <flux:select.option value="ifood">iFood</flux:select.option>
         </flux:select>
         @if($viewMode === 'list')
         <flux:select wire:model.live="statusFilter" placeholder="Todos os status" class="w-full sm:w-44 shrink-0">
@@ -210,7 +223,11 @@
                             <p class="text-sm text-neutral-600 dark:text-neutral-400">{{ $order->customer->name ?? '—' }}</p>
                             <p class="text-xs text-neutral-400 dark:text-neutral-500">
                                 {{ $order->branch->name ?? '—' }} · {{ $order->created_at->format('d/m H:i') }}
-                                <span class="ml-1 px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-500 dark:bg-zinc-700 dark:text-neutral-400">{{ $order->origin_label }}</span>
+                                <span @class([
+                                    'ml-1 px-1.5 py-0.5 rounded',
+                                    'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400' => $order->channel === 'ifood',
+                                    'bg-neutral-100 text-neutral-500 dark:bg-zinc-700 dark:text-neutral-400' => $order->channel !== 'ifood',
+                                ])>{{ $order->origin_label }}</span>
                             </p>
                             @if ($order->scheduled_at)
                                 <p class="text-xs text-amber-600 dark:text-amber-400 font-medium">🕐 Agendado: {{ $order->scheduled_at->setTimezone(config('app.timezone'))->format('d/m H:i') }}</p>
@@ -304,6 +321,7 @@
                 <div
                     wire:key="kanban-card-{{ $order->id }}"
                     data-order-id="{{ $order->id }}"
+                    data-channel="{{ $order->channel }}"
                     class="bg-white dark:bg-zinc-800 rounded-lg p-3 shadow-sm border border-neutral-200 dark:border-zinc-700 select-none {{ $canUpdate ? 'cursor-grab active:cursor-grabbing' : 'cursor-default opacity-75' }}"
                 >
                     <div class="flex items-start justify-between gap-2 mb-1">
@@ -388,6 +406,46 @@
                         class="px-4 py-2 text-sm font-medium bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg transition-colors">
                     <span wire:loading.remove wire:target="confirmPayment({{ $confirmingPaymentOrderId }})">Confirmar pagamento</span>
                     <span wire:loading wire:target="confirmPayment({{ $confirmingPaymentOrderId }})">Confirmando...</span>
+                </button>
+            </div>
+        </div>
+    </div>
+@endif
+
+@if ($ifoodCancelOrderId)
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-xl p-6 w-full max-w-md mx-4 space-y-5">
+            <div class="flex items-start gap-4">
+                <div class="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+                    <svg class="w-5 h-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-neutral-800 dark:text-neutral-100">Recusar/cancelar pedido iFood</h3>
+                    <p class="text-sm text-neutral-500 dark:text-neutral-400 mt-1">O iFood exige um motivo fechado para recusa ou cancelamento.</p>
+                </div>
+            </div>
+
+            <select wire:model.live="ifoodCancelReason"
+                    class="w-full rounded-lg border-neutral-300 dark:border-zinc-600 dark:bg-zinc-900 text-sm">
+                <option value="">Selecione um motivo</option>
+                @foreach (\App\Enums\IfoodRejectReason::cases() as $reason)
+                    <option value="{{ $reason->value }}">{{ $reason->label() }}</option>
+                @endforeach
+            </select>
+
+            <div class="flex justify-end gap-3 pt-1">
+                <button wire:click="closeIfoodCancelModal"
+                        class="px-4 py-2 text-sm text-neutral-600 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200">
+                    Voltar
+                </button>
+                <button wire:click="confirmIfoodCancel"
+                        wire:loading.attr="disabled"
+                        @disabled(! $ifoodCancelReason)
+                        class="px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg transition-colors">
+                    <span wire:loading.remove wire:target="confirmIfoodCancel">Confirmar</span>
+                    <span wire:loading wire:target="confirmIfoodCancel">Enviando...</span>
                 </button>
             </div>
         </div>

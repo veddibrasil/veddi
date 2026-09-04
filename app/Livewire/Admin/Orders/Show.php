@@ -3,12 +3,15 @@
 namespace App\Livewire\Admin\Orders;
 
 use App\Contracts\RefundServiceInterface;
+use App\Enums\IfoodRejectReason;
+use App\Enums\OrderChannel;
 use App\Events\OrderItemsUpdated;
 use App\Events\OrderStatusUpdated;
 use App\Jobs\IssueFiscalNote;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Services\Ifood\IfoodOrderActionService;
 use App\Services\Order\FeeCalculator;
 use App\Services\Order\OrderService;
 use App\Services\Order\StockService;
@@ -18,6 +21,7 @@ use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
+use Throwable;
 
 class Show extends Component
 {
@@ -28,6 +32,12 @@ class Show extends Component
     // ── Confirmar pagamento na entrega ──────────────────────────────────────
 
     public bool $showConfirmPaymentModal = false;
+
+    // ── Recusar/cancelar pedido iFood (motivo fechado) ──────────────────────
+
+    public bool $showIfoodCancelModal = false;
+
+    public string $ifoodCancelReason = '';
 
     // ── Manual refund ────────────────────────────────────────────────────────
 
@@ -182,6 +192,33 @@ class Show extends Component
 
         $previousStatus = $this->order->status;
 
+        // Pedido iFood: aceitar/recusar precisa chamar a API do iFood (senão o
+        // pedido nunca é confirmado lá e acaba expirando/cancelando sozinho do
+        // lado deles, mesmo que aqui pareça "preparando"). Cancelamento de pedido
+        // iFood exige motivo fechado — passa pelo modal em vez do botão direto.
+        if ($this->order->channel === OrderChannel::Ifood->value) {
+            if ($status === 'cancelled') {
+                $this->openIfoodCancelModal();
+
+                return;
+            }
+
+            if ($status === 'preparing' && $previousStatus !== 'preparing') {
+                try {
+                    app(IfoodOrderActionService::class)->accept($this->order);
+                } catch (Throwable $e) {
+                    session()->flash('error', $e->getMessage());
+
+                    return;
+                }
+
+                $this->order->refresh();
+                session()->flash('status', 'Status atualizado.');
+
+                return;
+            }
+        }
+
         try {
             if ($status === 'cancelled') {
                 if ($previousStatus !== 'cancelled') {
@@ -208,6 +245,64 @@ class Show extends Component
         ]);
 
         session()->flash('status', 'Status atualizado.');
+    }
+
+    public function openIfoodCancelModal(): void
+    {
+        abort_unless($this->canUpdate, 403);
+
+        $this->ifoodCancelReason = '';
+        $this->showIfoodCancelModal = true;
+    }
+
+    public function closeIfoodCancelModal(): void
+    {
+        $this->showIfoodCancelModal = false;
+        $this->ifoodCancelReason = '';
+    }
+
+    /**
+     * Recusa (pedido ainda não aceito) ou solicita cancelamento (pedido já
+     * aceito, aguarda confirmação assíncrona do iFood — status local não muda
+     * aqui, ver IfoodOrderActionService::requestCancellation) do pedido iFood.
+     */
+    public function confirmIfoodCancel(): void
+    {
+        abort_unless($this->canUpdate, 403);
+
+        if (! IfoodRejectReason::tryFrom($this->ifoodCancelReason)) {
+            return;
+        }
+
+        $reason = $this->ifoodCancelReason;
+        $wasAccepted = in_array($this->order->status, ['preparing', 'ready', 'out_for_delivery'], true);
+
+        $this->closeIfoodCancelModal();
+
+        try {
+            $service = app(IfoodOrderActionService::class);
+
+            if ($wasAccepted) {
+                $service->requestCancellation($this->order, $reason);
+                session()->flash('status', 'Cancelamento solicitado ao iFood — aguardando confirmação.');
+            } else {
+                $service->reject($this->order, $reason);
+                session()->flash('status', 'Pedido recusado no iFood.');
+            }
+        } catch (Throwable $e) {
+            session()->flash('error', $e->getMessage());
+
+            return;
+        }
+
+        $this->order->refresh();
+
+        Log::channel('ifood')->info('iFood: recusa/cancelamento acionado pelo admin via tela do pedido', [
+            'order_id' => $this->order->id,
+            'admin_id' => auth()->id(),
+            'reason' => $reason,
+            'ja_aceito' => $wasAccepted,
+        ]);
     }
 
     /**
