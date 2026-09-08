@@ -62,9 +62,8 @@ class IfoodOrderActionService
     /**
      * Solicita cancelamento de um pedido já aceito. Diferente de reject(), o
      * cancelamento no iFood não é imediato — fica pendente de aprovação do lado
-     * deles. O status local só deve mudar quando a confirmação chegar via evento
-     * (CAN), que ainda não é tratado pelo pipeline de eventos (Fase 3 cobre só
-     * PLC) — fica como próximo passo, não é resolvido silenciosamente aqui.
+     * deles. O status local só muda quando a confirmação chegar via evento CAN
+     * (ver App\Jobs\ProcessIfoodOrderJob::handleCancelled), não aqui.
      */
     public function requestCancellation(Order $order, string $reasonCode): void
     {

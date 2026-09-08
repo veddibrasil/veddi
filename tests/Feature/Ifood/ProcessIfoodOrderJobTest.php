@@ -113,6 +113,74 @@ test('item não mapeado falha o evento sem criar pedido malformado', function ()
     expect(Order::withoutGlobalScopes()->count())->toBe(0);
 });
 
+test('evento CAN cancela pedido existente e dispara OrderStatusUpdated', function () {
+    \Illuminate\Support\Facades\Event::fake([\App\Events\OrderStatusUpdated::class]);
+
+    $ctx = ifoodContext('job5');
+    $order = ifoodKanbanOrder($ctx, 'preparing', 'ifood-order-job5');
+
+    $event = IfoodOrderEvent::create([
+        'event_id' => 'evt-job-5',
+        'event_type' => 'CAN',
+        'source' => 'webhook',
+        'ifood_integration_id' => $ctx['integration']->id,
+        'payload' => ['orderId' => 'ifood-order-job5', 'merchantId' => $ctx['integration']->merchant_id],
+        'status' => 'pending',
+    ]);
+
+    runIfoodOrderJob($event->id);
+
+    $event->refresh();
+    $order->refresh();
+
+    expect($event->status)->toBe('processed')
+        ->and($event->order_id)->toBe($order->id)
+        ->and($order->status)->toBe('cancelled');
+
+    \Illuminate\Support\Facades\Event::assertDispatched(\App\Events\OrderStatusUpdated::class);
+});
+
+test('evento CAN em pedido já cancelado é idempotente', function () {
+    $ctx = ifoodContext('job6');
+    $order = ifoodKanbanOrder($ctx, 'cancelled', 'ifood-order-job6');
+
+    $event = IfoodOrderEvent::create([
+        'event_id' => 'evt-job-6',
+        'event_type' => 'CAN',
+        'source' => 'webhook',
+        'ifood_integration_id' => $ctx['integration']->id,
+        'payload' => ['orderId' => 'ifood-order-job6', 'merchantId' => $ctx['integration']->merchant_id],
+        'status' => 'pending',
+    ]);
+
+    runIfoodOrderJob($event->id);
+
+    $event->refresh();
+    $order->refresh();
+
+    expect($event->status)->toBe('processed')
+        ->and($order->status)->toBe('cancelled');
+});
+
+test('evento CAN para pedido inexistente localmente apenas marca processado', function () {
+    ['integration' => $integration] = ifoodContext('job7');
+
+    $event = IfoodOrderEvent::create([
+        'event_id' => 'evt-job-7',
+        'event_type' => 'CAN',
+        'source' => 'webhook',
+        'ifood_integration_id' => $integration->id,
+        'payload' => ['orderId' => 'ifood-order-nao-existe', 'merchantId' => $integration->merchant_id],
+        'status' => 'pending',
+    ]);
+
+    runIfoodOrderJob($event->id);
+
+    $event->refresh();
+    expect($event->status)->toBe('processed')
+        ->and($event->order_id)->toBeNull();
+});
+
 test('evento que não é PLC é marcado processado sem criar pedido', function () {
     ['integration' => $integration] = ifoodContext('job4');
 

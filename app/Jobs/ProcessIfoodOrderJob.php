@@ -7,10 +7,13 @@ use App\Contracts\OrderServiceInterface;
 use App\DTOs\IfoodOrderDTO;
 use App\Enums\OrderChannel;
 use App\Events\NewOrderPlaced;
+use App\Events\OrderStatusUpdated;
 use App\Exceptions\IfoodMappingException;
 use App\Models\Customer;
 use App\Models\IfoodOrderEvent;
+use App\Models\Order;
 use App\Services\Ifood\IfoodOrderMapper;
+use App\Services\Order\StockService;
 use App\Services\Payment\PaymentOrchestrator;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -25,6 +28,9 @@ class ProcessIfoodOrderJob implements ShouldBeUnique, ShouldQueue
 
     /** Código de evento do iFood que representa um novo pedido colocado. */
     private const EVENT_TYPE_PLACED = 'PLC';
+
+    /** Código de evento do iFood que representa cancelamento confirmado (por qualquer parte). */
+    private const EVENT_TYPE_CANCELLED = 'CAN';
 
     public int $tries = 3;
 
@@ -60,6 +66,12 @@ class ProcessIfoodOrderJob implements ShouldBeUnique, ShouldQueue
 
         try {
             app()->instance('current.company', $company);
+
+            if ($event->event_type === self::EVENT_TYPE_CANCELLED) {
+                $this->handleCancelled($event);
+
+                return;
+            }
 
             if ($event->event_type !== self::EVENT_TYPE_PLACED) {
                 Log::channel('ifood')->info('iFood: evento não é de novo pedido, ignorado nesta fase', [
@@ -155,6 +167,57 @@ class ProcessIfoodOrderJob implements ShouldBeUnique, ShouldQueue
 
             return $event;
         });
+    }
+
+    /**
+     * Cobre tanto rejeição/cancelamento que nós solicitamos (requestCancellation,
+     * confirmado depois via este evento) quanto cancelamento iniciado pelo
+     * consumidor/iFood — em ambos os casos o iFood só considera definitivo
+     * quando este evento chega, então é aqui que o estoque é de fato devolvido.
+     */
+    private function handleCancelled(IfoodOrderEvent $event): void
+    {
+        $ifoodOrderId = $event->payload['orderId'] ?? null;
+
+        if (! $ifoodOrderId) {
+            Log::channel('ifood')->warning('iFood: evento CAN sem orderId no payload', [
+                'event_id' => $event->event_id,
+            ]);
+            $event->update(['status' => 'processed', 'processed_at' => now()]);
+
+            return;
+        }
+
+        $order = Order::where('external_order_id', $ifoodOrderId)
+            ->where('channel', OrderChannel::Ifood->value)
+            ->first();
+
+        if (! $order) {
+            // Pedido nunca chegou a ser criado localmente (ex: PLC falhou antes) —
+            // não há o que cancelar, só confirma o evento pra não ficar reprocessando.
+            Log::channel('ifood')->warning('iFood: evento CAN pra pedido não encontrado localmente', [
+                'event_id' => $event->event_id,
+                'ifood_order_id' => $ifoodOrderId,
+            ]);
+            $event->update(['status' => 'processed', 'processed_at' => now()]);
+
+            return;
+        }
+
+        if ($order->status !== 'cancelled') {
+            $order->update(['status' => 'cancelled']);
+            $order->refresh();
+            app(StockService::class)->restoreForOrder($order);
+            OrderStatusUpdated::dispatch($order);
+
+            Log::channel('ifood')->info('iFood: pedido cancelado a partir de evento CAN', [
+                'event_id' => $event->event_id,
+                'order_id' => $order->id,
+                'ifood_order_id' => $ifoodOrderId,
+            ]);
+        }
+
+        $event->update(['status' => 'processed', 'order_id' => $order->id, 'processed_at' => now()]);
     }
 
     private function resolveOrCreateCustomer(IfoodOrderDTO $dto, int $companyId): Customer

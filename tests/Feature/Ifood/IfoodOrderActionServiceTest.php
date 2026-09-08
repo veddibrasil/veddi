@@ -93,7 +93,7 @@ test('requestCancellation com motivo válido chama gateway sem mudar status loca
 
     $order->refresh();
     // Cancelamento no iFood não é imediato — status local só muda quando a
-    // confirmação chegar (fora do escopo desta fase).
+    // confirmação chegar via evento CAN (ver ProcessIfoodOrderJobTest).
     expect($order->status)->toBe('preparing');
 });
 
