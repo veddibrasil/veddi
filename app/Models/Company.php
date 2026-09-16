@@ -340,6 +340,14 @@ class Company extends Model
         return (bool) $this->fiscal_notes_enabled;
     }
 
+    public function canUseIfoodIntegration(): bool
+    {
+        return ! $this->isFree()
+            || (bool) $this->pdv_module_enabled
+            || (bool) $this->fiscal_notes_enabled
+            || (bool) $this->waiter_module_enabled;
+    }
+
     /**
      * @deprecated Ambígua desde que passou a existir 1 config por filial — retorna
      * qualquer uma das configs da empresa sem garantia de qual. Use

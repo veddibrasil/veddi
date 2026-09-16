@@ -14,6 +14,8 @@ class Index extends Component
     {
         $company = app('current.company');
 
+        abort_unless($company->canUseIfoodIntegration(), 403, 'Módulo de Integrações não está habilitado para esta empresa.');
+
         $connectedBranches = IfoodIntegration::where('company_id', $company->id)
             ->where('status', 'active')
             ->whereNotNull('merchant_id')

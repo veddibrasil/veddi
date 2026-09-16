@@ -50,6 +50,8 @@ class IfoodIntegrationSettings extends Component
     {
         $company = app('current.company');
 
+        abort_unless($company->canUseIfoodIntegration(), 403, 'Módulo de Integrações não está habilitado para esta empresa.');
+
         $branches = Branch::withoutGlobalScopes()->where('company_id', $company->id)->orderBy('name')->get();
         $this->branchOptions = $branches->map(fn (Branch $b) => ['id' => $b->id, 'name' => $b->name])->all();
 
