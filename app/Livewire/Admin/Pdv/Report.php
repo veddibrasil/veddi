@@ -70,7 +70,7 @@ class Report extends Component
 
     private function buildOrderQuery()
     {
-        return Order::with(['customer', 'branch'])
+        return Order::with(['customer', 'branch', 'attendant'])
             ->where('order_type', 'pdv')
             ->when($this->dateStart, fn ($q) => $q->whereDate('created_at', '>=', $this->dateStart))
             ->when($this->dateEnd, fn ($q) => $q->whereDate('created_at', '<=', $this->dateEnd))

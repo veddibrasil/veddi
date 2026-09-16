@@ -21,6 +21,7 @@ class Order extends Model
         'cash_received', 'cash_change',
         'manual_discount', 'service_fee', 'couvert_fee',
         'pdv_cash_session_id',
+        'attendant_id',
         'table_label',
         'is_open_tab',
         'restaurant_table_id',
@@ -139,6 +140,12 @@ class Order extends Model
     public function pdvCashSession(): BelongsTo
     {
         return $this->belongsTo(PdvCashSession::class, 'pdv_cash_session_id');
+    }
+
+    /** Usuário que lançou o pedido/comanda no PDV (atendente). Null para pedidos vindos do chat público. */
+    public function attendant(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'attendant_id');
     }
 
     public function coupon(): BelongsTo

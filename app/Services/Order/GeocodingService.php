@@ -81,14 +81,17 @@ class GeocodingService
                 return null;
             }
 
-            // Reject a match whose returned CEP doesn't belong to the same
-            // "region" as the CEP we searched for — Nominatim's free-text
-            // search happily matches a same-named street in a different
-            // city/state, which produces wildly wrong coordinates.
+            // Reject a match whose returned CEP diverges too much from the CEP we
+            // searched for — Nominatim's free-text search happily matches a
+            // same-named street in a different city/state, which produces wildly
+            // wrong coordinates. Brazilian OSM postcode tagging is sparse/coarse
+            // (often just the 5-digit sector prefix), so only the first 3 digits
+            // (region/sub-region) are compared instead of demanding an exact
+            // 5-digit match, which rejected otherwise-correct results.
             if ($expectedCep !== null) {
                 $returnedCep = preg_replace('/\D/', '', $results[0]['address']['postcode'] ?? '');
 
-                if ($returnedCep !== '' && substr($returnedCep, 0, 5) !== substr($expectedCep, 0, 5)) {
+                if ($returnedCep !== '' && substr($returnedCep, 0, 3) !== substr($expectedCep, 0, 3)) {
                     Log::warning('Geocoding rejeitado: CEP retornado diverge do CEP buscado', [
                         'query' => $query,
                         'expected_cep' => $expectedCep,

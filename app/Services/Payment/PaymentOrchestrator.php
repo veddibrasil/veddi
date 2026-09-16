@@ -11,6 +11,7 @@ use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Payment;
+use App\Models\PdvCashSession;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -516,7 +517,24 @@ class PaymentOrchestrator
             'payment_token' => hash('sha256', 'delivery'.$order->id.now()->timestamp),
         ]);
 
-        $order->update(['status' => 'paid']);
+        // Reatribui pro caixa de quem está confirmando/recebendo agora — o pedido pode
+        // ter nascido num caixa que já fechou; o dinheiro entra na conferência de quem
+        // realmente o recebeu (mesmo critério usado no fechamento de comandas, ver
+        // HasOpenTabs::closeTab).
+        $currentSessionId = auth()->id()
+            ? PdvCashSession::withoutGlobalScopes()
+                ->where('company_id', $order->company_id)
+                ->where('branch_id', $order->branch_id)
+                ->where('user_id', auth()->id())
+                ->whereNull('closed_at')
+                ->latest()
+                ->value('id')
+            : null;
+
+        $order->update([
+            'status' => 'paid',
+            'pdv_cash_session_id' => $currentSessionId ?? $order->pdv_cash_session_id,
+        ]);
 
         Log::channel('payments')->info('Pagamento na entrega confirmado (PDV)', [
             'order_id' => $order->id,

@@ -119,6 +119,7 @@ class OrderService implements OrderServiceInterface
                 'channel' => $channel,
                 'external_order_id' => $externalOrderId,
                 'external_metadata' => $externalMetadata,
+                'attendant_id' => $orderType === 'pdv' ? auth()->id() : null,
             ]);
 
             if ($orderType === 'delivery' && $customer) {

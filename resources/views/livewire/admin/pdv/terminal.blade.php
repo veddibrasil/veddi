@@ -1256,8 +1256,9 @@
                                                      const res = await fetch('https://viacep.com.br/ws/' + digits + '/json/');
                                                      const d = await res.json();
                                                      if (!d.erro) {
-                                                         if (d.logradouro) $wire.set('deliveryAddress', d.logradouro);
-                                                         if (d.bairro)     $wire.set('deliveryNeighborhood', d.bairro);
+                                                         if (d.logradouro) $wire.set('deliveryAddress', d.logradouro, false);
+                                                         if (d.bairro)     $wire.set('deliveryNeighborhood', d.bairro, false);
+                                                         if (d.uf)         $wire.set('deliveryState', d.uf, false);
                                                          if (d.localidade) $wire.set('deliveryCity', d.localidade);
                                                      }
                                                  } catch(e) {}
@@ -1315,6 +1316,10 @@
                                     @endif
 
                                     @include('livewire.admin.pdv._split-payment')
+                                </div>
+
+                                <div class="text-xs text-neutral-500 dark:text-neutral-400">
+                                    Atendente: <span class="font-medium text-neutral-700 dark:text-neutral-200">{{ auth()->user()->name }}</span>
                                 </div>
 
                                 <div class="space-y-1.5">
