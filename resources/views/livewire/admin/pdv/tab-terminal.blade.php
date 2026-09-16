@@ -1026,6 +1026,10 @@
                                     @include('livewire.admin.pdv._split-payment')
                                 </div>
 
+                                <div class="text-xs text-neutral-500 dark:text-neutral-400">
+                                    Atendente: <span class="font-medium text-neutral-700 dark:text-neutral-200">{{ auth()->user()->name }}</span>
+                                </div>
+
                                 <div class="space-y-1.5">
                                     <flux:label class="text-xs font-semibold">Observação (opcional)</flux:label>
                                     <flux:textarea

@@ -64,6 +64,12 @@
             <td>Data</td>
             <td class="right">{{ $order->created_at->format('d/m/Y H:i') }}</td>
         </tr>
+        @if ($order->attendant)
+            <tr>
+                <td>Atendente</td>
+                <td class="right">{{ $order->attendant->name }}</td>
+            </tr>
+        @endif
     </table>
 
     <div class="divider"></div>

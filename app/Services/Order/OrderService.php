@@ -109,6 +109,7 @@ class OrderService implements OrderServiceInterface
                 'payment_method' => strtolower($paymentMethod),
                 'order_type' => $orderType,
                 'coupon_id' => $coupon?->id,
+                'attendant_id' => $orderType === 'pdv' ? auth()->id() : null,
             ]);
 
             if ($orderType === 'delivery' && $customer) {

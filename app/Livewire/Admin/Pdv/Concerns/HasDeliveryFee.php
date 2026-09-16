@@ -101,6 +101,7 @@ trait HasDeliveryFee
                 'number' => $this->deliveryNumber,
                 'neighborhood' => $this->deliveryNeighborhood,
                 'city' => $this->deliveryCity,
+                'state' => $this->deliveryState,
                 'cep' => $this->deliveryCep,
             ]);
 
@@ -131,6 +132,7 @@ trait HasDeliveryFee
         $this->deliveryComplement = '';
         $this->deliveryNeighborhood = '';
         $this->deliveryCity = '';
+        $this->deliveryState = '';
         $this->deliveryCep = '';
         $this->deliveryFeeAmount = 0.0;
         $this->deliveryFeeError = null;

@@ -202,6 +202,7 @@
                             <th class="px-4 py-2 text-left">Número</th>
                             <th class="px-4 py-2 text-left">Cliente</th>
                             <th class="px-4 py-2 text-left">Filial</th>
+                            <th class="px-4 py-2 text-left">Atendente</th>
                             <th class="px-4 py-2 text-left">Data</th>
                             <th class="px-4 py-2 text-left">Pagamento</th>
                             <th class="px-4 py-2 text-left">Status</th>
@@ -218,6 +219,7 @@
                                 <td class="px-4 py-3 font-mono text-xs text-purple-600 dark:text-purple-400">{{ $order->order_number }}</td>
                                 <td class="px-4 py-3 text-neutral-700 dark:text-neutral-200">{{ $order->customer?->name ?? '—' }}</td>
                                 <td class="px-4 py-3 text-neutral-500 dark:text-neutral-400">{{ $order->branch?->name ?? '—' }}</td>
+                                <td class="px-4 py-3 text-neutral-500 dark:text-neutral-400">{{ $order->attendant?->name ?? '—' }}</td>
                                 <td class="px-4 py-3 text-neutral-500 dark:text-neutral-400 text-xs">{{ $order->created_at->format('d/m/Y H:i') }}</td>
                                 <td class="px-4 py-3 text-neutral-600 dark:text-neutral-300">
                                     @php

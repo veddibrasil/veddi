@@ -106,6 +106,8 @@ class Terminal extends Component
 
     public string $deliveryCity = '';
 
+    public string $deliveryState = '';
+
     public string $deliveryCep = '';
 
     public float $deliveryFeeAmount = 0.0;
