@@ -178,10 +178,12 @@ class Index extends Component
 
         if ($this->editingId) {
             $coupon = Coupon::withoutGlobalScope(CompanyScope::class)->findOrFail($this->editingId);
+            $this->authorize('update', $coupon);
             $coupon->update($data);
             Log::channel('audit')->info('Cupom atualizado', ['admin_id' => auth()->id(), 'coupon_id' => $coupon->id, 'code' => $coupon->code]);
             session()->flash('status', 'Cupom atualizado com sucesso.');
         } else {
+            $this->authorize('create', Coupon::class);
             $coupon = Coupon::create($data);
             Log::channel('audit')->info('Cupom criado', ['admin_id' => auth()->id(), 'coupon_id' => $coupon->id, 'code' => $coupon->code]);
             session()->flash('status', 'Cupom criado com sucesso.');
@@ -193,6 +195,7 @@ class Index extends Component
     public function edit(int $id): void
     {
         $coupon = Coupon::withoutGlobalScope(CompanyScope::class)->findOrFail($id);
+        $this->authorize('view', $coupon);
 
         $this->editingId = $id;
         $this->code = $coupon->code;
@@ -216,6 +219,7 @@ class Index extends Component
     public function toggleActive(int $id): void
     {
         $coupon = Coupon::withoutGlobalScope(CompanyScope::class)->findOrFail($id);
+        $this->authorize('update', $coupon);
         $coupon->update(['active' => ! $coupon->active]);
         session()->flash('status', $coupon->fresh()->active ? 'Cupom ativado.' : 'Cupom desativado.');
     }
@@ -233,6 +237,7 @@ class Index extends Component
     public function delete(): void
     {
         $coupon = Coupon::withoutGlobalScope(CompanyScope::class)->findOrFail($this->deletingId);
+        $this->authorize('delete', $coupon);
         Log::channel('audit')->info('Cupom excluído', ['admin_id' => auth()->id(), 'coupon_id' => $coupon->id, 'code' => $coupon->code]);
         $coupon->delete();
         $this->deletingId = null;

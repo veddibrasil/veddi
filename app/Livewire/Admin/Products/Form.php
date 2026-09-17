@@ -103,7 +103,9 @@ class Form extends Component
             'sort_order' => ['integer', 'min:0'],
             'image' => ['nullable', 'image', 'max:2048'],
             'selectedBranches' => ['array'],
-            'selectedBranches.*' => ['exists:branches,id'],
+            'selectedBranches.*' => [
+                Rule::exists('branches', 'id')->where(fn ($q) => $q->where('company_id', $this->company_id)),
+            ],
             'optionGroups' => ['array'],
             'optionGroups.*.name' => ['required_with:optionGroups.*', 'string', 'max:150'],
             'optionGroups.*.total_qty' => ['required_with:optionGroups.*', 'integer', 'min:1'],

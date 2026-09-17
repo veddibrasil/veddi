@@ -132,16 +132,19 @@ Route::middleware(['auth', 'verified', 'company.active'])
 
         });
 
-        Route::get('/branches', \App\Livewire\Admin\Branches\Index::class)->name('branches.index');
-        Route::get('/branches/create', \App\Livewire\Admin\Branches\Form::class)->name('branches.create');
-        Route::get('/branches/{branch}/edit', \App\Livewire\Admin\Branches\Form::class)->name('branches.edit');
-        Route::get('/branches/{branch}/delivery', \App\Livewire\Admin\Branches\DeliverySettings::class)->name('branches.delivery');
-        Route::get('/branches/{branch}/printer', \App\Livewire\Admin\Branches\PrinterSettings::class)->name('branches.printer');
-        Route::get('/branches/{branch}/service-charges', \App\Livewire\Admin\Branches\ServiceCharges::class)->name('branches.service-charges');
-        Route::get('/branches/{branch}/tables', \App\Livewire\Admin\Branches\RestaurantTables::class)->name('branches.tables');
-        Route::get('/branches/{branch}/pauses', \App\Livewire\Admin\Branches\Pauses::class)->name('branches.pauses');
+        // Filiais e cupons: company_admin + branch_manager (autorização fina por Policy/permissão dentro do componente)
+        Route::middleware('company.role:company_admin,branch_manager')->group(function () {
+            Route::get('/branches', \App\Livewire\Admin\Branches\Index::class)->name('branches.index');
+            Route::get('/branches/create', \App\Livewire\Admin\Branches\Form::class)->name('branches.create');
+            Route::get('/branches/{branch}/edit', \App\Livewire\Admin\Branches\Form::class)->name('branches.edit');
+            Route::get('/branches/{branch}/delivery', \App\Livewire\Admin\Branches\DeliverySettings::class)->name('branches.delivery');
+            Route::get('/branches/{branch}/printer', \App\Livewire\Admin\Branches\PrinterSettings::class)->name('branches.printer');
+            Route::get('/branches/{branch}/service-charges', \App\Livewire\Admin\Branches\ServiceCharges::class)->name('branches.service-charges');
+            Route::get('/branches/{branch}/tables', \App\Livewire\Admin\Branches\RestaurantTables::class)->name('branches.tables');
+            Route::get('/branches/{branch}/pauses', \App\Livewire\Admin\Branches\Pauses::class)->name('branches.pauses');
 
-        Route::get('/coupons', \App\Livewire\Admin\Coupons\Index::class)->name('coupons.index');
+            Route::get('/coupons', \App\Livewire\Admin\Coupons\Index::class)->name('coupons.index');
+        });
 
         // PDV — exige módulo PDV habilitado + permissão pdv.operate/pdv.waiter_operate (verificado no componente)
         Route::get('/pdv', \App\Livewire\Admin\Pdv\Selector::class)->name('pdv');

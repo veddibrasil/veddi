@@ -15,7 +15,8 @@ class ProductPolicy
 
     public function view(User $user, Product $product): bool
     {
-        return $user->hasPermission('products.view', $this->company());
+        return $user->hasPermission('products.view', $this->company())
+            && ($user->isSuperAdmin() || $product->company_id === $this->company()->id);
     }
 
     public function create(User $user): bool
@@ -25,12 +26,14 @@ class ProductPolicy
 
     public function update(User $user, Product $product): bool
     {
-        return $user->hasPermission('products.update', $this->company());
+        return $user->hasPermission('products.update', $this->company())
+            && ($user->isSuperAdmin() || $product->company_id === $this->company()->id);
     }
 
     public function delete(User $user, Product $product): bool
     {
-        return $user->hasPermission('products.delete', $this->company());
+        return $user->hasPermission('products.delete', $this->company())
+            && ($user->isSuperAdmin() || $product->company_id === $this->company()->id);
     }
 
     private function company(): Company

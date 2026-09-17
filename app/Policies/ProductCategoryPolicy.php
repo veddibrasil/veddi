@@ -15,7 +15,8 @@ class ProductCategoryPolicy
 
     public function view(User $user, ProductCategory $category): bool
     {
-        return $user->hasPermission('categories.view', $this->company());
+        return $user->hasPermission('categories.view', $this->company())
+            && ($user->isSuperAdmin() || $category->company_id === $this->company()->id);
     }
 
     public function create(User $user): bool
@@ -25,12 +26,14 @@ class ProductCategoryPolicy
 
     public function update(User $user, ProductCategory $category): bool
     {
-        return $user->hasPermission('categories.update', $this->company());
+        return $user->hasPermission('categories.update', $this->company())
+            && ($user->isSuperAdmin() || $category->company_id === $this->company()->id);
     }
 
     public function delete(User $user, ProductCategory $category): bool
     {
-        return $user->hasPermission('categories.delete', $this->company());
+        return $user->hasPermission('categories.delete', $this->company())
+            && ($user->isSuperAdmin() || $category->company_id === $this->company()->id);
     }
 
     private function company(): Company

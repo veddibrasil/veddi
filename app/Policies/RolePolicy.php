@@ -15,7 +15,8 @@ class RolePolicy
 
     public function view(User $user, Role $role): bool
     {
-        return $user->hasPermission('roles.manage', $this->company());
+        return $user->hasPermission('roles.manage', $this->company())
+            && ($user->isSuperAdmin() || $role->company_id === null || $role->company_id === $this->company()->id);
     }
 
     public function create(User $user): bool
@@ -25,12 +26,14 @@ class RolePolicy
 
     public function update(User $user, Role $role): bool
     {
-        return $user->hasPermission('roles.manage', $this->company());
+        return $user->hasPermission('roles.manage', $this->company())
+            && ($user->isSuperAdmin() || $role->company_id === $this->company()->id);
     }
 
     public function delete(User $user, Role $role): bool
     {
         return $user->hasPermission('roles.manage', $this->company())
+            && ($user->isSuperAdmin() || $role->company_id === $this->company()->id)
             && ! $role->is_system;
     }
 

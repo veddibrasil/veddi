@@ -127,9 +127,37 @@ class Index extends Component
         }
     }
 
+    /**
+     * Garante que produto/filial informados (potencialmente vindos de um método
+     * público Livewire) pertencem à empresa do ator — nunca confiar no ID sozinho.
+     */
+    private function assertBelongsToCurrentCompany(?int $productId = null, ?int $branchId = null): void
+    {
+        if ($this->isSuperAdmin) {
+            return;
+        }
+
+        $companyId = $this->currentCompanyId();
+
+        if (! $companyId) {
+            throw new \Illuminate\Auth\Access\AuthorizationException;
+        }
+
+        if ($productId && Product::withoutGlobalScope(CompanyScope::class)
+            ->where('id', $productId)->where('company_id', $companyId)->doesntExist()) {
+            throw new \Illuminate\Auth\Access\AuthorizationException;
+        }
+
+        if ($branchId && Branch::withoutGlobalScope(CompanyScope::class)
+            ->where('id', $branchId)->where('company_id', $companyId)->doesntExist()) {
+            throw new \Illuminate\Auth\Access\AuthorizationException;
+        }
+    }
+
     public function openAdjustModal(int $productId, int $branchId): void
     {
         $this->checkPermission('stock.adjust');
+        $this->assertBelongsToCurrentCompany($productId, $branchId);
 
         $pivot = DB::table('branch_product')
             ->where('branch_id', $branchId)
@@ -150,6 +178,7 @@ class Index extends Component
     public function applyAdjustment(): void
     {
         $this->checkPermission('stock.adjust');
+        $this->assertBelongsToCurrentCompany($this->adjustingProductId, $this->adjustingBranchId);
         $this->validate($this->rules(), $this->messages());
 
         $branch = Branch::withoutGlobalScope(CompanyScope::class)->findOrFail($this->adjustingBranchId);
@@ -171,6 +200,7 @@ class Index extends Component
     public function toggleTracking(int $productId, int $branchId): void
     {
         $this->checkPermission('stock.toggle');
+        $this->assertBelongsToCurrentCompany($productId, $branchId);
 
         $pivot = DB::table('branch_product')
             ->where('branch_id', $branchId)

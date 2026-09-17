@@ -16,23 +16,25 @@ class CouponPolicy
     public function view(User $user, Coupon $coupon): bool
     {
         return $user->hasPermission('coupons.view', $this->company())
-                    && $coupon->company_id === $this->company()->id;
+                    && ($user->isSuperAdmin() || $coupon->company_id === $this->company()->id);
 
     }
 
-    public function create(User $user, Coupon $coupon): bool
+    public function create(User $user): bool
     {
         return $user->hasPermission('coupons.create', $this->company());
     }
 
     public function update(User $user, Coupon $coupon): bool
     {
-        return $user->hasPermission('coupons.update', $this->company());
+        return $user->hasPermission('coupons.update', $this->company())
+            && ($user->isSuperAdmin() || $coupon->company_id === $this->company()->id);
     }
 
     public function delete(User $user, Coupon $coupon): bool
     {
-        return $user->hasPermission('coupons.delete', $this->company());
+        return $user->hasPermission('coupons.delete', $this->company())
+            && ($user->isSuperAdmin() || $coupon->company_id === $this->company()->id);
     }
 
     private function company(): Company

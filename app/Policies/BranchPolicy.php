@@ -16,7 +16,7 @@ class BranchPolicy
     public function view(User $user, Branch $branch): bool
     {
         return $user->hasPermission('branches.view', $this->company())
-                    && $branch->company_id === $this->company()->id;
+                    && ($user->isSuperAdmin() || $branch->company_id === $this->company()->id);
 
     }
 
@@ -27,12 +27,14 @@ class BranchPolicy
 
     public function update(User $user, Branch $branch): bool
     {
-        return $user->hasPermission('branches.update', $this->company());
+        return $user->hasPermission('branches.update', $this->company())
+            && ($user->isSuperAdmin() || $branch->company_id === $this->company()->id);
     }
 
     public function delete(User $user, Branch $branch): bool
     {
-        return $user->hasPermission('branches.delete', $this->company());
+        return $user->hasPermission('branches.delete', $this->company())
+            && ($user->isSuperAdmin() || $branch->company_id === $this->company()->id);
     }
 
     private function company(): Company

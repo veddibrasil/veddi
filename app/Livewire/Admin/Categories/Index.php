@@ -107,6 +107,7 @@ class Index extends Component
     public function edit(int $id): void
     {
         $category = ProductCategory::withoutGlobalScope(CompanyScope::class)->findOrFail($id);
+        $this->authorize('view', $category);
         $this->editingId = $id;
         $this->name = $category->name;
         $this->station = $category->station ?? '';
