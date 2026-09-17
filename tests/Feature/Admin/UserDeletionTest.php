@@ -65,6 +65,52 @@ test('excluir usuário remove ele de todas as empresas e apaga dados relacionado
     expect(DB::table('sessions')->where('user_id', $target->id)->count())->toBe(0);
 });
 
+test('company_admin não pode excluir usuário de outra empresa (apenas super admin pode)', function () {
+    $companyA = userDeletionCompany('empresa-d');
+    $companyB = userDeletionCompany('empresa-e');
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($companyA->id, ['role' => 'company_admin']);
+
+    $target = User::factory()->create();
+    $target->companies()->attach($companyB->id, ['role' => 'company_admin']);
+
+    app()->instance('current.company', $companyA);
+    $this->actingAs($admin);
+
+    expect(fn () => Livewire::test(UsersIndex::class)
+        ->call('confirmRemove', $target->id)
+        ->call('removeUser')
+    )->toThrow(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
+
+    expect(User::find($target->id))->not->toBeNull();
+    expect($target->companies()->where('companies.id', $companyB->id)->exists())->toBeTrue();
+});
+
+test('company_admin remove usuário apenas da própria empresa, sem afetar vínculo com outra empresa', function () {
+    $companyA = userDeletionCompany('empresa-f');
+    $companyB = userDeletionCompany('empresa-g');
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($companyA->id, ['role' => 'company_admin']);
+
+    $target = User::factory()->create();
+    $target->companies()->attach($companyA->id, ['role' => 'cozinha']);
+    $target->companies()->attach($companyB->id, ['role' => 'branch_manager']);
+
+    app()->instance('current.company', $companyA);
+    $this->actingAs($admin);
+
+    Livewire::test(UsersIndex::class)
+        ->call('confirmRemove', $target->id)
+        ->call('removeUser')
+        ->assertSet('removingUserId', null);
+
+    expect(User::find($target->id))->not->toBeNull();
+    expect($target->companies()->where('companies.id', $companyA->id)->exists())->toBeFalse();
+    expect($target->companies()->where('companies.id', $companyB->id)->exists())->toBeTrue();
+});
+
 test('usuário não pode excluir a própria conta', function () {
     $companyA = userDeletionCompany('empresa-c');
     $admin = User::factory()->create(['is_super_admin' => true]);

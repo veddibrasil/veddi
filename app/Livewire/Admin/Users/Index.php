@@ -158,7 +158,8 @@ class Index extends Component
     public function openEditRole(int $userId): void
     {
         $company = app('current.company');
-        $user = User::findOrFail($userId);
+        $user = User::whereHas('companies', fn ($q) => $q->where('companies.id', $company->id))
+            ->findOrFail($userId);
         $pivot = $user->companies()->where('companies.id', $company->id)->first()?->pivot;
 
         $this->editUserId = $userId;
@@ -179,7 +180,8 @@ class Index extends Component
             'editRole.in' => self::WAITER_MODULE_MESSAGE,
         ]);
 
-        $user = User::findOrFail($this->editUserId);
+        $user = User::whereHas('companies', fn ($q) => $q->where('companies.id', $company->id))
+            ->findOrFail($this->editUserId);
 
         $user->companies()->updateExistingPivot($company->id, [
             'role' => $this->editRole,
@@ -220,12 +222,21 @@ class Index extends Component
         abort_unless($this->canManage, 403);
         abort_if($this->removingUserId === auth()->id(), 403);
 
-        $user = User::findOrFail($this->removingUserId);
+        if (auth()->user()->isSuperAdmin()) {
+            $user = User::findOrFail($this->removingUserId);
+            UserDeletionService::delete($user);
+            $message = 'Usuário excluído da plataforma.';
+        } else {
+            $company = app('current.company');
+            $user = User::whereHas('companies', fn ($q) => $q->where('companies.id', $company->id))
+                ->findOrFail($this->removingUserId);
 
-        UserDeletionService::delete($user);
+            UserDeletionService::removeFromCompany($user, $company);
+            $message = $user->companies()->exists() ? 'Usuário removido da empresa.' : 'Usuário excluído da plataforma.';
+        }
 
         $this->removingUserId = null;
-        session()->flash('status', 'Usuário excluído da plataforma.');
+        session()->flash('status', $message);
     }
 
     public function render()

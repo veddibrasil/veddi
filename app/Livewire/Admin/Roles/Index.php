@@ -145,7 +145,9 @@ class Index extends Component
         ]);
 
         $company = app('current.company');
-        $role = Role::findOrFail($this->assignRoleId);
+        $role = Role::where('id', $this->assignRoleId)
+            ->where(fn ($q) => $q->whereNull('company_id')->orWhere('company_id', $company->id))
+            ->firstOrFail();
         $user = User::where('email', $this->assignUserEmail)->firstOrFail();
 
         $pivot = $user->companies()->where('companies.id', $company->id)->first();
