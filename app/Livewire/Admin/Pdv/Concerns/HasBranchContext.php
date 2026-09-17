@@ -45,4 +45,27 @@ trait HasBranchContext
     {
         session(["pdv.branch_id.{$companyId}" => $this->selectedBranchId]);
     }
+
+    /**
+     * `selectedBranchId` é propriedade pública Livewire (settable via payload do
+     * client) — nunca confiar que ela ainda aponta pra uma filial da empresa do
+     * operador antes de usá-la para buscar produto/estoque/pedido.
+     */
+    private function assertSelectedBranchBelongsToCurrentCompany(): void
+    {
+        $company = app()->bound('current.company') ? app('current.company') : null;
+
+        if (! $company || ! $this->selectedBranchId) {
+            throw new \Illuminate\Auth\Access\AuthorizationException;
+        }
+
+        $belongs = Branch::withoutGlobalScopes()
+            ->where('id', $this->selectedBranchId)
+            ->where('company_id', $company->id)
+            ->exists();
+
+        if (! $belongs) {
+            throw new \Illuminate\Auth\Access\AuthorizationException;
+        }
+    }
 }

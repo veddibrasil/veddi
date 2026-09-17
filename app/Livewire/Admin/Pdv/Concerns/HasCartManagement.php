@@ -13,6 +13,8 @@ trait HasCartManagement
             return;
         }
 
+        $this->assertSelectedBranchBelongsToCurrentCompany();
+
         $product = Product::withoutGlobalScopes()
             ->whereHas('branches', fn ($q) => $q
                 ->where('branches.id', $this->selectedBranchId)
@@ -54,6 +56,8 @@ trait HasCartManagement
         if (! $this->selectedBranchId) {
             return;
         }
+
+        $this->assertSelectedBranchBelongsToCurrentCompany();
 
         $product = Product::withoutGlobalScopes()
             ->with('optionGroups')
