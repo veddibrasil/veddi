@@ -94,11 +94,14 @@ class Dashboard extends Component
         $monthlyOrderLimit = null;
         if ($company && ! $isSuperAdmin && $company->isFree()) {
             $monthlyOrderLimit = $company->plan?->maxOrdersPerMonth();
-            $monthlyOrderCount = $company->orders()
-                ->whereMonth('created_at', now()->month)
-                ->whereYear('created_at', now()->year)
-                ->whereNotIn('status', ['cancelled'])
-                ->count();
+            $monthlyOrderCount = Cache::remember(
+                "dashboard:company:{$company->id}:monthly-order-count:".now()->format('Y-m'),
+                now()->addMinute(),
+                fn () => $company->orders()
+                    ->whereBetween('created_at', [now()->startOfMonth(), now()->endOfMonth()])
+                    ->whereNotIn('status', ['cancelled'])
+                    ->count()
+            );
         }
 
         return view('livewire.admin.dashboard', compact(

@@ -5,6 +5,7 @@ namespace App\Livewire\SuperAdmin\Companies;
 use App\Models\Company;
 use App\Models\Order;
 use App\Services\Finance\BalanceService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 
@@ -20,65 +21,80 @@ class Show extends Component
     public function render()
     {
         $company = $this->company;
-
-        $ordersQuery = Order::query()->where('company_id', $company->id);
         $paidStatuses = ['paid', 'preparing', 'ready', 'out_for_delivery', 'delivered'];
 
-        $totalOrders = (clone $ordersQuery)->count();
+        $metrics = Cache::remember(
+            "superadmin:company:{$company->id}:show",
+            now()->addMinutes(5),
+            function () use ($company, $paidStatuses) {
+                $ordersQuery = Order::query()->where('company_id', $company->id);
 
-        $ordersByStatus = (clone $ordersQuery)
-            ->select('status', DB::raw('count(*) as total'))
-            ->groupBy('status')
-            ->pluck('total', 'status');
+                $totalOrders = (clone $ordersQuery)->count();
 
-        $paidOrdersQuery = (clone $ordersQuery)->whereIn('status', $paidStatuses);
-        $paidOrdersCount = (clone $paidOrdersQuery)->count();
-        $totalRevenue = (float) (clone $paidOrdersQuery)->sum('total');
-        $totalNetValue = (float) (clone $paidOrdersQuery)->sum('net_value');
-        $totalPlanFee = (float) (clone $paidOrdersQuery)->sum('fee');
-        $avgTicket = $paidOrdersCount > 0 ? $totalRevenue / $paidOrdersCount : 0.0;
+                $ordersByStatus = (clone $ordersQuery)
+                    ->select('status', DB::raw('count(*) as total'))
+                    ->groupBy('status')
+                    ->pluck('total', 'status');
 
-        // Margem da plataforma sobre PIX via Vindi (VINDI_PIX_PLATFORM_RATE), somada além
-        // da taxa do plano — mesma regra da geração da cobrança (PaymentOrchestrator::processPix)
-        // e da liquidação real (TransactionService::createForPayment).
-        $vindiPixPlatformRate = (float) config('payments.vindi_pix_platform_rate', 0.0014);
-        $vindiPixAmount = (float) DB::table('payments')
-            ->join('orders', 'orders.id', '=', 'payments.order_id')
-            ->where('orders.company_id', $company->id)
-            ->whereIn('orders.status', $paidStatuses)
-            ->where('payments.status', 'paid')
-            ->where('payments.payment_gateway', 'vindi')
-            ->whereNull('payments.original_amount')
-            ->sum('payments.amount');
-        $totalPixPlatformFee = round($vindiPixAmount * $vindiPixPlatformRate, 2);
-        $totalPlatformFee = $totalPlanFee + $totalPixPlatformFee;
+                $paidOrdersQuery = (clone $ordersQuery)->whereIn('status', $paidStatuses);
+                $paidOrdersCount = (clone $paidOrdersQuery)->count();
+                $totalRevenue = (float) (clone $paidOrdersQuery)->sum('total');
+                $totalNetValue = (float) (clone $paidOrdersQuery)->sum('net_value');
+                $totalPlanFee = (float) (clone $paidOrdersQuery)->sum('fee');
+                $avgTicket = $paidOrdersCount > 0 ? $totalRevenue / $paidOrdersCount : 0.0;
 
-        $ordersThisMonth = (clone $ordersQuery)
-            ->whereMonth('created_at', now()->month)
-            ->whereYear('created_at', now()->year)
-            ->count();
+                // Margem da plataforma sobre PIX via Vindi (VINDI_PIX_PLATFORM_RATE), somada além
+                // da taxa do plano — mesma regra da geração da cobrança (PaymentOrchestrator::processPix)
+                // e da liquidação real (TransactionService::createForPayment).
+                $vindiPixPlatformRate = (float) config('payments.vindi_pix_platform_rate', 0.0014);
+                $vindiPixAmount = (float) DB::table('payments')
+                    ->join('orders', 'orders.id', '=', 'payments.order_id')
+                    ->where('orders.company_id', $company->id)
+                    ->whereIn('orders.status', $paidStatuses)
+                    ->where('payments.status', 'paid')
+                    ->where('payments.payment_gateway', 'vindi')
+                    ->whereNull('payments.original_amount')
+                    ->sum('payments.amount');
+                $totalPixPlatformFee = round($vindiPixAmount * $vindiPixPlatformRate, 2);
+                $totalPlatformFee = $totalPlanFee + $totalPixPlatformFee;
 
-        $revenueThisMonth = (float) (clone $ordersQuery)
-            ->whereIn('status', $paidStatuses)
-            ->whereMonth('created_at', now()->month)
-            ->whereYear('created_at', now()->year)
-            ->sum('total');
+                $monthStart = now()->startOfMonth();
+                $monthEnd = now()->endOfMonth();
 
-        $monthlyHistory = (clone $ordersQuery)
-            ->whereIn('status', $paidStatuses)
-            ->where('created_at', '>=', now()->subMonths(5)->startOfMonth())
-            ->get(['created_at', 'total'])
-            ->groupBy(fn (Order $order) => $order->created_at->format('Y-m'))
-            ->map(fn ($group, $month) => (object) [
-                'month' => $month,
-                'orders_count' => $group->count(),
-                'revenue' => $group->sum('total'),
-            ])
-            ->sortKeys()
-            ->values();
+                $ordersThisMonth = (clone $ordersQuery)
+                    ->whereBetween('created_at', [$monthStart, $monthEnd])
+                    ->count();
 
-        $branchesCount = $company->branches()->count();
-        $productsCount = $company->products()->count();
+                $revenueThisMonth = (float) (clone $ordersQuery)
+                    ->whereIn('status', $paidStatuses)
+                    ->whereBetween('created_at', [$monthStart, $monthEnd])
+                    ->sum('total');
+
+                $monthlyHistory = (clone $ordersQuery)
+                    ->whereIn('status', $paidStatuses)
+                    ->where('created_at', '>=', now()->subMonths(5)->startOfMonth())
+                    ->get(['created_at', 'total'])
+                    ->groupBy(fn (Order $order) => $order->created_at->format('Y-m'))
+                    ->map(fn ($group, $month) => (object) [
+                        'month' => $month,
+                        'orders_count' => $group->count(),
+                        'revenue' => $group->sum('total'),
+                    ])
+                    ->sortKeys()
+                    ->values();
+
+                $branchesCount = $company->branches()->count();
+                $productsCount = $company->products()->count();
+
+                return compact(
+                    'totalOrders', 'ordersByStatus', 'paidOrdersCount', 'totalRevenue', 'totalNetValue',
+                    'totalPlanFee', 'totalPixPlatformFee', 'totalPlatformFee', 'avgTicket',
+                    'ordersThisMonth', 'revenueThisMonth', 'monthlyHistory', 'branchesCount', 'productsCount',
+                );
+            }
+        );
+
+        extract($metrics);
 
         $users = $company->users()->orderBy('name')->get();
 

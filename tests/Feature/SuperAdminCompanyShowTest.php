@@ -59,6 +59,68 @@ test('super admin visualiza detalhes da empresa com metricas', function () {
         ->assertSee($manager->email);
 });
 
+test('metricas da empresa ficam cacheadas por alguns minutos, sem recalcular a cada visita', function () {
+    $company = Company::create([
+        'name' => 'Empresa Cache',
+        'slug' => 'empresa-cache-'.uniqid(),
+        'order_prefix' => 'CCH',
+        'active' => true,
+        'plan' => 'free',
+        'status' => 'ACTIVE',
+    ]);
+
+    $customer = Customer::create([
+        'company_id' => $company->id,
+        'name' => 'Cliente Cache',
+        'phone' => '11999998888',
+    ]);
+
+    $branch = Branch::create([
+        'company_id' => $company->id,
+        'name' => 'Filial Cache',
+        'active' => true,
+    ]);
+
+    Order::create([
+        'company_id' => $company->id,
+        'customer_id' => $customer->id,
+        'branch_id' => $branch->id,
+        'subtotal' => 20,
+        'delivery_fee' => 0,
+        'total' => 20,
+        'status' => 'delivered',
+        'payment_method' => 'pix',
+        'order_type' => 'delivery',
+        'fee' => 0.2,
+        'net_value' => 19.8,
+    ]);
+
+    $superAdmin = User::factory()->create(['is_super_admin' => true]);
+    $this->actingAs($superAdmin);
+
+    $this->get(route('superadmin.companies.show', $company))->assertSee('R$ 20,00');
+
+    // Segundo pedido criado dentro do TTL do cache (5min) — a métrica exibida
+    // não deve mudar até o cache expirar, provando que está de fato cacheada.
+    Order::create([
+        'company_id' => $company->id,
+        'customer_id' => $customer->id,
+        'branch_id' => $branch->id,
+        'subtotal' => 30,
+        'delivery_fee' => 0,
+        'total' => 30,
+        'status' => 'delivered',
+        'payment_method' => 'pix',
+        'order_type' => 'delivery',
+        'fee' => 0.3,
+        'net_value' => 29.7,
+    ]);
+
+    $this->get(route('superadmin.companies.show', $company))
+        ->assertSee('R$ 20,00')
+        ->assertDontSee('R$ 50,00');
+});
+
 test('taxa da plataforma soma margem PIX Vindi alem da taxa do plano', function () {
     config(['payments.vindi_pix_platform_rate' => 0.0014]);
 
