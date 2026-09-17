@@ -22,9 +22,14 @@ trait HasOrderRecovery
     {
         $orderId = $this->pendingOrderSummary['id'] ?? null;
 
+        // $pendingOrderSummary é propriedade pública Livewire (adulterável pelo
+        // client) — nunca confiar no id sozinho, sempre validar dono + empresa.
         $order = Order::withoutGlobalScopes()
             ->with(['items', 'payment', 'coupon'])
-            ->find($orderId);
+            ->where('id', $orderId)
+            ->where('customer_id', $this->customerId)
+            ->where('company_id', $this->companyId)
+            ->first();
 
         if (! $order || ! in_array($order->status, ['pending', 'awaiting_payment'])) {
             $this->pendingOrderSummary = null;

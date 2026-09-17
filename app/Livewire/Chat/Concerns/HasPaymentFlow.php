@@ -4,10 +4,12 @@ namespace App\Livewire\Chat\Concerns;
 
 use App\Contracts\OrderServiceInterface;
 use App\Events\OrderStatusUpdated;
+use App\Models\Branch;
 use App\Models\CompanyNotification;
 use App\Models\Coupon;
 use App\Models\Customer;
 use App\Models\Order;
+use App\Services\Order\DeliveryService;
 use App\Services\Order\OrderCancellationPolicy;
 use App\Services\Order\StockService;
 use App\Services\Payment\PaymentCalculatorService;
@@ -95,6 +97,39 @@ trait HasPaymentFlow
         );
     }
 
+    /**
+     * `$deliveryFee` é propriedade pública Livewire — recalculada durante o fluxo
+     * (resolveDeliveryFee), mas nada impede o client de sobrescrevê-la depois disso
+     * e antes de confirmar. Nunca confiar nela sem recalcular aqui, na hora H.
+     */
+    private function reauthorizeDeliveryFee(): void
+    {
+        if ($this->orderType !== 'delivery') {
+            $this->deliveryFee = 0.0;
+
+            return;
+        }
+
+        $branch = Branch::find($this->selectedBranchId);
+        $settings = $branch?->deliverySetting;
+
+        if (! $settings || ! $settings->active) {
+            $this->deliveryFee = 0.0;
+
+            return;
+        }
+
+        $result = app(DeliveryService::class)->validate(
+            $settings,
+            $this->neighborhood,
+            $this->cartTotal,
+            $this->customer_latitude !== '' ? (float) $this->customer_latitude : null,
+            $this->customer_longitude !== '' ? (float) $this->customer_longitude : null
+        );
+
+        $this->deliveryFee = $result['fee'];
+    }
+
     private function placeOrder(string $initialStatus): void
     {
         if ($this->submitting) {
@@ -113,6 +148,8 @@ trait HasPaymentFlow
         $scheduledAt = $this->scheduledAt ? Carbon::parse($this->scheduledAt) : null;
 
         try {
+            $this->reauthorizeDeliveryFee();
+
             $order = $orderService->createOrder(
                 $this->customerId,
                 $this->selectedBranchId,
