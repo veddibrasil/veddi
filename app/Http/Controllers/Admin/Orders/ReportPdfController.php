@@ -6,10 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\Scopes\CompanyScope;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class ReportPdfController extends Controller
 {
+    private const MAX_RANGE_DAYS = 92;
+
     public function __invoke(Request $request)
     {
         $user = auth()->user();
@@ -24,6 +27,23 @@ class ReportPdfController extends Controller
 
         abort_unless($canView, 403);
 
+        // Sem intervalo obrigatório e limitado, um super admin sem filtro de
+        // data carregava TODOS os pedidos de TODAS as empresas da plataforma
+        // de uma vez pra montar o PDF.
+        $validated = $request->validate([
+            'date_start' => ['required', 'date'],
+            'date_end' => ['required', 'date', 'after_or_equal:date_start'],
+        ]);
+
+        $start = Carbon::parse($validated['date_start']);
+        $end = Carbon::parse($validated['date_end']);
+
+        abort_if(
+            $start->diffInDays($end) > self::MAX_RANGE_DAYS,
+            422,
+            'Intervalo máximo para exportação é de '.self::MAX_RANGE_DAYS.' dias.'
+        );
+
         $isSuperAdmin = $user->isSuperAdmin();
 
         $query = $isSuperAdmin
@@ -31,8 +51,8 @@ class ReportPdfController extends Controller
             : Order::with(['customer', 'branch']);
 
         $orders = $query
-            ->when($request->date_start, fn ($q) => $q->whereDate('created_at', '>=', $request->date_start))
-            ->when($request->date_end, fn ($q) => $q->whereDate('created_at', '<=', $request->date_end))
+            ->whereDate('created_at', '>=', $validated['date_start'])
+            ->whereDate('created_at', '<=', $validated['date_end'])
             ->when($request->status, fn ($q) => $q->where('status', $request->status))
             ->when($request->branch_id, fn ($q) => $q->where('branch_id', $request->branch_id))
             ->when($request->payment_method, fn ($q) => $q->where('payment_method', $request->payment_method))

@@ -21,13 +21,18 @@ class FocusNfeService implements FiscalNoteProviderInterface
         $this->baseUrl = rtrim($baseUrl, '/');
     }
 
+    private function client(): \Illuminate\Http\Client\PendingRequest
+    {
+        return Http::withBasicAuth($this->token, '')->timeout(15);
+    }
+
     public function issue(FiscalNoteDTO $dto): FiscalNoteResult
     {
         $payload = $this->buildPayload($dto);
         $ref = 'order_'.$dto->orderId.'_'.time();
 
         try {
-            $response = Http::withBasicAuth($this->token, '')
+            $response = $this->client()
                 ->post("{$this->baseUrl}/v2/nfce?ref={$ref}", $payload);
 
             $body = $response->json() ?? [];
@@ -94,7 +99,7 @@ class FocusNfeService implements FiscalNoteProviderInterface
     public function cancel(string $providerReference, string $justification): FiscalNoteResult
     {
         try {
-            $response = Http::withBasicAuth($this->token, '')
+            $response = $this->client()
                 ->delete("{$this->baseUrl}/v2/nfce/{$providerReference}", [
                     'justificativa' => $justification,
                 ]);
@@ -121,7 +126,7 @@ class FocusNfeService implements FiscalNoteProviderInterface
     public function query(string $providerReference): FiscalNoteResult
     {
         try {
-            $response = Http::withBasicAuth($this->token, '')
+            $response = $this->client()
                 ->get("{$this->baseUrl}/v2/nfce/{$providerReference}");
 
             $body = $response->json() ?? [];
@@ -168,7 +173,7 @@ class FocusNfeService implements FiscalNoteProviderInterface
      */
     private function requestCompany(string $method, string $path, array $payload): array
     {
-        $response = Http::withBasicAuth($this->token, '')->{$method}("{$this->baseUrl}{$path}", $payload);
+        $response = $this->client()->{$method}("{$this->baseUrl}{$path}", $payload);
         $body = $response->json() ?? [];
 
         if (! $response->successful()) {
@@ -190,7 +195,7 @@ class FocusNfeService implements FiscalNoteProviderInterface
      */
     public function listWebhooks(): array
     {
-        $response = Http::withBasicAuth($this->token, '')->get("{$this->baseUrl}/v2/hooks");
+        $response = $this->client()->get("{$this->baseUrl}/v2/hooks");
 
         if (! $response->successful()) {
             throw new FocusNfeCompanyRegistrationException(
@@ -210,7 +215,7 @@ class FocusNfeService implements FiscalNoteProviderInterface
      */
     public function createWebhook(array $payload): array
     {
-        $response = Http::withBasicAuth($this->token, '')->post("{$this->baseUrl}/v2/hooks", $payload);
+        $response = $this->client()->post("{$this->baseUrl}/v2/hooks", $payload);
         $body = $response->json() ?? [];
 
         if (! $response->successful()) {
@@ -227,7 +232,7 @@ class FocusNfeService implements FiscalNoteProviderInterface
 
     public function deleteWebhook(string $webhookId): void
     {
-        $response = Http::withBasicAuth($this->token, '')->delete("{$this->baseUrl}/v2/hooks/{$webhookId}");
+        $response = $this->client()->delete("{$this->baseUrl}/v2/hooks/{$webhookId}");
 
         if (! $response->successful()) {
             $body = $response->json() ?? [];
