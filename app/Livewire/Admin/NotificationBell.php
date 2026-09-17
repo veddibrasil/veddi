@@ -32,11 +32,11 @@ class NotificationBell extends Component
         }
 
         return [
-            "echo:orders.{$this->companyId},NewOrderPlaced" => 'onNewOrder',
-            "echo:orders.{$this->companyId},OrderItemsUpdated" => 'onNewOrder',
+            "echo-private:orders.{$this->companyId},NewOrderPlaced" => 'onNewOrder',
+            "echo-private:orders.{$this->companyId},OrderItemsUpdated" => 'onNewOrder',
             // Pega o aviso de pedido agendado (NotifyScheduledOrderJob) e outras mudanças de
             // status em tempo real — sem isso a notificação só aparece no próximo re-render.
-            "echo:orders.{$this->companyId},OrderStatusUpdated" => 'onNewOrder',
+            "echo-private:orders.{$this->companyId},OrderStatusUpdated" => 'onNewOrder',
         ];
     }
 

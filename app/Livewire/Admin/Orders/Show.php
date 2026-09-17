@@ -12,7 +12,6 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Services\Ifood\IfoodOrderActionService;
-use App\Services\Order\FeeCalculator;
 use App\Services\Order\OrderService;
 use App\Services\Order\StockService;
 use App\Services\Payment\PaymentOrchestrator;
@@ -128,8 +127,8 @@ class Show extends Component
     public function getListeners(): array
     {
         return [
-            "echo:order.{$this->order->id},OrderStatusUpdated" => '$refresh',
-            "echo:order.{$this->order->id},OrderItemsUpdated" => '$refresh',
+            "echo-private:order.{$this->order->id},OrderStatusUpdated" => '$refresh',
+            "echo-private:order.{$this->order->id},OrderItemsUpdated" => '$refresh',
         ];
     }
 
@@ -946,9 +945,7 @@ class Show extends Component
             }
         }
 
-        $currentCompany = app()->bound('current.company') ? app('current.company') : null;
-
-        DB::transaction(function () use ($currentCompany) {
+        DB::transaction(function () {
             $existingIds = collect($this->editableItems)
                 ->filter(fn ($item) => ! empty($item['id']))
                 ->pluck('id')
@@ -986,26 +983,7 @@ class Show extends Component
 
             $this->order->refresh();
 
-            $subtotal = $this->order->items()->sum('subtotal');
-            $discount = (float) $this->order->discount;
-            $deliveryFee = (float) $this->order->delivery_fee;
-            $total = max(0, $subtotal + $deliveryFee - $discount);
-
-            $fee = 0.0;
-            $netValue = $total;
-            if ($currentCompany) {
-                $feeBase = max(0.0, $subtotal - $discount);
-                $fees = app(FeeCalculator::class)->calculate($currentCompany, $feeBase, $total);
-                $fee = $fees['fee'];
-                $netValue = $fees['net_value'];
-            }
-
-            $this->order->update([
-                'subtotal' => $subtotal,
-                'total' => $total,
-                'fee' => $fee,
-                'net_value' => $netValue,
-            ]);
+            app(OrderService::class)->recalculateTotalsFromItems($this->order);
         });
 
         $this->order->refresh();

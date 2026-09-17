@@ -694,7 +694,7 @@ test('NotificationBell escuta OrderStatusUpdated pra atualizar em tempo real (av
     $this->actingAs($admin);
     $listeners = Livewire::test(\App\Livewire\Admin\NotificationBell::class)->instance()->getListeners();
 
-    expect($listeners)->toHaveKey("echo:orders.{$company->id},OrderStatusUpdated");
+    expect($listeners)->toHaveKey("echo-private:orders.{$company->id},OrderStatusUpdated");
 });
 
 test('NotifyScheduledOrderJob cria notificação que aparece no sino do restaurante', function () {
@@ -1126,15 +1126,15 @@ test('getListeners inclui TabOrderSentToProduction pra cozinha/bar, mas não pra
 
     $this->actingAs($cozinha);
     $listeners = Livewire::test(OrdersIndex::class)->instance()->getListeners();
-    expect($listeners)->toHaveKey("echo:orders.{$company->id},TabOrderSentToProduction");
+    expect($listeners)->toHaveKey("echo-private:orders.{$company->id},TabOrderSentToProduction");
 
     $this->actingAs($bar);
     $listeners = Livewire::test(OrdersIndex::class)->instance()->getListeners();
-    expect($listeners)->toHaveKey("echo:orders.{$company->id},TabOrderSentToProduction");
+    expect($listeners)->toHaveKey("echo-private:orders.{$company->id},TabOrderSentToProduction");
 
     $this->actingAs($entrega);
     $listeners = Livewire::test(OrdersIndex::class)->instance()->getListeners();
-    expect($listeners)->not->toHaveKey("echo:orders.{$company->id},TabOrderSentToProduction");
+    expect($listeners)->not->toHaveKey("echo-private:orders.{$company->id},TabOrderSentToProduction");
 });
 
 test('cozinha recebe broadcast de comanda finalizada e dispara tab-order-finalized só com a estação dela', function () {

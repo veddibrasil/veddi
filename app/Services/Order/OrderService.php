@@ -365,6 +365,44 @@ class OrderService implements OrderServiceInterface
     }
 
     /**
+     * Recalcula subtotal/total/fee/net_value a partir dos OrderItem atuais, preservando
+     * delivery_fee/discount/manual_discount/service_fee/couvert_fee já gravados no pedido
+     * (usado quando só os itens mudaram, ex.: edição manual pelo admin em Orders\Show —
+     * nunca reimplementar esta fórmula inline, ela já existe aqui e cobre os dois conjuntos
+     * de campos que um Order pode ter, delivery ou comanda de PDV).
+     */
+    public function recalculateTotalsFromItems(Order $order): Order
+    {
+        $subtotal = (float) $order->items()->sum('subtotal');
+        $discount = (float) $order->discount;
+        $manualDiscount = (float) $order->manual_discount;
+        $deliveryFee = (float) $order->delivery_fee;
+        $serviceFee = (float) $order->service_fee;
+        $couvertFee = (float) $order->couvert_fee;
+
+        $total = max(0, $subtotal + $deliveryFee + $serviceFee + $couvertFee - $discount - $manualDiscount);
+
+        $currentCompany = app()->bound('current.company') ? app('current.company') : null;
+        $fee = 0.0;
+        $netValue = $total;
+        if ($currentCompany) {
+            $feeBase = max(0.0, $subtotal - $discount - $manualDiscount);
+            $fees = app(FeeCalculator::class)->calculate($currentCompany, $feeBase, $total);
+            $fee = $fees['fee'];
+            $netValue = $fees['net_value'];
+        }
+
+        $order->update([
+            'subtotal' => $subtotal,
+            'total' => $total,
+            'fee' => $fee,
+            'net_value' => $netValue,
+        ]);
+
+        return $order->fresh();
+    }
+
+    /**
      * Recalcula subtotal/total/fee/net_value a partir dos OrderItem e do manual_discount atuais. Sem
      * cupom/frete — usado pelo fluxo de comanda do PDV, que não tem esses conceitos. Os overrides de
      * taxa existem só pro fechamento em grupo (ver {@see applyGroupFeesToOrder}); no fechamento normal

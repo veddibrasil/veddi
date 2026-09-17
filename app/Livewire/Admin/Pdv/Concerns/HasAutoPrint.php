@@ -15,8 +15,8 @@ trait HasAutoPrint
 
         return $companyId
             ? [
-                "echo:orders.{$companyId},NewOrderPlaced" => 'onOrderBroadcastReceived',
-                "echo:orders.{$companyId},TabOrderSentToProduction" => 'onTabOrderSentToProductionBroadcast',
+                "echo-private:orders.{$companyId},NewOrderPlaced" => 'onOrderBroadcastReceived',
+                "echo-private:orders.{$companyId},TabOrderSentToProduction" => 'onTabOrderSentToProductionBroadcast',
             ]
             : [];
     }

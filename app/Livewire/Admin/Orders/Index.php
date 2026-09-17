@@ -115,9 +115,9 @@ class Index extends Component
         }
 
         $listeners = [
-            "echo:orders.{$this->companyId},NewOrderPlaced" => '$refresh',
-            "echo:orders.{$this->companyId},OrderStatusUpdated" => '$refresh',
-            "echo:orders.{$this->companyId},OrderItemsUpdated" => '$refresh',
+            "echo-private:orders.{$this->companyId},NewOrderPlaced" => '$refresh',
+            "echo-private:orders.{$this->companyId},OrderStatusUpdated" => '$refresh',
+            "echo-private:orders.{$this->companyId},OrderItemsUpdated" => '$refresh',
         ];
 
         // "Minha fila" é a tela que cozinha/bar realmente usa no dia a dia (não tem
@@ -125,7 +125,7 @@ class Index extends Component
         // este listener aqui, "Finalizar Pedido" do garçom nunca chega em lugar
         // nenhum que essas roles conseguem abrir.
         if (in_array($this->userStation, ['cozinha', 'bar'], true)) {
-            $listeners["echo:orders.{$this->companyId},TabOrderSentToProduction"] = 'onTabOrderSentToProductionBroadcast';
+            $listeners["echo-private:orders.{$this->companyId},TabOrderSentToProduction"] = 'onTabOrderSentToProductionBroadcast';
         }
 
         return $listeners;

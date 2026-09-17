@@ -31,8 +31,8 @@ class Notifications extends Component
         }
 
         return [
-            "echo:orders.{$this->companyId},NewOrderPlaced" => 'onNewOrder',
-            "echo:orders.{$this->companyId},OrderItemsUpdated" => 'onOrderItemsUpdated',
+            "echo-private:orders.{$this->companyId},NewOrderPlaced" => 'onNewOrder',
+            "echo-private:orders.{$this->companyId},OrderItemsUpdated" => 'onOrderItemsUpdated',
         ];
     }
 

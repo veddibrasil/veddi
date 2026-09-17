@@ -295,6 +295,10 @@ class OrderChat extends Component
         $listeners = [];
 
         if ($this->orderId) {
+            // Chat público (cliente sem sessão autenticada) — Laravel bloqueia canal
+            // privado pra convidado antes do authorizer rodar, por isso este listener
+            // continua público. Só é seguro porque OrderStatusUpdated::broadcastWith()
+            // é deliberadamente mínimo (status + order_number, sem PII/valor).
             $listeners["echo:order.{$this->orderId},OrderStatusUpdated"] = 'checkPaymentStatus';
         }
 

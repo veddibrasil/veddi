@@ -375,6 +375,31 @@ test('order total recalculates after item edit', function () {
     expect((float) $order->total)->toBe(30.00);
 });
 
+test('saveItems recalcula total preservando service_fee/couvert_fee/manual_discount existentes do pedido', function () {
+    ['admin' => $admin, 'order' => $order] = orderEditContext();
+
+    // Pedido com componentes de taxa/desconto do fluxo de comanda PDV (não só
+    // delivery_fee/discount) — regressão do bug em que saveItems() recalculava
+    // o total ignorando esses campos.
+    $order->update([
+        'service_fee' => 5.00,
+        'couvert_fee' => 2.00,
+        'manual_discount' => 1.00,
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Show::class, ['order' => $order])
+        ->call('startEditItems')
+        ->call('saveItems')
+        ->assertHasNoErrors();
+
+    $order->refresh();
+
+    // 25 (subtotal) + 5 (delivery_fee) + 5 (service_fee) + 2 (couvert_fee) - 0 (discount) - 1 (manual_discount)
+    expect((float) $order->total)->toBe(36.00);
+});
+
 // ─── canUpdate segue a permissão orders.update (não apenas ter um papel) ──────
 
 test('usuário sem permissão orders.update não pode atualizar status do pedido', function () {

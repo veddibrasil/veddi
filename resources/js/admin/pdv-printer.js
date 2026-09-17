@@ -253,9 +253,9 @@ export function listenForFiscalNoteAuthorization(orderId, onError) {
     }
 
     const channelName = 'order.' + orderId;
-    const channel = window.Echo.channel(channelName);
+    const channel = window.Echo.private(channelName);
 
-    const stopListening = () => window.Echo.leaveChannel(channelName);
+    const stopListening = () => window.Echo.leave(channelName);
     const timeout = setTimeout(stopListening, 15 * 60 * 1000);
 
     channel.listen('.FiscalNoteAuthorized', (event) => {

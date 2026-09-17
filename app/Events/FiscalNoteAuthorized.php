@@ -3,8 +3,8 @@
 namespace App\Events;
 
 use App\Models\FiscalNote;
-use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -20,7 +20,7 @@ class FiscalNoteAuthorized implements ShouldBroadcast
     public function broadcastOn(): array
     {
         return [
-            new Channel('order.'.$this->note->order_id),
+            new PrivateChannel('order.'.$this->note->order_id),
         ];
     }
 
