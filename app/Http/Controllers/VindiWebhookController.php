@@ -13,7 +13,6 @@ class VindiWebhookController extends Controller
     {
         // Payload chega como form-data POST
         $data = $request->all();
-        Log::channel('webhook')->debug('Vindi webhook recebido', ['payload' => $data]);
 
         // Yapay sends account token as transaction.seller_token (not root token_account)
         $sellerToken = $data['transaction']['seller_token']
@@ -22,6 +21,9 @@ class VindiWebhookController extends Controller
             ?? '';
 
         if (! hash_equals((string) config('payments.vindi_token_account'), $sellerToken)) {
+            // Nunca logar o payload completo de uma requisição ainda não autenticada —
+            // só metadados, senão qualquer POST não autenticado a este endpoint público
+            // grava o corpo bruto (potencialmente forjado) no log/Nightwatch.
             Log::channel('webhook')->warning('Vindi webhook: token_account inválido', [
                 'ip' => $request->ip(),
                 'received_prefix' => $sellerToken !== '' ? substr($sellerToken, 0, 8).'…' : '(vazio)',
@@ -32,6 +34,8 @@ class VindiWebhookController extends Controller
 
             return response()->json(['error' => 'Unauthorized'], 401);
         }
+
+        Log::channel('webhook')->debug('Vindi webhook recebido', ['payload' => $data]);
 
         // Yapay sends token as transaction.transaction_token (also mirrored at root token_transaction)
         $transactionToken = $data['transaction']['transaction_token']

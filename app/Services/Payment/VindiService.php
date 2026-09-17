@@ -171,7 +171,7 @@ class VindiService
 
     public function getTransactionStatus(string $transactionToken): string
     {
-        $response = Http::get("{$this->baseUrl}/transactions/{$transactionToken}", [
+        $response = Http::timeout(15)->get("{$this->baseUrl}/transactions/{$transactionToken}", [
             'token_account' => config('payments.vindi_token_account'),
             'reseller_token' => config('payments.vindi_reseller_token'),
         ]);
@@ -197,8 +197,9 @@ class VindiService
     }
 
     /**
-     * Mascara PAN e CVV antes de logar — nunca persistir dado de cartão em log
-     * (PCI-DSS), mesmo em canal interno, já que 'payments' replica pro Nightwatch.
+     * Mascara PAN/CVV e dado pessoal do titular antes de logar — nunca persistir
+     * dado de cartão (PCI-DSS) nem CPF/e-mail/telefone/endereço em texto puro em
+     * log, mesmo em canal interno, já que 'payments' replica pro Nightwatch.
      */
     private function redactCardPayload(array $payload): array
     {
@@ -215,12 +216,54 @@ class VindiService
             $payload['payment']['card_token'] = substr((string) $payload['payment']['card_token'], 0, 8).'...';
         }
 
+        if (isset($payload['customer']) && is_array($payload['customer'])) {
+            $payload['customer'] = $this->redactCustomerPayload($payload['customer']);
+        }
+
         return $payload;
+    }
+
+    private function redactCustomerPayload(array $customer): array
+    {
+        foreach (['cpf', 'cnpj'] as $key) {
+            if (! empty($customer[$key])) {
+                $digits = (string) $customer[$key];
+                $customer[$key] = str_repeat('*', max(strlen($digits) - 2, 0)).substr($digits, -2);
+            }
+        }
+
+        if (! empty($customer['name'])) {
+            $customer['name'] = '[REDACTED]';
+        }
+
+        if (! empty($customer['email']) && is_string($customer['email']) && str_contains($customer['email'], '@')) {
+            [$local, $domain] = explode('@', $customer['email'], 2);
+            $customer['email'] = substr($local, 0, 1).'***@'.$domain;
+        }
+
+        if (! empty($customer['contacts']) && is_array($customer['contacts'])) {
+            foreach ($customer['contacts'] as &$contact) {
+                if (! empty($contact['number_contact'])) {
+                    $digits = (string) $contact['number_contact'];
+                    $contact['number_contact'] = str_repeat('*', max(strlen($digits) - 4, 0)).substr($digits, -4);
+                }
+            }
+            unset($contact);
+        }
+
+        if (! empty($customer['addresses']) && is_array($customer['addresses'])) {
+            foreach ($customer['addresses'] as &$address) {
+                unset($address['street'], $address['number'], $address['completion'], $address['neighborhood']);
+            }
+            unset($address);
+        }
+
+        return $customer;
     }
 
     private function createTransaction(array $payload): array
     {
-        $response = Http::asJson()->post("{$this->baseUrl}/transactions/payment", $payload);
+        $response = Http::asJson()->timeout(15)->post("{$this->baseUrl}/transactions/payment", $payload);
 
         $data = $response->json();
         $safePayload = $this->redactCardPayload($payload);

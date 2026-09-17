@@ -10,6 +10,8 @@ use App\Models\Order;
 use App\Models\Payment;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Log;
+use Monolog\Handler\TestHandler;
 
 uses(RefreshDatabase::class);
 
@@ -87,6 +89,51 @@ test('webhook Vindi enfileira ProcessVindiWebhook', function () {
 
     $response->assertStatus(200)->assertJson(['status' => 'queued']);
     Bus::assertDispatched(ProcessVindiWebhook::class);
+});
+
+test('webhook Vindi com token inválido não loga o payload — só metadados', function () {
+    config(['logging.channels.webhook' => ['driver' => 'monolog', 'handler' => TestHandler::class]]);
+    config()->set('payments.vindi_token_account', 'tok_test');
+
+    $this->postJson('/webhooks/vindi', [
+        'transaction' => [
+            'seller_token' => 'tok_forjado',
+            'transaction_token' => 'vindi_tok_wh_001',
+            'status_name' => 'Aprovada',
+            'order_number' => '1',
+        ],
+        'customer' => ['cpf' => '12345678900'],
+    ])->assertStatus(401);
+
+    /** @var TestHandler $handler */
+    $handler = Log::channel('webhook')->getLogger()->getHandlers()[0];
+    $records = $handler->getRecords();
+
+    expect($records)->toHaveCount(1);
+    expect($records[0]['message'])->toContain('token_account inválido');
+    expect(json_encode($records[0]['context']))->not->toContain('12345678900');
+});
+
+test('webhook Vindi com token válido loga o payload completo só depois da validação', function () {
+    Bus::fake();
+    config(['logging.channels.webhook' => ['driver' => 'monolog', 'handler' => TestHandler::class]]);
+    config()->set('payments.vindi_token_account', 'tok_test');
+
+    $this->postJson('/webhooks/vindi', [
+        'token_transaction' => 'vindi_tok_wh_001',
+        'transaction' => [
+            'seller_token' => 'tok_test',
+            'transaction_token' => 'vindi_tok_wh_001',
+            'status_name' => 'Aprovada',
+            'order_number' => '1',
+        ],
+    ])->assertStatus(200);
+
+    /** @var TestHandler $handler */
+    $handler = Log::channel('webhook')->getLogger()->getHandlers()[0];
+    $messages = array_map(fn ($r) => $r['message'], $handler->getRecords());
+
+    expect($messages)->toContain('Vindi webhook recebido');
 });
 
 test('webhook Vindi rejeita token_account inválido', function () {

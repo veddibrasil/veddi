@@ -25,8 +25,9 @@ class AsaasWebhookController extends Controller
 
         $data = $request->json()->all();
         $event = $data['event'] ?? null;
-        Log::channel('webhook')->info('data Asaas webhook recebido', ['data' => $data]);
 
+        // Nunca logar o payload completo (pode trazer CPF/CNPJ do titular do
+        // cartão dependendo do evento) — só o essencial pra rastrear o fluxo.
         Log::channel('webhook')->info('Asaas webhook recebido', ['event' => $event]);
 
         if (! $event) {
