@@ -30,6 +30,7 @@ readonly class IfoodOrderDTO
         public float $total,
         public string $paymentType, // esperado: PREPAID
         public Carbon $createdAt,
+        public float $additionalFees = 0.0,
     ) {}
 
     public static function fromArray(array $data): self
@@ -58,10 +59,11 @@ readonly class IfoodOrderDTO
             items: self::mapItems($data['items'] ?? []),
             subtotal: (float) ($data['total']['subTotal'] ?? 0.0),
             deliveryFee: (float) ($data['total']['deliveryFee'] ?? 0.0),
-            discount: (float) ($data['total']['discount'] ?? 0.0),
+            discount: (float) ($data['total']['benefits'] ?? $data['total']['discount'] ?? 0.0),
             total: (float) ($data['total']['orderAmount'] ?? 0.0),
             paymentType: (string) ($data['payments']['methods'][0]['type'] ?? 'PREPAID'),
             createdAt: Carbon::parse($data['createdAt'] ?? now()),
+            additionalFees: (float) ($data['total']['additionalFees'] ?? 0.0),
         );
     }
 
@@ -94,6 +96,7 @@ readonly class IfoodOrderDTO
                 'name' => (string) ($option['name'] ?? ''),
                 'quantity' => (int) ($option['quantity'] ?? 1),
                 'hasNestedOptions' => $hasNestedOptions,
+                'customizations' => self::mapOptions($option['customizations'] ?? $option['customization'] ?? []),
             ];
         }, $rawOptions);
     }

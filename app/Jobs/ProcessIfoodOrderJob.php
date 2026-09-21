@@ -73,6 +73,12 @@ class ProcessIfoodOrderJob implements ShouldBeUnique, ShouldQueue
                 return;
             }
 
+            if (in_array($event->event_type, ['CON', 'CONCLUDED'], true)) {
+                $this->handleConcluded($event);
+
+                return;
+            }
+
             if ($event->event_type !== self::EVENT_TYPE_PLACED) {
                 Log::channel('ifood')->info('iFood: evento não é de novo pedido, ignorado nesta fase', [
                     'event_id' => $event->event_id,
@@ -103,6 +109,8 @@ class ProcessIfoodOrderJob implements ShouldBeUnique, ShouldQueue
                 orderType: $dto->orderType === 'TAKEOUT' ? 'pickup' : 'delivery',
                 status: 'paid',
                 deliveryFee: $dto->deliveryFee,
+                extraDiscount: $dto->discount,
+                serviceFee: $dto->additionalFees,
                 channel: OrderChannel::Ifood->value,
                 externalOrderId: $dto->ifoodOrderId,
                 externalMetadata: [
@@ -218,6 +226,48 @@ class ProcessIfoodOrderJob implements ShouldBeUnique, ShouldQueue
         }
 
         $event->update(['status' => 'processed', 'order_id' => $order->id, 'processed_at' => now()]);
+    }
+
+    private function handleConcluded(IfoodOrderEvent $event): void
+    {
+        $ifoodOrderId = $event->payload['orderId'] ?? null;
+        if (! $ifoodOrderId) {
+            throw new \RuntimeException("iFood: evento {$event->event_id} sem orderId.");
+        }
+
+        $changedOrder = DB::transaction(function () use ($event, $ifoodOrderId) {
+            $order = Order::where('external_order_id', $ifoodOrderId)
+                ->where('channel', OrderChannel::Ifood->value)
+                ->where('branch_id', $event->ifoodIntegration->branch_id)
+                ->lockForUpdate()->first();
+
+            if (! $order) {
+                throw new \RuntimeException("iFood: pedido {$ifoodOrderId} não encontrado para conclusão.");
+            }
+
+            $changed = ! in_array($order->status, ['delivered', 'cancelled', 'refunded'], true);
+            if ($changed) {
+                $previousStatus = $order->status;
+                $order->update(['status' => 'delivered']);
+                app(\App\Services\Order\OrderService::class)->recordStatusHistory(
+                    $order, null, $previousStatus, 'delivered', 'Conclusão confirmada pelo iFood',
+                    ['source' => 'ifood_event', 'event_id' => $event->event_id, 'ifood_status' => 'CONCLUDED'],
+                );
+            }
+
+            $event->update(['status' => 'processed', 'order_id' => $order->id, 'processed_at' => now()]);
+
+            return $changed ? $order : null;
+        });
+
+        if ($changedOrder) {
+            OrderStatusUpdated::dispatch($changedOrder);
+            Log::channel('ifood')->info('iFood: pedido concluído a partir de evento CON', [
+                'event_id' => $event->event_id,
+                'order_id' => $changedOrder->id,
+                'ifood_order_id' => $ifoodOrderId,
+            ]);
+        }
     }
 
     private function resolveOrCreateCustomer(IfoodOrderDTO $dto, int $companyId): Customer

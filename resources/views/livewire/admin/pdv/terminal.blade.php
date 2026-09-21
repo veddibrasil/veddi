@@ -43,21 +43,78 @@
                         </div>
                     @endif
 
-                    @if ($confirmingCancelOrder)
-                        <div class="w-full border border-red-200 rounded-xl p-3 space-y-2 text-sm bg-red-50 dark:bg-red-900/20 dark:border-red-700">
-                            <p class="text-red-700 dark:text-red-300 font-medium">Cancelar pedido {{ $lastOrderNumber }}?</p>
-                            <p class="text-xs text-red-500">Estoque será restaurado. Sem reembolso automático.</p>
-                            <div class="flex gap-2">
-                                <flux:button wire:click="$set('confirmingCancelOrder', false)" variant="ghost" size="sm">Não</flux:button>
-                                <flux:button wire:click="cancelLastOrder" variant="danger" size="sm" class="flex-1">Sim, cancelar</flux:button>
-                            </div>
-                        </div>
-                        @error('cancel') <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
-                    @else
-                        <flux:button wire:click="$set('confirmingCancelOrder', true)" variant="ghost" size="sm" class="w-full text-red-500 hover:text-red-700">
-                            Cancelar este pedido
-                        </flux:button>
-                    @endif
+                    <flux:button wire:click="openCancelOrderModal({{ $lastOrderId }})" variant="ghost" size="sm" class="w-full text-red-500 hover:text-red-700">
+                        Cancelar este pedido
+                    </flux:button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- ══ Modal: cancelar pedido — motivo obrigatório (select + descrição).
+         Overlay bloqueante próprio, independente do card de sucesso (que pode
+         sumir sozinho por timeout) e da lista de sessão: guarda seu próprio
+         id/número e só fecha por ação explícita do operador (Voltar ou
+         confirmar). Erro de validação/regra de negócio mantém o modal aberto. ══ --}}
+    @if ($cancelModalOrderId)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+            <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-xl p-6 w-full max-w-md space-y-5">
+                <div class="flex items-start gap-4">
+                    <div class="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+                        <flux:icon.x-mark class="size-5 text-red-600 dark:text-red-400" />
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-neutral-800 dark:text-neutral-100">Cancelar pedido {{ $cancelModalOrderNumber }}</h3>
+                        <p class="text-sm text-neutral-500 dark:text-neutral-400 mt-1">Estoque será restaurado e sem reembolso automático. Informe o motivo — fica registrado com seu usuário como operador do cancelamento.</p>
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    <flux:label>Motivo <span class="text-red-500">*</span></flux:label>
+                    <flux:select wire:model.live="cancelReasonCode" placeholder="Selecione o motivo...">
+                        @foreach (\App\Enums\OrderCancellationReason::cases() as $reason)
+                            <flux:select.option value="{{ $reason->value }}">{{ $reason->label() }}</flux:select.option>
+                        @endforeach
+                    </flux:select>
+                    @error('cancelReasonCode')
+                        <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                    @enderror
+                </div>
+
+                <div class="space-y-2">
+                    <flux:label>
+                        Descrição
+                        @if ($cancelReasonCode === \App\Enums\OrderCancellationReason::Other->value)
+                            <span class="text-red-500">*</span>
+                        @else
+                            <span class="text-neutral-400 font-normal">(opcional)</span>
+                        @endif
+                    </flux:label>
+                    <flux:textarea
+                        wire:model="cancelReasonDescription"
+                        placeholder="Detalhes do cancelamento..."
+                        rows="3"
+                        class="resize-none"
+                    />
+                    @error('cancelReasonDescription')
+                        <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                    @enderror
+                </div>
+
+                @error('cancel')
+                    <p class="text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                @enderror
+
+                <div class="flex justify-end gap-3 pt-1">
+                    <flux:button wire:click="closeCancelOrderModal" variant="ghost" size="sm">Voltar</flux:button>
+                    <flux:button wire:click="cancelPdvOrder({{ $cancelModalOrderId }})"
+                                 variant="danger"
+                                 size="sm"
+                                 wire:loading.attr="disabled"
+                                 wire:target="cancelPdvOrder({{ $cancelModalOrderId }})">
+                        <span wire:loading.remove wire:target="cancelPdvOrder({{ $cancelModalOrderId }})">Confirmar cancelamento</span>
+                        <span wire:loading wire:target="cancelPdvOrder({{ $cancelModalOrderId }})">Cancelando...</span>
+                    </flux:button>
                 </div>
             </div>
         </div>
@@ -99,6 +156,17 @@
                     {{ $this->branches->first()?->name ?? '—' }}
                 </span>
             @endif
+
+            <flux:button
+                href="{{ route('admin.pdv.tabs') }}"
+                wire:navigate
+                variant="outline"
+                size="sm"
+                icon="table-cells"
+                class="hidden sm:flex"
+            >
+                Mesas/Comandas
+            </flux:button>
 
             @unless ($isWaiter || $isCaixa)
                 <flux:button wire:click="openClosingReports" variant="outline" size="sm" icon="document-text" class="hidden sm:flex" title="Relatórios de fechamento" />
@@ -536,6 +604,7 @@
                                 @foreach ($this->sessionOrders as $sessionOrder)
                                     @php
                                         $isCancelled = in_array($sessionOrder->status, ['cancelled', 'refunded']);
+                                        $isAwaitingPayment = $sessionOrder->status === 'awaiting_payment';
                                         $methodLabel = match(strtolower($sessionOrder->payment_method ?? '')) {
                                             'pix' => 'PIX',
                                             'credit_card' => 'Cartão',
@@ -549,8 +618,8 @@
                                                 <div class="flex items-center gap-2 flex-wrap">
                                                     <span class="font-mono text-sm font-semibold text-amber-500 dark:text-amber-400">{{ $sessionOrder->order_number }}</span>
                                                     <span class="text-xs px-1.5 py-0.5 rounded-full font-medium
-                                                        {{ $isCancelled ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' }}">
-                                                        {{ $isCancelled ? 'Cancelado' : 'Pago' }}
+                                                        {{ $isCancelled ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : ($isAwaitingPayment ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400') }}">
+                                                        {{ $isCancelled ? 'Cancelado' : ($isAwaitingPayment ? 'Ag. pagamento' : 'Pago') }}
                                                     </span>
                                                 </div>
                                                 <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">
@@ -570,29 +639,25 @@
                                                 <p class="text-sm font-bold text-neutral-800 dark:text-neutral-100">
                                                     R$ {{ number_format($sessionOrder->total, 2, ',', '.') }}
                                                 </p>
+                                                @if ($isAwaitingPayment)
+                                                    <button
+                                                        wire:click="confirmSessionOrderPayment({{ $sessionOrder->id }})"
+                                                        wire:confirm="Confirmar que o pagamento deste pedido foi recebido?"
+                                                        class="block text-xs text-emerald-600 hover:text-emerald-700 mt-1 font-medium"
+                                                    >
+                                                        Confirmar pagamento
+                                                    </button>
+                                                @endif
                                                 @if (!$isCancelled)
-                                                    @if ($confirmingCancelSessionOrderId === $sessionOrder->id)
-                                                        <div class="mt-1 space-y-1">
-                                                            <p class="text-xs text-red-600 dark:text-red-400">Confirmar cancelamento?</p>
-                                                            <div class="flex gap-1">
-                                                                <flux:button wire:click="$set('confirmingCancelSessionOrderId', null)" variant="ghost" size="sm" class="text-xs px-2 py-0.5">Não</flux:button>
-                                                                <flux:button wire:click="cancelPdvOrder({{ $sessionOrder->id }})" variant="danger" size="sm" class="text-xs px-2 py-0.5">Sim</flux:button>
-                                                            </div>
-                                                        </div>
-                                                    @else
-                                                        <button
-                                                            wire:click="$set('confirmingCancelSessionOrderId', {{ $sessionOrder->id }})"
-                                                            class="text-xs text-red-400 hover:text-red-600 mt-1"
-                                                        >
-                                                            Cancelar
-                                                        </button>
-                                                    @endif
+                                                    <button
+                                                        wire:click="openCancelOrderModal({{ $sessionOrder->id }})"
+                                                        class="text-xs text-red-400 hover:text-red-600 mt-1"
+                                                    >
+                                                        Cancelar
+                                                    </button>
                                                 @endif
                                             </div>
                                         </div>
-                                        @error('cancel')
-                                            <p class="text-xs text-red-600 dark:text-red-400 mt-1">{{ $message }}</p>
-                                        @enderror
                                     </div>
                                 @endforeach
                             </div>
@@ -1113,8 +1178,8 @@
                             </div>
                         </div>
 
-                        <div class="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto xl:grid-cols-[minmax(0,1fr)_22rem]">
-                            <div class="space-y-5 p-4 lg:p-5">
+                        <div class="flex min-h-0 flex-1 flex-col overflow-hidden xl:flex-row">
+                            <div class="flex-1 min-h-0 overflow-y-auto space-y-5 p-4 lg:p-5">
                                 <div class="grid gap-4 md:grid-cols-2">
                                     <div class="space-y-1.5">
                                         <flux:label class="text-xs font-semibold">Tipo de pedido</flux:label>
@@ -1337,11 +1402,15 @@
                                 @enderror
                             </div>
 
-                            <div class="border-t border-neutral-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-[#0f1926]/70 xl:border-l xl:border-t-0">
-                                <div class="flex h-full flex-col gap-4">
+                            <div class="flex max-h-[50vh] flex-col overflow-hidden border-t border-neutral-100 bg-zinc-50 dark:border-zinc-800 dark:bg-[#0f1926]/70 xl:max-h-none xl:w-[22rem] xl:shrink-0 xl:border-l xl:border-t-0">
+                                {{-- Área de cima rola por dentro; o rodapé (Total/nota fiscal/botões)
+                                     fica FORA dela — mesmo motivo do rodapé do carrinho: "Confirmar"
+                                     precisa estar sempre alcançável sem rolar, mesmo com formulário
+                                     ou lista de itens longos. --}}
+                                <div class="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
                                     <div>
                                         <p class="text-[11px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Resumo do pedido</p>
-                                        <div class="mt-3 max-h-64 overflow-y-auto rounded-xl border border-neutral-200 bg-white divide-y divide-neutral-100 dark:border-zinc-800 dark:bg-zinc-900 dark:divide-zinc-800">
+                                        <div class="mt-3 rounded-xl border border-neutral-200 bg-white divide-y divide-neutral-100 dark:border-zinc-800 dark:bg-zinc-900 dark:divide-zinc-800">
                                             @foreach ($cart as $cartKey => $item)
                                                 @php
                                                     $itemOptionsExtra = 0.0;
@@ -1362,72 +1431,72 @@
                                         </div>
                                     </div>
 
-                                    <div class="mt-auto space-y-3">
-                                        @if ($deliveryFeeAmount > 0 || $manualDiscountAmount > 0 || $this->serviceFeeAmount > 0 || $this->couvertFeeAmount > 0)
-                                            <div class="space-y-1 text-sm">
+                                    @if ($deliveryFeeAmount > 0 || $manualDiscountAmount > 0 || $this->serviceFeeAmount > 0 || $this->couvertFeeAmount > 0)
+                                        <div class="space-y-1 text-sm">
+                                            <div class="flex justify-between text-neutral-500 dark:text-neutral-400">
+                                                <span>Subtotal</span>
+                                                <span>R$ {{ number_format($this->cartTotal, 2, ',', '.') }}</span>
+                                            </div>
+                                            @if ($deliveryFeeAmount > 0)
                                                 <div class="flex justify-between text-neutral-500 dark:text-neutral-400">
-                                                    <span>Subtotal</span>
-                                                    <span>R$ {{ number_format($this->cartTotal, 2, ',', '.') }}</span>
+                                                    <span>Taxa de entrega</span>
+                                                    <span>+ R$ {{ number_format($deliveryFeeAmount, 2, ',', '.') }}</span>
                                                 </div>
-                                                @if ($deliveryFeeAmount > 0)
-                                                    <div class="flex justify-between text-neutral-500 dark:text-neutral-400">
-                                                        <span>Taxa de entrega</span>
-                                                        <span>+ R$ {{ number_format($deliveryFeeAmount, 2, ',', '.') }}</span>
-                                                    </div>
-                                                @endif
-                                                @if ($this->serviceFeeAmount > 0)
-                                                    <div class="flex justify-between text-neutral-500 dark:text-neutral-400">
-                                                        <span>Taxa de serviço</span>
-                                                        <span>+ R$ {{ number_format($this->serviceFeeAmount, 2, ',', '.') }}</span>
-                                                    </div>
-                                                @endif
-                                                @if ($this->couvertFeeAmount > 0)
-                                                    <div class="flex justify-between text-neutral-500 dark:text-neutral-400">
-                                                        <span>Couvert artístico</span>
-                                                        <span>+ R$ {{ number_format($this->couvertFeeAmount, 2, ',', '.') }}</span>
-                                                    </div>
-                                                @endif
-                                                @if ($manualDiscountAmount > 0)
-                                                    <div class="flex justify-between text-green-600 dark:text-green-400">
-                                                        <span>Desconto manual</span>
-                                                        <span>- R$ {{ number_format($manualDiscountAmount, 2, ',', '.') }}</span>
-                                                    </div>
-                                                @endif
-                                            </div>
-                                        @endif
-
-                                        <div class="rounded-xl border border-neutral-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
-                                            <div class="flex items-end justify-between gap-3">
-                                                <span class="text-sm font-semibold text-neutral-500 dark:text-neutral-400">Total</span>
-                                                <span class="text-2xl font-black text-neutral-900 dark:text-neutral-100">
-                                                    R$ {{ number_format($this->cartTotalAfterDiscount, 2, ',', '.') }}
-                                                </span>
-                                            </div>
+                                            @endif
+                                            @if ($this->serviceFeeAmount > 0)
+                                                <div class="flex justify-between text-neutral-500 dark:text-neutral-400">
+                                                    <span>Taxa de serviço</span>
+                                                    <span>+ R$ {{ number_format($this->serviceFeeAmount, 2, ',', '.') }}</span>
+                                                </div>
+                                            @endif
+                                            @if ($this->couvertFeeAmount > 0)
+                                                <div class="flex justify-between text-neutral-500 dark:text-neutral-400">
+                                                    <span>Couvert artístico</span>
+                                                    <span>+ R$ {{ number_format($this->couvertFeeAmount, 2, ',', '.') }}</span>
+                                                </div>
+                                            @endif
+                                            @if ($manualDiscountAmount > 0)
+                                                <div class="flex justify-between text-green-600 dark:text-green-400">
+                                                    <span>Desconto manual</span>
+                                                    <span>- R$ {{ number_format($manualDiscountAmount, 2, ',', '.') }}</span>
+                                                </div>
+                                            @endif
                                         </div>
+                                    @endif
+                                </div>
 
-                                        @if ($canUseFiscalNotes)
-                                            <label class="flex items-center gap-2 px-3 py-2 border rounded-xl dark:border-zinc-700 cursor-pointer">
-                                                <flux:checkbox wire:model.live="printFiscalNote" />
-                                                <span class="text-sm">Imprimir nota fiscal ao confirmar</span>
-                                            </label>
-                                        @endif
-
-                                        <div class="grid grid-cols-2 gap-2">
-                                            <flux:button wire:click="backToCatalog" variant="ghost" size="base">
-                                                Voltar
-                                            </flux:button>
-                                            <flux:button
-                                                id="pdv-confirm-order-btn"
-                                                wire:click="processOrder"
-                                                variant="primary"
-                                                size="base"
-                                                wire:loading.attr="disabled"
-                                                :disabled="$isSplitPayment && abs($this->splitPaymentsRemaining) > 0.01"
-                                            >
-                                                <span wire:loading.remove>Confirmar</span>
-                                                <span wire:loading>Processando...</span>
-                                            </flux:button>
+                                <div class="shrink-0 space-y-3 border-t border-neutral-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-[#0f1926]/70">
+                                    <div class="rounded-xl border border-neutral-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                                        <div class="flex items-end justify-between gap-3">
+                                            <span class="text-sm font-semibold text-neutral-500 dark:text-neutral-400">Total</span>
+                                            <span class="text-2xl font-black text-neutral-900 dark:text-neutral-100">
+                                                R$ {{ number_format($this->cartTotalAfterDiscount, 2, ',', '.') }}
+                                            </span>
                                         </div>
+                                    </div>
+
+                                    @if ($canUseFiscalNotes)
+                                        <label class="flex items-center gap-2 px-3 py-2 border rounded-xl dark:border-zinc-700 cursor-pointer">
+                                            <flux:checkbox wire:model.live="printFiscalNote" />
+                                            <span class="text-sm">Imprimir nota fiscal ao confirmar</span>
+                                        </label>
+                                    @endif
+
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <flux:button wire:click="backToCatalog" variant="ghost" size="base">
+                                            Voltar
+                                        </flux:button>
+                                        <flux:button
+                                            id="pdv-confirm-order-btn"
+                                            wire:click="processOrder"
+                                            variant="primary"
+                                            size="base"
+                                            wire:loading.attr="disabled"
+                                            :disabled="$isSplitPayment && abs($this->splitPaymentsRemaining) > 0.01"
+                                        >
+                                            <span wire:loading.remove>Confirmar</span>
+                                            <span wire:loading>Processando...</span>
+                                        </flux:button>
                                     </div>
                                 </div>
                             </div>

@@ -3,6 +3,7 @@
 namespace App\Livewire\Admin\Settings;
 
 use App\Exceptions\IfoodMerchantAlreadyLinkedException;
+use App\Jobs\PollIfoodEventsJob;
 use App\Jobs\SyncIfoodCatalogJob;
 use App\Models\Branch;
 use App\Models\Company;
@@ -20,7 +21,7 @@ class IfoodIntegrationSettings extends Component
     /** @var array<int, array{id: int, name: string}> */
     public array $branchOptions = [];
 
-    /** not_connected | pending_authorization | pending_merchant_selection | connected */
+    /** not_connected | reauthorization_required | pending_authorization | pending_merchant_selection | connected */
     public string $connectionState = 'not_connected';
 
     public ?string $userCode = null;
@@ -152,6 +153,7 @@ class IfoodIntegrationSettings extends Component
         if ($integration->merchant_id !== null) {
             // Cardápio começa vazio do lado do iFood até o próximo sync — dispara na
             // hora em vez de esperar o batch diário (routes/console.php, 05:00).
+            PollIfoodEventsJob::dispatch();
             SyncIfoodCatalogJob::dispatch($branch->id);
             session()->flash('status', 'Integração com o iFood conectada com sucesso. Sincronizando cardápio...');
         } else {
@@ -194,6 +196,7 @@ class IfoodIntegrationSettings extends Component
 
         // Cardápio começa vazio do lado do iFood até o próximo sync — dispara na
         // hora em vez de esperar o batch diário (routes/console.php, 05:00).
+        PollIfoodEventsJob::dispatch();
         SyncIfoodCatalogJob::dispatch($branch->id);
 
         session()->flash('status', 'Loja confirmada — integração com o iFood ativa. Sincronizando cardápio...');
@@ -271,7 +274,7 @@ class IfoodIntegrationSettings extends Component
             ? IfoodIntegration::where('company_id', $company->id)->where('branch_id', $branch->id)->first()
             : null;
 
-        if ($integration && $integration->merchant_id) {
+        if ($integration && $integration->merchant_id && $integration->status !== 'reauthorization_required') {
             $integration->update(['status' => $status]);
         }
 
@@ -285,6 +288,7 @@ class IfoodIntegrationSettings extends Component
             : null;
 
         $this->connectionState = match (true) {
+            $integration?->status === 'reauthorization_required' => 'reauthorization_required',
             $integration && $integration->merchant_id !== null => 'connected',
             $integration && $integration->isPendingMerchantSelection() => 'pending_merchant_selection',
             $integration && $integration->isPendingAuthorization() && ! $integration->isUserCodeExpired() => 'pending_authorization',

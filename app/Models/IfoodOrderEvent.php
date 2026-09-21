@@ -20,11 +20,13 @@ class IfoodOrderEvent extends Model
         'payload',
         'status',
         'processed_at',
+        'acknowledged_at',
     ];
 
     protected $casts = [
         'payload' => 'array',
         'processed_at' => 'datetime',
+        'acknowledged_at' => 'datetime',
     ];
 
     public function ifoodIntegration(): BelongsTo

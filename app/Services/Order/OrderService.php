@@ -11,6 +11,7 @@ use App\Models\CompanyNotification;
 use App\Models\Coupon;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\OrderStatusHistory;
 use App\Models\Product;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -485,14 +486,21 @@ class OrderService implements OrderServiceInterface
     /**
      * Cancela um pedido pelo cliente.
      */
-    public function cancelOrder(Order $order, int $customerId): void
+    public function cancelOrder(Order $order, int $customerId, ?string $reason = null): void
     {
         $policy = app(OrderCancellationPolicy::class);
         $policy->authorizeCustomerCancel($order);
 
+        $previousStatus = $order->status;
+
         $order->update(['status' => 'cancelled']);
 
         app(StockService::class)->restoreForOrder($order);
+
+        $this->recordStatusHistory($order, null, $previousStatus, 'cancelled', $reason, [
+            'source' => 'customer_cancel',
+            'customer_id' => $customerId,
+        ]);
 
         Log::channel('orders')->info('Pedido cancelado pelo cliente', [
             'order_id' => $order->id,
@@ -524,15 +532,27 @@ class OrderService implements OrderServiceInterface
      * Cancela um pedido pelo admin/staff, restaurando estoque e disparando
      * reembolso quando o pedido já estava pago (mesma regra do cancelamento
      * pelo cliente — cancelar não pode deixar um pagamento capturado sem estorno).
+     * O motivo é obrigatório e fica registrado no pedido e no histórico de auditoria.
      */
-    public function cancelOrderAsAdmin(Order $order, ?int $adminUserId): void
+    public function cancelOrderAsAdmin(Order $order, ?int $adminUserId, string $reason): void
     {
         $policy = app(OrderCancellationPolicy::class);
         $policy->authorizeAdminCancel($order);
 
-        $order->update(['status' => 'cancelled']);
+        $previousStatus = $order->status;
+
+        $order->update([
+            'status' => 'cancelled',
+            'cancellation_reason' => $reason,
+            'cancelled_by' => $adminUserId,
+            'cancelled_at' => now(),
+        ]);
 
         app(StockService::class)->restoreForOrder($order);
+
+        $this->recordStatusHistory($order, $adminUserId, $previousStatus, 'cancelled', $reason, [
+            'source' => 'admin_cancel',
+        ]);
 
         Log::channel('orders')->info('Pedido cancelado pelo admin', [
             'order_id' => $order->id,
@@ -558,6 +578,31 @@ class OrderService implements OrderServiceInterface
                 );
             }
         }
+    }
+
+    /**
+     * Registra uma entrada no histórico de auditoria do pedido (quem fez o quê e quando).
+     * Visível apenas ao admin da empresa — ver `Order::statusHistories()`.
+     *
+     * @param  array<string, mixed>  $metadata
+     */
+    public function recordStatusHistory(
+        Order $order,
+        ?int $userId,
+        ?string $fromStatus,
+        string $toStatus,
+        ?string $reason = null,
+        array $metadata = [],
+    ): void {
+        OrderStatusHistory::create([
+            'company_id' => $order->company_id,
+            'order_id' => $order->id,
+            'user_id' => $userId,
+            'from_status' => $fromStatus,
+            'to_status' => $toStatus,
+            'reason' => $reason,
+            'metadata' => $metadata,
+        ]);
     }
 
     /**

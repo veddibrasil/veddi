@@ -146,3 +146,21 @@ test('mapToCart falha quando complemento não está mapeado pra nenhuma opção 
     expect(fn () => app(IfoodOrderMapper::class)->mapToCart($dto, $branch->id))
         ->toThrow(IfoodMappingException::class);
 });
+
+test('mapeia customizações do combo sem perder preço ou vínculo com o complemento pai', function () {
+    ['branch' => $branch, 'product' => $product, 'integration' => $integration] = ifoodContext('combo');
+    $group = ProductOptionGroup::create(['company_id' => $product->company_id, 'name' => 'Combo', 'total_qty' => 10, 'fixed' => false]);
+    $group->products()->attach($product->id);
+    $parent = ProductOption::create(['product_option_group_id' => $group->id, 'ifood_option_id' => 'parent', 'name' => 'Sanduíche', 'additional_price' => 2]);
+    $child = ProductOption::create(['product_option_group_id' => $group->id, 'ifood_option_id' => 'child', 'name' => 'Sanduíche / Queijo', 'additional_price' => 1]);
+    $payload = ifoodOrderDetailsPayload('combo-order', $integration->merchant_id, 'ifood-item-coxinha-combo', 1);
+    $payload['items'][0]['options'] = [['id' => 'parent', 'name' => 'Sanduíche', 'quantity' => 1, 'customizations' => [['id' => 'child', 'name' => 'Queijo', 'quantity' => 2]]]];
+    $cart = app(IfoodOrderMapper::class)->mapToCart(IfoodOrderDTO::fromArray($payload), $branch->id);
+    $item = array_values($cart)[0];
+    expect($item['options'][$group->id]['selections'][$child->id]['qty'])->toBe(2)
+        ->and($item['options'][$group->id]['selections'][$child->id]['ifood_parents'])->toBe(['parent']);
+    $priced = app(\App\Services\Order\CartOptionPricing::class)->resolve($product, $item);
+    expect($priced['extra'])->toBe(4.0);
+    $payload['items'][0]['options'][0]['customizations'][0]['id'] = 'unknown';
+    expect(fn () => app(IfoodOrderMapper::class)->mapToCart(IfoodOrderDTO::fromArray($payload), $branch->id))->toThrow(IfoodMappingException::class);
+});

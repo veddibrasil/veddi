@@ -190,9 +190,14 @@ test('admin cancelling a paid order via status dropdown triggers refund', functi
 
     Livewire::test(Show::class, ['order' => $order])
         ->call('updateStatus', 'cancelled')
+        ->assertSet('showCancelModal', true)
+        ->set('cancelReason', 'Cliente desistiu da compra')
+        ->call('confirmCancel')
         ->assertHasNoErrors();
 
     expect($order->fresh()->status)->toBe('cancelled');
+    expect($order->fresh()->cancellation_reason)->toBe('Cliente desistiu da compra');
+    expect($order->fresh()->cancelled_by)->toBe($admin->id);
     expect(PaymentRefund::where('order_id', $order->id)->where('status', 'requested')->exists())->toBeTrue();
     Queue::assertPushed(ProcessRefund::class);
 });
@@ -213,9 +218,13 @@ test('admin cancelling a paid order via kanban triggers refund', function () {
 
     Livewire::test(OrdersIndex::class)
         ->call('updateOrderStatus', $order->id, 'cancelled')
+        ->assertSet('cancelOrderId', $order->id)
+        ->set('cancelReason', 'Cliente desistiu da compra')
+        ->call('confirmCancel')
         ->assertHasNoErrors();
 
     expect($order->fresh()->status)->toBe('cancelled');
+    expect($order->fresh()->cancellation_reason)->toBe('Cliente desistiu da compra');
     expect(PaymentRefund::where('order_id', $order->id)->where('status', 'requested')->exists())->toBeTrue();
     Queue::assertPushed(ProcessRefund::class);
 });
@@ -230,11 +239,48 @@ test('admin cancelling an order without confirmed payment does not create a refu
 
     Livewire::test(Show::class, ['order' => $order])
         ->call('updateStatus', 'cancelled')
+        ->set('cancelReason', 'Cliente desistiu da compra')
+        ->call('confirmCancel')
         ->assertHasNoErrors();
 
     expect($order->fresh()->status)->toBe('cancelled');
     expect(PaymentRefund::where('order_id', $order->id)->exists())->toBeFalse();
     Queue::assertNotPushed(ProcessRefund::class);
+});
+
+test('cancelar pedido exige motivo obrigatório', function () {
+    ['admin' => $admin, 'order' => $order] = orderEditContext();
+
+    $order->update(['status' => 'pending']);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Show::class, ['order' => $order])
+        ->call('updateStatus', 'cancelled')
+        ->call('confirmCancel')
+        ->assertHasErrors(['cancelReason' => 'required']);
+
+    expect($order->fresh()->status)->toBe('pending');
+});
+
+test('cancelamento registra o operador no histórico de auditoria do pedido', function () {
+    ['admin' => $admin, 'order' => $order] = orderEditContext();
+
+    $order->update(['status' => 'pending']);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Show::class, ['order' => $order])
+        ->call('updateStatus', 'cancelled')
+        ->set('cancelReason', 'Produto fora de estoque')
+        ->call('confirmCancel');
+
+    $history = $order->fresh()->statusHistories()->latest()->first();
+
+    expect($history)->not->toBeNull();
+    expect($history->user_id)->toBe($admin->id);
+    expect($history->to_status)->toBe('cancelled');
+    expect($history->reason)->toBe('Produto fora de estoque');
 });
 
 test('kanban status update persists order status', function () {

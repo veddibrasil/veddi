@@ -24,6 +24,31 @@ class IfoodWebhookController extends Controller
         $rawBody = $request->getContent();
         $payload = $request->json()->all();
 
+        if (! $validator->isValid($rawBody, $request->header('X-IFood-Signature'))) {
+            return response()->json(['error' => 'Invalid signature'], 401);
+        }
+
+        // Presença tem seu próprio payload, sem merchantId/orderId. Nunca
+        // persistir KEEPALIVE como pedido nem enfileirar seu processamento.
+        if (($payload['code'] ?? $payload['fullCode'] ?? null) === 'KEEPALIVE') {
+            if (array_key_exists('merchantIds', $payload)) {
+                if (! is_array($payload['merchantIds'])
+                    || count($payload['merchantIds']) > 1000
+                    || collect($payload['merchantIds'])->contains(fn ($id) => ! is_string($id))) {
+                    return response()->json(['error' => 'Invalid merchantIds'], 422);
+                }
+
+                $merchantIds = IfoodIntegration::withoutGlobalScopes()
+                    ->where('status', 'active')
+                    ->whereIn('merchant_id', $payload['merchantIds'])
+                    ->pluck('merchant_id')->unique()->values()->all();
+
+                return response()->json(['merchantIds' => $merchantIds], 202);
+            }
+
+            return response()->json(['status' => 'accepted'], 202);
+        }
+
         $merchantId = $payload['merchantId'] ?? null;
 
         if (! $merchantId) {
@@ -41,18 +66,6 @@ class IfoodWebhookController extends Controller
             Log::channel('ifood')->warning('iFood webhook: integração não encontrada ou inativa', ['merchant_id' => $merchantId]);
 
             return response()->json(['error' => 'Unknown merchant'], 404);
-        }
-
-        $signature = $request->header('X-IFood-Signature');
-
-        if (! $validator->isValid($rawBody, $signature)) {
-            Log::channel('ifood')->warning('iFood webhook: assinatura inválida', [
-                'ifood_integration_id' => $integration->id,
-                'merchant_id' => $merchantId,
-                'ip' => $request->ip(),
-            ]);
-
-            return response()->json(['error' => 'Invalid signature'], 401);
         }
 
         $eventId = $payload['id'] ?? null;
@@ -75,10 +88,10 @@ class IfoodWebhookController extends Controller
             ]);
         } catch (UniqueConstraintViolationException) {
             // Webhook do iFood é at-least-once — reentrega do mesmo event_id é esperada.
-            // Já processado (ou em processamento) antes; não redespacha, só confirma 200.
+            // Já processado (ou em processamento) antes; não redespacha.
             Log::channel('ifood')->info('iFood webhook: evento duplicado, ignorado', ['event_id' => $eventId]);
 
-            return response()->json(['status' => 'duplicate']);
+            return response()->json(['status' => 'duplicate'], 202);
         }
 
         $integration->update([
@@ -88,6 +101,6 @@ class IfoodWebhookController extends Controller
 
         ProcessIfoodOrderJob::dispatch($event->id);
 
-        return response()->json(['status' => 'queued']);
+        return response()->json(['status' => 'queued'], 202);
     }
 }

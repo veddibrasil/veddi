@@ -27,6 +27,8 @@ interface IfoodGatewayContract
 
     public function updateOrderStatus(IfoodIntegration $integration, string $ifoodOrderId, string $status): void;
 
+    public function getCancellationReasons(IfoodIntegration $integration, string $ifoodOrderId): array;
+
     public function requestCancellation(IfoodIntegration $integration, string $ifoodOrderId, string $reasonCode): void;
 
     /** Cria uma categoria no catálogo do merchant e retorna o categoryId gerado pelo iFood. */

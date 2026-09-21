@@ -2,7 +2,6 @@
 
 namespace App\Livewire\Admin\Orders;
 
-use App\Enums\IfoodRejectReason;
 use App\Enums\OrderChannel;
 use App\Events\OrderStatusUpdated;
 use App\Models\Company;
@@ -57,6 +56,13 @@ class Index extends Component
     public ?int $ifoodCancelOrderId = null;
 
     public string $ifoodCancelReason = '';
+
+    public array $ifoodCancellationReasons = [];
+
+    /** Pedido com o modal de cancelamento (motivo obrigatório) aberto, ou null. */
+    public ?int $cancelOrderId = null;
+
+    public string $cancelReason = '';
 
     const KANBAN_STATUSES = ['scheduled', 'pending', 'awaiting_payment', 'paid', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled'];
 
@@ -286,14 +292,79 @@ class Index extends Component
             }
         }
 
-        try {
-            if ($newStatus === 'cancelled') {
-                if ($previousStatus !== 'cancelled') {
-                    app(OrderService::class)->cancelOrderAsAdmin($order, auth()->id());
-                }
-            } else {
-                $order->update(['status' => $newStatus]);
+        // Cancelamento exige motivo obrigatório — abre modal em vez de aplicar direto.
+        if ($newStatus === 'cancelled') {
+            if ($previousStatus !== 'cancelled') {
+                $this->openCancelModal($order->id);
             }
+
+            return;
+        }
+
+        // "Pago" a partir de aguardando pagamento (PDV) arrastado no kanban, sem passar pelo
+        // modal "Confirmar pagamento", cai aqui — sem isso o pedido vira "paid" sem Payment,
+        // e o fechamento de caixa conta a venda no TOTAL VENDAS mas não em nenhuma forma de
+        // pagamento (ver CashClosingReportService).
+        if ($newStatus === 'paid' && $previousStatus === 'awaiting_payment' && $order->order_type === 'pdv' && ! $order->payment()->exists()) {
+            app(PaymentOrchestrator::class)->confirmDeliveryPayment($order);
+        } else {
+            $order->update(['status' => $newStatus]);
+        }
+
+        $order->refresh();
+
+        OrderStatusUpdated::dispatch($order);
+
+        app(OrderService::class)->recordStatusHistory($order, auth()->id(), $previousStatus, $newStatus);
+
+        Log::channel('orders')->info('Status do pedido alterado pelo admin via kanban', [
+            'order_id' => $order->id,
+            'admin_id' => auth()->id(),
+            'status_anterior' => $previousStatus,
+            'status_novo' => $newStatus,
+        ]);
+    }
+
+    public function openCancelModal(int $orderId): void
+    {
+        abort_unless($this->canUpdate, 403);
+
+        $this->cancelOrderId = $orderId;
+        $this->cancelReason = '';
+        $this->resetErrorBag('cancelReason');
+    }
+
+    public function closeCancelModal(): void
+    {
+        $this->cancelOrderId = null;
+        $this->cancelReason = '';
+    }
+
+    /**
+     * Confirma o cancelamento do pedido. O motivo é obrigatório e o usuário logado
+     * fica registrado como operador do cancelamento — ver `OrderService::cancelOrderAsAdmin()`.
+     */
+    public function confirmCancel(): void
+    {
+        abort_unless($this->canUpdate, 403);
+
+        $this->validate([
+            'cancelReason' => ['required', 'string', 'min:5', 'max:500'],
+        ]);
+
+        if (! $this->cancelOrderId) {
+            return;
+        }
+
+        $order = $this->isSuperAdmin
+            ? Order::withoutGlobalScope(CompanyScope::class)->findOrFail($this->cancelOrderId)
+            : Order::findOrFail($this->cancelOrderId);
+
+        $reason = $this->cancelReason;
+        $this->closeCancelModal();
+
+        try {
+            app(OrderService::class)->cancelOrderAsAdmin($order, auth()->id(), $reason);
         } catch (\RuntimeException $e) {
             session()->flash('error', $e->getMessage());
 
@@ -304,11 +375,9 @@ class Index extends Component
 
         OrderStatusUpdated::dispatch($order);
 
-        Log::channel('orders')->info('Status do pedido alterado pelo admin via kanban', [
+        Log::channel('orders')->info('Pedido cancelado pelo admin via kanban', [
             'order_id' => $order->id,
             'admin_id' => auth()->id(),
-            'status_anterior' => $previousStatus,
-            'status_novo' => $newStatus,
         ]);
     }
 
@@ -359,6 +428,16 @@ class Index extends Component
     {
         abort_unless($this->canUpdate, 403);
 
+        $order = $this->isSuperAdmin
+            ? Order::withoutGlobalScope(CompanyScope::class)->findOrFail($orderId)
+            : Order::findOrFail($orderId);
+        try {
+            $this->ifoodCancellationReasons = app(IfoodOrderActionService::class)->getCancellationReasons($order);
+        } catch (Throwable $e) {
+            session()->flash('error', $e->getMessage());
+
+            return;
+        }
         $this->ifoodCancelOrderId = $orderId;
         $this->ifoodCancelReason = '';
     }
@@ -378,7 +457,7 @@ class Index extends Component
     {
         abort_unless($this->canUpdate, 403);
 
-        if (! $this->ifoodCancelOrderId || ! IfoodRejectReason::tryFrom($this->ifoodCancelReason)) {
+        if (! $this->ifoodCancelOrderId || $this->ifoodCancelReason === '') {
             return;
         }
 

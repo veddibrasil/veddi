@@ -36,6 +36,12 @@ test('accept confirma no gateway e avança status pra preparing', function () {
     $order = makeIfoodOrder($ctx);
 
     $gateway = Mockery::mock(IfoodGatewayContract::class);
+    $gateway->shouldReceive('getCancellationReasons')->andReturn([
+        ['code' => '503', 'description' => 'Item indisponível'],
+        ['code' => '508', 'description' => 'Fora do horário'],
+        ['code' => '505', 'description' => 'Cardápio desatualizado'],
+        ['code' => '501', 'description' => 'Problemas de sistema'],
+    ]);
     $gateway->shouldReceive('confirmOrder')->once()->with(
         Mockery::on(fn ($integration) => $integration->id === $ctx['integration']->id),
         $order->external_order_id,
@@ -47,21 +53,27 @@ test('accept confirma no gateway e avança status pra preparing', function () {
     expect($order->status)->toBe('preparing');
 });
 
-test('reject com motivo válido chama gateway, cancela pedido e restaura estoque', function () {
+test('reject com motivo válido chama gateway, aguarda evento CAN sem alterar estoque', function () {
     $ctx = ifoodContext('act2');
     $order = makeIfoodOrder($ctx);
 
     $gateway = Mockery::mock(IfoodGatewayContract::class);
+    $gateway->shouldReceive('getCancellationReasons')->andReturn([
+        ['code' => '503', 'description' => 'Item indisponível'],
+        ['code' => '508', 'description' => 'Fora do horário'],
+        ['code' => '505', 'description' => 'Cardápio desatualizado'],
+        ['code' => '501', 'description' => 'Problemas de sistema'],
+    ]);
     $gateway->shouldReceive('rejectOrder')->once()->with(
         Mockery::on(fn ($integration) => $integration->id === $ctx['integration']->id),
         $order->external_order_id,
-        'ITEM_UNAVAILABLE',
+        '503',
     );
 
-    (new IfoodOrderActionService($gateway))->reject($order, 'ITEM_UNAVAILABLE');
+    (new IfoodOrderActionService($gateway))->reject($order, '503');
 
     $order->refresh();
-    expect($order->status)->toBe('cancelled');
+    expect($order->status)->toBe('paid');
 });
 
 test('reject com motivo inválido lança exceção e NUNCA chama o gateway', function () {
@@ -69,6 +81,12 @@ test('reject com motivo inválido lança exceção e NUNCA chama o gateway', fun
     $order = makeIfoodOrder($ctx);
 
     $gateway = Mockery::mock(IfoodGatewayContract::class);
+    $gateway->shouldReceive('getCancellationReasons')->andReturn([
+        ['code' => '503', 'description' => 'Item indisponível'],
+        ['code' => '508', 'description' => 'Fora do horário'],
+        ['code' => '505', 'description' => 'Cardápio desatualizado'],
+        ['code' => '501', 'description' => 'Problemas de sistema'],
+    ]);
     $gateway->shouldNotReceive('rejectOrder');
 
     expect(fn () => (new IfoodOrderActionService($gateway))->reject($order, 'MOTIVO_INVENTADO'))
@@ -83,13 +101,19 @@ test('requestCancellation com motivo válido chama gateway sem mudar status loca
     $order = makeIfoodOrder($ctx, 'preparing');
 
     $gateway = Mockery::mock(IfoodGatewayContract::class);
+    $gateway->shouldReceive('getCancellationReasons')->andReturn([
+        ['code' => '503', 'description' => 'Item indisponível'],
+        ['code' => '508', 'description' => 'Fora do horário'],
+        ['code' => '505', 'description' => 'Cardápio desatualizado'],
+        ['code' => '501', 'description' => 'Problemas de sistema'],
+    ]);
     $gateway->shouldReceive('requestCancellation')->once()->with(
         Mockery::on(fn ($integration) => $integration->id === $ctx['integration']->id),
         $order->external_order_id,
-        'RESTAURANT_CLOSED',
+        '508',
     );
 
-    (new IfoodOrderActionService($gateway))->requestCancellation($order, 'RESTAURANT_CLOSED');
+    (new IfoodOrderActionService($gateway))->requestCancellation($order, '508');
 
     $order->refresh();
     // Cancelamento no iFood não é imediato — status local só muda quando a
@@ -102,6 +126,12 @@ test('requestCancellation com motivo inválido lança exceção e NUNCA chama o 
     $order = makeIfoodOrder($ctx, 'preparing');
 
     $gateway = Mockery::mock(IfoodGatewayContract::class);
+    $gateway->shouldReceive('getCancellationReasons')->andReturn([
+        ['code' => '503', 'description' => 'Item indisponível'],
+        ['code' => '508', 'description' => 'Fora do horário'],
+        ['code' => '505', 'description' => 'Cardápio desatualizado'],
+        ['code' => '501', 'description' => 'Problemas de sistema'],
+    ]);
     $gateway->shouldNotReceive('requestCancellation');
 
     expect(fn () => (new IfoodOrderActionService($gateway))->requestCancellation($order, 'MOTIVO_INVENTADO'))

@@ -812,6 +812,53 @@ test('show: abrir modal, cancelar não confirma; confirmar no modal marca pagame
     expect(\App\Models\Payment::where('order_id', $order->id)->where('status', 'paid')->exists())->toBeTrue();
 });
 
+test('kanban: arrastar pedido PDV de aguardando pagamento pra pago cria o Payment (não só o status)', function () {
+    ['company' => $company, 'admin' => $admin, 'branch' => $branch] = stationOrderContext();
+    $order = pdvAwaitingPaymentOrder($company, $branch);
+
+    $this->actingAs($admin);
+
+    Livewire::test(OrdersIndex::class)
+        ->call('updateOrderStatus', $order->id, 'paid');
+
+    $order->refresh();
+    expect($order->status)->toBe('paid');
+    $payment = \App\Models\Payment::where('order_id', $order->id)->first();
+    expect($payment)->not->toBeNull();
+    expect($payment->status)->toBe('paid');
+});
+
+test('show: botão rápido "Pago" num pedido PDV aguardando pagamento cria o Payment (não só o status)', function () {
+    ['company' => $company, 'admin' => $admin, 'branch' => $branch] = stationOrderContext();
+    $order = pdvAwaitingPaymentOrder($company, $branch);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Show::class, ['order' => $order])
+        ->call('updateStatus', 'paid');
+
+    $order->refresh();
+    expect($order->status)->toBe('paid');
+    $payment = \App\Models\Payment::where('order_id', $order->id)->first();
+    expect($payment)->not->toBeNull();
+    expect($payment->status)->toBe('paid');
+});
+
+test('kanban: pedido online (order_type=delivery) aguardando webhook Vindi/Asaas não ganha Payment fake ao ser arrastado pra pago', function () {
+    ['company' => $company, 'admin' => $admin, 'branch' => $branch] = stationOrderContext();
+    $order = pdvAwaitingPaymentOrder($company, $branch);
+    $order->update(['order_type' => 'delivery']);
+
+    $this->actingAs($admin);
+
+    Livewire::test(OrdersIndex::class)
+        ->call('updateOrderStatus', $order->id, 'paid');
+
+    $order->refresh();
+    expect($order->status)->toBe('paid');
+    expect(\App\Models\Payment::where('order_id', $order->id)->exists())->toBeFalse();
+});
+
 test('Notifications (toast) ignora pedido não-entrega pra estação entrega', function () {
     ['company' => $company] = stationOrderContext();
     $entrega = makeStationUser($company, 'entrega');

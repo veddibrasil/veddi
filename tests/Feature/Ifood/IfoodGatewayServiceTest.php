@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\Ifood\IfoodAuthService;
 use App\Services\Ifood\IfoodGatewayService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -11,7 +12,7 @@ test('updateOrderStatus(out_for_delivery) chama dispatch com deliveredBy=MERCHAN
 
     Http::fake(['*/order/v1.0/orders/*/dispatch' => Http::response([], 202)]);
 
-    (new IfoodGatewayService(app(\App\Services\Ifood\IfoodAuthService::class)))
+    (new IfoodGatewayService(app(IfoodAuthService::class)))
         ->updateOrderStatus($ctx['integration'], 'ifood-order-x', 'out_for_delivery');
 
     Http::assertSent(fn ($request) => str_contains($request->url(), '/order/v1.0/orders/ifood-order-x/dispatch')
@@ -23,7 +24,7 @@ test('updateOrderStatus(preparing) chama startPreparation sem body', function ()
 
     Http::fake(['*/order/v1.0/orders/*/startPreparation' => Http::response([], 202)]);
 
-    (new IfoodGatewayService(app(\App\Services\Ifood\IfoodAuthService::class)))
+    (new IfoodGatewayService(app(IfoodAuthService::class)))
         ->updateOrderStatus($ctx['integration'], 'ifood-order-x', 'preparing');
 
     Http::assertSent(fn ($request) => str_contains($request->url(), '/startPreparation')
@@ -35,7 +36,7 @@ test('updateOrderStatus(ready) chama readyToPickup sem body', function () {
 
     Http::fake(['*/order/v1.0/orders/*/readyToPickup' => Http::response([], 202)]);
 
-    (new IfoodGatewayService(app(\App\Services\Ifood\IfoodAuthService::class)))
+    (new IfoodGatewayService(app(IfoodAuthService::class)))
         ->updateOrderStatus($ctx['integration'], 'ifood-order-x', 'ready');
 
     Http::assertSent(fn ($request) => str_contains($request->url(), '/readyToPickup')
@@ -45,7 +46,7 @@ test('updateOrderStatus(ready) chama readyToPickup sem body', function () {
 test('updateOrderStatus com status sem endpoint correspondente lança exceção', function () {
     $ctx = ifoodContext('gw4');
 
-    expect(fn () => (new IfoodGatewayService(app(\App\Services\Ifood\IfoodAuthService::class)))
+    expect(fn () => (new IfoodGatewayService(app(IfoodAuthService::class)))
         ->updateOrderStatus($ctx['integration'], 'ifood-order-x', 'delivered'))
         ->toThrow(RuntimeException::class);
 });
@@ -64,7 +65,7 @@ test('createCategory com 409 de nome duplicado reaproveita o id do conflito em v
         ], 409),
     ]);
 
-    $categoryId = (new IfoodGatewayService(app(\App\Services\Ifood\IfoodAuthService::class)))
+    $categoryId = (new IfoodGatewayService(app(IfoodAuthService::class)))
         ->createCategory($ctx['integration'], 'Salgados');
 
     expect($categoryId)->toBe('f9886bb3-890a-4a1f-a450-80022c44cb8c');
@@ -80,7 +81,23 @@ test('createCategory com 409 sem conflictingResources ainda lança exceção', f
         ], 409),
     ]);
 
-    expect(fn () => (new IfoodGatewayService(app(\App\Services\Ifood\IfoodAuthService::class)))
+    expect(fn () => (new IfoodGatewayService(app(IfoodAuthService::class)))
         ->createCategory($ctx['integration'], 'Salgados'))
         ->toThrow(RuntimeException::class);
+});
+
+test('polling filtra a loja da integração e aceita 204 sem eventos', function () {
+    $ctx = ifoodContext('gwpoll');
+    Http::fake(['*/order/v1.0/events:polling' => Http::response(null, 204)]);
+
+    expect(app(IfoodGatewayService::class)->pollEvents($ctx['integration']))->toBe([]);
+    Http::assertSent(fn ($request) => $request->hasHeader('x-polling-merchants', $ctx['integration']->merchant_id));
+});
+
+test('consulta motivos específicos do pedido e normaliza cancelCodeId retornado pelo iFood', function () {
+    $ctx = ifoodContext('gw-reasons');
+    Http::fake(['*/cancellationReasons' => Http::response([['cancelCodeId' => '501', 'description' => 'Problemas de sistema na loja']], 200)]);
+    $reasons = app(IfoodGatewayService::class)->getCancellationReasons($ctx['integration'], 'order-cancel');
+    expect($reasons)->toBe([['code' => '501', 'description' => 'Problemas de sistema na loja']]);
+    Http::assertSent(fn ($request) => $request->method() === 'GET' && str_ends_with($request->url(), '/orders/order-cancel/cancellationReasons'));
 });

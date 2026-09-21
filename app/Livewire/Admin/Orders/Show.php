@@ -3,7 +3,6 @@
 namespace App\Livewire\Admin\Orders;
 
 use App\Contracts\RefundServiceInterface;
-use App\Enums\IfoodRejectReason;
 use App\Enums\OrderChannel;
 use App\Events\OrderItemsUpdated;
 use App\Events\OrderStatusUpdated;
@@ -28,15 +27,26 @@ class Show extends Component
 
     public bool $canUpdate = false;
 
+    /** Só admin da empresa (ou super admin) vê o histórico de auditoria do pedido. */
+    public bool $canViewHistory = false;
+
     // ── Confirmar pagamento na entrega ──────────────────────────────────────
 
     public bool $showConfirmPaymentModal = false;
+
+    // ── Cancelar pedido (motivo obrigatório, registra o operador) ───────────
+
+    public bool $showCancelModal = false;
+
+    public string $cancelReason = '';
 
     // ── Recusar/cancelar pedido iFood (motivo fechado) ──────────────────────
 
     public bool $showIfoodCancelModal = false;
 
     public string $ifoodCancelReason = '';
+
+    public array $ifoodCancellationReasons = [];
 
     // ── Manual refund ────────────────────────────────────────────────────────
 
@@ -132,22 +142,41 @@ class Show extends Component
         ];
     }
 
+    public function hydrate(): void
+    {
+        $this->resolveOrderCompany();
+    }
+
+    private function resolveOrderCompany(): void
+    {
+        if (auth()->user()?->isSuperAdmin()) {
+            app()->instance('current.company', $this->order->company);
+        }
+    }
+
     public function mount(): void
     {
+        $this->resolveOrderCompany();
         $user = auth()->user();
 
         if ($user->isSuperAdmin()) {
             $this->canUpdate = true;
+            $this->canViewHistory = true;
         } elseif (app()->bound('current.company')) {
             $company = app('current.company');
             $this->canUpdate = $user->hasPermission('orders.update', $company);
             $this->canIssueFiscal = $user->hasPermission('fiscal.issue', $company);
+            $this->canViewHistory = $user->isCompanyAdmin($company);
 
             $roleSlug = $user->roleForCompany($company);
             $this->userStation = in_array($roleSlug, ['cozinha', 'bar', 'entrega']) ? $roleSlug : null;
         }
 
         $this->order->loadMissing('items.product.category', 'payments');
+
+        if ($this->canViewHistory) {
+            $this->order->loadMissing(['statusHistories' => fn ($q) => $q->latest()->with('user')]);
+        }
     }
 
     /**
@@ -218,23 +247,29 @@ class Show extends Component
             }
         }
 
-        try {
-            if ($status === 'cancelled') {
-                if ($previousStatus !== 'cancelled') {
-                    app(OrderService::class)->cancelOrderAsAdmin($this->order, auth()->id());
-                }
-            } else {
-                $this->order->update(['status' => $status]);
+        // Cancelamento exige motivo obrigatório — abre modal em vez de aplicar direto.
+        if ($status === 'cancelled') {
+            if ($previousStatus !== 'cancelled') {
+                $this->openCancelModal();
             }
-        } catch (\RuntimeException $e) {
-            session()->flash('error', $e->getMessage());
 
             return;
+        }
+
+        // "Pago" a partir de aguardando pagamento (PDV) sem confirmar via modal dedicado
+        // cai aqui — sem isso o pedido vira "paid" sem Payment, e o fechamento de caixa
+        // conta a venda no TOTAL VENDAS mas não em nenhuma forma de pagamento.
+        if ($status === 'paid' && $previousStatus === 'awaiting_payment' && $this->order->order_type === 'pdv' && ! $this->order->payment()->exists()) {
+            app(PaymentOrchestrator::class)->confirmDeliveryPayment($this->order);
+        } else {
+            $this->order->update(['status' => $status]);
         }
 
         $this->order->refresh();
 
         OrderStatusUpdated::dispatch($this->order);
+
+        app(OrderService::class)->recordStatusHistory($this->order, auth()->id(), $previousStatus, $status);
 
         Log::channel('orders')->info('Status do pedido alterado pelo admin', [
             'order_id' => $this->order->id,
@@ -246,11 +281,63 @@ class Show extends Component
         session()->flash('status', 'Status atualizado.');
     }
 
+    public function openCancelModal(): void
+    {
+        abort_unless($this->canUpdate, 403);
+
+        $this->cancelReason = '';
+        $this->resetErrorBag('cancelReason');
+        $this->showCancelModal = true;
+    }
+
+    public function closeCancelModal(): void
+    {
+        $this->showCancelModal = false;
+        $this->cancelReason = '';
+    }
+
+    /**
+     * Confirma o cancelamento do pedido. O motivo é obrigatório e o usuário logado
+     * (atendente/admin) fica registrado como operador do cancelamento — ver
+     * `OrderService::cancelOrderAsAdmin()` e `Order::statusHistories()`.
+     */
+    public function confirmCancel(): void
+    {
+        abort_unless($this->canUpdate, 403);
+
+        $this->validate([
+            'cancelReason' => ['required', 'string', 'min:5', 'max:500'],
+        ]);
+
+        try {
+            app(OrderService::class)->cancelOrderAsAdmin($this->order, auth()->id(), $this->cancelReason);
+        } catch (\RuntimeException $e) {
+            $this->closeCancelModal();
+            session()->flash('error', $e->getMessage());
+
+            return;
+        }
+
+        $this->closeCancelModal();
+        $this->order->refresh();
+
+        OrderStatusUpdated::dispatch($this->order);
+
+        session()->flash('status', 'Pedido cancelado.');
+    }
+
     public function openIfoodCancelModal(): void
     {
         abort_unless($this->canUpdate, 403);
 
         $this->ifoodCancelReason = '';
+        try {
+            $this->ifoodCancellationReasons = app(IfoodOrderActionService::class)->getCancellationReasons($this->order);
+        } catch (Throwable $e) {
+            session()->flash('error', $e->getMessage());
+
+            return;
+        }
         $this->showIfoodCancelModal = true;
     }
 
@@ -269,7 +356,7 @@ class Show extends Component
     {
         abort_unless($this->canUpdate, 403);
 
-        if (! IfoodRejectReason::tryFrom($this->ifoodCancelReason)) {
+        if ($this->ifoodCancelReason === '') {
             return;
         }
 
@@ -286,7 +373,7 @@ class Show extends Component
                 session()->flash('status', 'Cancelamento solicitado ao iFood — aguardando confirmação.');
             } else {
                 $service->reject($this->order, $reason);
-                session()->flash('status', 'Pedido recusado no iFood.');
+                session()->flash('status', 'Recusa solicitada ao iFood — aguardando confirmação.');
             }
         } catch (Throwable $e) {
             session()->flash('error', $e->getMessage());
@@ -1094,16 +1181,31 @@ class Show extends Component
             return;
         }
 
-        if ($this->order->status !== 'cancelled') {
-            $this->order->update(['status' => 'cancelled']);
-            $this->order->refresh();
-            app(StockService::class)->restoreForOrder($this->order);
-            OrderStatusUpdated::dispatch($this->order);
-        }
-
         $reason = $this->manualRefundType === 'offline'
             ? 'store_issue'
             : 'customer_request';
+
+        if ($this->order->status !== 'cancelled') {
+            $previousStatus = $this->order->status;
+            $cancellationReason = $this->manualRefundType === 'offline'
+                ? $this->manualRefundJustification
+                : 'Reembolso via gateway solicitado pelo admin.';
+
+            $this->order->update([
+                'status' => 'cancelled',
+                'cancellation_reason' => $cancellationReason,
+                'cancelled_by' => auth()->id(),
+                'cancelled_at' => now(),
+            ]);
+            $this->order->refresh();
+            app(StockService::class)->restoreForOrder($this->order);
+            OrderStatusUpdated::dispatch($this->order);
+
+            app(OrderService::class)->recordStatusHistory($this->order, auth()->id(), $previousStatus, 'cancelled', $cancellationReason, [
+                'source' => 'manual_refund',
+                'refund_type' => $this->manualRefundType,
+            ]);
+        }
 
         foreach ($payments as $payment) {
             $refund = app(RefundServiceInterface::class)->initiateRefund(

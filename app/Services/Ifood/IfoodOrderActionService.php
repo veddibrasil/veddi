@@ -3,11 +3,9 @@
 namespace App\Services\Ifood;
 
 use App\Contracts\IfoodGatewayContract;
-use App\Enums\IfoodRejectReason;
 use App\Events\OrderStatusUpdated;
 use App\Models\IfoodIntegration;
 use App\Models\Order;
-use App\Services\Order\StockService;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 use RuntimeException;
@@ -42,15 +40,12 @@ class IfoodOrderActionService
      */
     public function reject(Order $order, string $reasonCode): void
     {
-        $this->assertValidReason($reasonCode);
+        $this->assertValidReason($order, $reasonCode);
 
         $integration = $this->resolveIntegration($order);
         $this->gateway->rejectOrder($integration, $order->external_order_id, $reasonCode);
 
-        $order->update(['status' => 'cancelled']);
-        $order->refresh();
-        app(StockService::class)->restoreForOrder($order);
-        OrderStatusUpdated::dispatch($order);
+        // O evento CAN confirma o cancelamento e restaura o estoque.
 
         Log::channel('ifood')->info('iFood: pedido recusado', [
             'order_id' => $order->id,
@@ -67,7 +62,7 @@ class IfoodOrderActionService
      */
     public function requestCancellation(Order $order, string $reasonCode): void
     {
-        $this->assertValidReason($reasonCode);
+        $this->assertValidReason($order, $reasonCode);
 
         $integration = $this->resolveIntegration($order);
         $this->gateway->requestCancellation($integration, $order->external_order_id, $reasonCode);
@@ -79,16 +74,24 @@ class IfoodOrderActionService
         ]);
     }
 
-    private function assertValidReason(string $reasonCode): void
+    public function getCancellationReasons(Order $order): array
     {
-        if (! IfoodRejectReason::tryFrom($reasonCode)) {
+        return $this->gateway->getCancellationReasons($this->resolveIntegration($order), $order->external_order_id);
+    }
+
+    private function assertValidReason(Order $order, string $reasonCode): void
+    {
+        if (! collect($this->getCancellationReasons($order))->contains(fn ($reason) => (string) ($reason['code'] ?? '') === $reasonCode)) {
             throw new InvalidArgumentException("Motivo inválido para recusa/cancelamento iFood: '{$reasonCode}'.");
         }
     }
 
     private function resolveIntegration(Order $order): IfoodIntegration
     {
-        $integration = IfoodIntegration::where('branch_id', $order->branch_id)
+        if ($order->channel !== 'ifood' || ! $order->external_order_id) {
+            throw new InvalidArgumentException('Pedido não pertence ao iFood.');
+        }
+        $integration = IfoodIntegration::withoutGlobalScopes()->where('company_id', $order->company_id)->where('branch_id', $order->branch_id)
             ->where('status', 'active')
             ->first();
 

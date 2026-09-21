@@ -25,6 +25,9 @@ class Order extends Model
         'table_label',
         'is_open_tab',
         'restaurant_table_id',
+        'cancellation_reason',
+        'cancelled_by',
+        'cancelled_at',
     ];
 
     protected $casts = [
@@ -33,6 +36,7 @@ class Order extends Model
         'scheduled_at' => 'datetime',
         'is_open_tab' => 'boolean',
         'external_metadata' => 'array',
+        'cancelled_at' => 'datetime',
     ];
 
     protected static function booted(): void
@@ -146,6 +150,18 @@ class Order extends Model
     public function attendant(): BelongsTo
     {
         return $this->belongsTo(User::class, 'attendant_id');
+    }
+
+    /** Usuário que cancelou o pedido (operador do cancelamento), quando cancelado pelo admin/staff. */
+    public function cancelledBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'cancelled_by');
+    }
+
+    /** Histórico completo de mudanças de status do pedido — auditoria visível apenas ao admin. */
+    public function statusHistories(): HasMany
+    {
+        return $this->hasMany(OrderStatusHistory::class);
     }
 
     public function coupon(): BelongsTo
@@ -265,7 +281,16 @@ class Order extends Model
 
     public function getStatusLabelAttribute(): string
     {
-        return match ($this->status) {
+        if ($this->channel === 'ifood' && $this->status === 'delivered') {
+            return 'Concluído';
+        }
+
+        return static::statusLabel($this->status);
+    }
+
+    public static function statusLabel(string $status): string
+    {
+        return match ($status) {
             'pending' => 'Pendente',
             'awaiting_payment' => 'Aguardando Pagamento',
             'scheduled' => 'Agendado',
@@ -276,7 +301,7 @@ class Order extends Model
             'delivered' => 'Entregue',
             'cancelled' => 'Cancelado',
             'refunded' => 'Reembolsado',
-            default => $this->status,
+            default => $status,
         };
     }
 

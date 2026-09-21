@@ -1,10 +1,13 @@
 <?php
 
+use App\Exceptions\IfoodMerchantAlreadyLinkedException;
 use App\Models\Branch;
 use App\Models\Company;
 use App\Models\IfoodIntegration;
 use App\Services\Ifood\IfoodAuthService;
+use Carbon\CarbonInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 
 uses(RefreshDatabase::class);
@@ -16,7 +19,7 @@ beforeEach(function () {
     ]);
 });
 
-function makeIfoodIntegration(string $suffix, ?string $accessToken = null, ?\Carbon\CarbonInterface $tokenExpiresAt = null): IfoodIntegration
+function makeIfoodIntegration(string $suffix, ?string $accessToken = null, ?CarbonInterface $tokenExpiresAt = null): IfoodIntegration
 {
     $company = Company::create([
         'name' => "Empresa iFood Auth {$suffix}",
@@ -66,7 +69,7 @@ test('getAccessToken gera novo token quando não há token salvo', function () {
     expect($integration->access_token)->toBe('token-new-123')
         ->and($integration->token_expires_at)->not->toBeNull();
 
-    Http::assertSent(function (\Illuminate\Http\Client\Request $request) use ($integration) {
+    Http::assertSent(function (Request $request) use ($integration) {
         return str_contains($request->url(), '/authentication/v1.0/oauth/token')
             && $request['grantType'] === 'refresh_token'
             && $request['clientId'] === config('ifood.partner_client_id')
@@ -176,7 +179,7 @@ test('requestUserCode grava os dados de autorização pendente', function () {
         ->and($integration->merchant_id)->toBeNull()
         ->and($integration->status)->toBe('disconnected');
 
-    Http::assertSent(function (\Illuminate\Http\Client\Request $request) {
+    Http::assertSent(function (Request $request) {
         return str_contains($request->url(), '/authentication/v1.0/oauth/userCode')
             && $request['clientId'] === config('ifood.partner_client_id');
     });
@@ -207,7 +210,7 @@ test('completeAuthorization conclui a conexão quando iFood aprova e retorna um 
     // na tela depois da aprovação (ver comentário em IfoodAuthService::completeAuthorization).
     (new IfoodAuthService)->completeAuthorization($integration, 'HTLM-KWVR');
 
-    Http::assertSent(fn (\Illuminate\Http\Client\Request $request) => ! str_contains($request->url(), '/oauth/token')
+    Http::assertSent(fn (Request $request) => ! str_contains($request->url(), '/oauth/token')
         || $request['authorizationCode'] === 'HTLM-KWVR');
 
     $integration->refresh();
@@ -267,7 +270,7 @@ test('completeAuthorization bloqueia quando o merchant já está ativo em outra 
     ]);
 
     expect(fn () => (new IfoodAuthService)->completeAuthorization($integration, 'HTLM-KWVR'))
-        ->toThrow(\App\Exceptions\IfoodMerchantAlreadyLinkedException::class);
+        ->toThrow(IfoodMerchantAlreadyLinkedException::class);
 
     $integration->refresh();
     expect($integration->merchant_id)->toBeNull()
@@ -342,7 +345,7 @@ test('selectMerchant bloqueia quando o merchant escolhido já está ativo em out
     ]);
 
     expect(fn () => (new IfoodAuthService)->selectMerchant($integration, 'merchant-b'))
-        ->toThrow(\App\Exceptions\IfoodMerchantAlreadyLinkedException::class);
+        ->toThrow(IfoodMerchantAlreadyLinkedException::class);
 
     $integration->refresh();
     expect($integration->merchant_id)->toBeNull()
@@ -382,4 +385,52 @@ test('completeAuthorization lança exceção em falha inesperada', function () {
 
     expect(fn () => (new IfoodAuthService)->completeAuthorization($integration, 'HTLM-KWVR'))
         ->toThrow(RuntimeException::class);
+});
+
+test('worker com modelo antigo reutiliza token rotacionado por outro worker', function () {
+    $integration = makeIfoodIntegration('stale', 'old', now()->subMinute());
+    $otherWorker = IfoodIntegration::withoutGlobalScopes()->findOrFail($integration->id);
+    $otherWorker->update([
+        'access_token' => 'new-access',
+        'refresh_token' => 'new-refresh',
+        'token_expires_at' => now()->addHour(),
+    ]);
+    Http::fake();
+
+    expect((new IfoodAuthService)->getAccessToken($integration))->toBe('new-access');
+    Http::assertNothingSent();
+});
+
+test('refresh token revogado exige reautorização e impede novas tentativas automáticas', function () {
+    $integration = makeIfoodIntegration('revoked');
+    Http::fake(['*/oauth/token' => Http::response([
+        'error' => ['code' => 'Unauthorized', 'message' => 'Invalid refresh token'],
+    ], 401)]);
+
+    $service = new IfoodAuthService;
+    expect(fn () => $service->getAccessToken($integration))->toThrow(RuntimeException::class, 'Reconecte');
+    expect($integration->fresh()->status)->toBe('reauthorization_required')
+        ->and($integration->fresh()->refresh_token)->toBeNull()
+        ->and($integration->fresh()->merchant_id)->toBe('merchant-revoked');
+    expect(fn () => $service->getAccessToken($integration))->toThrow(RuntimeException::class, 'Reconecte');
+    Http::assertSentCount(1);
+});
+
+test('falha transitória de autenticação preserva autorização para próxima tentativa', function () {
+    $integration = makeIfoodIntegration('transient');
+    Http::fake(['*/oauth/token' => Http::response([], 503)]);
+
+    expect(fn () => (new IfoodAuthService)->getAccessToken($integration))->toThrow(RuntimeException::class);
+    expect($integration->fresh()->status)->toBe('active')
+        ->and($integration->fresh()->refresh_token)->toBe('refresh-transient');
+});
+
+test('renovação persiste refresh token rotacionado', function () {
+    $integration = makeIfoodIntegration('rotation');
+    Http::fake(['*/oauth/token' => Http::response([
+        'accessToken' => 'new-access', 'refreshToken' => 'rotated-refresh', 'expiresIn' => 3600,
+    ])]);
+
+    (new IfoodAuthService)->getAccessToken($integration);
+    expect($integration->fresh()->refresh_token)->toBe('rotated-refresh');
 });

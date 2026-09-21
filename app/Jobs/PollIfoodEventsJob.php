@@ -10,11 +10,8 @@ use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * Fallback de polling — só cobre integrações que não estão saudáveis via
- * webhook (webhook_status 'unknown' logo após conectar, ou 'degraded' quando
- * MonitorIfoodWebhookHealthJob detecta silêncio anormal). Integrações
- * saudáveis via webhook são puladas pra não bater na API do iFood sem
- * necessidade em ambiente multiempresa.
+ * Mantém a presença de todas as lojas ativas. A autenticação distribuída
+ * depende de polling contínuo, independentemente do último webhook recebido.
  */
 class PollIfoodEventsJob implements ShouldQueue
 {
@@ -24,7 +21,7 @@ class PollIfoodEventsJob implements ShouldQueue
     {
         $integrations = IfoodIntegration::withoutGlobalScopes()
             ->where('status', 'active')
-            ->whereIn('webhook_status', ['degraded', 'unknown'])
+            ->whereNotNull('merchant_id')
             ->get();
 
         foreach ($integrations as $integration) {

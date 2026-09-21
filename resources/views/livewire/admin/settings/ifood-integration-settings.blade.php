@@ -34,7 +34,14 @@
             </div>
             @error('branchId') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
 
-            @if($connectionState === 'not_connected')
+            @if($connectionState === 'reauthorization_required')
+                <div class="space-y-3">
+                    <p role="alert" class="text-sm text-red-600 dark:text-red-400">
+                        A autorização do iFood expirou ou foi revogada. Reconecte esta loja para voltar a receber pedidos e validar a conexão no iFood.
+                    </p>
+                    <flux:button wire:click="connect" variant="primary">Reconectar iFood</flux:button>
+                </div>
+            @elseif($connectionState === 'not_connected')
                 <div class="space-y-3">
                     <p class="text-sm text-neutral-500 dark:text-neutral-400">
                         Conecte esta filial à sua conta iFood — você será direcionado pra fazer login e aprovar o acesso diretamente no site do iFood, sem precisar digitar nenhuma credencial técnica aqui.

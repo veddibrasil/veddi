@@ -92,6 +92,19 @@
                 </span>
             @endif
 
+            @unless ($isWaiter)
+                <flux:button
+                    href="{{ route('admin.pdv.checkout') }}"
+                    wire:navigate
+                    variant="outline"
+                    size="sm"
+                    icon="computer-desktop"
+                    class="hidden sm:flex"
+                >
+                    Venda Direta
+                </flux:button>
+            @endunless
+
             @if ($canManageUsers && $waiterModuleEnabled)
                 <button
                     wire:click="$set('showQuickWaiterForm', true)"
@@ -947,8 +960,8 @@
                             </div>
                         </div>
 
-                        <div class="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto xl:grid-cols-[minmax(0,1fr)_22rem]">
-                            <div class="space-y-5 p-4 lg:p-5">
+                        <div class="flex min-h-0 flex-1 flex-col overflow-hidden xl:flex-row">
+                            <div class="flex-1 min-h-0 overflow-y-auto space-y-5 p-4 lg:p-5">
                                 @if ($closingTableId)
                                     <div class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-800 dark:bg-amber-900/20">
                                         <p class="text-xs text-amber-800 dark:text-amber-300">
@@ -1045,11 +1058,15 @@
                                 @enderror
                             </div>
 
-                            <div class="border-t border-neutral-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-[#0f1926]/70 xl:border-l xl:border-t-0">
-                                <div class="flex h-full flex-col gap-4">
+                            <div class="flex max-h-[50vh] flex-col overflow-hidden border-t border-neutral-100 bg-zinc-50 dark:border-zinc-800 dark:bg-[#0f1926]/70 xl:max-h-none xl:w-[22rem] xl:shrink-0 xl:border-l xl:border-t-0">
+                                {{-- Área de cima rola por dentro; o rodapé (Total/nota fiscal/botões)
+                                     fica FORA dela — mesmo motivo do rodapé do carrinho: "Confirmar"
+                                     precisa estar sempre alcançável sem rolar, mesmo com formulário
+                                     ou lista de itens longos. --}}
+                                <div class="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
                                     <div>
                                         <p class="text-[11px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Resumo do pedido</p>
-                                        <div class="mt-3 max-h-64 overflow-y-auto rounded-xl border border-neutral-200 bg-white divide-y divide-neutral-100 dark:border-zinc-800 dark:bg-zinc-900 dark:divide-zinc-800">
+                                        <div class="mt-3 rounded-xl border border-neutral-200 bg-white divide-y divide-neutral-100 dark:border-zinc-800 dark:bg-zinc-900 dark:divide-zinc-800">
                                             @if ($closingTableId)
                                                 @foreach ($this->closingTableOrders as $tableOrder)
                                                     <div class="px-3 py-2">
@@ -1087,73 +1104,73 @@
                                         </div>
                                     </div>
 
-                                    <div class="mt-auto space-y-3">
-                                        @php $groupManualDiscount = $closingTableId ? (float) $this->closingTableOrders->sum('manual_discount') : 0.0; @endphp
-                                        @if ($closingTableId ? ($groupManualDiscount > 0 || $this->serviceFeeAmount > 0 || $this->couvertFeeAmount > 0) : ($manualDiscountAmount > 0 || $this->serviceFeeAmount > 0 || $this->couvertFeeAmount > 0))
-                                            <div class="space-y-1 text-sm">
+                                    @php $groupManualDiscount = $closingTableId ? (float) $this->closingTableOrders->sum('manual_discount') : 0.0; @endphp
+                                    @if ($closingTableId ? ($groupManualDiscount > 0 || $this->serviceFeeAmount > 0 || $this->couvertFeeAmount > 0) : ($manualDiscountAmount > 0 || $this->serviceFeeAmount > 0 || $this->couvertFeeAmount > 0))
+                                        <div class="space-y-1 text-sm">
+                                            <div class="flex justify-between text-neutral-500 dark:text-neutral-400">
+                                                <span>Subtotal</span>
+                                                <span>R$ {{ number_format($this->cartTotal, 2, ',', '.') }}</span>
+                                            </div>
+                                            @if ($this->serviceFeeAmount > 0)
                                                 <div class="flex justify-between text-neutral-500 dark:text-neutral-400">
-                                                    <span>Subtotal</span>
-                                                    <span>R$ {{ number_format($this->cartTotal, 2, ',', '.') }}</span>
+                                                    <span>Taxa de serviço</span>
+                                                    <span>+ R$ {{ number_format($this->serviceFeeAmount, 2, ',', '.') }}</span>
                                                 </div>
-                                                @if ($this->serviceFeeAmount > 0)
-                                                    <div class="flex justify-between text-neutral-500 dark:text-neutral-400">
-                                                        <span>Taxa de serviço</span>
-                                                        <span>+ R$ {{ number_format($this->serviceFeeAmount, 2, ',', '.') }}</span>
-                                                    </div>
-                                                @endif
-                                                @if ($this->couvertFeeAmount > 0)
-                                                    <div class="flex justify-between text-neutral-500 dark:text-neutral-400">
-                                                        <span>Couvert artístico</span>
-                                                        <span>+ R$ {{ number_format($this->couvertFeeAmount, 2, ',', '.') }}</span>
-                                                    </div>
-                                                @endif
-                                                @if ($closingTableId)
-                                                    @if ($groupManualDiscount > 0)
-                                                        <div class="flex justify-between text-green-600 dark:text-green-400">
-                                                            <span>Desconto manual</span>
-                                                            <span>- R$ {{ number_format($groupManualDiscount, 2, ',', '.') }}</span>
-                                                        </div>
-                                                    @endif
-                                                @elseif ($manualDiscountAmount > 0)
+                                            @endif
+                                            @if ($this->couvertFeeAmount > 0)
+                                                <div class="flex justify-between text-neutral-500 dark:text-neutral-400">
+                                                    <span>Couvert artístico</span>
+                                                    <span>+ R$ {{ number_format($this->couvertFeeAmount, 2, ',', '.') }}</span>
+                                                </div>
+                                            @endif
+                                            @if ($closingTableId)
+                                                @if ($groupManualDiscount > 0)
                                                     <div class="flex justify-between text-green-600 dark:text-green-400">
                                                         <span>Desconto manual</span>
-                                                        <span>- R$ {{ number_format($manualDiscountAmount, 2, ',', '.') }}</span>
+                                                        <span>- R$ {{ number_format($groupManualDiscount, 2, ',', '.') }}</span>
                                                     </div>
                                                 @endif
-                                            </div>
-                                        @endif
-
-                                        <div class="rounded-xl border border-neutral-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
-                                            <div class="flex items-end justify-between gap-3">
-                                                <span class="text-sm font-semibold text-neutral-500 dark:text-neutral-400">Total</span>
-                                                <span class="text-2xl font-black text-neutral-900 dark:text-neutral-100">
-                                                    R$ {{ number_format($this->cartTotalAfterDiscount, 2, ',', '.') }}
-                                                </span>
-                                            </div>
+                                            @elseif ($manualDiscountAmount > 0)
+                                                <div class="flex justify-between text-green-600 dark:text-green-400">
+                                                    <span>Desconto manual</span>
+                                                    <span>- R$ {{ number_format($manualDiscountAmount, 2, ',', '.') }}</span>
+                                                </div>
+                                            @endif
                                         </div>
+                                    @endif
+                                </div>
 
-                                        @if ($canUseFiscalNotes)
-                                            <label class="flex items-center gap-2 px-3 py-2 border rounded-xl dark:border-zinc-700 cursor-pointer">
-                                                <flux:checkbox wire:model.live="printFiscalNote" />
-                                                <span class="text-sm">Imprimir nota fiscal ao confirmar</span>
-                                            </label>
-                                        @endif
-
-                                        <div class="grid grid-cols-2 gap-2">
-                                            <flux:button wire:click="backToCatalog" variant="ghost" size="base">
-                                                Voltar
-                                            </flux:button>
-                                            <flux:button
-                                                wire:click="{{ $closingTableId ? 'confirmCloseTableTabs' : 'confirmCloseTab' }}"
-                                                variant="primary"
-                                                size="base"
-                                                wire:loading.attr="disabled"
-                                                :disabled="$isSplitPayment && abs($this->splitPaymentsRemaining) > 0.01"
-                                            >
-                                                <span wire:loading.remove>Confirmar</span>
-                                                <span wire:loading>Processando...</span>
-                                            </flux:button>
+                                <div class="shrink-0 space-y-3 border-t border-neutral-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-[#0f1926]/70">
+                                    <div class="rounded-xl border border-neutral-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                                        <div class="flex items-end justify-between gap-3">
+                                            <span class="text-sm font-semibold text-neutral-500 dark:text-neutral-400">Total</span>
+                                            <span class="text-2xl font-black text-neutral-900 dark:text-neutral-100">
+                                                R$ {{ number_format($this->cartTotalAfterDiscount, 2, ',', '.') }}
+                                            </span>
                                         </div>
+                                    </div>
+
+                                    @if ($canUseFiscalNotes)
+                                        <label class="flex items-center gap-2 px-3 py-2 border rounded-xl dark:border-zinc-700 cursor-pointer">
+                                            <flux:checkbox wire:model.live="printFiscalNote" />
+                                            <span class="text-sm">Imprimir nota fiscal ao confirmar</span>
+                                        </label>
+                                    @endif
+
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <flux:button wire:click="backToCatalog" variant="ghost" size="base">
+                                            Voltar
+                                        </flux:button>
+                                        <flux:button
+                                            wire:click="{{ $closingTableId ? 'confirmCloseTableTabs' : 'confirmCloseTab' }}"
+                                            variant="primary"
+                                            size="base"
+                                            wire:loading.attr="disabled"
+                                            :disabled="$isSplitPayment && abs($this->splitPaymentsRemaining) > 0.01"
+                                        >
+                                            <span wire:loading.remove>Confirmar</span>
+                                            <span wire:loading>Processando...</span>
+                                        </flux:button>
                                     </div>
                                 </div>
                             </div>

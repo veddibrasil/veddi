@@ -53,7 +53,7 @@ test('webhook iFood rejeita merchantId desconhecido', function () {
     $payload = ifoodWebhookPayload('merchant-inexistente');
 
     $response = $this->postJson('/webhooks/ifood', $payload, [
-        'X-IFood-Signature' => signIfoodPayload($payload, 'qualquer-coisa'),
+        'X-IFood-Signature' => signIfoodPayload($payload, config('ifood.partner_client_secret')),
     ]);
 
     $response->assertStatus(404);
@@ -68,7 +68,7 @@ test('webhook iFood aceita assinatura válida, persiste evento e enfileira job',
         'X-IFood-Signature' => signIfoodPayload($payload, config('ifood.partner_client_secret')),
     ]);
 
-    $response->assertStatus(200)->assertJson(['status' => 'queued']);
+    $response->assertStatus(202)->assertJson(['status' => 'queued']);
 
     $event = IfoodOrderEvent::where('event_id', 'evt-valid-001')->first();
     expect($event)->not->toBeNull()
@@ -90,11 +90,35 @@ test('webhook iFood duplicado (mesmo event_id) não redespacha nem duplica event
     $signature = signIfoodPayload($payload, config('ifood.partner_client_secret'));
 
     $first = $this->postJson('/webhooks/ifood', $payload, ['X-IFood-Signature' => $signature]);
-    $first->assertStatus(200)->assertJson(['status' => 'queued']);
+    $first->assertStatus(202)->assertJson(['status' => 'queued']);
 
     $second = $this->postJson('/webhooks/ifood', $payload, ['X-IFood-Signature' => $signature]);
-    $second->assertStatus(200)->assertJson(['status' => 'duplicate']);
+    $second->assertStatus(202)->assertJson(['status' => 'duplicate']);
 
     expect(IfoodOrderEvent::where('event_id', 'evt-dup-001')->count())->toBe(1);
     Bus::assertDispatchedTimes(ProcessIfoodOrderJob::class, 1);
+});
+
+test('KEEPALIVE por aplicativo valida assinatura e responde 202 sem criar pedido', function () {
+    Bus::fake();
+    $payload = ['id' => 'heartbeat-1', 'code' => 'KEEPALIVE', 'fullCode' => 'KEEPALIVE'];
+    $this->postJson('/webhooks/ifood', $payload, [
+        'X-IFood-Signature' => signIfoodPayload($payload, config('ifood.partner_client_secret')),
+    ])->assertStatus(202);
+    expect(IfoodOrderEvent::count())->toBe(0);
+    Bus::assertNothingDispatched();
+    $this->postJson('/webhooks/ifood', $payload, ['X-IFood-Signature' => 'invalid'])->assertStatus(401);
+});
+
+test('KEEPALIVE por merchant confirma somente lojas ativas solicitadas', function () {
+    ['integration' => $active] = ifoodContext('keepalive-active');
+    ['integration' => $paused] = ifoodContext('keepalive-paused');
+    $paused->update(['status' => 'paused']);
+    ifoodContext('keepalive-unrequested');
+    $payload = ['id' => 'heartbeat-2', 'code' => 'KEEPALIVE', 'merchantIds' => [
+        $active->merchant_id, $paused->merchant_id, 'unknown',
+    ]];
+    $this->postJson('/webhooks/ifood', $payload, [
+        'X-IFood-Signature' => signIfoodPayload($payload, config('ifood.partner_client_secret')),
+    ])->assertStatus(202)->assertExactJson(['merchantIds' => [$active->merchant_id]]);
 });

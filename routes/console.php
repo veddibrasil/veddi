@@ -1,5 +1,13 @@
 <?php
 
+use App\Jobs\MonitorIfoodWebhookHealthJob;
+use App\Jobs\PollIfoodEventsJob;
+use App\Jobs\ReconcilePendingFiscalNotesJob;
+use App\Jobs\ResolveExpiredVindiPaymentsJob;
+use App\Jobs\SyncIfoodCatalogJob;
+use App\Models\IfoodIntegration;
+use App\Services\Payment\AsaasCircuitBreaker;
+use App\Services\Payment\AsaasService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -34,14 +42,14 @@ Schedule::command('companies:block-overdue')->dailyAt('08:00');
 //     ->onOneServer();
 
 // Resolve pagamentos Vindi presos em pending após expiração (webhook perdido)
-Schedule::job(new \App\Jobs\ResolveExpiredVindiPaymentsJob)
+Schedule::job(new ResolveExpiredVindiPaymentsJob)
     ->name('resolve-expired-vindi-payments')
     ->everyFifteenMinutes()
     ->withoutOverlapping(expiresAt: 10)
     ->onOneServer();
 
 // Resolve notas fiscais presas em pending quando o webhook da Focus NFe nunca chega
-Schedule::job(new \App\Jobs\ReconcilePendingFiscalNotesJob)
+Schedule::job(new ReconcilePendingFiscalNotesJob)
     ->name('reconcile-pending-fiscal-notes')
     ->everyFifteenMinutes()
     ->withoutOverlapping(expiresAt: 10)
@@ -61,9 +69,8 @@ Schedule::job(new \App\Jobs\ReconcilePendingFiscalNotesJob)
 //     ->withoutOverlapping()
 //     ->onOneServer();
 
-// Fallback de polling iFood — só cobre integrações não saudáveis via webhook
-// (pula as demais, ver PollIfoodEventsJob).
-Schedule::job(new \App\Jobs\PollIfoodEventsJob)
+// Presença iFood: polling contínuo de todas as integrações distribuídas ativas.
+Schedule::job(new PollIfoodEventsJob)
     ->name('poll-ifood-events')
     ->everyThirtySeconds()
     ->withoutOverlapping(expiresAt: 1)
@@ -71,7 +78,7 @@ Schedule::job(new \App\Jobs\PollIfoodEventsJob)
 
 // Detecta integrações iFood cujo webhook parou de chegar e aciona o fallback
 // de polling acima (via webhook_status=degraded).
-Schedule::job(new \App\Jobs\MonitorIfoodWebhookHealthJob)
+Schedule::job(new MonitorIfoodWebhookHealthJob)
     ->name('monitor-ifood-webhook-health')
     ->everyFiveMinutes()
     ->withoutOverlapping(expiresAt: 3)
@@ -80,10 +87,10 @@ Schedule::job(new \App\Jobs\MonitorIfoodWebhookHealthJob)
 // Sync completo de catálogo iFood (preço/cardápio) — segurança além do sync em
 // tempo real de disponibilidade (ProductObserver -> SyncIfoodCatalogJob por item).
 Schedule::call(function () {
-    \App\Models\IfoodIntegration::withoutGlobalScopes()
+    IfoodIntegration::withoutGlobalScopes()
         ->where('status', 'active')
         ->pluck('branch_id')
-        ->each(fn ($branchId) => \App\Jobs\SyncIfoodCatalogJob::dispatch($branchId));
+        ->each(fn ($branchId) => SyncIfoodCatalogJob::dispatch($branchId));
 })
     ->name('sync-ifood-catalog-full')
     ->dailyAt('05:00')
@@ -92,15 +99,15 @@ Schedule::call(function () {
 
 // Probe de recovery automático do Asaas — executa apenas se o circuit não estiver fechado
 Schedule::call(function () {
-    $cb = app(\App\Services\Payment\AsaasCircuitBreaker::class);
+    $cb = app(AsaasCircuitBreaker::class);
 
     if ($cb->getState() === 'closed') {
         return;
     }
 
     try {
-        app(\App\Services\Payment\AsaasService::class)->probeHealth();
-    } catch (\Throwable) {
+        app(AsaasService::class)->probeHealth();
+    } catch (Throwable) {
         // recordFailure() já foi chamado dentro de AsaasService::request()
     }
 })

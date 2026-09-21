@@ -14,6 +14,12 @@ test('drag pra preparing chama confirmOrder no iFood via kanban', function () {
     $admin = User::factory()->create(['is_super_admin' => true]);
 
     $gateway = Mockery::mock(IfoodGatewayContract::class);
+    $gateway->shouldReceive('getCancellationReasons')->andReturn([
+        ['code' => '503', 'description' => 'Item indisponível'],
+        ['code' => '508', 'description' => 'Fora do horário'],
+        ['code' => '505', 'description' => 'Cardápio desatualizado'],
+        ['code' => '501', 'description' => 'Problemas de sistema'],
+    ]);
     $gateway->shouldReceive('confirmOrder')->once()->with(
         Mockery::on(fn ($integration) => $integration->id === $ctx['integration']->id),
         $order->external_order_id,
@@ -34,6 +40,12 @@ test('drag pra cancelled NAO cancela direto — abre modal de motivo', function 
     $admin = User::factory()->create(['is_super_admin' => true]);
 
     $gateway = Mockery::mock(IfoodGatewayContract::class);
+    $gateway->shouldReceive('getCancellationReasons')->andReturn([
+        ['code' => '503', 'description' => 'Item indisponível'],
+        ['code' => '508', 'description' => 'Fora do horário'],
+        ['code' => '505', 'description' => 'Cardápio desatualizado'],
+        ['code' => '501', 'description' => 'Problemas de sistema'],
+    ]);
     $gateway->shouldNotReceive('rejectOrder');
     $gateway->shouldNotReceive('requestCancellation');
     app()->instance(IfoodGatewayContract::class, $gateway);
@@ -47,16 +59,22 @@ test('drag pra cancelled NAO cancela direto — abre modal de motivo', function 
     expect($order->fresh()->status)->toBe('paid');
 });
 
-test('confirmIfoodCancel antes de aceito chama reject e cancela local', function () {
+test('confirmIfoodCancel antes de aceito chama reject e aguarda confirmação', function () {
     $ctx = ifoodContext('kb3');
     $order = ifoodKanbanOrder($ctx);
     $admin = User::factory()->create(['is_super_admin' => true]);
 
     $gateway = Mockery::mock(IfoodGatewayContract::class);
+    $gateway->shouldReceive('getCancellationReasons')->andReturn([
+        ['code' => '503', 'description' => 'Item indisponível'],
+        ['code' => '508', 'description' => 'Fora do horário'],
+        ['code' => '505', 'description' => 'Cardápio desatualizado'],
+        ['code' => '501', 'description' => 'Problemas de sistema'],
+    ]);
     $gateway->shouldReceive('rejectOrder')->once()->with(
         Mockery::on(fn ($integration) => $integration->id === $ctx['integration']->id),
         $order->external_order_id,
-        'RESTAURANT_CLOSED',
+        '508',
     );
     app()->instance(IfoodGatewayContract::class, $gateway);
 
@@ -64,11 +82,11 @@ test('confirmIfoodCancel antes de aceito chama reject e cancela local', function
 
     Livewire::test(OrdersIndex::class)
         ->call('openIfoodCancelModal', $order->id)
-        ->set('ifoodCancelReason', 'RESTAURANT_CLOSED')
+        ->set('ifoodCancelReason', '508')
         ->call('confirmIfoodCancel')
         ->assertSet('ifoodCancelOrderId', null);
 
-    expect($order->fresh()->status)->toBe('cancelled');
+    expect($order->fresh()->status)->toBe('paid');
 });
 
 test('confirmIfoodCancel apos aceito chama requestCancellation e NAO muda status local', function () {
@@ -77,10 +95,16 @@ test('confirmIfoodCancel apos aceito chama requestCancellation e NAO muda status
     $admin = User::factory()->create(['is_super_admin' => true]);
 
     $gateway = Mockery::mock(IfoodGatewayContract::class);
+    $gateway->shouldReceive('getCancellationReasons')->andReturn([
+        ['code' => '503', 'description' => 'Item indisponível'],
+        ['code' => '508', 'description' => 'Fora do horário'],
+        ['code' => '505', 'description' => 'Cardápio desatualizado'],
+        ['code' => '501', 'description' => 'Problemas de sistema'],
+    ]);
     $gateway->shouldReceive('requestCancellation')->once()->with(
         Mockery::on(fn ($integration) => $integration->id === $ctx['integration']->id),
         $order->external_order_id,
-        'ITEM_UNAVAILABLE',
+        '503',
     );
     app()->instance(IfoodGatewayContract::class, $gateway);
 
@@ -88,7 +112,7 @@ test('confirmIfoodCancel apos aceito chama requestCancellation e NAO muda status
 
     Livewire::test(OrdersIndex::class)
         ->call('openIfoodCancelModal', $order->id)
-        ->set('ifoodCancelReason', 'ITEM_UNAVAILABLE')
+        ->set('ifoodCancelReason', '503')
         ->call('confirmIfoodCancel');
 
     expect($order->fresh()->status)->toBe('preparing');

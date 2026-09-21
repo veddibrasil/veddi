@@ -1,5 +1,6 @@
 <?php
 
+use App\Livewire\Admin\Orders\Index as OrdersIndex;
 use App\Models\Branch;
 use App\Models\Company;
 use App\Models\Customer;
@@ -8,6 +9,7 @@ use App\Models\PdvAuditLog;
 use App\Models\PdvCashSession;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
 
@@ -272,4 +274,48 @@ test('pedido com pagamento dividido bate por gateway no fechamento de caixa, nã
         ->and($report['payments']['cash'])->toBe(20.0)
         ->and($report['payments']['credit_card'])->toBe(30.0)
         ->and($report['payments']['pix'])->toBe(0.0);
+});
+
+test('pedido de entrega (pagar na entrega) confirmado pelo kanban entra no TOTAL VENDAS e na forma de pagamento — sem gap', function () {
+    ['admin' => $admin, 'company' => $company, 'branch' => $branch, 'customer' => $customer] = cashClosingContext();
+
+    $session = PdvCashSession::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'user_id' => $admin->id,
+        'opening_amount' => 0.00,
+    ]);
+
+    // Nasce "aguardando pagamento" (receber na entrega), sem Payment — mesmo estado
+    // do pedido real que gerou o gap de R$66,90 no relatório impresso.
+    $order = Order::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'customer_id' => $customer->id,
+        'branch_id' => $branch->id,
+        'pdv_cash_session_id' => $session->id,
+        'subtotal' => 66.90,
+        'total' => 66.90,
+        'fee' => 0,
+        'net_value' => 66.90,
+        'status' => 'awaiting_payment',
+        'payment_method' => 'credit_card',
+        'order_type' => 'pdv',
+        'is_open_tab' => false,
+    ]);
+
+    $this->actingAs($admin);
+
+    // Operador arrasta o card pra "Pago" no kanban ao confirmar que o entregador recebeu.
+    Livewire::test(OrdersIndex::class)
+        ->call('updateOrderStatus', $order->id, 'paid');
+
+    $report = app(\App\Services\Pdv\CashClosingReportService::class)->build($session->fresh());
+
+    $paymentsSum = array_sum($report['payments']);
+
+    expect($order->fresh()->status)->toBe('paid')
+        ->and(\App\Models\Payment::where('order_id', $order->id)->where('status', 'paid')->exists())->toBeTrue()
+        ->and($report['revenue'])->toBe(66.90)
+        ->and($report['payments']['credit_card'])->toBe(66.90)
+        ->and($paymentsSum)->toBe($report['revenue']);
 });

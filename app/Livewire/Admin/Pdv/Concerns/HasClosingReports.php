@@ -2,7 +2,10 @@
 
 namespace App\Livewire\Admin\Pdv\Concerns;
 
+use App\Events\OrderStatusUpdated;
+use App\Models\Order;
 use App\Models\PdvCashSession;
+use App\Services\Payment\PaymentOrchestrator;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 
@@ -13,13 +16,38 @@ trait HasClosingReports
         abort_unless(! $this->isWaiter, 403);
 
         $this->showSessionHistory = true;
-        $this->confirmingCancelSessionOrderId = null;
+        $this->closeCancelOrderModal();
     }
 
     public function backFromSessionHistory(): void
     {
         $this->showSessionHistory = false;
-        $this->confirmingCancelSessionOrderId = null;
+        $this->closeCancelOrderModal();
+    }
+
+    /**
+     * Confirma na hora, dentro do próprio Terminal, o pagamento de um pedido "aguardando
+     * pagamento" (receber na entrega) da sessão atual — mesma regra usada em
+     * Orders/Show::confirmPayment(): só pedido do PDV, só se ainda não existe Payment. Sem
+     * isso o operador via "Pedidos da sessão" (que hoje mostra esses pedidos como "Pago" por
+     * engano) nunca sabia que faltava confirmar, e o pedido ficava contando no TOTAL VENDAS
+     * do fechamento sem nenhum pagamento registrado.
+     */
+    public function confirmSessionOrderPayment(int $orderId): void
+    {
+        abort_unless(! $this->isWaiter, 403);
+
+        $order = Order::withoutGlobalScopes()
+            ->where('pdv_cash_session_id', $this->cashSessionId)
+            ->find($orderId);
+
+        if (! $order || $order->order_type !== 'pdv' || $order->status !== 'awaiting_payment' || $order->payment()->exists()) {
+            return;
+        }
+
+        app(PaymentOrchestrator::class)->confirmDeliveryPayment($order);
+
+        OrderStatusUpdated::dispatch($order->fresh());
     }
 
     public function openClosingReports(): void

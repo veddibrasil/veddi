@@ -12,11 +12,13 @@ class IfoodWebhookSignatureValidator
      */
     public function isValid(string $rawBody, ?string $signatureHeader): bool
     {
-        if (! $signatureHeader) {
+        $secret = config('ifood.partner_client_secret');
+
+        if (! $signatureHeader || ! is_string($secret) || $secret === '') {
             return false;
         }
 
-        $expected = hash_hmac('sha256', $rawBody, config('ifood.partner_client_secret'));
+        $expected = hash_hmac('sha256', $rawBody, $secret);
 
         return hash_equals($expected, $signatureHeader);
     }

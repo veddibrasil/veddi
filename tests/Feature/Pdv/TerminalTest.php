@@ -935,12 +935,85 @@ test('operador cancela pedido PDV dentro de 5 minutos', function () {
     $order = Order::withoutGlobalScopes()->find($orderId);
 
     $component
+        ->set('cancelReasonCode', 'customer_gave_up')
         ->call('cancelLastOrder')
         ->assertSet('step', 'catalog')
         ->assertSet('lastOrderId', null)
         ->assertDispatched('pdv-toast', message: "Pedido {$order->order_number} cancelado.");
 
     expect($order->fresh()->status)->toBe('cancelled');
+    expect($order->fresh()->cancellation_reason)->toBe('Cliente desistiu');
+    expect($order->fresh()->cancelled_by)->toBe($admin->id);
+});
+
+test('cancelar pedido do PDV exige motivo obrigatório', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'cash')
+        ->call('processOrder')
+        ->assertSet('step', 'catalog');
+
+    $orderId = $component->get('lastOrderId');
+
+    $component->call('cancelLastOrder')
+        ->assertHasErrors(['cancelReasonCode' => 'required']);
+
+    expect(Order::withoutGlobalScopes()->find($orderId)->status)->not->toBe('cancelled');
+});
+
+test('cancelar pedido do PDV com motivo "outro" exige descrição', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'cash')
+        ->call('processOrder')
+        ->assertSet('step', 'catalog');
+
+    $orderId = $component->get('lastOrderId');
+
+    $component
+        ->set('cancelReasonCode', 'other')
+        ->call('cancelLastOrder')
+        ->assertHasErrors(['cancelReasonDescription' => 'required']);
+
+    expect(Order::withoutGlobalScopes()->find($orderId)->status)->not->toBe('cancelled');
+});
+
+test('cancelamento no PDV registra o operador no histórico de auditoria do pedido', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'cash')
+        ->call('processOrder')
+        ->assertSet('step', 'catalog');
+
+    $orderId = $component->get('lastOrderId');
+
+    $component
+        ->set('cancelReasonCode', 'item_unavailable')
+        ->set('cancelReasonDescription', 'Faltou insumo na cozinha')
+        ->call('cancelLastOrder');
+
+    $order = Order::withoutGlobalScopes()->find($orderId);
+    $history = $order->statusHistories()->latest()->first();
+
+    expect($history)->not->toBeNull();
+    expect($history->user_id)->toBe($admin->id);
+    expect($history->to_status)->toBe('cancelled');
+    expect($history->reason)->toBe('Produto indisponível: Faltou insumo na cozinha');
 });
 
 test('cancelar pedido do card de sucesso não apaga o carrinho já iniciado do próximo pedido', function () {
@@ -964,7 +1037,9 @@ test('cancelar pedido do card de sucesso não apaga o carrinho já iniciado do p
     $component->call('addProduct', $product->id);
     expect($component->get('cart'))->not->toBeEmpty();
 
-    $component->call('cancelLastOrder')
+    $component
+        ->set('cancelReasonCode', 'customer_gave_up')
+        ->call('cancelLastOrder')
         ->assertSet('lastOrderId', null);
 
     expect($component->get('cart'))->not->toBeEmpty();
@@ -988,7 +1063,9 @@ test('operador cancela pedido PDV de sessão mesmo após 5 minutos', function ()
     $orderId = $component->get('lastOrderId');
     Order::withoutGlobalScopes()->where('id', $orderId)->update(['created_at' => now()->subMinutes(6)]);
 
-    $component->call('cancelLastOrder');
+    $component
+        ->set('cancelReasonCode', 'customer_gave_up')
+        ->call('cancelLastOrder');
 
     $order = Order::withoutGlobalScopes()->find($orderId);
     expect($order->status)->toBe('cancelled');
@@ -1009,13 +1086,134 @@ test('pedido em status terminal não pode ser cancelado no PDV', function () {
     $orderId = $component->get('lastOrderId');
     Order::withoutGlobalScopes()->where('id', $orderId)->update(['status' => 'delivered']);
 
-    $component->call('cancelLastOrder');
+    $component
+        ->set('cancelReasonCode', 'customer_gave_up')
+        ->call('cancelLastOrder');
 
     $component->assertHasErrors('cancel');
     $component->assertDispatched('pdv-toast');
 
     $order = Order::withoutGlobalScopes()->find($orderId);
     expect($order->status)->toBe('delivered');
+});
+
+test('abrir modal de cancelamento carrega o número do pedido', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'cash')
+        ->call('processOrder')
+        ->assertSet('step', 'catalog');
+
+    $orderId = $component->get('lastOrderId');
+    $order = Order::withoutGlobalScopes()->find($orderId);
+
+    $component->call('openCancelOrderModal', $orderId)
+        ->assertSet('cancelModalOrderId', $orderId)
+        ->assertSet('cancelModalOrderNumber', $order->order_number);
+});
+
+test('modal de cancelamento não fecha sozinho quando o card de sucesso some pelo timeout', function () {
+    // Bug que motivou o modal separado: dismissOrderSuccess() é chamado sozinho por
+    // um setTimeout no card flutuante — antes, isso resetava o form de motivo/descrição
+    // no meio do preenchimento. O modal agora guarda seu próprio estado e só fecha por
+    // ação explícita do operador.
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'cash')
+        ->call('processOrder')
+        ->assertSet('step', 'catalog');
+
+    $orderId = $component->get('lastOrderId');
+
+    $component
+        ->call('openCancelOrderModal', $orderId)
+        ->set('cancelReasonCode', 'item_unavailable')
+        ->set('cancelReasonDescription', 'Ainda preenchendo...')
+        ->call('dismissOrderSuccess')
+        ->assertSet('lastOrderId', null)
+        ->assertSet('cancelModalOrderId', $orderId)
+        ->assertSet('cancelReasonCode', 'item_unavailable')
+        ->assertSet('cancelReasonDescription', 'Ainda preenchendo...');
+});
+
+test('erro de validação no cancelamento mantém o modal aberto', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'cash')
+        ->call('processOrder')
+        ->assertSet('step', 'catalog');
+
+    $orderId = $component->get('lastOrderId');
+
+    $component
+        ->call('openCancelOrderModal', $orderId)
+        ->call('cancelPdvOrder', $orderId)
+        ->assertHasErrors(['cancelReasonCode' => 'required'])
+        ->assertSet('cancelModalOrderId', $orderId);
+
+    expect(Order::withoutGlobalScopes()->find($orderId)->status)->not->toBe('cancelled');
+});
+
+test('erro de regra de negócio no cancelamento mantém o modal aberto', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'cash')
+        ->call('processOrder')
+        ->assertSet('step', 'catalog');
+
+    $orderId = $component->get('lastOrderId');
+    Order::withoutGlobalScopes()->where('id', $orderId)->update(['status' => 'delivered']);
+
+    $component
+        ->call('openCancelOrderModal', $orderId)
+        ->set('cancelReasonCode', 'customer_gave_up')
+        ->call('cancelPdvOrder', $orderId)
+        ->assertHasErrors('cancel')
+        ->assertSet('cancelModalOrderId', $orderId);
+});
+
+test('fechar o modal de cancelamento limpa motivo e descrição', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'cash')
+        ->call('processOrder')
+        ->assertSet('step', 'catalog');
+
+    $orderId = $component->get('lastOrderId');
+
+    $component
+        ->call('openCancelOrderModal', $orderId)
+        ->set('cancelReasonCode', 'customer_gave_up')
+        ->set('cancelReasonDescription', 'teste')
+        ->call('closeCancelOrderModal')
+        ->assertSet('cancelModalOrderId', null)
+        ->assertSet('cancelReasonCode', '')
+        ->assertSet('cancelReasonDescription', '');
 });
 
 // ─── processCash direto ───────────────────────────────────────────────────────
@@ -1101,11 +1299,14 @@ test('PDV registra auditoria para venda cancelamento e fechamento', function () 
         ->exists()
     )->toBeTrue();
 
-    $component->call('cancelLastOrder');
+    $component
+        ->set('cancelReasonCode', 'customer_gave_up')
+        ->call('cancelLastOrder');
 
     expect(PdvAuditLog::withoutGlobalScopes()
         ->where('action', 'order_cancelled')
         ->where('order_id', $orderId)
+        ->where('reason', 'Cliente desistiu')
         ->exists()
     )->toBeTrue();
 
@@ -1628,4 +1829,133 @@ test('agendamento rejeita horário no passado', function () {
         ->assertHasErrors('scheduledAt');
 
     expect(Order::withoutGlobalScopes()->count())->toBe(0);
+});
+
+// ─── "Pedidos da sessão": confirmar pagamento de pedido aguardando pagamento ────
+
+test('pedidos da sessão mostra "Ag. pagamento" (não "Pago") pra pedido aguardando pagamento', function () {
+    ['admin' => $admin, 'company' => $company, 'branch' => $branch] = pdvContext();
+
+    $customer = Customer::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Cliente Entrega',
+        'phone' => '11999990009',
+    ]);
+
+    $session = PdvCashSession::withoutGlobalScopes()
+        ->where('company_id', $company->id)
+        ->where('branch_id', $branch->id)
+        ->whereNull('closed_at')
+        ->first();
+
+    $order = Order::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'customer_id' => $customer->id,
+        'branch_id' => $branch->id,
+        'pdv_cash_session_id' => $session->id,
+        'subtotal' => 66.90,
+        'total' => 66.90,
+        'fee' => 0,
+        'net_value' => 66.90,
+        'status' => 'awaiting_payment',
+        'payment_method' => 'credit_card',
+        'order_type' => 'pdv',
+        'is_open_tab' => false,
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('showSessionHistory')
+        ->assertSee('Ag. pagamento')
+        ->assertDontSee('Pago')
+        ->assertSeeHtml('confirmSessionOrderPayment('.$order->id.')');
+});
+
+test('confirmar pagamento em "Pedidos da sessão" cria o Payment e o fechamento de caixa fecha a conta', function () {
+    ['admin' => $admin, 'company' => $company, 'branch' => $branch] = pdvContext();
+
+    $customer = Customer::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Cliente Entrega',
+        'phone' => '11999990009',
+    ]);
+
+    $session = PdvCashSession::withoutGlobalScopes()
+        ->where('company_id', $company->id)
+        ->where('branch_id', $branch->id)
+        ->whereNull('closed_at')
+        ->first();
+
+    $order = Order::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'customer_id' => $customer->id,
+        'branch_id' => $branch->id,
+        'pdv_cash_session_id' => $session->id,
+        'subtotal' => 66.90,
+        'total' => 66.90,
+        'fee' => 0,
+        'net_value' => 66.90,
+        'status' => 'awaiting_payment',
+        'payment_method' => 'credit_card',
+        'order_type' => 'pdv',
+        'is_open_tab' => false,
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('confirmSessionOrderPayment', $order->id);
+
+    $order->refresh();
+    expect($order->status)->toBe('paid');
+    $payment = Payment::where('order_id', $order->id)->first();
+    expect($payment)->not->toBeNull();
+    expect($payment->status)->toBe('paid');
+
+    $report = app(\App\Services\Pdv\CashClosingReportService::class)->build($session->fresh());
+    $paymentsSum = array_sum($report['payments']);
+
+    expect($report['revenue'])->toBe(66.90)
+        ->and($paymentsSum)->toBe($report['revenue']);
+});
+
+test('confirmar pagamento ignora pedido que não é do PDV (aguardando webhook Vindi/Asaas)', function () {
+    ['admin' => $admin, 'company' => $company, 'branch' => $branch] = pdvContext();
+
+    $customer = Customer::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Cliente Online',
+        'phone' => '11999990009',
+    ]);
+
+    $session = PdvCashSession::withoutGlobalScopes()
+        ->where('company_id', $company->id)
+        ->where('branch_id', $branch->id)
+        ->whereNull('closed_at')
+        ->first();
+
+    $order = Order::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'customer_id' => $customer->id,
+        'branch_id' => $branch->id,
+        'pdv_cash_session_id' => $session->id,
+        'subtotal' => 40.00,
+        'total' => 40.00,
+        'fee' => 0,
+        'net_value' => 40.00,
+        'status' => 'awaiting_payment',
+        'payment_method' => 'pix',
+        'order_type' => 'delivery',
+        'is_open_tab' => false,
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('confirmSessionOrderPayment', $order->id);
+
+    $order->refresh();
+    expect($order->status)->toBe('awaiting_payment');
+    expect(Payment::where('order_id', $order->id)->exists())->toBeFalse();
 });

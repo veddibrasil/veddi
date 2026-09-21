@@ -137,7 +137,19 @@ class Terminal extends Component
 
     public ?int $lastOrderId = null;
 
-    public bool $confirmingCancelOrder = false;
+    // ── Cancelar pedido (modal próprio — não fecha sozinho, só por ação do
+    //    operador: confirmar ou clicar em "Voltar". Guarda seu próprio id/número
+    //    pra não depender de $lastOrderId, que o card de sucesso pode zerar
+    //    sozinho via timeout enquanto o modal ainda está aberto) ──────────────
+
+    public ?int $cancelModalOrderId = null;
+
+    public string $cancelModalOrderNumber = '';
+
+    public string $cancelReasonCode = '';
+
+    /** Descrição livre do cancelamento — obrigatória quando o motivo é "Outro". */
+    public string $cancelReasonDescription = '';
 
     // ── Cliente novo (criação inline) ─────────────────────────────────────────
     public bool $showCreateCustomer = false;
@@ -167,9 +179,6 @@ class Terminal extends Component
     public string $cashMovementReason = '';
 
     public bool $showCashMovementForm = false;
-
-    // ── Histórico de sessão ───────────────────────────────────────────────────
-    public ?int $confirmingCancelSessionOrderId = null;
 
     // ── Fechamento de comanda (sempre null aqui — Terminal não abre mesa/comanda,
     //    só TabTerminal. Fica declarado porque HasOrderTotals bifurca nele pra
@@ -239,16 +248,18 @@ class Terminal extends Component
     }
 
     /**
-     * Só limpa o card flutuante de sucesso (número, total, troco, confirmação de
-     * cancelar) — nunca mexe no carrinho, porque o operador pode já ter começado a
-     * montar o próximo pedido enquanto o card do anterior ainda estava na tela.
+     * Só limpa o card flutuante de sucesso (número, total, troco) — nunca mexe no
+     * carrinho, porque o operador pode já ter começado a montar o próximo pedido
+     * enquanto o card do anterior ainda estava na tela. Também não mexe no modal
+     * de cancelamento: ele guarda seu próprio id/número e só fecha por ação
+     * explícita do operador (ver `HasOrderCancellation`), mesmo que esse card
+     * suma sozinho pelo timeout enquanto o modal está aberto.
      */
     public function dismissOrderSuccess(): void
     {
         $this->lastOrderNumber = null;
         $this->lastOrderTotal = null;
         $this->lastOrderId = null;
-        $this->confirmingCancelOrder = false;
         $this->changeAmount = 0.0;
     }
 

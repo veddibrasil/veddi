@@ -46,6 +46,18 @@
         </x-slot:actions>
     </x-admin.page-header>
 
+    @if ($order->channel === 'ifood')
+        <div data-testid="ifood-order-summary" class="rounded-xl border border-neutral-200 bg-white p-5 space-y-2 dark:border-zinc-700 dark:bg-zinc-800">
+            <p class="text-sm font-semibold text-neutral-500 dark:text-neutral-400">Pedido iFood</p>
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <p class="text-xl font-bold text-neutral-800 dark:text-neutral-100">{{ $order->external_metadata['display_id'] ?? $order->order_number }}</p>
+                <p class="text-lg font-semibold text-neutral-800 dark:text-neutral-100">{{ $order->status_label }}</p>
+            </div>
+            <p class="text-sm text-neutral-500 break-all dark:text-neutral-400">ID iFood: {{ $order->external_order_id }}</p>
+            <p class="text-sm text-neutral-500 dark:text-neutral-400">Pedido no sistema: {{ $order->order_number }}</p>
+        </div>
+    @endif
+
     @if (session('status'))
         <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm dark:bg-green-900/30 dark:border-green-700 dark:text-green-400">
             {{ session('status') }}
@@ -861,6 +873,40 @@
                     </div>
                 </x-admin.form-card>
             @endif
+
+            {{-- Histórico do pedido (auditoria) — visível apenas para admin --}}
+            @if ($canViewHistory)
+                <x-admin.form-card padding="p-4">
+                    <p class="font-semibold text-neutral-700 mb-1 dark:text-neutral-200">Histórico do Pedido</p>
+                    <p class="text-xs text-neutral-400 dark:text-neutral-500 mb-3">Auditoria completa das mudanças — visível apenas para administradores.</p>
+
+                    @if ($order->statusHistories->isEmpty())
+                        <p class="text-sm text-neutral-400 dark:text-neutral-500">Nenhum registro de auditoria ainda.</p>
+                    @else
+                        <div class="space-y-3 max-h-96 overflow-y-auto">
+                            @foreach ($order->statusHistories as $history)
+                                <div class="border rounded-lg p-3 dark:border-zinc-700">
+                                    <div class="flex items-center justify-between gap-2 mb-1">
+                                        <span class="text-sm font-medium text-neutral-800 dark:text-neutral-100">
+                                            @if ($history->from_status)
+                                                {{ \App\Models\Order::statusLabel($history->from_status) }} →
+                                            @endif
+                                            {{ \App\Models\Order::statusLabel($history->to_status) }}
+                                        </span>
+                                        <span class="text-xs text-neutral-400 dark:text-neutral-500 shrink-0">{{ $history->created_at->format('d/m/Y H:i') }}</span>
+                                    </div>
+                                    <p class="text-xs text-neutral-500 dark:text-neutral-400">
+                                        Por {{ $history->user->name ?? (($history->metadata['source'] ?? '') === 'ifood_event' ? 'iFood' : 'Cliente') }}
+                                    </p>
+                                    @if ($history->reason)
+                                        <p class="text-xs text-neutral-600 dark:text-neutral-300 mt-1">Motivo: {{ $history->reason }}</p>
+                                    @endif
+                                </div>
+                            @endforeach
+                        </div>
+                    @endif
+                </x-admin.form-card>
+            @endif
         </div>
     </div>
 
@@ -975,6 +1021,48 @@
         </div>
     @endif
 
+    @if ($showCancelModal)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-xl p-6 w-full max-w-md mx-4 space-y-5">
+                <div class="flex items-start gap-4">
+                    <div class="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-neutral-800 dark:text-neutral-100">Cancelar pedido</h3>
+                        <p class="text-sm text-neutral-500 dark:text-neutral-400 mt-1">Informe o motivo do cancelamento. Essa ação fica registrada no histórico do pedido com seu usuário como operador.</p>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-neutral-700 dark:text-neutral-300">Motivo <span class="text-red-500">*</span></label>
+                    <textarea wire:model="cancelReason"
+                              rows="3"
+                              placeholder="Descreva o motivo do cancelamento..."
+                              class="mt-1 w-full text-sm border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-400 dark:bg-zinc-700 dark:border-zinc-600 dark:text-neutral-100 dark:placeholder-neutral-400"></textarea>
+                    @error('cancelReason')
+                        <p class="text-xs text-red-500 mt-1">{{ $message }}</p>
+                    @enderror
+                </div>
+
+                <div class="flex justify-end gap-3 pt-1">
+                    <button wire:click="closeCancelModal"
+                            class="px-4 py-2 text-sm text-neutral-600 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200">
+                        Voltar
+                    </button>
+                    <button wire:click="confirmCancel"
+                            wire:loading.attr="disabled"
+                            class="px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg transition-colors">
+                        <span wire:loading.remove wire:target="confirmCancel">Confirmar cancelamento</span>
+                        <span wire:loading wire:target="confirmCancel">Cancelando...</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    @endif
+
     @if ($showIfoodCancelModal)
         <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
             <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-xl p-6 w-full max-w-md mx-4 space-y-5">
@@ -993,8 +1081,8 @@
                 <select wire:model.live="ifoodCancelReason"
                         class="w-full rounded-lg border-neutral-300 dark:border-zinc-600 dark:bg-zinc-900 text-sm">
                     <option value="">Selecione um motivo</option>
-                    @foreach (\App\Enums\IfoodRejectReason::cases() as $reason)
-                        <option value="{{ $reason->value }}">{{ $reason->label() }}</option>
+                    @foreach ($ifoodCancellationReasons as $reason)
+                        <option value="{{ $reason['code'] }}">{{ $reason['description'] }}</option>
                     @endforeach
                 </select>
 

@@ -4,6 +4,7 @@ namespace App\Services\Ifood;
 
 use App\Exceptions\IfoodMerchantAlreadyLinkedException;
 use App\Models\IfoodIntegration;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -39,7 +40,30 @@ class IfoodAuthService
 
     public function refreshToken(IfoodIntegration $integration): string
     {
-        $response = Http::asForm()->post("{$this->baseUrl}/authentication/v1.0/oauth/token", [
+        // Releitura sob lock: outro worker pode ter rotacionado o refresh token
+        // depois que este job carregou a integração.
+        return Cache::lock("ifood:refresh:{$integration->id}", 30)->block(5, function () use ($integration) {
+            $integration->refresh();
+
+            if ($integration->status === 'reauthorization_required') {
+                throw new RuntimeException('A autorização do iFood expirou. Reconecte a loja nas configurações.');
+            }
+
+            if ($integration->access_token && ! $this->isExpiredWithMargin($integration)) {
+                return $integration->access_token;
+            }
+
+            if (! $integration->refresh_token) {
+                $this->requireReauthorization($integration);
+            }
+
+            return $this->renewToken($integration);
+        });
+    }
+
+    private function renewToken(IfoodIntegration $integration): string
+    {
+        $response = Http::asForm()->connectTimeout(5)->timeout(15)->post("{$this->baseUrl}/authentication/v1.0/oauth/token", [
             'grantType' => 'refresh_token',
             'clientId' => config('ifood.partner_client_id'),
             'clientSecret' => config('ifood.partner_client_secret'),
@@ -51,8 +75,16 @@ class IfoodAuthService
                 'ifood_integration_id' => $integration->id,
                 'company_id' => $integration->company_id,
                 'status' => $response->status(),
-                'body' => $response->body(),
             ]);
+
+            $error = $response->json('error');
+            $message = is_array($error) ? ($error['message'] ?? '') : $error;
+            if (in_array($response->status(), [400, 401], true)
+                && (str_contains(strtolower((string) $message), 'invalid refresh token')
+                    || $message === 'invalid_grant'
+                    || (is_array($error) && ($error['code'] ?? '') === 'invalid_grant'))) {
+                $this->requireReauthorization($integration);
+            }
 
             throw new RuntimeException("iFood: falha ao renovar token integration_id={$integration->id} (status {$response->status()})");
         }
@@ -64,7 +96,6 @@ class IfoodAuthService
         if (! $accessToken) {
             Log::channel('ifood')->error('iFood: resposta de renovação sem accessToken', [
                 'ifood_integration_id' => $integration->id,
-                'body' => $data,
             ]);
 
             throw new RuntimeException("iFood: resposta de renovação sem accessToken (integration_id={$integration->id})");
@@ -79,6 +110,18 @@ class IfoodAuthService
         $integration->save();
 
         return $accessToken;
+    }
+
+    private function requireReauthorization(IfoodIntegration $integration): never
+    {
+        $integration->update([
+            'status' => 'reauthorization_required',
+            'access_token' => null,
+            'refresh_token' => null,
+            'token_expires_at' => null,
+        ]);
+
+        throw new RuntimeException('A autorização do iFood expirou. Reconecte a loja nas configurações.');
     }
 
     /**

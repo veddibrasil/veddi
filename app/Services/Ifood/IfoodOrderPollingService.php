@@ -69,6 +69,10 @@ class IfoodOrderPollingService
 
         if ($ackableIds !== []) {
             $this->gateway->acknowledgeEvents($integration, $ackableIds);
+            IfoodOrderEvent::where('ifood_integration_id', $integration->id)
+                ->whereIn('event_id', $ackableIds)
+                ->whereNull('acknowledged_at')
+                ->update(['acknowledged_at' => now()]);
         }
 
         $integration->update(['last_synced_at' => now()]);

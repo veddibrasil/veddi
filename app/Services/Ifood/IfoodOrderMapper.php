@@ -62,11 +62,23 @@ class IfoodOrderMapper
         return $cart;
     }
 
+    /** Project third-level customizations into mapped selections, preserving their parent IDs. */
+    private function flattenOptions(array $options, ?string $parentId = null): iterable
+    {
+        foreach ($options as $option) {
+            if ($parentId !== null) {
+                $option['parentOptionId'] = $parentId;
+            }
+            yield $option;
+            yield from $this->flattenOptions($option['customizations'] ?? [], $option['ifoodOptionId']);
+        }
+    }
+
     private function mapOptions(array $item, int $productId): array
     {
         $options = [];
 
-        foreach ($item['options'] as $option) {
+        foreach ($this->flattenOptions($item['options']) as $option) {
             if ($option['hasNestedOptions']) {
                 throw new IfoodMappingException(
                     "Item '{$item['name']}' tem complemento aninhado (complemento-de-complemento) — não suportado pelo schema atual de produtos (product_option_groups → product_options, 1 nível só)."
@@ -74,6 +86,7 @@ class IfoodOrderMapper
             }
 
             $productOption = ProductOption::where('ifood_option_id', $option['ifoodOptionId'])
+                ->whereHas('group.products', fn ($query) => $query->where('products.id', $productId))
                 ->with('group')
                 ->first();
 
@@ -99,7 +112,13 @@ class IfoodOrderMapper
 
             $groupId = $productOption->product_option_group_id;
             $options[$groupId]['id'] = $groupId;
-            $options[$groupId]['selections'][$productOption->id] = ['qty' => $option['quantity']];
+            $selection = $options[$groupId]['selections'][$productOption->id] ?? ['qty' => 0];
+            $selection['qty'] += $option['quantity'];
+            // Keep each parent association when the same customization occurs twice.
+            if (isset($option['parentOptionId'])) {
+                $selection['ifood_parents'][] = $option['parentOptionId'];
+            }
+            $options[$groupId]['selections'][$productOption->id] = $selection;
         }
 
         return $options;

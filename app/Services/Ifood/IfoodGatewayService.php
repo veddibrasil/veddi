@@ -4,7 +4,9 @@ namespace App\Services\Ifood;
 
 use App\Contracts\IfoodGatewayContract;
 use App\Models\IfoodIntegration;
+use Carbon\CarbonInterface;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -32,7 +34,9 @@ class IfoodGatewayService implements IfoodGatewayContract
 
     public function pollEvents(IfoodIntegration $integration): array
     {
-        $response = $this->client($integration)->get('/order/v1.0/events:polling');
+        $response = $this->client($integration)
+            ->withHeaders(['x-polling-merchants' => $integration->merchant_id])
+            ->get('/order/v1.0/events:polling');
 
         if ($response->failed()) {
             $this->logAndThrow($integration, 'pollEvents', $response);
@@ -55,6 +59,12 @@ class IfoodGatewayService implements IfoodGatewayContract
         if ($response->failed()) {
             $this->logAndThrow($integration, 'acknowledgeEvents', $response);
         }
+
+        Log::channel('ifood')->info('iFood: acknowledgement aceito pela API', [
+            'ifood_integration_id' => $integration->id,
+            'event_ids' => $eventIds,
+            'http_status' => $response->status(),
+        ]);
     }
 
     public function getOrderDetails(IfoodIntegration $integration, string $ifoodOrderId): array
@@ -75,6 +85,12 @@ class IfoodGatewayService implements IfoodGatewayContract
         if ($response->failed()) {
             $this->logAndThrow($integration, 'confirmOrder', $response);
         }
+
+        Log::channel('ifood')->info('iFood: confirmação de pedido aceita pela API', [
+            'ifood_integration_id' => $integration->id,
+            'ifood_order_id' => $ifoodOrderId,
+            'http_status' => $response->status(),
+        ]);
     }
 
     public function rejectOrder(IfoodIntegration $integration, string $ifoodOrderId, string $reasonCode): void
@@ -112,6 +128,26 @@ class IfoodGatewayService implements IfoodGatewayContract
         }
     }
 
+    public function getCancellationReasons(IfoodIntegration $integration, string $ifoodOrderId): array
+    {
+        $response = $this->client($integration)->get("/order/v1.0/orders/{$ifoodOrderId}/cancellationReasons");
+        if ($response->failed()) {
+            $this->logAndThrow($integration, 'getCancellationReasons', $response);
+        }
+        $body = $response->json() ?? [];
+        $reasons = $body['reasons'] ?? $body;
+        Log::channel('ifood')->info('iFood: motivos de cancelamento consultados', [
+            'ifood_order_id' => $ifoodOrderId,
+            'http_status' => $response->status(),
+            'reasons' => $reasons,
+        ]);
+
+        return array_map(fn ($reason) => [
+            'code' => (string) ($reason['cancelCodeId'] ?? $reason['code'] ?? ''),
+            'description' => (string) ($reason['description'] ?? ''),
+        ], $reasons);
+    }
+
     public function requestCancellation(IfoodIntegration $integration, string $ifoodOrderId, string $reasonCode): void
     {
         $response = $this->client($integration)->post("/order/v1.0/orders/{$ifoodOrderId}/requestCancellation", [
@@ -122,6 +158,11 @@ class IfoodGatewayService implements IfoodGatewayContract
         if ($response->failed()) {
             $this->logAndThrow($integration, 'requestCancellation', $response);
         }
+        Log::channel('ifood')->info('iFood: solicitação de cancelamento aceita pela API', [
+            'ifood_order_id' => $ifoodOrderId,
+            'cancellation_code' => $reasonCode,
+            'http_status' => $response->status(),
+        ]);
     }
 
     public function createCategory(IfoodIntegration $integration, string $name): string
@@ -176,7 +217,7 @@ class IfoodGatewayService implements IfoodGatewayContract
         }
     }
 
-    public function getSettlements(IfoodIntegration $integration, \Carbon\CarbonInterface $from, \Carbon\CarbonInterface $to): array
+    public function getSettlements(IfoodIntegration $integration, CarbonInterface $from, CarbonInterface $to): array
     {
         // Endpoint/payload especulativo — Financial API do iFood não confirmada em
         // sandbox ainda. Ajustar path e formato de resposta antes de produção.
@@ -227,7 +268,7 @@ class IfoodGatewayService implements IfoodGatewayContract
         return $catalogId;
     }
 
-    private function logAndThrow(IfoodIntegration $integration, string $operation, \Illuminate\Http\Client\Response $response): never
+    private function logAndThrow(IfoodIntegration $integration, string $operation, Response $response): never
     {
         Log::channel('ifood')->error("iFood: falha em {$operation}", [
             'ifood_integration_id' => $integration->id,

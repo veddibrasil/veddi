@@ -199,3 +199,40 @@ test('evento que não é PLC é marcado processado sem criar pedido', function (
     expect($event->status)->toBe('processed')
         ->and(Order::withoutGlobalScopes()->count())->toBe(0);
 });
+
+test('inclui taxas adicionais e benefícios do iFood no total e no pagamento', function () {
+    ['integration' => $integration] = ifoodContext('fees');
+    $payload = ifoodOrderDetailsPayload('order-fees', $integration->merchant_id, 'ifood-item-coxinha-fees', 2);
+    $payload['total']['additionalFees'] = 1;
+    $payload['total']['benefits'] = 2;
+    fakeIfoodApi($payload);
+    $event = IfoodOrderEvent::create(['event_id' => 'evt-fees', 'event_type' => 'PLC', 'source' => 'polling', 'ifood_integration_id' => $integration->id, 'payload' => ['orderId' => 'order-fees'], 'status' => 'pending']);
+    runIfoodOrderJob($event->id);
+    $order = Order::withoutGlobalScopes()->findOrFail($event->fresh()->order_id);
+    expect((float) $order->service_fee)->toBe(1.0)
+        ->and((float) $order->manual_discount)->toBe(2.0)
+        ->and((float) $order->total)->toBe((float) $order->subtotal + (float) $order->delivery_fee - 1.0)
+        ->and((float) $order->payments()->first()->amount)->toBe((float) $order->total);
+});
+
+test('CON conclui pedido e registra histórico sem duplicar ao receber outro evento de conclusão', function () {
+    \Illuminate\Support\Facades\Event::fake([\App\Events\OrderStatusUpdated::class]);
+    $ctx = ifoodContext('con');
+    $order = ifoodKanbanOrder($ctx, 'out_for_delivery', 'order-con');
+    foreach (['evt-con-1', 'evt-con-2'] as $id) {
+        $event = IfoodOrderEvent::create(['event_id' => $id, 'event_type' => 'CON', 'source' => 'polling', 'ifood_integration_id' => $ctx['integration']->id, 'payload' => ['orderId' => 'order-con'], 'status' => 'pending']);
+        runIfoodOrderJob($event->id);
+        expect($event->fresh()->order_id)->toBe($order->id)->and($event->fresh()->status)->toBe('processed');
+    }
+    expect($order->fresh()->status)->toBe('delivered')->and($order->fresh()->status_label)->toBe('Concluído');
+    expect(\App\Models\OrderStatusHistory::withoutGlobalScopes()->where('order_id', $order->id)->count())->toBe(1);
+    \Illuminate\Support\Facades\Event::assertDispatchedTimes(\App\Events\OrderStatusUpdated::class, 1);
+});
+
+test('CON atrasado não reabre pedido cancelado', function () {
+    $ctx = ifoodContext('con-cancel');
+    $order = ifoodKanbanOrder($ctx, 'cancelled', 'order-con-cancel');
+    $event = IfoodOrderEvent::create(['event_id' => 'evt-con-cancel', 'event_type' => 'CON', 'source' => 'polling', 'ifood_integration_id' => $ctx['integration']->id, 'payload' => ['orderId' => 'order-con-cancel'], 'status' => 'pending']);
+    runIfoodOrderJob($event->id);
+    expect($order->fresh()->status)->toBe('cancelled');
+});
