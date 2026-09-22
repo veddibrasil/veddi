@@ -213,6 +213,94 @@ test('admin consegue imprimir o fechamento de qualquer sessão a partir do relat
         ->assertHeader('content-type', 'application/pdf');
 });
 
+test('totais por método de pagamento não vazam pedidos PDV pagos de outra empresa', function () {
+    ['admin' => $admin, 'company' => $company, 'branch' => $branch] = pdvReportContext();
+
+    $customer = \App\Models\Customer::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Balcão',
+        'phone' => 'pdv-report-own',
+    ]);
+
+    $ownOrder = Order::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'customer_id' => $customer->id,
+        'branch_id' => $branch->id,
+        'subtotal' => 10.00,
+        'total' => 10.00,
+        'fee' => 0,
+        'net_value' => 10.00,
+        'status' => 'paid',
+        'payment_method' => 'pix',
+        'order_type' => 'pdv',
+    ]);
+
+    \App\Models\Payment::create([
+        'order_id' => $ownOrder->id,
+        'payment_gateway' => 'pix_manual',
+        'amount' => 10.00,
+        'status' => 'paid',
+        'paid_at' => now(),
+        'payment_token' => 'test-report-own-pix-token',
+    ]);
+
+    // Empresa concorrente, com pedido PDV pago no mesmo período — não pode aparecer
+    // nos totais da empresa atual (isolamento multiempresa, ver CLAUDE.md).
+    $otherCompany = Company::create([
+        'name' => 'PDV Report Outra Empresa',
+        'slug' => 'pdv-report-other-'.uniqid(),
+        'order_prefix' => 'OTR',
+        'active' => true,
+        'plan' => 'pro',
+        'pdv_module_enabled' => true,
+    ]);
+
+    $otherBranch = Branch::withoutGlobalScopes()->create([
+        'company_id' => $otherCompany->id,
+        'name' => 'Balcão Outra Empresa',
+        'address' => 'Rua Z, 9',
+        'city' => 'SP',
+        'active' => true,
+        'opens_at' => '00:00:00',
+        'closes_at' => '23:59:59',
+    ]);
+
+    $otherCustomer = \App\Models\Customer::withoutGlobalScopes()->create([
+        'company_id' => $otherCompany->id,
+        'name' => 'Balcão',
+        'phone' => 'pdv-report-other',
+    ]);
+
+    $otherOrder = Order::withoutGlobalScopes()->create([
+        'company_id' => $otherCompany->id,
+        'customer_id' => $otherCustomer->id,
+        'branch_id' => $otherBranch->id,
+        'subtotal' => 440.00,
+        'total' => 440.00,
+        'fee' => 0,
+        'net_value' => 440.00,
+        'status' => 'paid',
+        'payment_method' => 'pix',
+        'order_type' => 'pdv',
+    ]);
+
+    \App\Models\Payment::create([
+        'order_id' => $otherOrder->id,
+        'payment_gateway' => 'pix_manual',
+        'amount' => 440.00,
+        'status' => 'paid',
+        'paid_at' => now(),
+        'payment_token' => 'test-report-other-pix-token',
+    ]);
+
+    app()->instance('current.company', $company);
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Report::class);
+
+    expect((float) $component->viewData('pixTotal'))->toBe(10.0);
+});
+
 // ─── Restrição do caixa ─────────────────────────────────────────────────────────
 
 test('caixa não vê os cards de totais financeiros e fica travado na própria filial', function () {

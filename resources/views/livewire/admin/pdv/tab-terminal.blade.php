@@ -184,7 +184,9 @@
                                     @if ($isWaiter)
                                         Peça para o responsável pelo caixa cadastrar as mesas antes de abrir uma comanda.
                                     @else
-                                        Cadastre ao menos uma mesa abaixo para poder abrir uma comanda.
+                                        Cadastre ao menos uma mesa em
+                                        <a href="{{ route('admin.branches.tables', $selectedBranchId) }}" class="underline font-semibold">Filiais &rsaquo; Mesas</a>
+                                        para poder abrir uma comanda.
                                     @endif
                                 </p>
                             </div>

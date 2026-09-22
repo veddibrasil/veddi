@@ -89,8 +89,11 @@ class Report extends Component
 
         // Agrega por payments.payment_gateway (não orders.payment_method) — pedidos com pagamento
         // dividido (payment_method='split') têm cada parte contada no bucket certo.
+        // Consulta via DB::table não passa pelo global scope de Order, então o filtro
+        // de company_id precisa ser explícito aqui pra não vazar dados de outra empresa.
         $paymentRows = DB::table('orders')
             ->join('payments', 'payments.order_id', '=', 'orders.id')
+            ->where('orders.company_id', app('current.company')->id)
             ->where('orders.order_type', 'pdv')
             ->whereNotIn('orders.status', ['cancelled', 'refunded'])
             ->where('payments.status', 'paid')
