@@ -41,7 +41,7 @@ class EscPosPrinterService implements PrinterServiceInterface
         return true;
     }
 
-    public function buildOrderReceipt(Order $order, string $station, ?Company $company = null, bool $full = false, ?Collection $itemsOverride = null): string
+    public function buildOrderReceipt(Order $order, string $station, ?Company $company = null, ?Collection $itemsOverride = null): string
     {
         $connector = new MemoryPrintConnector;
         $printer = new Printer($connector);
@@ -100,7 +100,10 @@ class EscPosPrinterService implements PrinterServiceInterface
 
         $items = match (true) {
             $itemsOverride !== null => $itemsOverride,
-            $full, in_array($station, ['geral', 'entrega'], true) => $order->items,
+            // geral/entrega sempre levam o pedido inteiro (cupom de cliente/balcão e
+            // guia de entrega). cozinha/bar sempre filtram por categoria, pra cozinha
+            // nunca imprimir item de bar (e vice-versa).
+            in_array($station, ['geral', 'entrega'], true) => $order->items,
             default => $order->items->filter(fn ($item) => $item->matchesStation($station))->values(),
         };
 

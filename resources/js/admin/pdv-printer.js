@@ -183,14 +183,14 @@ export function autoPrintOrderReceipt(orderId, stations, onError) {
     });
 }
 
-// "Finalizar Pedido" da mesa: manda a via COMPLETA (sem filtro por categoria) pra
-// cada impressora configurada da filial — cozinha/bar recebem o pedido inteiro,
-// não só os itens deles, porque a mesma via serve de guia de entrega pro garçom.
+// "Finalizar Pedido" da mesa: manda a comanda (filtrada por categoria do item)
+// só pras impressoras de cozinha/bar da filial que têm item daquela estação —
+// nunca pra 'geral' (esse é o cupom de cliente/balcão, com preço e pagamento).
 export function autoPrintTabOrderTicket(orderId, stations, onError) {
     console.log('[auto-print] autoPrintTabOrderTicket: chamado', { orderId, stations });
 
     (stations || []).forEach((station) => {
-        fetchAndPrint(`/admin/pdv/print/receipt/${orderId}/${station}?full=1`).catch((err) => {
+        fetchAndPrint(`/admin/pdv/print/receipt/${orderId}/${station}`).catch((err) => {
             console.error('[auto-print] falha ao imprimir via da mesa', station, err);
             onError?.(station, err);
         });

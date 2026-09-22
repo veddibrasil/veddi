@@ -1058,7 +1058,7 @@ test('Finalizar Pedido volta pra seleção de mesas/comandas, sem fechar a coman
     expect($order->status)->toBe('pending');
 });
 
-test('Finalizar Pedido broadcasta pra TODAS as impressoras configuradas (geral + cozinha), ignorando entrega e inativa', function () {
+test('Finalizar Pedido broadcasta só pra cozinha/bar ativas com item da estação, nunca pra geral/entrega', function () {
     ['admin' => $admin, 'product' => $product, 'branch' => $branch, 'company' => $company] = pdvContext();
     $table = openTable($company, $branch);
 
@@ -1093,7 +1093,62 @@ test('Finalizar Pedido broadcasta pra TODAS as impressoras configuradas (geral +
     $component->call('finalizeOrder');
 
     Event::assertDispatched(TabOrderSentToProduction::class, fn ($event) => $event->order->id === $orderId
-        && collect($event->stations)->sort()->values()->all() === ['cozinha', 'geral']);
+        && collect($event->stations)->sort()->values()->all() === ['cozinha']);
+});
+
+test('Finalizar Pedido não manda pra estação sem item dela, mesmo com impressora ativa', function () {
+    ['admin' => $admin, 'branch' => $branch, 'company' => $company] = pdvContext();
+    $table = openTable($company, $branch);
+
+    $cozinhaCategory = \App\Models\ProductCategory::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Salgados de cozinha',
+        'active' => true,
+        'sort_order' => 2,
+        'station' => 'cozinha',
+    ]);
+
+    $cozinhaProduct = \App\Models\Product::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'product_category_id' => $cozinhaCategory->id,
+        'name' => 'Coxinha da Cozinha',
+        'price' => 8.00,
+        'active' => true,
+        'sort_order' => 1,
+    ]);
+
+    \Illuminate\Support\Facades\DB::table('branch_product')->insert([
+        'branch_id' => $branch->id,
+        'product_id' => $cozinhaProduct->id,
+        'available' => 1,
+    ]);
+
+    \App\Models\BranchPrinter::create([
+        'company_id' => $company->id, 'branch_id' => $branch->id, 'station' => 'cozinha',
+        'ip_address' => '192.168.0.11', 'port' => 9100, 'paper_width' => 80, 'active' => true,
+    ]);
+    \App\Models\BranchPrinter::create([
+        'company_id' => $company->id, 'branch_id' => $branch->id, 'station' => 'bar',
+        'ip_address' => '192.168.0.13', 'port' => 9100, 'paper_width' => 80, 'active' => true,
+    ]);
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $cozinhaProduct->id)
+        ->assertHasNoErrors();
+
+    $orderId = Order::withoutGlobalScopes()->first()->id;
+
+    Event::fake([TabOrderSentToProduction::class]);
+
+    $component->call('finalizeOrder');
+
+    // Pedido só tem item de cozinha — mesmo com impressora de bar ativa, bar não
+    // recebe nada porque não há item dela nesse pedido.
+    Event::assertDispatched(TabOrderSentToProduction::class, fn ($event) => $event->order->id === $orderId
+        && collect($event->stations)->sort()->values()->all() === ['cozinha']);
 });
 
 test('Finalizar Pedido sem comanda selecionada não dispara nada', function () {

@@ -109,7 +109,7 @@ test('cupom retorna ip/porta e payload em base64 quando a impressora existe e es
     expect(base64_decode($response['payload']))->toContain('Coxinha');
 });
 
-test('cupom com ?full=1 ignora o filtro da estação e inclui o pedido inteiro', function () {
+test('cupom da estação cozinha filtra por categoria (via da comanda de mesa)', function () {
     ['admin' => $admin, 'order' => $order, 'branch' => $branch, 'company' => $company] = printPayloadContext();
 
     BranchPrinter::create([
@@ -122,12 +122,37 @@ test('cupom com ?full=1 ignora o filtro da estação e inclui o pedido inteiro',
         'active' => true,
     ]);
 
+    $barCategory = ProductCategory::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Bebidas',
+        'station' => 'bar',
+    ]);
+
+    $suco = Product::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'product_category_id' => $barCategory->id,
+        'name' => 'Suco de Laranja',
+        'price' => 5.00,
+        'active' => true,
+    ]);
+
+    OrderItem::create([
+        'order_id' => $order->id,
+        'product_id' => $suco->id,
+        'product_name' => 'Suco de Laranja',
+        'unit_price' => 5.00,
+        'quantity' => 1,
+        'subtotal' => 5.00,
+    ]);
+
     $response = $this->actingAs($admin)
-        ->get(route('admin.pdv.print.receipt', ['order' => $order, 'station' => 'cozinha']).'?full=1')
+        ->get(route('admin.pdv.print.receipt', ['order' => $order, 'station' => 'cozinha']))
         ->assertOk()
         ->json();
 
-    expect(base64_decode($response['payload']))->toContain('Coxinha');
+    $payload = base64_decode($response['payload']);
+    expect($payload)->toContain('Coxinha')
+        ->not->toContain('Suco de Laranja');
 });
 
 test('cupom retorna nome da impressora (sem ip/porta) quando conexão é USB', function () {

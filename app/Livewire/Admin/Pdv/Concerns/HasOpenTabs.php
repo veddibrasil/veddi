@@ -177,15 +177,16 @@ trait HasOpenTabs
     }
 
     /**
-     * Envia a comanda pra produção — dispara a impressão da via completa (sem
-     * filtro por categoria) em CADA impressora ativa da filial nas estações
-     * geral/cozinha/bar (mesmo pedido inteiro em todas, não uma por categoria),
-     * que cozinha/bar usam pra preparo e o garçom usa pra levar até a mesa certa
-     * (já traz o table_label no cabeçalho do cupom). Fica de fora a estação
-     * 'entrega' — não faz sentido pra pedido de mesa.
+     * Envia a comanda pra produção — dispara a impressão da comanda (filtrada por
+     * categoria do item) só nas estações cozinha/bar que a filial tem ativas e que
+     * realmente têm item pertencente àquela estação nesse pedido. Nunca vai pra
+     * 'geral' (esse é o cupom de cliente/balcão, com preço e status de pagamento —
+     * não faz sentido pra comanda de mesa ainda aberta) nem pra 'entrega' — não
+     * faz sentido pra pedido de mesa.
      * Disponível pro garçom: é o passo dele, não do caixa — não fecha nem cobra a
      * comanda, só avisa a produção. Pode ser chamado de novo se entrar item depois
-     * (reimprime o pedido completo; não há rastreio de "já enviado" por item).
+     * (reimprime o pedido inteiro daquela estação; não há rastreio de "já enviado"
+     * por item).
      */
     public function finalizeOrder(): void
     {
@@ -209,9 +210,10 @@ trait HasOpenTabs
 
         $stations = $order->branch->printers()
             ->where('active', true)
-            ->whereIn('station', ['geral', 'cozinha', 'bar'])
+            ->whereIn('station', ['cozinha', 'bar'])
             ->get(['station'])
             ->pluck('station')
+            ->filter(fn (string $station) => $order->hasItemsForStation($station))
             ->values();
 
         // Broadcast em vez de dispatch local: quem clica "Finalizar Pedido" pode ser o

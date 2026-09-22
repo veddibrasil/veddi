@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Log;
 
 class PrintPayloadController extends Controller
 {
-    public function receipt(Request $request, Order $order, ?string $station = null)
+    public function receipt(Order $order, ?string $station = null)
     {
         $this->authorizeAccess();
 
@@ -31,7 +31,6 @@ class PrintPayloadController extends Controller
             'order_id' => $order->id,
             'branch_id' => $order->branch_id,
             'station' => $station,
-            'full' => $request->boolean('full'),
             'printer_found' => (bool) $printer,
             'printer_active' => $printer?->active,
             'user_id' => auth()->id(),
@@ -41,10 +40,7 @@ class PrintPayloadController extends Controller
 
         $company = app()->bound('current.company') ? app('current.company') : null;
 
-        // ?full=1: via completa do "Finalizar Pedido" da mesa — ignora o filtro por
-        // categoria da estação (cozinha/bar recebem o pedido inteiro, não só os itens
-        // deles), porque a mesma via também serve de guia de entrega pro garçom.
-        $payload = app(PrinterServiceInterface::class)->buildOrderReceipt($order, $station, $company, $request->boolean('full'));
+        $payload = app(PrinterServiceInterface::class)->buildOrderReceipt($order, $station, $company);
 
         return response()->json([
             'printer' => $this->printerPayload($printer),

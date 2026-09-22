@@ -113,10 +113,9 @@ trait HasAutoPrint
      * si independe disso — é obrigação fiscal); por isso o evento ainda dispara
      * mesmo sem impressora com auto_print, quando o operador marcou a opção.
      *
-     * $includeReceiptStations=false pro fechamento de comanda: o cupom de
-     * cozinha/bar já saiu no botão "Finalizar Pedido" (via EscPosPrinterService
-     * estação 'geral'), reimprimir no fechamento duplicaria a via — só a nota
-     * fiscal (se marcada) importa nesse momento.
+     * $includeReceiptStations=false pro fechamento de comanda: a via de cozinha/bar
+     * já saiu no botão "Finalizar Pedido", reimprimir no fechamento duplicaria a
+     * via — só a nota fiscal (se marcada) importa nesse momento.
      */
     private function dispatchAutoPrintPayload(Order $order, bool $includeReceiptStations = true): void
     {

@@ -15,19 +15,15 @@ interface PrinterServiceInterface
     /**
      * Monta os bytes ESC/POS do cupom de um pedido para a estação informada
      * (geral/cozinha/bar/entrega). O caller decide para qual impressora
-     * enviar — este método só monta o conteúdo.
+     * enviar — este método só monta o conteúdo. geral/entrega sempre levam o
+     * pedido inteiro; cozinha/bar sempre filtram pelos itens daquela estação.
      *
-     * $full ignora o filtro por categoria da estação e imprime todos os itens
-     * do pedido mesmo em cozinha/bar — usado no "Finalizar Pedido" da mesa,
-     * onde a mesma via completa vai pra cada impressora configurada, servindo
-     * de guia de entrega pro garçom além de ticket de preparo.
-     *
-     * $itemsOverride ignora completamente $full e o filtro por estação, e
-     * imprime só os itens (e quantidades) informados — usado no aviso
-     * automático de item novo lançado na comanda, pra não reimprimir os itens
-     * que a cozinha/bar já recebeu.
+     * $itemsOverride ignora completamente o filtro por estação e imprime só
+     * os itens (e quantidades) informados — usado no aviso automático de item
+     * novo lançado na comanda, pra não reimprimir os itens que a cozinha/bar
+     * já recebeu.
      */
-    public function buildOrderReceipt(Order $order, string $station, ?Company $company = null, bool $full = false, ?Collection $itemsOverride = null): string;
+    public function buildOrderReceipt(Order $order, string $station, ?Company $company = null, ?Collection $itemsOverride = null): string;
 
     /**
      * Monta os bytes ESC/POS do DANFE NFC-e completo (itens, totais, forma de
