@@ -65,7 +65,6 @@
                             Passo 2 — Depois de aprovar, o iFood mostra um código de autorização na tela. Cole ele aqui pra concluir a conexão.
                         </p>
                         <flux:input wire:model="authorizationCode" label="Código de autorização" placeholder="Ex: HTLM-KWVR" />
-                        @error('authorizationCode') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                         <flux:button wire:click="confirmAuthorization" variant="primary">Confirmar conexão</flux:button>
                     </div>
 
@@ -74,7 +73,11 @@
             @elseif($connectionState === 'pending_merchant_selection')
                 <div class="space-y-4">
                     <p class="text-sm text-neutral-500 dark:text-neutral-400">
-                        Essa autorização cobre mais de uma loja no iFood. Escolha qual delas corresponde a esta filial.
+                        @if(empty($availableMerchants))
+                            Autorização salva. Consulte as lojas autorizadas no iFood para concluir a conexão.
+                        @else
+                            Escolha qual loja no iFood corresponde a esta filial.
+                        @endif
                     </p>
 
                     <div class="space-y-2">
@@ -91,7 +94,10 @@
                     @error('selectedMerchantId') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
 
                     <div class="flex items-center gap-3">
-                        <flux:button wire:click="selectMerchant" variant="primary">Confirmar loja</flux:button>
+                        @if(! empty($availableMerchants))
+                            <flux:button wire:click="selectMerchant" variant="primary">Confirmar loja</flux:button>
+                        @endif
+                        <flux:button wire:click="confirmAuthorization" variant="primary">Consultar lojas novamente</flux:button>
                         <flux:button wire:click="disconnect" variant="ghost" size="sm">Cancelar</flux:button>
                     </div>
                 </div>

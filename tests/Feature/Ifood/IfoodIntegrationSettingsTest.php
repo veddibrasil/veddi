@@ -120,7 +120,7 @@ test('confirmar autorização com o código colado conclui a conexão', function
     Bus::assertDispatched(PollIfoodEventsJob::class);
 });
 
-test('confirmar autorização com código errado mostra erro e mantém pendente', function () {
+test('falha na autorização mostra a mensagem correspondente uma vez e mantém pendente', function (int $status, array $response, string $message) {
     $company = ifoodSettingsTestCompany();
     $branch = Branch::withoutGlobalScopes()->where('company_id', $company->id)->first();
     app()->instance('current.company', $company);
@@ -136,7 +136,7 @@ test('confirmar autorização com código errado mostra erro e mantém pendente'
     ]);
 
     Http::fake([
-        '*/authentication/v1.0/oauth/token' => Http::response(['error' => ['code' => 'Unauthorized', 'message' => 'Invalid authorization code']], 401),
+        '*/authentication/v1.0/oauth/token' => Http::response($response, $status),
     ]);
 
     $admin = ifoodSettingsAdmin($company);
@@ -147,11 +147,68 @@ test('confirmar autorização com código errado mostra erro e mantém pendente'
         ->set('authorizationCode', 'CODIGO-ERRADO')
         ->call('confirmAuthorization')
         ->assertHasErrors(['authorizationCode'])
+        ->assertSeeText($message)
+        ->assertSeeHtml('aria-invalid="true"')
+        ->tap(fn ($component) => expect(substr_count($component->html(), $message))->toBe(1))
         ->assertSet('connectionState', 'pending_authorization');
 
     $integration = IfoodIntegration::where('company_id', $company->id)->where('branch_id', $branch->id)->first();
     expect($integration->merchant_id)->toBeNull();
-});
+})->with([
+    'código rejeitado' => [401, ['error' => ['code' => 'Unauthorized', 'message' => 'Invalid authorization code']], 'Código inválido ou expirado. Confira o que o iFood mostrou e tente de novo.'],
+    'credenciais rejeitadas' => [401, ['error' => ['message' => 'Invalid client credentials']], 'Não foi possível concluir a conexão com o iFood. Tente novamente em instantes. Se o problema persistir, reinicie a conexão.'],
+    'serviço indisponível' => [503, [], 'Não foi possível concluir a conexão com o iFood. Tente novamente em instantes. Se o problema persistir, reinicie a conexão.'],
+]);
+
+test('consulta de lojas pode ser repetida sem trocar o código novamente', function (int $status, string $message) {
+    $company = ifoodSettingsTestCompany();
+    $branch = Branch::withoutGlobalScopes()->where('company_id', $company->id)->first();
+    app()->instance('current.company', $company);
+    $integration = IfoodIntegration::create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'status' => 'disconnected',
+        'user_code' => 'ABCD-1234',
+        'authorization_code_verifier' => 'verifier-xyz',
+        'user_code_expires_at' => now()->addMinutes(5),
+    ]);
+    Http::fake([
+        '*/authentication/v1.0/oauth/token' => Http::response([
+            'accessToken' => 'saved-access', 'refreshToken' => 'saved-refresh', 'expiresIn' => 21600,
+        ]),
+        '*/merchant/v1.0/merchants' => Http::sequence()->push([], $status)->push([
+            ['id' => 'merchant-recovered', 'name' => 'Loja'],
+        ]),
+    ]);
+    Bus::fake([SyncIfoodCatalogJob::class, PollIfoodEventsJob::class]);
+    $admin = ifoodSettingsAdmin($company);
+    Livewire::actingAs($admin)->test(IfoodIntegrationSettings::class)
+        ->set('authorizationCode', 'HTLM-KWVR')
+        ->call('confirmAuthorization')
+        ->assertSet('connectionState', 'pending_merchant_selection')
+        ->assertSeeText($message)
+        ->assertSeeText('Consultar lojas novamente');
+
+    expect($integration->refresh()->access_token)->toBe('saved-access')
+        ->and($integration->refresh_token)->toBe('saved-refresh')
+        ->and($integration->user_code)->toBeNull()
+        ->and($integration->merchant_id)->toBeNull();
+    Bus::assertNotDispatched(SyncIfoodCatalogJob::class);
+
+    // Uma nova visita também deve recuperar a autorização persistida.
+    Livewire::actingAs($admin)->test(IfoodIntegrationSettings::class)
+        ->assertSet('connectionState', 'pending_merchant_selection')
+        ->call('confirmAuthorization')
+        ->assertSet('connectionState', 'connected')
+        ->assertSet('merchantId', 'merchant-recovered')
+        ->assertDontSeeText($message);
+    Http::assertSentCount(3);
+    Bus::assertDispatched(SyncIfoodCatalogJob::class);
+    Bus::assertDispatched(PollIfoodEventsJob::class);
+})->with([
+    'nenhuma loja autorizada' => [200, 'O iFood aceitou a autorização, mas não retornou nenhuma loja.'],
+    'falha na consulta' => [503, 'A autorização foi salva, mas não foi possível consultar as lojas no iFood.'],
+]);
 
 test('pausar e retomar alteram o status sem tocar em token/merchant_id', function () {
     $company = ifoodSettingsTestCompany();

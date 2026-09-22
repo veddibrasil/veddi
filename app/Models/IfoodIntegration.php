@@ -61,10 +61,11 @@ class IfoodIntegration extends Model
         return $this->user_code !== null && $this->merchant_id === null;
     }
 
-    /** Token trocado com sucesso mas a autorização cobriu mais de uma loja — precisa escolher qual antes de ativar. */
+    /** Autorização concluída; falta consultar ou selecionar a loja antes de ativar. */
     public function isPendingMerchantSelection(): bool
     {
-        return $this->merchant_id === null && ! empty($this->available_merchants);
+        return $this->merchant_id === null && (! empty($this->available_merchants)
+            || ($this->access_token !== null && $this->user_code === null && $this->status === 'disconnected'));
     }
 
     public function isUserCodeExpired(): bool

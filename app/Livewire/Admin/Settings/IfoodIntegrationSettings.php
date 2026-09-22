@@ -2,7 +2,9 @@
 
 namespace App\Livewire\Admin\Settings;
 
+use App\Exceptions\IfoodInvalidAuthorizationCodeException;
 use App\Exceptions\IfoodMerchantAlreadyLinkedException;
+use App\Exceptions\IfoodNoAuthorizedMerchantsException;
 use App\Jobs\PollIfoodEventsJob;
 use App\Jobs\SyncIfoodCatalogJob;
 use App\Models\Branch;
@@ -111,6 +113,7 @@ class IfoodIntegrationSettings extends Component
 
     public function confirmAuthorization(): void
     {
+        session()->forget(['error', 'status']);
         $company = app('current.company');
         $branch = $this->branchId
             ? Branch::withoutGlobalScopes()->where('company_id', $company->id)->find($this->branchId)
@@ -120,29 +123,47 @@ class IfoodIntegrationSettings extends Component
             ? IfoodIntegration::where('company_id', $company->id)->where('branch_id', $branch->id)->first()
             : null;
 
-        if (! $integration || ! $integration->isPendingAuthorization()) {
+        if (! $integration || (! $integration->isPendingAuthorization() && ! $integration->isPendingMerchantSelection())) {
             $this->loadForBranch($company, $branch);
 
             return;
         }
 
-        if ($integration->isUserCodeExpired()) {
+        if ($integration->isPendingAuthorization() && $integration->isUserCodeExpired()) {
             session()->flash('error', 'O código expirou. Clique em conectar novamente pra gerar um novo.');
             $this->loadForBranch($company, $branch);
 
             return;
         }
 
-        $this->validate(['authorizationCode' => ['required', 'string']]);
+        $this->resetErrorBag();
+        if ($integration->isPendingAuthorization()) {
+            $this->validate(['authorizationCode' => ['required', 'string']]);
+        }
 
         try {
-            app(IfoodAuthService::class)->completeAuthorization($integration, $this->authorizationCode);
-        } catch (IfoodMerchantAlreadyLinkedException $e) {
-            $this->addError('authorizationCode', $e->getMessage());
+            if ($integration->isPendingMerchantSelection()) {
+                app(IfoodAuthService::class)->refreshAuthorizedMerchants($integration);
+            } else {
+                app(IfoodAuthService::class)->completeAuthorization($integration, trim($this->authorizationCode));
+            }
+        } catch (IfoodMerchantAlreadyLinkedException|IfoodNoAuthorizedMerchantsException $e) {
+            $this->loadForBranch($company, $branch);
+            session()->flash('error', $e->getMessage());
 
             return;
-        } catch (\Throwable) {
+        } catch (IfoodInvalidAuthorizationCodeException) {
             $this->addError('authorizationCode', 'Código inválido ou expirado. Confira o que o iFood mostrou e tente de novo.');
+
+            return;
+        } catch (\Throwable $e) {
+            report($e);
+            $this->loadForBranch($company, $branch);
+            if ($this->connectionState === 'pending_merchant_selection') {
+                session()->flash('error', 'A autorização foi salva, mas não foi possível consultar as lojas no iFood. Clique em consultar lojas novamente.');
+            } else {
+                $this->addError('authorizationCode', 'Não foi possível concluir a conexão com o iFood. Tente novamente em instantes. Se o problema persistir, reinicie a conexão.');
+            }
 
             return;
         }

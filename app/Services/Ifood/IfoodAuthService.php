@@ -2,7 +2,9 @@
 
 namespace App\Services\Ifood;
 
+use App\Exceptions\IfoodInvalidAuthorizationCodeException;
 use App\Exceptions\IfoodMerchantAlreadyLinkedException;
+use App\Exceptions\IfoodNoAuthorizedMerchantsException;
 use App\Models\IfoodIntegration;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -154,6 +156,10 @@ class IfoodAuthService
         $integration->verification_url = $data['verificationUrlComplete'] ?? ($data['verificationUrl'] ?? null);
         $integration->user_code_expires_at = now()->addSeconds((int) ($data['expiresIn'] ?? 600));
         $integration->merchant_id = null;
+        $integration->access_token = null;
+        $integration->refresh_token = null;
+        $integration->token_expires_at = null;
+        $integration->available_merchants = null;
         $integration->status = 'disconnected';
         $integration->save();
     }
@@ -190,6 +196,13 @@ class IfoodAuthService
                 'body' => $response->body(),
             ]);
 
+            $message = $response->json('error.message');
+            if (in_array($response->status(), [400, 401], true)
+                && is_string($message)
+                && str_contains(strtolower($message), 'invalid authorization code')) {
+                throw new IfoodInvalidAuthorizationCodeException('iFood: código de autorização inválido ou expirado.');
+            }
+
             throw new RuntimeException("iFood: falha ao trocar authorizationCode integration_id={$integration->id} (status {$response->status()})");
         }
 
@@ -198,12 +211,6 @@ class IfoodAuthService
 
         if (! $accessToken) {
             throw new RuntimeException("iFood: resposta de troca de authorizationCode sem accessToken (integration_id={$integration->id})");
-        }
-
-        $merchants = $this->listMerchants($accessToken);
-
-        if ($merchants === []) {
-            throw new RuntimeException("iFood: nenhum merchant autorizado encontrado após troca de token (integration_id={$integration->id})");
         }
 
         $integration->access_token = $accessToken;
@@ -215,6 +222,21 @@ class IfoodAuthService
         $integration->authorization_code_verifier = null;
         $integration->verification_url = null;
         $integration->user_code_expires_at = null;
+        $integration->available_merchants = null;
+        $integration->merchant_id = null;
+        $integration->status = 'disconnected';
+        $integration->save();
+
+        $this->refreshAuthorizedMerchants($integration);
+    }
+
+    public function refreshAuthorizedMerchants(IfoodIntegration $integration): void
+    {
+        $merchants = $this->listMerchants($this->getAccessToken($integration));
+
+        if ($merchants === []) {
+            throw new IfoodNoAuthorizedMerchantsException('O iFood aceitou a autorização, mas não retornou nenhuma loja. Confira no portal do iFood se a loja foi autorizada para este aplicativo e clique em consultar lojas novamente.');
+        }
 
         if (count($merchants) === 1) {
             $this->assertMerchantNotLinkedElsewhere($integration, $merchants[0]['id']);
@@ -314,7 +336,7 @@ class IfoodAuthService
                 'body' => $response->body(),
             ]);
 
-            return [];
+            throw new RuntimeException("iFood: falha ao listar lojas autorizadas (status {$response->status()})");
         }
 
         $merchants = $response->json() ?? [];
