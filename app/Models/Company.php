@@ -178,6 +178,11 @@ class Company extends Model
         return $this->hasOne(WhatsAppSetting::class);
     }
 
+    public function whatsappConnection(): HasOne
+    {
+        return $this->hasOne(WhatsAppConnection::class);
+    }
+
     public function isPro(): bool
     {
         return $this->plan === Plan::Pro;

@@ -18,6 +18,8 @@ class Customer extends Model
         'email',
         'tax_id',
         'address_id',
+        'whatsapp_opt_in_at',
+        'whatsapp_opt_out_at',
         // virtual address fields (persisted on addresses table)
         'address',
         'number',
@@ -29,6 +31,23 @@ class Customer extends Model
         'latitude',
         'longitude',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'whatsapp_opt_in_at' => 'datetime',
+            'whatsapp_opt_out_at' => 'datetime',
+        ];
+    }
+
+    /**
+     * Consentimento explícito para notificações por WhatsApp (Meta + LGPD):
+     * opt-in preenchido e nenhum opt-out posterior.
+     */
+    public function canReceiveWhatsApp(): bool
+    {
+        return $this->whatsapp_opt_in_at !== null && $this->whatsapp_opt_out_at === null;
+    }
 
     /**
      * Pending address values set via mutators (stored in addresses table).

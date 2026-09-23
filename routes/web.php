@@ -8,6 +8,7 @@ use App\Http\Controllers\IfoodWebhookController;
 use App\Http\Controllers\RegisterCompanyController;
 use App\Http\Controllers\VindiSimulatePaymentController;
 use App\Http\Controllers\VindiWebhookController;
+use App\Http\Controllers\WhatsAppWebhookController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -53,6 +54,16 @@ Route::post('/webhooks/fiscal', FiscalWebhookController::class)
 Route::post('/webhooks/ifood', IfoodWebhookController::class)
     ->middleware('throttle:120,1')
     ->name('webhook.ifood');
+
+// --- Webhook WhatsApp Cloud API (sem auth, sem CSRF — coberto por webhooks/* em bootstrap/app.php) ---
+// GET = verificação do endpoint pela Meta; POST = eventos de todas as WABAs (assinatura X-Hub-Signature-256).
+// Throttle generoso: a Meta envia em rajadas e reenvia o que receber 429.
+Route::get('/webhooks/whatsapp', [WhatsAppWebhookController::class, 'verify'])
+    ->middleware('throttle:60,1')
+    ->name('webhook.whatsapp.verify');
+Route::post('/webhooks/whatsapp', [WhatsAppWebhookController::class, 'receive'])
+    ->middleware('throttle:1200,1')
+    ->name('webhook.whatsapp');
 
 // --- API pública ---
 Route::post('/api/validate-cpf', function (Request $request) {
