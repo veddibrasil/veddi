@@ -132,7 +132,7 @@ Route::middleware(['auth', 'verified', 'company.active'])
         // Gestão completa: só company_admin
         Route::middleware('company.role:company_admin')->group(function () {
             Route::get('/settings', \App\Livewire\Admin\Settings\CompanySettings::class)->name('settings');
-            // Route::get('/settings/whatsapp', \App\Livewire\Admin\Settings\WhatsAppSettings::class)->name('settings.whatsapp');
+            Route::get('/settings/whatsapp', \App\Livewire\Admin\Settings\WhatsAppSettings::class)->name('settings.whatsapp');
             Route::get('/settings/ifood', \App\Livewire\Admin\Settings\IfoodIntegrationSettings::class)->name('settings.ifood');
             Route::get('/integrations', \App\Livewire\Admin\Integrations\Index::class)->name('integrations.index');
 
@@ -184,6 +184,7 @@ Route::middleware(['auth', 'verified', 'super.admin'])
         Route::get('/users', \App\Livewire\SuperAdmin\Users\Index::class)->name('users.index');
         Route::get('/users/{user}/permissions', \App\Livewire\SuperAdmin\Permissions\UserPermissions::class)->name('users.permissions');
         Route::get('/permissions', \App\Livewire\SuperAdmin\Permissions\Index::class)->name('permissions.index');
+        Route::get('/whatsapp', \App\Livewire\SuperAdmin\WhatsApp\Connections::class)->name('whatsapp.index');
 
         Route::post('/simulate/asaas-payment', AsaasSimulatePaymentController::class)->name('simulate.asaas-payment');
         Route::post('/simulate/vindi-payment', VindiSimulatePaymentController::class)->name('simulate.vindi-payment');

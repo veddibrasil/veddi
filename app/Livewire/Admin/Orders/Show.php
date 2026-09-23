@@ -180,6 +180,22 @@ class Show extends Component
     }
 
     /**
+     * Notificações de WhatsApp deste pedido (uma linha por evento). Não é propriedade pública nem
+     * carrega o telefone do cliente: a tela só precisa de evento, status, horário e motivo da falha.
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, \App\Models\WhatsAppMessage>
+     */
+    #[Computed]
+    public function whatsappMessages(): \Illuminate\Database\Eloquent\Collection
+    {
+        if ($this->userStation) {
+            return new \Illuminate\Database\Eloquent\Collection;
+        }
+
+        return $this->order->whatsappMessages()->orderBy('created_at')->orderBy('id')->get();
+    }
+
+    /**
      * Itens visíveis pro papel logado. Cozinha só vê itens de categoria 'cozinha', bar só 'bar'.
      * Itens sem categoria ou de categoria sem estação definida ('ambos') aparecem pros dois.
      * Entrega vê todos os itens (precisa conferir o pedido inteiro pra entregar).

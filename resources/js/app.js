@@ -6,6 +6,7 @@ import './admin/pdv-app.js';
 import './admin/orders-kanban.js';
 import './admin/products-reorder.js';
 import './admin/kitchen-print.js';
+import './admin/whatsapp-signup.js';
 import './chat/map-picker.js';
 import './chat/branch-locator.js';
 import './chat/chat-app.js';

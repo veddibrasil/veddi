@@ -10,6 +10,7 @@ use App\Livewire\Chat\Concerns\HasPaymentFlow;
 use App\Models\Branch;
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Services\Messaging\WhatsAppService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
@@ -47,6 +48,10 @@ class OrderChat extends Component
     public string $city = '';
 
     public string $cep = '';
+
+    // Consentimento (LGPD/Meta) para avisos do pedido por WhatsApp. Nasce desmarcado; só é gravado
+    // no cliente desta empresa (customers.whatsapp_opt_in_at) quando o cliente é identificado/criado.
+    public bool $whatsappOptIn = false;
 
     // --- Customer location (for delivery range validation) ---
     public string $customer_latitude = '';
@@ -413,6 +418,15 @@ class OrderChat extends Component
         return collect($this->cart)->sum(fn ($item) => $item['qty']);
     }
 
+    /** A empresa notifica por WhatsApp de fato: só então o chat pede o consentimento do cliente. */
+    #[Computed]
+    public function whatsappAvailable(): bool
+    {
+        $company = $this->currentCompany();
+
+        return $company !== null && app(WhatsAppService::class)->isActiveFor($company);
+    }
+
     #[Computed]
     public function availableTimeSlots(): array
     {
@@ -610,6 +624,7 @@ class OrderChat extends Component
             'number' => $this->number,
             'city' => $this->city,
             'cep' => $this->cep,
+            'whatsappOptIn' => $this->whatsappOptIn,
             'customer_latitude' => $this->customer_latitude,
             'customer_longitude' => $this->customer_longitude,
             'selectedBranchId' => $this->selectedBranchId,
@@ -655,6 +670,7 @@ class OrderChat extends Component
         $this->number = '';
         $this->city = '';
         $this->cep = '';
+        $this->whatsappOptIn = false;
         $this->selectedBranchId = null;
         $this->cart = [];
         $this->notes = '';

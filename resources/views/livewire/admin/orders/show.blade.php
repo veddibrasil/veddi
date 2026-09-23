@@ -907,6 +907,41 @@
                     @endif
                 </x-admin.form-card>
             @endif
+
+            {{-- Notificações WhatsApp enviadas ao cliente --}}
+            @if ($this->whatsappMessages->isNotEmpty())
+                <x-admin.form-card padding="p-4">
+                    <p class="font-semibold text-neutral-700 mb-1 dark:text-neutral-200">Notificações WhatsApp</p>
+                    <p class="text-xs text-neutral-400 dark:text-neutral-500 mb-3">Avisos enviados ao cliente sobre este pedido.</p>
+
+                    <div class="space-y-2">
+                        @foreach ($this->whatsappMessages as $message)
+                            @php
+                                $messageColors = [
+                                    'queued' => 'bg-neutral-100 text-neutral-600 dark:bg-zinc-700 dark:text-neutral-300',
+                                    'sent' => 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+                                    'delivered' => 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
+                                    'read' => 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
+                                    'failed' => 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+                                ];
+                                $messageAt = $message->read_at ?? $message->delivered_at ?? $message->sent_at ?? $message->created_at;
+                            @endphp
+                            <div class="border rounded-lg p-3 dark:border-zinc-700">
+                                <div class="flex items-center justify-between gap-2">
+                                    <span class="text-sm font-medium text-neutral-800 dark:text-neutral-100">{{ $message->eventLabel() }}</span>
+                                    <span class="px-2 py-0.5 rounded-full text-xs font-medium {{ $messageColors[$message->status] ?? $messageColors['queued'] }}">
+                                        {{ $message->statusLabel() }}
+                                    </span>
+                                </div>
+                                <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">{{ $messageAt->format('d/m/Y H:i') }}</p>
+                                @if ($message->friendlyError())
+                                    <p class="text-xs text-red-600 dark:text-red-400 mt-1">{{ $message->friendlyError() }}</p>
+                                @endif
+                            </div>
+                        @endforeach
+                    </div>
+                </x-admin.form-card>
+            @endif
         </div>
     </div>
 

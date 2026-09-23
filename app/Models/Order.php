@@ -256,6 +256,11 @@ class Order extends Model
         return $this->hasOne(FiscalNote::class)->whereIn('status', ['pending', 'authorized'])->latestOfMany();
     }
 
+    public function whatsappMessages(): HasMany
+    {
+        return $this->hasMany(WhatsAppMessage::class);
+    }
+
     public function isScheduled(): bool
     {
         return $this->scheduled_at !== null;

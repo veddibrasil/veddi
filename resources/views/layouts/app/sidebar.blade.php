@@ -44,6 +44,9 @@
                         <flux:sidebar.item icon="building-office-2" :href="route('superadmin.companies.index')" :current="request()->routeIs('superadmin.companies.*')" wire:navigate>
                             Empresas
                         </flux:sidebar.item>
+                        <flux:sidebar.item icon="chat-bubble-left-ellipsis" :href="route('superadmin.whatsapp.index')" :current="request()->routeIs('superadmin.whatsapp.*')" wire:navigate>
+                            WhatsApp
+                        </flux:sidebar.item>
                     </flux:sidebar.group>
                 @else
                     @if($isWaiterOnly)
@@ -192,9 +195,12 @@
                                     Integrações
                                 </flux:sidebar.item>
                             @endif
-                            {{-- <flux:sidebar.item icon="chat-bubble-left-ellipsis" :href="route('admin.settings.whatsapp')" :current="request()->routeIs('admin.settings.whatsapp')" wire:navigate>
-                                WhatsApp
-                            </flux:sidebar.item> --}}
+                            {{-- A rota é só de company_admin (route middleware): quem tem company.settings por papel customizado levaria 403. --}}
+                            @if($user?->isCompanyAdmin($company))
+                                <flux:sidebar.item icon="chat-bubble-left-ellipsis" :href="route('admin.settings.whatsapp')" :current="request()->routeIs('admin.settings.whatsapp')" wire:navigate>
+                                    WhatsApp
+                                </flux:sidebar.item>
+                            @endif
                         </flux:sidebar.group>
                     @endif
 
