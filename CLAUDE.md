@@ -15,7 +15,8 @@ Tambem ha integracoes de pagamento e webhook:
 
 - Asaas para onboarding, taxa de ativacao e cobrancas recorrentes;
 - Vindi para PIX e parte do fluxo financeiro;
-- carteira, saque, antecipacao e conciliacao interna por empresa.
+- carteira, saque, antecipacao e conciliacao interna por empresa;
+- WhatsApp Cloud API (Meta) para avisar o cliente a cada etapa do pedido, com numero proprio de cada empresa (detalhes na secao "Notificacoes por WhatsApp").
 
 ## Stack principal
 
@@ -39,6 +40,7 @@ Tambem ha integracoes de pagamento e webhook:
 - `POST /webhooks/asaas`: eventos financeiros do Asaas
 - `POST /webhooks/vindi`: eventos financeiros do Vindi
 - `POST /webhooks/fiscal`: eventos de nota fiscal
+- `GET|POST /webhooks/whatsapp`: verificacao do endpoint e eventos da WhatsApp Cloud API (assinatura `X-Hub-Signature-256`)
 
 ### Painel administrativo da empresa
 
@@ -58,6 +60,7 @@ Principais modulos:
 - configuracoes
 - faturamento
 - carteira
+- whatsapp (conexao do numero e notificacoes de pedido)
 - usuarios e papeis
 
 ### Painel super admin
@@ -71,6 +74,7 @@ Principais modulos:
 - permissoes
 - taxas/cartoes
 - simulacao de pagamento
+- conexoes de WhatsApp de todas as empresas (`/superadmin/whatsapp`)
 
 ## Estrutura do codigo
 
@@ -176,6 +180,38 @@ Cuidados:
 - transicoes de status devem evitar duplicidade;
 - ao alterar pagamento, revisar efeitos em pedido, carteira, saldo e notificacoes.
 
+### Notificacoes por WhatsApp
+
+Cada empresa conecta o proprio numero (Embedded Signup da Meta, com coexistencia com o app WhatsApp Business) e recebe os avisos do pedido por templates aprovados na WABA dela. Guia completo, com a configuracao do app Meta (callback, campos do webhook, variaveis de ambiente): `docs/whatsapp.md`. A documentacao publica para o restaurante fica em `resources/views/docs.blade.php` (secao `#whatsapp`).
+
+Onde esta cada coisa:
+
+- `app/Services/Messaging`: `WhatsAppService` (regras: template, remetente, opt-in), `MetaGraphClient` e `MetaCloudApiProvider` (Graph API, atras dos Contracts `WhatsAppProviderInterface` e `WhatsAppManagementInterface`), `WhatsAppOnboardingService`, `WhatsAppTemplateProvisioner`, `WhatsAppWebhookProcessor`, `WhatsAppConnectionMonitor` (alertas diarios) e `WhatsAppCriticalLog` (canal `discord`);
+- `app/Jobs`: `CompleteWhatsAppOnboarding` (fila `critical`), `ProvisionWhatsAppTemplates`, `SendWhatsAppOrderNotificationJob` e `ProcessWhatsAppWebhook` (fila `whatsapp`);
+- `app/Models`: `WhatsAppConnection` (uma por empresa; token e PIN criptografados e `hidden`), `WhatsAppTemplate`, `WhatsAppMessage`, `WhatsAppSetting` (toggles por evento);
+- `config/whatsapp_templates.php`: os 10 templates (nome, corpo, variaveis, exemplo); mudar o texto de um template aprovado exige um template novo;
+- telas: `app/Livewire/Admin/Settings/WhatsAppSettings` (`/admin/settings/whatsapp`, so `company_admin`), secao "Notificacoes WhatsApp" em `Admin/Orders/Show`, `app/Livewire/SuperAdmin/WhatsApp/Connections`; front do signup em `resources/js/admin/whatsapp-signup.js`;
+- opt-in do cliente no chat: `OrderChat::$whatsappOptIn` gravado por `HasCustomerProfile` via `CustomerService::registerWhatsAppOptIn`.
+
+Fluxo: conectar (`pending`) -> onboarding (`provisioning`) -> templates criados na Meta (`templates_pending`) -> todos aprovados via webhook (`active`). Fora disso: `error` e `disconnected`. O envio so ocorre com conexao `active` (ou fallback para o numero da plataforma com `WHATSAPP_FALLBACK_TO_PLATFORM`).
+
+Regras que nao podem quebrar:
+
+- so notifica pedidos `channel=chat` que nao sejam PDV, e so clientes com opt-in da propria empresa e sem opt-out;
+- uma mensagem por `order_id + event` (idempotencia em `whatsapp_messages`); falha permanente nao retenta, temporaria retenta;
+- consultas de conexao fora de request/tenant usam `withoutGlobalScopes()` com `company_id` explicito; nunca cruzar dados entre empresas;
+- nunca logar token, app secret, PIN, `code` do signup, telefone nem texto de cliente (canal `whatsapp` so leva ids e codigos);
+- o `code` do Embedded Signup e de uso unico: a troca por token nunca e retentada.
+
+Comandos e operacao:
+
+- `php artisan whatsapp:send-test {telefone} [--company=]`: envia um template de teste (ignora opt-in);
+- `php artisan whatsapp:sync-templates [--company=]`: recria/sincroniza templates e atualiza qualidade/limite;
+- `php artisan whatsapp:check-connections`: monitoramento diario (agendado as 09:00 em `routes/console.php`); avisa os `company_admin` por sino do painel e e-mail quando a coexistencia fica sem uso do app por 12+ dias, a conexao entra em erro ou a qualidade do numero fica vermelha;
+- `composer dev` nao consome as filas `whatsapp` e `critical`; em producao os workers estao no `cloud.yaml`.
+
+Pendencia conhecida: o evento `awaiting_payment` (codigo PIX por WhatsApp) ainda nao tem template nem gatilho; o toggle aparece desabilitado como "em breve".
+
 ## Boas praticas para contribuir neste projeto
 
 ### Regras gerais
@@ -256,7 +292,7 @@ Cuidados:
 - Lint: `composer lint`
 - Verificacao de lint: `composer lint:check`
 - Testes: `php artisan test`
-- Testes via Pest: `./vendor/bin/pest`
+- Testes via Pest: `./vendor/bin/pest` (se estourar memoria: `php -d memory_limit=1G ./vendor/bin/pest`)
 - Build de assets: `npm run build`
 - Dev frontend: `npm run dev`
 

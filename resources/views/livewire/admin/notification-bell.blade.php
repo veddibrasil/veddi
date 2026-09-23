@@ -92,7 +92,7 @@
                         'hover:bg-blue-50 dark:hover:bg-blue-900/20' => ! $notif->isRead(),
                     ])>
                         {{-- Icon --}}
-                        @php($isError = in_array($notif->type, ['refund_failed', 'fiscal_note_failed', 'order_failed'], true))
+                        @php($isError = in_array($notif->type, ['refund_failed', 'fiscal_note_failed', 'order_failed', 'whatsapp_alert'], true))
                         <div @class([
                             'w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5',
                             'bg-green-100 dark:bg-green-900/40' => $notif->type === 'order',

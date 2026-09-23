@@ -46,6 +46,8 @@ Plataforma SaaS multiempresa para operação de pedidos, cardápio e gestão fin
 |--------|------|---------|--------------|
 | POST | `/webhooks/asaas` | Asaas | Header `asaas-access-token` |
 | POST | `/webhooks/stark` | Stark Bank | Header `Authorization: Bearer <token>` |
+| GET | `/webhooks/whatsapp` | Meta (WhatsApp Cloud API) | Verificação: `hub.verify_token` (`WHATSAPP_WEBHOOK_VERIFY_TOKEN`) |
+| POST | `/webhooks/whatsapp` | Meta (WhatsApp Cloud API) | Header `X-Hub-Signature-256` (HMAC com `META_APP_SECRET`) — ver `docs/whatsapp.md` |
 
 ---
 

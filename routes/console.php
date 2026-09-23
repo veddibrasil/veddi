@@ -19,6 +19,13 @@ Artisan::command('inspire', function () {
 // Bloqueia empresas inadimplentes após 3 dias úteis do vencimento
 Schedule::command('companies:block-overdue')->dailyAt('08:00');
 
+// Avisa restaurantes com WhatsApp inativo (coexistência sem uso do app), com erro ou com qualidade baixa
+Schedule::command('whatsapp:check-connections')
+    ->name('whatsapp-check-connections')
+    ->dailyAt('09:00')
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // Schedule::job(new \App\Jobs\ReleaseCompanyTransactionsJob)
 //     ->name('release-company-transactions')
 //     ->everyMinute()

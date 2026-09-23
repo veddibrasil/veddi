@@ -47,6 +47,7 @@
         <a href="#faturamento" class="nav-link">Faturamento</a>
         <a href="#usuarios" class="nav-link">Usuários & Papéis</a>
         <a href="#configuracoes" class="nav-link">Configurações</a>
+        <a href="#whatsapp" class="nav-link">WhatsApp</a>
         <a href="#pagamentos" class="nav-link">Pagamentos</a>
     </nav>
 </header>
@@ -77,6 +78,7 @@
             <a href="#faturamento" class="nav-link">Faturamento</a>
             <a href="#usuarios" class="nav-link">Usuários & Papéis</a>
             <a href="#configuracoes" class="nav-link">Configurações</a>
+            <a href="#whatsapp" class="nav-link">WhatsApp</a>
 
             <p class="text-xs font-bold text-zinc-400 uppercase tracking-widest px-3 mb-2 mt-4">Plataforma</p>
             <a href="#pagamentos" class="nav-link">Pagamentos</a>
@@ -1389,6 +1391,153 @@
                         <div class="doc-img-placeholder">
                             <svg class="size-8 text-zinc-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"/></svg>
                             <p class="text-xs text-zinc-400 text-center px-4">Mídia não encontrada — salve em <code class="bg-zinc-100 px-1 rounded">public/images/docs/configuracoes.mov</code></p>
+                        </div>
+                    @endif
+                    </div>
+            </div>
+        </section>
+
+        {{-- WhatsApp --}}
+        <section id="whatsapp" class="scroll-mt-20">
+            <div class="section-card">
+                <div class="section-head">
+                    <div class="p-2.5 rounded-xl bg-green-100 shrink-0">
+                        <svg class="size-6 text-green-700" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M8.625 9.75a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375m-13.5 3.01c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 0 1 .778-.332 48.294 48.294 0 0 0 5.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-bold text-zinc-900">Notificações por WhatsApp</h2>
+                        <p class="mt-1 text-sm text-zinc-500">Avise o cliente a cada etapa do pedido, pelo número da sua loja <span class="font-mono text-purple-700 text-xs">/admin/settings/whatsapp</span></p>
+                    </div>
+                </div>
+                <div class="mt-5 space-y-3">
+                    <div class="info-box">
+                        <p class="sub-title">O que é</p>
+                        <p class="text-sm text-zinc-600">Cada restaurante conecta o <strong>próprio número de WhatsApp</strong>. A partir daí, o Veddi envia ao cliente mensagens pré-aprovadas pela Meta (dona do WhatsApp) sempre que o pedido muda de etapa: recebido, em preparo, saiu para entrega e assim por diante. A tela fica em Configurações &gt; WhatsApp e só o administrador da empresa consegue conectar, desconectar e ligar as notificações.</p>
+                    </div>
+
+                    <div class="info-box">
+                        <p class="sub-title">Antes de conectar, você precisa de</p>
+                        <ul class="list">
+                            <li><strong>Uma conta do Facebook</strong> para autorizar a conexão (a mesma que administra o seu negócio, se já tiver)</li>
+                            <li><strong>Um cartão cadastrado no WhatsApp Manager:</strong> a Meta pode cobrar pelas mensagens enviadas, e essa cobrança é feita por ela, direto na forma de pagamento da sua conta — não passa pelo Veddi</li>
+                            <li><strong>Um número de celular</strong> que pode ser novo (ainda sem WhatsApp) ou o número que você já usa no app <strong>WhatsApp Business</strong>. No segundo caso, mantenha o app atualizado no celular: ele continua funcionando normalmente em paralelo</li>
+                        </ul>
+                    </div>
+
+                    <div class="info-box">
+                        <p class="sub-title">Como conectar</p>
+                        <div class="space-y-2 mt-1">
+                            <div class="flex gap-3 items-start">
+                                <span class="step-num bg-emerald-600 text-white text-xs">1</span>
+                                <p class="text-sm text-zinc-600">Abra <strong>Configurações &gt; WhatsApp</strong> e clique em <strong>Conectar WhatsApp</strong></p>
+                            </div>
+                            <div class="flex gap-3 items-start">
+                                <span class="step-num bg-emerald-600 text-white text-xs">2</span>
+                                <p class="text-sm text-zinc-600">Uma janela da Meta abre: entre com o Facebook e escolha (ou crie) a conta do WhatsApp Business da sua loja</p>
+                            </div>
+                            <div class="flex gap-3 items-start">
+                                <span class="step-num bg-emerald-600 text-white text-xs">3</span>
+                                <p class="text-sm text-zinc-600">Informe o número e siga as instruções da tela para confirmá-lo (código por SMS ou ligação para número novo; confirmação no app WhatsApp Business para um número que você já usa)</p>
+                            </div>
+                            <div class="flex gap-3 items-start">
+                                <span class="step-num bg-emerald-600 text-white text-xs">4</span>
+                                <p class="text-sm text-zinc-600">Conclua todas as etapas da janela. Não feche antes do fim: a conexão só é iniciada quando a Meta confirma</p>
+                            </div>
+                            <div class="flex gap-3 items-start">
+                                <span class="step-num bg-emerald-600 text-white text-xs">5</span>
+                                <p class="text-sm text-zinc-600">De volta ao Veddi, acompanhe o progresso. A Meta precisa <strong>aprovar as mensagens</strong> antes do uso, o que leva de alguns minutos a poucas horas. Você pode sair da tela: a conexão ativa sozinha</p>
+                            </div>
+                            <div class="flex gap-3 items-start">
+                                <span class="step-num bg-emerald-600 text-white text-xs">6</span>
+                                <p class="text-sm text-zinc-600">Com o status <strong>Conectado</strong>, ligue as notificações, escolha em quais etapas avisar, salve e use <strong>Enviar teste</strong> para receber uma mensagem de exemplo no seu celular</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid sm:grid-cols-2 gap-3">
+                        <div class="info-box">
+                            <p class="sub-title">Status da conexão</p>
+                            <ul class="list">
+                                <li><strong>Não conectado:</strong> nenhum número foi conectado ainda</li>
+                                <li><strong>Conectando:</strong> a Meta está autorizando o número ou aprovando as mensagens. A lista mostra o status de cada mensagem (Em análise, Aprovado, Rejeitado)</li>
+                                <li><strong>Conectado:</strong> tudo pronto. Mostra o nome verificado, o número, a qualidade e o limite diário da Meta</li>
+                                <li><strong>Com problema:</strong> a conexão parou. A tela explica o motivo e oferece <strong>Reconectar WhatsApp</strong></li>
+                                <li><strong>Desconectado:</strong> você (ou a Meta) encerrou a conexão. Reconecte quando quiser</li>
+                            </ul>
+                        </div>
+                        <div class="info-box">
+                            <p class="sub-title">Qualidade do número</p>
+                            <ul class="list">
+                                <li><strong>Alta (verde):</strong> tudo certo</li>
+                                <li><strong>Média (amarela):</strong> atenção, os clientes começam a reclamar das mensagens</li>
+                                <li><strong>Baixa (vermelha):</strong> a Meta pode limitar ou bloquear os envios. Isso acontece quando muitos clientes bloqueiam ou denunciam o número</li>
+                            </ul>
+                            <p class="text-sm text-zinc-600 mt-2">O limite diário indica para quantos clientes diferentes o número pode enviar mensagens em 24 horas. Ele sobe sozinho conforme a qualidade se mantém boa.</p>
+                        </div>
+                    </div>
+
+                    <div class="info-box">
+                        <p class="sub-title">Quando o cliente é avisado</p>
+                        <ul class="list">
+                            <li>Pedido recebido, pedido agendado, pagamento confirmado, em preparo, pronto (retirada ou entrega), saiu para entrega, entregue, cancelado e reembolsado — cada etapa pode ser ligada ou desligada</li>
+                            <li>Cada etapa gera <strong>uma única mensagem</strong> por pedido, mesmo que o status seja atualizado mais de uma vez</li>
+                            <li>Pedidos feitos no PDV ou vindos do iFood <strong>não</strong> geram mensagens. Pedidos pagos em dinheiro na entrega não recebem "pagamento confirmado"</li>
+                            <li>O envio do código PIX por WhatsApp ainda não está disponível (aparece como "em breve")</li>
+                        </ul>
+                    </div>
+
+                    <div class="info-box">
+                        <p class="sub-title">Consentimento do cliente</p>
+                        <p class="text-sm text-zinc-600">No chat de pedidos, ao informar o telefone, aparece a opção <strong>"Quero receber atualizações do meu pedido pelo WhatsApp"</strong>, sempre desmarcada. <strong>Só recebe mensagens quem marcar.</strong> O consentimento vale para a sua loja e não é compartilhado com outras empresas do Veddi. O cliente pode parar a qualquer momento respondendo <strong>PARAR</strong>, <strong>SAIR</strong>, <strong>STOP</strong> ou <strong>CANCELAR</strong> à mensagem; depois disso, só volta a receber se marcar a opção de novo em um novo pedido. A opção só aparece no chat enquanto o WhatsApp da loja estiver ativo com as notificações ligadas.</p>
+                    </div>
+
+                    <div class="grid sm:grid-cols-2 gap-3">
+                        <div class="info-box">
+                            <p class="sub-title">Número em uso no app WhatsApp Business</p>
+                            <p class="text-sm text-zinc-600">Se você conectou um número que já usa no app, mantenha o app aberto e em uso no celular. A Meta desconecta a integração depois de cerca de <strong>14 dias sem uso do app</strong>. O Veddi avisa a você, pelo sino do painel e por e-mail, quando o app passa de 12 dias parado.</p>
+                        </div>
+                        <div class="info-box">
+                            <p class="sub-title">Avisos do Veddi sobre o WhatsApp</p>
+                            <p class="text-sm text-zinc-600">Todos os dias o Veddi confere as conexões. Se o app estiver parado há muito tempo, a conexão tiver parado de funcionar ou a qualidade do número estiver baixa, os administradores da empresa recebem um aviso no sino do painel e por e-mail. O aviso se repete a cada 7 dias enquanto o problema continuar.</p>
+                        </div>
+                    </div>
+
+                    <div class="info-box">
+                        <p class="sub-title">Acompanhando as mensagens de um pedido</p>
+                        <p class="text-sm text-zinc-600">No detalhe do pedido, a seção <strong>Notificações WhatsApp</strong> lista cada aviso enviado com o horário e o status (na fila, enviada, entregue, lida ou falhou). Quando uma mensagem falha, o motivo aparece em português, por exemplo: o cliente não tem WhatsApp naquele número, ou pediu para não receber mensagens.</p>
+                    </div>
+
+                    <div class="info-box">
+                        <p class="sub-title">Problemas comuns</p>
+                        <ul class="list">
+                            <li><strong>Autorização recusada ou expirada:</strong> clique em Reconectar WhatsApp e refaça a autorização com o Facebook</li>
+                            <li><strong>Problema de pagamento:</strong> ajuste a forma de pagamento da conta no WhatsApp Manager da Meta</li>
+                            <li><strong>Conta desativada pela Meta:</strong> confira o motivo no WhatsApp Manager. Enquanto estiver desativada, nenhuma mensagem é enviada</li>
+                            <li><strong>Número já conectado a outra empresa:</strong> desconecte-o na outra empresa antes de conectar aqui, ou fale com o suporte</li>
+                            <li><strong>Mensagem rejeitada pela Meta:</strong> fale com o suporte do Veddi para reenviar os modelos</li>
+                        </ul>
+                    </div>
+
+                    <div class="info-box">
+                        <p class="sub-title">Desconectar</p>
+                        <p class="text-sm text-zinc-600">Em <strong>Desconectar</strong>, o Veddi deixa de enviar mensagens pelo seu número e descarta a autorização. Um número em uso no app WhatsApp Business continua funcionando normalmente no app. Você pode reconectar quando quiser.</p>
+                    </div>
+                </div>
+
+                    <div class="doc-media">
+                    @php $media = $docMedia('whatsapp.png') @endphp
+                    @if($media)
+                        @if($media['type'] === 'video')
+                            <video src="{{ $media['url'] }}" controls playsinline muted class="doc-img"></video>
+                        @else
+                            <img src="{{ $media['url'] }}" alt="Notificações por WhatsApp" class="doc-img">
+                        @endif
+                    @else
+                        <div class="doc-img-placeholder">
+                            <svg class="size-8 text-zinc-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"/></svg>
+                            <p class="text-xs text-zinc-400 text-center px-4">Mídia não encontrada — salve em <code class="bg-zinc-100 px-1 rounded">public/images/docs/whatsapp.png</code></p>
                         </div>
                     @endif
                     </div>
