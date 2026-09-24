@@ -37,7 +37,7 @@
                             <p class="text-xs text-neutral-500 dark:text-neutral-400">Total: R$ {{ number_format($lastOrderTotal, 2, ',', '.') }}</p>
                         @endif
                     </div>
-                    <button wire:click="resetTerminal" type="button" class="shrink-0 p-1 rounded-lg text-neutral-400 hover:bg-neutral-100 dark:hover:bg-zinc-800" title="Fechar">
+                    <button aria-label="Fechar" wire:click="resetTerminal" type="button" class="shrink-0 p-1 rounded-lg text-neutral-400 hover:bg-neutral-100 dark:hover:bg-zinc-800" title="Fechar">
                         <flux:icon.x-mark class="size-4" />
                     </button>
                 </div>
@@ -79,9 +79,9 @@
                 </p>
             </div>
         </div>
-        <div class="flex items-center gap-2 shrink-0">
+        <div class="flex items-center gap-2 min-w-0 sm:shrink-0">
             @if ($this->branches->count() > 1)
-                <flux:select wire:model.live="selectedBranchId" class="w-56">
+                <flux:select wire:model.live="selectedBranchId" class="w-32 sm:w-56" aria-label="Filial">
                     @foreach ($this->branches as $branch)
                         <flux:select.option value="{{ $branch->id }}">{{ $branch->name }}</flux:select.option>
                     @endforeach
@@ -99,7 +99,7 @@
                     variant="outline"
                     size="sm"
                     icon="computer-desktop"
-                    class="hidden sm:flex"
+                    class="max-sm:hidden"
                 >
                     Venda Direta
                 </flux:button>
@@ -114,7 +114,7 @@
                 </button>
             @endif
 
-            <button
+            <button :aria-label="sidebarHidden ? 'Mostrar menu lateral' : 'Ocultar menu lateral'"
                 @click="toggleSidebar()"
                 :title="sidebarHidden ? 'Mostrar menu lateral' : 'Ocultar menu lateral'"
                 class="p-2 rounded-lg border border-neutral-200 text-neutral-500 hover:text-neutral-800 hover:bg-neutral-50 dark:border-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-neutral-200 transition-colors"
@@ -135,7 +135,7 @@
          voltar sem abrir o carrinho primeiro. ══ --}}
     @php $hasActiveTableContext = $openTabOrderId || $selectedTableId; @endphp
     @if ($isWaiter && $hasActiveTableContext && $step !== 'payment')
-        <button
+        <button aria-label="Voltar para as mesas/comandas"
             type="button"
             wire:click="deselectOpenTab"
             title="Voltar para as mesas/comandas"
@@ -207,11 +207,11 @@
                                             class="relative rounded-xl border-2 py-4 text-center transition-all {{ $tableOpenCount > 0 ? 'border-amber-300 bg-amber-50 hover:border-amber-500 dark:border-amber-800/60 dark:bg-amber-900/10' : 'border-neutral-200 bg-white hover:border-amber-400 hover:shadow-md dark:border-zinc-700 dark:bg-zinc-900' }}"
                                         >
                                             @if ($tableOpenCount > 0)
-                                                <span class="absolute -top-2 -right-2 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white shadow dark:bg-amber-400 dark:text-amber-950">
+                                                <span class="absolute -top-2 -right-2 rounded-full bg-amber-500 px-1.5 py-0.5 text-[11px] font-bold text-white shadow dark:bg-amber-400 dark:text-amber-950">
                                                     {{ $tableOpenCount }} {{ $tableOpenCount === 1 ? 'aberta' : 'abertas' }}
                                                 </span>
                                             @endif
-                                            <span class="block text-[10px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Mesa</span>
+                                            <span class="block text-[11px] font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">Mesa</span>
                                             <span class="block text-xl font-black text-neutral-800 dark:text-neutral-100">{{ $table->number }}</span>
                                         </button>
                                     @endforeach
@@ -228,7 +228,7 @@
                 <div class="flex-1 overflow-y-auto p-4">
                     <div class="w-full max-w-3xl mx-auto space-y-6">
                         <div class="flex items-center gap-3">
-                            <button
+                            <button aria-label="Voltar para as mesas"
                                 type="button"
                                 wire:click="deselectOpenTab"
                                 class="shrink-0 p-2 rounded-lg text-neutral-500 hover:bg-neutral-100 dark:hover:bg-zinc-800 dark:text-neutral-400"
@@ -341,7 +341,7 @@
                 {{-- Grid de produtos --}}
                 <div class="flex-1 overflow-y-auto p-4 {{ !empty($cart) ? 'pb-24 lg:pb-4' : '' }} bg-zinc-50 dark:bg-[#0f1926]/50">
                     @if ($this->products->isEmpty())
-                        <div class="text-center py-12 text-neutral-400 dark:text-neutral-500">
+                        <div class="text-center py-12 text-neutral-500 dark:text-neutral-400">
                             <flux:icon.shopping-bag class="size-10 mx-auto mb-2 opacity-40" />
                             <p class="text-sm">Nenhum produto disponível</p>
                         </div>
@@ -534,9 +534,9 @@
                                                 R$ {{ number_format($product->effective_price, 2, ',', '.') }}
                                             </span>
                                             @if ($stockOut)
-                                                <span class="block text-[10px] font-semibold text-red-600 dark:text-red-400">Sem estoque</span>
+                                                <span class="block text-[11px] font-semibold text-red-600 dark:text-red-400">Sem estoque</span>
                                             @elseif ($stockQty !== null && $stockQty <= 5)
-                                                <span class="block text-[10px] font-semibold text-amber-600 dark:text-amber-400">Restam {{ $stockQty }}</span>
+                                                <span class="block text-[11px] font-semibold text-amber-600 dark:text-amber-400">Restam {{ $stockQty }}</span>
                                             @endif
                                         </button>
                                         <div class="flex items-center justify-end gap-1 mt-1.5">
@@ -593,7 +593,7 @@
                     style="display:none"
                 >
                     <div class="shrink-0 px-4 py-3 flex items-center gap-3 border-b bg-amber-500 dark:border-zinc-700">
-                        <button
+                        <button aria-label="Fechar seleção de opções"
                             @click="selectingProduct = null; pendingSelections = {}"
                             class="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
                         >
@@ -656,7 +656,7 @@
                                                                 :class="option.paused ? 'text-neutral-400' : 'text-neutral-800 dark:text-neutral-100'"
                                                                 x-text="option.name"></p>
                                                             <span x-show="option.paused"
-                                                                class="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-600">
+                                                                class="inline-flex items-center gap-0.5 text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-600">
                                                                 Em pausa
                                                             </span>
                                                         </div>
@@ -725,14 +725,14 @@
                         <div class="px-4 py-3 border-b border-neutral-100 dark:border-zinc-800 shrink-0 bg-white dark:bg-zinc-900">
                             <div class="flex items-center justify-between gap-3">
                                 <div class="flex items-center gap-2 min-w-0">
-                                    <button
+                                    <button aria-label="Voltar ao catálogo"
                                         @click="mobileCartOpen = false"
                                         class="lg:hidden shrink-0 p-1.5 -ml-1.5 rounded-lg text-neutral-500 hover:bg-neutral-100 dark:hover:bg-zinc-800 dark:text-neutral-400"
                                         title="Voltar ao catálogo"
                                     >
                                         <flux:icon.chevron-left class="size-5" />
                                     </button>
-                                    <button
+                                    <button aria-label="Voltar para as comandas"
                                         type="button"
                                         wire:click="deselectOpenTab"
                                         class="hidden lg:flex shrink-0 p-1.5 -ml-1.5 rounded-lg text-neutral-500 hover:bg-neutral-100 dark:hover:bg-zinc-800 dark:text-neutral-400"
@@ -741,7 +741,7 @@
                                         <flux:icon.arrow-left class="size-5" />
                                     </button>
                                     <div class="min-w-0">
-                                        <p class="text-[11px] font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">Pedido atual</p>
+                                        <p class="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">Pedido atual</p>
                                         <h2 class="font-bold text-neutral-900 dark:text-neutral-100 truncate">Comanda</h2>
                                     </div>
                                 </div>
@@ -759,7 +759,7 @@
                                  pendente nem botão de "enviar". A lista abaixo já é o pedido real. --}}
                             <div class="px-4 pt-3 pb-2 shrink-0 bg-white dark:bg-zinc-900 border-b border-neutral-100 dark:border-zinc-800 flex items-center justify-between gap-2">
                                 <div class="min-w-0">
-                                    <p class="text-[10px] font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">Itens do pedido</p>
+                                    <p class="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">Itens do pedido</p>
                                     <p class="text-xs font-semibold text-amber-700 dark:text-amber-400 truncate">
                                         @if ($openTabOrderId)
                                             {{ $this->openTabs->firstWhere('id', $openTabOrderId)?->table_label }}
@@ -834,7 +834,7 @@
                                         </div>
                                     </div>
                                 @empty
-                                    <div class="flex-1 flex items-center justify-center py-16 text-neutral-400 dark:text-neutral-500 bg-zinc-50 dark:bg-[#0f1926]/40">
+                                    <div class="flex-1 flex items-center justify-center py-16 text-neutral-500 dark:text-neutral-400 bg-zinc-50 dark:bg-[#0f1926]/40">
                                         <div class="text-center">
                                             <flux:icon.shopping-cart class="size-10 mx-auto mb-2 opacity-40" />
                                             <p class="text-sm">Nenhum item ainda</p>
@@ -919,7 +919,7 @@
                             <flux:icon.shopping-cart class="size-4" />
                             @php $activeTabItemCount = $this->activeTabItems->sum('quantity'); @endphp
                             @if ($activeTabItemCount > 0)
-                                <span class="absolute -top-2 -right-2 flex items-center justify-center min-w-[1.1rem] h-[1.1rem] rounded-full bg-white text-amber-600 text-[10px] font-black leading-none px-0.5 dark:bg-zinc-900 dark:text-amber-400">
+                                <span class="absolute -top-2 -right-2 flex items-center justify-center min-w-[1.1rem] h-[1.1rem] rounded-full bg-white text-amber-600 text-[11px] font-black leading-none px-0.5 dark:bg-zinc-900 dark:text-amber-400">
                                     {{ $activeTabItemCount }}
                                 </span>
                             @endif
@@ -941,9 +941,9 @@
                         <div class="shrink-0 border-b border-neutral-100 px-4 py-3 dark:border-zinc-800">
                             <div class="flex items-center justify-between gap-3">
                                 <div class="flex items-center gap-3 min-w-0">
-                                    <flux:button wire:click="backToCatalog" variant="ghost" icon="arrow-left" size="sm" />
+                                    <flux:button wire:click="backToCatalog" variant="ghost" icon="arrow-left" size="sm" aria-label="Voltar para o catálogo" />
                                     <div class="min-w-0">
-                                        <p class="text-[11px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Checkout</p>
+                                        <p class="text-[11px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">Checkout</p>
                                         <h2 class="text-lg font-black text-neutral-900 dark:text-neutral-100">
                                             @if ($closingTableId)
                                                 Pagar mesa: {{ $this->closingTableOrders->count() }} comanda(s)
@@ -954,7 +954,7 @@
                                     </div>
                                 </div>
                                 <div class="text-right">
-                                    <p class="text-[11px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Total</p>
+                                    <p class="text-[11px] font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">Total</p>
                                     <p class="text-xl font-black text-neutral-900 dark:text-neutral-100">
                                         R$ {{ number_format($this->cartTotalAfterDiscount, 2, ',', '.') }}
                                     </p>
@@ -1011,7 +1011,7 @@
                                         @if ($this->rawServiceFeeAmount > 0)
                                             <label class="flex items-center justify-between gap-3 px-3 py-2 border rounded-xl dark:border-zinc-700 cursor-pointer">
                                                 <span class="flex items-center gap-2">
-                                                    <flux:checkbox wire:model.live="serviceFeeWaived" />
+                                                    <flux:checkbox wire:model.live="serviceFeeWaived" aria-label="Isentar taxa de serviço" />
                                                     <span class="text-sm">Remover taxa de serviço</span>
                                                 </span>
                                                 <span class="text-xs font-semibold {{ $serviceFeeWaived ? 'text-neutral-400 line-through' : 'text-neutral-600 dark:text-neutral-300' }}">
@@ -1022,7 +1022,7 @@
                                         @if ($this->rawCouvertFeeAmount > 0)
                                             <label class="flex items-center justify-between gap-3 px-3 py-2 border rounded-xl dark:border-zinc-700 cursor-pointer">
                                                 <span class="flex items-center gap-2">
-                                                    <flux:checkbox wire:model.live="couvertFeeWaived" />
+                                                    <flux:checkbox wire:model.live="couvertFeeWaived" aria-label="Isentar couvert" />
                                                     <span class="text-sm">Remover couvert artístico</span>
                                                 </span>
                                                 <span class="text-xs font-semibold {{ $couvertFeeWaived ? 'text-neutral-400 line-through' : 'text-neutral-600 dark:text-neutral-300' }}">
@@ -1067,7 +1067,7 @@
                                      ou lista de itens longos. --}}
                                 <div class="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
                                     <div>
-                                        <p class="text-[11px] font-bold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Resumo do pedido</p>
+                                        <p class="text-[11px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">Resumo do pedido</p>
                                         <div class="mt-3 rounded-xl border border-neutral-200 bg-white divide-y divide-neutral-100 dark:border-zinc-800 dark:bg-zinc-900 dark:divide-zinc-800">
                                             @if ($closingTableId)
                                                 @foreach ($this->closingTableOrders as $tableOrder)
@@ -1154,7 +1154,7 @@
 
                                     @if ($canUseFiscalNotes)
                                         <label class="flex items-center gap-2 px-3 py-2 border rounded-xl dark:border-zinc-700 cursor-pointer">
-                                            <flux:checkbox wire:model.live="printFiscalNote" />
+                                            <flux:checkbox wire:model.live="printFiscalNote" aria-label="Imprimir nota fiscal ao confirmar" />
                                             <span class="text-sm">Imprimir nota fiscal ao confirmar</span>
                                         </label>
                                     @endif
@@ -1164,7 +1164,8 @@
                                             Voltar
                                         </flux:button>
                                         <flux:button
-                                            wire:click="{{ $closingTableId ? 'confirmCloseTableTabs' : 'confirmCloseTab' }}"
+                                            id="pdv-confirm-order-btn"
+                                            x-on:click="$wire.{{ $closingTableId ? 'confirmCloseTableTabs' : 'confirmCloseTab' }}(document.getElementById('pdv-cash-received-input')?.value ?? null)"
                                             variant="primary"
                                             size="base"
                                             wire:loading.attr="disabled"
@@ -1230,14 +1231,14 @@
                 </p>
 
                 @if ($this->waiters->isEmpty())
-                    <p class="text-sm text-neutral-400 dark:text-neutral-500">Nenhum garçom cadastrado ainda.</p>
+                    <p class="text-sm text-neutral-500 dark:text-neutral-400">Nenhum garçom cadastrado ainda.</p>
                 @else
                     <div class="max-h-56 overflow-y-auto divide-y divide-neutral-100 dark:divide-zinc-700 rounded-lg border border-neutral-200 dark:border-zinc-700">
                         @foreach ($this->waiters as $waiter)
                             <div class="flex items-center justify-between gap-3 px-3 py-2">
                                 <div class="min-w-0">
                                     <p class="text-sm font-medium text-neutral-800 dark:text-neutral-100 truncate">{{ $waiter['name'] }}</p>
-                                    <p class="text-xs text-neutral-400 dark:text-neutral-500 truncate">{{ $waiter['email'] }}</p>
+                                    <p class="text-xs text-neutral-500 dark:text-neutral-400 truncate">{{ $waiter['email'] }}</p>
                                 </div>
                                 <span class="shrink-0 text-xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 dark:bg-zinc-700 dark:text-neutral-300">
                                     {{ $this->branches->firstWhere('id', $waiter['branch_id'])?->name ?? 'Todas as filiais' }}

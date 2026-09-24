@@ -15,7 +15,19 @@ trait HasCustomerManagement
 
     public function updatedDeliveryType(): void
     {
-        if ($this->deliveryType !== 'entrega' || ! $this->customerId) {
+        // A taxa calculada pro endereço não pode sobreviver à troca Entrega → Balcão/Retirar:
+        // ela continuava somada ao total e gravada no pedido.
+        if ($this->deliveryType !== 'entrega') {
+            // TabTerminal também usa este trait mas não tem fluxo de entrega (nem essas propriedades).
+            if (property_exists($this, 'deliveryFeeAmount')) {
+                $this->deliveryFeeAmount = 0.0;
+                $this->deliveryFeeError = null;
+            }
+
+            return;
+        }
+
+        if (! $this->customerId) {
             return;
         }
 

@@ -10,7 +10,7 @@
         placeholder="Nome, telefone ou CPF..."
         class="flex-1"
     />
-    <flux:button wire:click="lookupCustomer" variant="outline" icon="magnifying-glass" size="sm" />
+    <flux:button wire:click="lookupCustomer" variant="outline" icon="magnifying-glass" size="sm" aria-label="Buscar cliente" />
 </div>
 @if ($customerFound)
     <p class="text-xs text-green-600 dark:text-green-400">✓ {{ $customerName }}</p>
@@ -22,7 +22,7 @@
                 class="w-full flex items-center justify-between px-3 py-2 text-left text-xs hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors border-b last:border-b-0 dark:border-zinc-600"
             >
                 <span class="font-medium text-neutral-800 dark:text-neutral-100">{{ $result['name'] }}</span>
-                <span class="text-neutral-400 dark:text-neutral-500 shrink-0 ml-2">{{ $result['phone'] }}</span>
+                <span class="text-neutral-500 dark:text-neutral-400 shrink-0 ml-2">{{ $result['phone'] }}</span>
             </button>
         @endforeach
     </div>

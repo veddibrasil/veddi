@@ -19,6 +19,7 @@ use Livewire\Attributes\Computed;
 trait HasOpenTabs
 {
     use HasAutoPrint;
+    use HasPaymentSettlement;
 
     public function updatedOrderMode(): void
     {
@@ -386,80 +387,64 @@ trait HasOpenTabs
             }
         }
 
-        DB::beginTransaction();
-        try {
-            $isPaidOnCreate = $this->isSplitPayment || in_array($this->paymentMethod, ['cash', 'credit_card', 'pix']);
-
-            app(OrderService::class)->applyManualDiscountToOrder(
-                $order,
-                $this->manualDiscountAmount,
-                $this->serviceFeeWaived,
-                $this->couvertFeeWaived,
-            );
-
-            $order->update([
-                'payment_method' => $this->effectivePaymentMethod(),
-                'status' => $isPaidOnCreate ? 'paid' : 'awaiting_payment',
-                'is_open_tab' => false,
-                'notes' => $this->notes,
-                // Reatribui à sessão de quem está fechando/recebendo agora — a comanda pode ter
-                // sido aberta sem sessão (garçom) ou por outro operador; sem isso o dinheiro
-                // recebido não entra na conferência de caixa de quem realmente fechou.
-                'pdv_cash_session_id' => $this->cashSessionId,
-                // Comanda geralmente abre sem cliente vinculado (guest); se o mesário identificar
-                // o cliente só agora no fechamento, precisa gravar — senão a busca/seleção feita
-                // na tela de pagamento é descartada e o pedido fica com "Cliente Balcão".
-                ...($this->customerId ? ['customer_id' => $this->customerId] : []),
-            ]);
-
-            if ($this->isSplitPayment) {
-                $parts = $this->buildSplitPartsForOrchestrator();
-                $cashPart = collect($parts)->firstWhere('method', 'cash');
-
-                if ($cashPart) {
-                    $order->cash_received = $cashPart['cash_received'];
-                    $order->cash_change = max(0.0, round($cashPart['cash_received'] - $cashPart['amount'], 2));
-                    $order->save();
-                }
-
-                $results = app(PaymentOrchestrator::class)->processSplit($order, $parts);
-                $this->changeAmount = collect($results)->sum('change');
-            } elseif ($this->paymentMethod === 'cash') {
-                $cashReceived = (float) str_replace(',', '.', $this->cashReceivedInput ?: $order->total);
-                $order->cash_received = $cashReceived;
-                $order->cash_change = max(0.0, round($cashReceived - (float) $order->total, 2));
-                $order->save();
-
-                $result = app(PaymentOrchestrator::class)->processCash($order);
-                $this->changeAmount = $result['change'];
-            } elseif ($this->paymentMethod === 'credit_card') {
-                app(PaymentOrchestrator::class)->processCardMachine($order);
-            } elseif ($this->paymentMethod === 'pix') {
-                app(PaymentOrchestrator::class)->processPixManual($order);
-            }
-
-            DB::commit();
-
-            // Fora da transação: fechar comanda com status 'paid' não passa por createOrder()
-            // nem por nenhuma outra transição — sem isso a nota fiscal automática nunca dispara
-            // pra pedidos pagos aqui (ver OrderService::createOrder() pro mesmo problema na criação).
-            if ($isPaidOnCreate) {
-                OrderStatusUpdated::dispatch($order);
-                $this->dispatchAutoPrintPayload($order, includeReceiptStations: false);
-            }
-
-            $this->lastOrderTotal = (float) $order->total;
-            $this->audit('tab_closed', [
-                'order_id' => $order->id,
-                'amount' => (float) $order->total,
-                'metadata' => ['payment_method' => $this->effectivePaymentMethod()],
-            ]);
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            $this->addError('order', $e->getMessage());
+        if ($error = $this->manualDiscountError(app('current.company'))) {
+            $this->addError('order', $error);
 
             return;
         }
+
+        $isPaidOnCreate = $this->isSplitPayment || in_array($this->paymentMethod, ['cash', 'credit_card', 'pix']);
+
+        try {
+            DB::transaction(function () use ($order, $isPaidOnCreate) {
+                app(OrderService::class)->applyManualDiscountToOrder(
+                    $order,
+                    $this->manualDiscountAmount,
+                    $this->serviceFeeWaived,
+                    $this->couvertFeeWaived,
+                );
+
+                $order->update([
+                    'payment_method' => $this->effectivePaymentMethod(),
+                    'status' => $isPaidOnCreate ? 'paid' : 'awaiting_payment',
+                    'is_open_tab' => false,
+                    'notes' => $this->notes,
+                    // Reatribui à sessão de quem está fechando/recebendo agora — a comanda pode ter
+                    // sido aberta sem sessão (garçom) ou por outro operador; sem isso o dinheiro
+                    // recebido não entra na conferência de caixa de quem realmente fechou.
+                    'pdv_cash_session_id' => $this->cashSessionId,
+                    // Comanda geralmente abre sem cliente vinculado (guest); se o mesário identificar
+                    // o cliente só agora no fechamento, precisa gravar — senão a busca/seleção feita
+                    // na tela de pagamento é descartada e o pedido fica com "Cliente Balcão".
+                    ...($this->customerId ? ['customer_id' => $this->customerId] : []),
+                ]);
+
+                if ($isPaidOnCreate) {
+                    $this->settleOrderPayment($order);
+                }
+
+                $this->audit('tab_closed', [
+                    'order_id' => $order->id,
+                    'amount' => (float) $order->total,
+                    'metadata' => ['payment_method' => $this->effectivePaymentMethod()],
+                ]);
+            });
+        } catch (\Throwable $e) {
+            $this->reportPaymentFailure($e);
+
+            return;
+        }
+
+        // Fora da transação: fechar comanda com status 'paid' não passa por createOrder()
+        // nem por nenhuma outra transição — sem isso a nota fiscal automática nunca dispara
+        // pra pedidos pagos aqui (ver OrderService::createOrder() pro mesmo problema na criação).
+        // Efeitos isolados: a comanda já está paga, falha aqui não pode virar "erro" na tela.
+        if ($isPaidOnCreate) {
+            $this->afterCommit('order_status_updated', $order, fn () => OrderStatusUpdated::dispatch($order));
+            $this->afterCommit('auto_print', $order, fn () => $this->dispatchAutoPrintPayload($order, includeReceiptStations: false));
+        }
+
+        $this->lastOrderTotal = (float) $order->total;
 
         $this->lastOrderNumber = $order->order_number;
         $this->lastOrderId = $order->id;
@@ -506,6 +491,20 @@ trait HasOpenTabs
             }
         }
 
+        // Dinheiro único (sem split) não pode ser menor que o total combinado da mesa — mesma regra
+        // do fechamento individual, validada antes de abrir a transação.
+        $cashReceivedTotal = 0.0;
+
+        if (! $this->isSplitPayment && $this->paymentMethod === 'cash') {
+            try {
+                $cashReceivedTotal = $this->resolveCashReceived($this->cartTotalAfterDiscount);
+            } catch (\App\Exceptions\PdvPaymentException $e) {
+                $this->addError('order', $e->getMessage());
+
+                return;
+            }
+        }
+
         // Pool de partes em centavos — evita erro de arredondamento de float ao fatiar
         // o pagamento combinado entre N comandas. Pagamento único vira um "split" de 1
         // parte só, reaproveitando o mesmo mecanismo de distribuição.
@@ -519,7 +518,7 @@ trait HasOpenTabs
                 'method' => $this->paymentMethod,
                 'cents' => (int) round($this->cartTotalAfterDiscount * 100),
                 'cash_received_cents' => $this->paymentMethod === 'cash'
-                    ? (int) round((float) str_replace(',', '.', $this->cashReceivedInput ?: $this->cartTotalAfterDiscount) * 100)
+                    ? (int) round($cashReceivedTotal * 100)
                     : null,
             ]];
 
@@ -528,104 +527,103 @@ trait HasOpenTabs
         $tableServiceFee = $this->serviceFeeAmount;
         $tableCouvertFee = $this->couvertFeeAmount;
 
-        DB::beginTransaction();
+        $closedOrders = [];
+        $totalChangeCents = 0;
+
         try {
-            $closedOrders = [];
-            $totalChangeCents = 0;
-            $lastMethod = $pool[0]['method'];
+            DB::transaction(function () use (&$closedOrders, &$totalChangeCents, &$pool, $orders, $tableServiceFee, $tableCouvertFee) {
+                $lastMethod = $pool[0]['method'];
 
-            foreach ($orders as $orderIndex => $order) {
-                $order = app(OrderService::class)->applyGroupFeesToOrder(
-                    $order,
-                    $orderIndex === 0 ? $tableServiceFee : 0.0,
-                    $orderIndex === 0 ? $tableCouvertFee : 0.0,
-                );
+                foreach ($orders as $orderIndex => $order) {
+                    $order = app(OrderService::class)->applyGroupFeesToOrder(
+                        $order,
+                        $orderIndex === 0 ? $tableServiceFee : 0.0,
+                        $orderIndex === 0 ? $tableCouvertFee : 0.0,
+                    );
 
-                $orderCents = (int) round((float) $order->total * 100);
-                $orderParts = [];
+                    $orderCents = (int) round((float) $order->total * 100);
+                    $orderParts = [];
 
-                while ($orderCents > 0) {
-                    if ($pool === []) {
-                        // Defesa contra resíduo de 1 centavo por arredondamento de float —
-                        // não deveria acontecer (validateSplitPayments já garante soma bater),
-                        // mas evita RuntimeException no processSplit por diferença ínfima.
-                        $orderParts[] = ['method' => $lastMethod, 'amount' => $orderCents / 100];
-                        $orderCents = 0;
+                    while ($orderCents > 0) {
+                        if ($pool === []) {
+                            // Defesa contra resíduo de 1 centavo por arredondamento de float —
+                            // não deveria acontecer (validateSplitPayments já garante soma bater),
+                            // mas evita RuntimeException no processSplit por diferença ínfima.
+                            $orderParts[] = ['method' => $lastMethod, 'amount' => $orderCents / 100];
+                            $orderCents = 0;
 
-                        break;
+                            break;
+                        }
+
+                        $take = min($pool[0]['cents'], $orderCents);
+                        $piece = ['method' => $pool[0]['method'], 'amount' => $take / 100];
+                        $lastMethod = $pool[0]['method'];
+
+                        if ($pool[0]['method'] === 'cash') {
+                            // Só a fatia que esgota a parte cash do pool carrega o "recebido" de
+                            // verdade — troco só existe uma vez, no fim do dinheiro do pool.
+                            $isLastCashSlice = $take === $pool[0]['cents'];
+                            $piece['cash_received'] = $isLastCashSlice
+                                ? ($pool[0]['cash_received_cents'] ?? $pool[0]['cents']) / 100
+                                : $take / 100;
+                        }
+
+                        $orderParts[] = $piece;
+
+                        $pool[0]['cents'] -= $take;
+                        if ($pool[0]['cash_received_cents'] !== null) {
+                            $pool[0]['cash_received_cents'] -= $take;
+                        }
+                        $orderCents -= $take;
+
+                        if ($pool[0]['cents'] <= 0) {
+                            array_shift($pool);
+                        }
                     }
 
-                    $take = min($pool[0]['cents'], $orderCents);
-                    $piece = ['method' => $pool[0]['method'], 'amount' => $take / 100];
-                    $lastMethod = $pool[0]['method'];
-
-                    if ($pool[0]['method'] === 'cash') {
-                        // Só a fatia que esgota a parte cash do pool carrega o "recebido" de
-                        // verdade — troco só existe uma vez, no fim do dinheiro do pool.
-                        $isLastCashSlice = $take === $pool[0]['cents'];
-                        $piece['cash_received'] = $isLastCashSlice
-                            ? ($pool[0]['cash_received_cents'] ?? $pool[0]['cents']) / 100
-                            : $take / 100;
+                    $cashPiece = collect($orderParts)->firstWhere('method', 'cash');
+                    if ($cashPiece) {
+                        $order->cash_received = $cashPiece['cash_received'];
+                        $order->cash_change = max(0.0, round($cashPiece['cash_received'] - $cashPiece['amount'], 2));
+                        $totalChangeCents += (int) round($order->cash_change * 100);
                     }
 
-                    $orderParts[] = $piece;
+                    $order->update([
+                        'payment_method' => $this->effectivePaymentMethod(),
+                        'status' => 'paid',
+                        'is_open_tab' => false,
+                        'pdv_cash_session_id' => $this->cashSessionId,
+                        ...($this->customerId ? ['customer_id' => $this->customerId] : []),
+                    ]);
 
-                    $pool[0]['cents'] -= $take;
-                    if ($pool[0]['cash_received_cents'] !== null) {
-                        $pool[0]['cash_received_cents'] -= $take;
-                    }
-                    $orderCents -= $take;
+                    app(PaymentOrchestrator::class)->processSplit($order, $orderParts);
 
-                    if ($pool[0]['cents'] <= 0) {
-                        array_shift($pool);
-                    }
+                    $closedOrders[] = $order;
                 }
 
-                $cashPiece = collect($orderParts)->firstWhere('method', 'cash');
-                if ($cashPiece) {
-                    $order->cash_received = $cashPiece['cash_received'];
-                    $order->cash_change = max(0.0, round($cashPiece['cash_received'] - $cashPiece['amount'], 2));
-                    $totalChangeCents += (int) round($order->cash_change * 100);
+                foreach ($closedOrders as $order) {
+                    $this->audit('tab_closed', [
+                        'order_id' => $order->id,
+                        'amount' => (float) $order->total,
+                        'metadata' => ['payment_method' => $this->effectivePaymentMethod(), 'table_group' => true],
+                    ]);
                 }
-
-                $order->update([
-                    'payment_method' => $this->effectivePaymentMethod(),
-                    'status' => 'paid',
-                    'is_open_tab' => false,
-                    'pdv_cash_session_id' => $this->cashSessionId,
-                    ...($this->customerId ? ['customer_id' => $this->customerId] : []),
-                ]);
-
-                app(PaymentOrchestrator::class)->processSplit($order, $orderParts);
-
-                $closedOrders[] = $order;
-            }
-
-            DB::commit();
-
-            foreach ($closedOrders as $order) {
-                OrderStatusUpdated::dispatch($order);
-                $this->dispatchAutoPrintPayload($order, includeReceiptStations: false);
-            }
-
-            $this->changeAmount = $totalChangeCents / 100;
-            $this->lastOrderTotal = (float) collect($closedOrders)->sum('total');
-            $this->lastOrderNumber = $closedOrders[0]->order_number;
-            $this->lastOrderId = $closedOrders[0]->id;
-
-            foreach ($closedOrders as $order) {
-                $this->audit('tab_closed', [
-                    'order_id' => $order->id,
-                    'amount' => (float) $order->total,
-                    'metadata' => ['payment_method' => $this->effectivePaymentMethod(), 'table_group' => true],
-                ]);
-            }
+            });
         } catch (\Throwable $e) {
-            DB::rollBack();
-            $this->addError('order', $e->getMessage());
+            $this->reportPaymentFailure($e);
 
             return;
         }
+
+        foreach ($closedOrders as $order) {
+            $this->afterCommit('order_status_updated', $order, fn () => OrderStatusUpdated::dispatch($order));
+            $this->afterCommit('auto_print', $order, fn () => $this->dispatchAutoPrintPayload($order, includeReceiptStations: false));
+        }
+
+        $this->changeAmount = $totalChangeCents / 100;
+        $this->lastOrderTotal = (float) collect($closedOrders)->sum('total');
+        $this->lastOrderNumber = $closedOrders[0]->order_number;
+        $this->lastOrderId = $closedOrders[0]->id;
 
         $this->dispatch('pdv-toast', message: count($closedOrders).' comanda(s) da mesa fechada(s) e pagas.');
 

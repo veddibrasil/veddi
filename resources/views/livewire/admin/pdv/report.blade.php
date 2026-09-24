@@ -10,11 +10,11 @@
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
                 <label class="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Data inicial</label>
-                <flux:input wire:model.live="dateStart" type="date" />
+                <flux:input wire:model.live="dateStart" type="date" aria-label="Data inicial" />
             </div>
             <div>
                 <label class="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Data final</label>
-                <flux:input wire:model.live="dateEnd" type="date" />
+                <flux:input wire:model.live="dateEnd" type="date" aria-label="Data final" />
             </div>
             <div>
                 <flux:select wire:model.live="branchFilter" label="Filial" :disabled="$isCaixa">
@@ -77,9 +77,9 @@
             <h2 class="font-semibold text-neutral-800 dark:text-neutral-100">Sessões de caixa</h2>
         </div>
         @if ($sessions->isEmpty())
-            <div class="p-6 text-center text-sm text-neutral-400 dark:text-neutral-500">Nenhuma sessão no período.</div>
+            <div class="p-6 text-center text-sm text-neutral-500 dark:text-neutral-400">Nenhuma sessão no período.</div>
         @else
-            <div class="overflow-x-auto">
+            <div class="overflow-x-auto" tabindex="0" role="region" aria-label="Sessões de caixa no período">
                 <table class="w-full text-sm">
                     <thead>
                         <tr class="border-b text-xs text-neutral-500 dark:border-zinc-700 dark:text-neutral-400">
@@ -145,7 +145,7 @@
                                             </span>
                                         @endif
                                         @if ($session->reconciliation_notes)
-                                            <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5 max-w-xs truncate" title="{{ $session->reconciliation_notes }}">
+                                            <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 max-w-xs truncate" title="{{ $session->reconciliation_notes }}">
                                                 {{ $session->reconciliation_notes }}
                                             </p>
                                         @endif
@@ -193,9 +193,9 @@
             <h2 class="font-semibold text-neutral-800 dark:text-neutral-100">Pedidos PDV</h2>
         </div>
         @if ($orders->isEmpty())
-            <div class="p-6 text-center text-sm text-neutral-400 dark:text-neutral-500">Nenhum pedido no período.</div>
+            <div class="p-6 text-center text-sm text-neutral-500 dark:text-neutral-400">Nenhum pedido no período.</div>
         @else
-            <div class="overflow-x-auto">
+            <div class="overflow-x-auto" tabindex="0" role="region" aria-label="Pedidos PDV no período">
                 <table class="w-full text-sm">
                     <thead>
                         <tr class="border-b text-xs text-neutral-500 dark:border-zinc-700 dark:text-neutral-400">

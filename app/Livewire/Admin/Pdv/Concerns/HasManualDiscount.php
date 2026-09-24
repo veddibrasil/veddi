@@ -2,6 +2,9 @@
 
 namespace App\Livewire\Admin\Pdv\Concerns;
 
+use App\Models\Company;
+use App\Support\MoneyInput;
+
 trait HasManualDiscount
 {
     public function updatedManualDiscountInput(): void
@@ -16,7 +19,7 @@ trait HasManualDiscount
 
     private function applyOrRemoveManualDiscount(): void
     {
-        $value = (float) str_replace(',', '.', $this->manualDiscountInput ?: '0');
+        $value = MoneyInput::toFloat($this->manualDiscountInput);
 
         if (blank($this->manualDiscountInput) || $value <= 0) {
             $this->manualDiscountAmount = 0.0;
@@ -34,13 +37,17 @@ trait HasManualDiscount
 
         $this->resetValidation('manual_discount');
 
+        // Entrada inválida zera o desconto: senão o valor válido anterior seguiria valendo
+        // enquanto o campo mostra outro número (e a mensagem de erro).
+        $this->manualDiscountAmount = 0.0;
+
         if (! $this->manualDiscountAllowed) {
             $this->addError('manual_discount', 'Desconto manual não está habilitado para esta empresa.');
 
             return;
         }
 
-        $value = (float) str_replace(',', '.', $this->manualDiscountInput ?: '0');
+        $value = MoneyInput::toFloat($this->manualDiscountInput);
 
         if ($value <= 0) {
             $this->addError('manual_discount', 'Informe um valor maior que zero.');
@@ -65,15 +72,30 @@ trait HasManualDiscount
             }
             $this->manualDiscountAmount = $value;
         }
+    }
 
-        $this->audit('discount_applied', [
-            'amount' => $this->manualDiscountAmount,
-            'metadata' => [
-                'type' => $this->manualDiscountType,
-                'input' => $this->manualDiscountInput,
-                'cart_total' => $this->cartTotal,
-            ],
-        ]);
+    /**
+     * Revalidação no servidor na hora de confirmar. `manualDiscountAmount` é gravado só por este
+     * trait (a propriedade é `#[Locked]`), mas a permissão e o teto são conferidos de novo contra a
+     * empresa e o carrinho atuais — a feature pode ter sido desligada com a tela aberta.
+     * O registro de auditoria do desconto fica no `order_created` (metadata.manual_discount), não a
+     * cada digitação.
+     */
+    private function manualDiscountError(Company $company): ?string
+    {
+        if ($this->manualDiscountAmount <= 0) {
+            return null;
+        }
+
+        if (! $company->pdv_manual_discount_enabled) {
+            return 'Desconto manual não está habilitado para esta empresa.';
+        }
+
+        if ($this->manualDiscountAmount > $this->cartTotal + 0.001) {
+            return 'Desconto não pode exceder o total restante.';
+        }
+
+        return null;
     }
 
     public function removeManualDiscount(): void

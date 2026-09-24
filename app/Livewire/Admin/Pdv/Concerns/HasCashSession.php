@@ -5,7 +5,9 @@ namespace App\Livewire\Admin\Pdv\Concerns;
 use App\Models\Order;
 use App\Models\PdvCashSession;
 use App\Services\Pdv\CashClosingReportService;
+use App\Support\MoneyInput;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
 
@@ -47,26 +49,71 @@ trait HasCashSession
     {
         abort_unless(! $this->isWaiter, 403);
 
-        $amount = (float) str_replace(',', '.', $this->openingAmountInput ?: '0');
+        if (! $this->selectedBranchId) {
+            return;
+        }
+
+        $this->assertSelectedBranchBelongsToCurrentCompany();
+        $this->resetValidation('openingAmountInput');
+
+        $amount = blank($this->openingAmountInput) ? 0.0 : MoneyInput::parse($this->openingAmountInput);
+
+        if ($amount === null || $amount < 0) {
+            $this->addError('openingAmountInput', 'Informe um valor de abertura válido (zero ou maior).');
+
+            return;
+        }
+
         $company = app('current.company');
         $terminalName = trim($this->terminalName) ?: null;
+        $userId = auth()->id();
 
-        $session = PdvCashSession::create([
-            'company_id' => $company->id,
-            'branch_id' => $this->selectedBranchId,
-            'user_id' => auth()->id(),
-            'terminal_name' => $terminalName,
-            'opening_amount' => $amount,
-        ]);
+        // Duplo clique, Enter + clique ou duas abas abrindo ao mesmo tempo criavam duas sessões
+        // abertas pro mesmo operador/filial (syncCashSession pega a mais recente e a outra ficava
+        // órfã, com vendas fora da conferência). A trava serializa a checagem + criação.
+        $lock = Cache::lock("pdv:open-cash:{$company->id}:{$this->selectedBranchId}:{$userId}", 10);
+
+        $session = $lock->get(function () use ($company, $userId, $terminalName, $amount) {
+            $existing = PdvCashSession::withoutGlobalScopes()
+                ->where('company_id', $company->id)
+                ->where('branch_id', $this->selectedBranchId)
+                ->where('user_id', $userId)
+                ->whereNull('closed_at')
+                ->latest()
+                ->first();
+
+            if ($existing) {
+                return $existing;
+            }
+
+            $created = PdvCashSession::create([
+                'company_id' => $company->id,
+                'branch_id' => $this->selectedBranchId,
+                'user_id' => $userId,
+                'terminal_name' => $terminalName,
+                'opening_amount' => $amount,
+            ]);
+
+            $this->cashSessionId = $created->id;
+
+            $this->audit('cash_opened', [
+                'amount' => $amount,
+                'reason' => $terminalName,
+            ]);
+
+            return $created;
+        });
+
+        if (! $session) {
+            // Outra requisição do mesmo operador está abrindo o caixa agora — só ressincroniza.
+            $this->syncCashSession();
+
+            return;
+        }
 
         $this->cashSessionId = $session->id;
         $this->openingAmountInput = '';
         $this->step = 'catalog';
-
-        $this->audit('cash_opened', [
-            'amount' => $amount,
-            'reason' => $terminalName,
-        ]);
     }
 
     public function proceedToCloseCash(): void
@@ -100,7 +147,16 @@ trait HasCashSession
 
         $this->resetValidation(['cash_movement_amount', 'cash_movement_reason']);
 
-        $amount = (float) str_replace(',', '.', $this->cashMovementAmountInput ?: '0');
+        $session = $this->ownOpenCashSession();
+
+        if (! $session) {
+            $this->addError('cash_movement_amount', 'O caixa não está aberto.');
+            $this->syncCashSession();
+
+            return;
+        }
+
+        $amount = MoneyInput::toFloat($this->cashMovementAmountInput);
         $reason = trim($this->cashMovementReason);
 
         if ($amount <= 0) {
@@ -113,6 +169,16 @@ trait HasCashSession
             $this->addError('cash_movement_reason', 'Informe o motivo da movimentação.');
 
             return;
+        }
+
+        if ($this->cashMovementType === 'withdrawal') {
+            $available = $this->cashSessionExpected($session);
+
+            if ($amount > $available + 0.001) {
+                $this->addError('cash_movement_amount', 'Sangria maior que o dinheiro disponível no caixa (R$ '.number_format($available, 2, ',', '.').').');
+
+                return;
+            }
         }
 
         $this->audit($this->cashMovementType === 'withdrawal' ? 'cash_withdrawal' : 'cash_supply', [
@@ -135,14 +201,16 @@ trait HasCashSession
             return;
         }
 
-        $session = PdvCashSession::find($this->cashSessionId);
+        $session = $this->ownOpenCashSession();
 
-        if (! $session || $session->closed_at) {
+        if (! $session) {
             $this->cashSessionId = null;
             $this->step = 'open_cash';
 
             return;
         }
+
+        $this->resetValidation(['closingAmountInput', 'reconciliation_notes']);
 
         if (blank($this->closingAmountInput)) {
             $this->addError('closingAmountInput', 'Informe o valor contado no caixa.');
@@ -150,8 +218,15 @@ trait HasCashSession
             return;
         }
 
+        $closing = MoneyInput::parse($this->closingAmountInput);
+
+        if ($closing === null || $closing < 0) {
+            $this->addError('closingAmountInput', 'Informe um valor contado válido (zero ou maior).');
+
+            return;
+        }
+
         $expected = $this->cashSessionExpected($session);
-        $closing = (float) str_replace(',', '.', $this->closingAmountInput);
         $diff = round($closing - $expected, 2);
 
         // Require reconciliation notes if discrepancy > R$5
@@ -185,6 +260,24 @@ trait HasCashSession
 
         $this->showClosingReports = true;
         $this->viewingClosedSessionId = $session->id;
+    }
+
+    /**
+     * Sessão aberta do operador logado nesta filial. `cashSessionId` é `#[Locked]`, mas quem
+     * fecha/movimenta o caixa precisa ser o dono da sessão — nunca só "alguma sessão da empresa".
+     */
+    private function ownOpenCashSession(): ?PdvCashSession
+    {
+        if (! $this->cashSessionId) {
+            return null;
+        }
+
+        return PdvCashSession::query()
+            ->whereKey($this->cashSessionId)
+            ->where('user_id', auth()->id())
+            ->where('branch_id', $this->selectedBranchId)
+            ->whereNull('closed_at')
+            ->first();
     }
 
     public function cancelCloseCash(): void
