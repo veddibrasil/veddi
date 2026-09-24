@@ -546,6 +546,6 @@ class Config extends Component
     public function render()
     {
         return view('livewire.admin.fiscal.config')
-            ->layout('layouts.app', ['title' => 'Configurações Fiscais']);
+            ->layout('layouts.app', ['title' => 'Dados fiscais']);
     }
 }

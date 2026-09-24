@@ -1,11 +1,9 @@
 <div class="w-full space-y-6">
-    <h1 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100">Configurações Fiscais</h1>
+    <x-admin.unsaved-guard />
 
-    @if(session('status'))
-        <div class="bg-green-50 border border-green-200 text-green-700 rounded-lg px-4 py-3 text-sm dark:bg-green-900/30 dark:border-green-700 dark:text-green-400">
-            {{ session('status') }}
-        </div>
-    @endif
+    <x-admin.page-header title="Dados fiscais" />
+
+    <x-admin.flash-status />
 
     @unless($canManage)
         <div class="bg-yellow-50 border border-yellow-200 text-yellow-700 rounded-lg px-4 py-3 text-sm dark:bg-yellow-900/30 dark:border-yellow-700 dark:text-yellow-400">
@@ -17,7 +15,7 @@
         {{-- Cadastro completo exigido pela Focus NFe --}}
         <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
             <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Cadastro para emissão fiscal</h2>
-            <p class="text-xs text-neutral-400 dark:text-neutral-500">
+            <p class="text-xs text-neutral-600 dark:text-neutral-400">
                 Dados exigidos pela Focus NFe para registrar o emissor. Campos já preenchidos em outras telas aparecem bloqueados aqui — edite-os em
                 <a href="{{ route('admin.settings') }}" class="underline">Configurações da Empresa</a> ou
                 <a href="{{ route('admin.branches.index') }}" class="underline">Filiais</a>.
@@ -50,7 +48,7 @@
                                 <option value="{{ $option['id'] }}">{{ $option['name'] }}</option>
                             @endforeach
                         </flux:select>
-                        <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">Cada filial tem sua própria configuração fiscal — trocar aqui troca todo o formulário abaixo.</p>
+                        <p class="text-xs text-neutral-600 dark:text-neutral-400 mt-1">Cada filial tem sua própria configuração fiscal — trocar aqui troca todo o formulário abaixo.</p>
                     @endif
                 </div>
             </div>
@@ -121,7 +119,7 @@
                     @error('idTokenNfceProducao') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
             </div>
-            <p class="text-xs text-neutral-400 dark:text-neutral-500">
+            <p class="text-xs text-neutral-600 dark:text-neutral-400">
                 CSC e ID do Token são exigidos pela SEFAZ apenas para emissão de NFC-e em produção — gere-os no portal da Fazenda do seu estado.
             </p>
         </div>
@@ -179,7 +177,7 @@
         {{-- Provider --}}
         <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
             <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Integração Focus NFe</h2>
-            <p class="text-xs text-neutral-400 dark:text-neutral-500">
+            <p class="text-xs text-neutral-600 dark:text-neutral-400">
                 O registro da empresa e os tokens de emissão são obtidos automaticamente ao salvar com CNPJ e certificado preenchidos.
             </p>
 
@@ -194,7 +192,7 @@
         {{-- Certificado --}}
         <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
             <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Certificado Digital A1</h2>
-            <p class="text-xs text-neutral-400 dark:text-neutral-500">
+            <p class="text-xs text-neutral-600 dark:text-neutral-400">
                 Envie apenas para atualizar o certificado. Arquivos aceitos: .pfx, .p12
                 @if($hasCertificate) <span class="text-green-600 dark:text-green-400">Certificado já configurado.</span> @endif
             </p>
@@ -216,9 +214,7 @@
         </div>
 
         @if($canManage)
-            <div class="flex justify-end">
-                <flux:button type="submit" variant="primary">Salvar Configurações</flux:button>
-            </div>
+            <x-admin.form-actions save-label="Salvar dados fiscais" sticky />
         @endif
     </form>
 </div>

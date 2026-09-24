@@ -29,7 +29,7 @@ class SetupChecklist extends Component
                 'title' => 'Cadastrar uma filial',
                 'description' => 'Adicione pelo menos uma filial para receber pedidos.',
                 'actionLabel' => 'Criar filial',
-                'actionRoute' => route('admin.branches.index'),
+                'actionRoute' => route('admin.branches.create'),
             ],
             [
                 'done' => ! empty($company->email),

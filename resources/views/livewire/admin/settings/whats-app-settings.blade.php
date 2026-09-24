@@ -21,13 +21,9 @@
 @endphp
 
 <div class="w-full space-y-6">
-    <h1 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100">Notificações WhatsApp</h1>
+    <x-admin.page-header title="Notificações WhatsApp" />
 
-    @if(session('status'))
-        <div class="bg-green-50 border border-green-200 text-green-700 rounded-lg px-4 py-3 text-sm dark:bg-green-900/30 dark:border-green-700 dark:text-green-400">
-            {{ session('status') }}
-        </div>
-    @endif
+    <x-admin.flash-status />
 
     @if($notice)
         <div class="bg-green-50 border border-green-200 text-green-700 rounded-lg px-4 py-3 text-sm dark:bg-green-900/30 dark:border-green-700 dark:text-green-400">
@@ -60,21 +56,21 @@
         @if($status === \App\Models\WhatsAppConnection::STATUS_ACTIVE)
             <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
                 <div>
-                    <dt class="text-xs text-neutral-400 dark:text-neutral-500">Nome verificado</dt>
+                    <dt class="text-xs text-neutral-600 dark:text-neutral-400">Nome verificado</dt>
                     <dd class="font-medium text-neutral-800 dark:text-neutral-100">{{ $connection->verified_name ?: '—' }}</dd>
                 </div>
                 <div>
-                    <dt class="text-xs text-neutral-400 dark:text-neutral-500">Número</dt>
+                    <dt class="text-xs text-neutral-600 dark:text-neutral-400">Número</dt>
                     <dd class="font-medium text-neutral-800 dark:text-neutral-100">{{ $connection->display_phone_number ?: '—' }}</dd>
                 </div>
                 <div>
-                    <dt class="text-xs text-neutral-400 dark:text-neutral-500">Tipo de conexão</dt>
+                    <dt class="text-xs text-neutral-600 dark:text-neutral-400">Tipo de conexão</dt>
                     <dd class="font-medium text-neutral-800 dark:text-neutral-100">
                         {{ $connection->isCoexistence() ? 'Coexistência (com o app WhatsApp Business)' : 'Número novo (API oficial)' }}
                     </dd>
                 </div>
                 <div>
-                    <dt class="text-xs text-neutral-400 dark:text-neutral-500">Qualidade do número</dt>
+                    <dt class="text-xs text-neutral-600 dark:text-neutral-400">Qualidade do número</dt>
                     <dd>
                         @if($connection->quality_rating)
                             <flux:badge size="sm" :color="$qualityColors[$connection->quality_rating] ?? 'zinc'">
@@ -87,7 +83,7 @@
                 </div>
                 @if($connection->messaging_limit_tier)
                     <div>
-                        <dt class="text-xs text-neutral-400 dark:text-neutral-500">Limite diário da Meta</dt>
+                        <dt class="text-xs text-neutral-600 dark:text-neutral-400">Limite diário da Meta</dt>
                         <dd class="font-medium text-neutral-800 dark:text-neutral-100">
                             {{ $tierLabels[$connection->messaging_limit_tier] ?? $connection->messaging_limit_tier }} clientes por dia
                         </dd>
@@ -253,7 +249,7 @@
                 <div class="flex items-center justify-between py-2 {{ !$loop->last ? 'border-b border-neutral-100 dark:border-zinc-700' : '' }}">
                     <div>
                         <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">{{ $item['title'] }}</p>
-                        <p class="text-xs text-neutral-400 dark:text-neutral-500">{{ $item['desc'] }}</p>
+                        <p class="text-xs text-neutral-600 dark:text-neutral-400">{{ $item['desc'] }}</p>
                     </div>
                     <flux:switch wire:model="{{ $item['model'] }}" :disabled="($item['disabled'] ?? false) || ! $canConfigure" />
                 </div>

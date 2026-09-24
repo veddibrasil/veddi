@@ -3,13 +3,14 @@
 namespace App\Livewire\Admin\Branches;
 
 use App\Models\Branch;
-use App\Models\Coupon;
 use App\Models\Scopes\CompanyScope;
 use Livewire\Component;
 
 class Index extends Component
 {
     public ?int $deletingId = null;
+
+    public string $deletingName = '';
 
     public bool $canCreate = false;
 
@@ -21,7 +22,8 @@ class Index extends Component
 
     public bool $canCreateMoreBranches = false;
 
-    public bool $deliveryEnabled = false;
+    /** Papéis travados numa filial (ex.: gerente) só enxergam a própria. */
+    public bool $branchScoped = false;
 
     public int $branchCount = 0;
 
@@ -33,10 +35,9 @@ class Index extends Component
         if ($user->isSuperAdmin()) {
             $this->canCreate = $this->canUpdate = $this->canDelete = true;
             $this->canCreateMoreBranches = true;
-            $this->deliveryEnabled = true;
         } elseif (app()->bound('current.company')) {
             $company = app('current.company');
-            $this->authorize('viewAny', Coupon::class);
+            $this->authorize('viewAny', Branch::class);
             $this->canCreate = $user->hasPermission('branches.create', $company);
             $this->canUpdate = $user->hasPermission('branches.update', $company);
             $this->canDelete = $user->hasPermission('branches.delete', $company);
@@ -44,18 +45,25 @@ class Index extends Component
             $this->branchLimit = $company->maxBranches();
             $this->branchCount = $company->branches()->count();
             $this->canCreateMoreBranches = $this->canCreate && ($this->branchCount < $this->branchLimit);
-            $this->deliveryEnabled = true;
+            $this->branchScoped = $user->isBranchScoped($company);
         }
     }
 
     public function confirmDelete(int $id): void
     {
         $this->deletingId = $id;
+
+        // Só o nome, para o modal dizer o que será removido; a autorização real fica em delete().
+        $query = auth()->user()->isSuperAdmin()
+            ? Branch::withoutGlobalScope(CompanyScope::class)
+            : Branch::query();
+        $this->deletingName = (string) $query->whereKey($id)->value('name');
     }
 
     public function cancelDelete(): void
     {
         $this->deletingId = null;
+        $this->deletingName = '';
     }
 
     public function delete(): void
@@ -71,17 +79,22 @@ class Index extends Component
 
         $branch->delete();
         $this->deletingId = null;
+        $this->deletingName = '';
         session()->flash('status', 'Filial removida.');
     }
 
     public function render()
     {
-
-        $isSuperAdmin = auth()->user()->isSuperAdmin();
+        $user = auth()->user();
+        $isSuperAdmin = $user->isSuperAdmin();
 
         $query = $isSuperAdmin
             ? Branch::withoutGlobalScope(CompanyScope::class)->with(['company', 'addressRecord'])->orderBy('name')
             : Branch::with(['addressRecord', 'company'])->orderBy('name');
+
+        if ($this->branchScoped) {
+            $query->whereKey($user->branchIdForCompany(app('current.company')));
+        }
 
         $branches = $query->get();
 

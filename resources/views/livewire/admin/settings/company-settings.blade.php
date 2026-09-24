@@ -1,11 +1,9 @@
 <div class="w-full space-y-6">
-    <h1 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100">Configurações da Empresa</h1>
+    <x-admin.unsaved-guard :dirty-on="['addHighlight', 'removeHighlight']" />
 
-    @if(session('status'))
-        <div class="bg-green-50 border border-green-200 text-green-700 rounded-lg px-4 py-3 text-sm dark:bg-green-900/30 dark:border-green-700 dark:text-green-400">
-            {{ session('status') }}
-        </div>
-    @endif
+    <x-admin.page-header title="Configurações da Empresa" />
+
+    <x-admin.flash-status />
 
     {{-- Identidade --}}
     <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
@@ -46,12 +44,12 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
             <div>
                 <flux:input wire:model="order_prefix" label="Prefixo dos pedidos" placeholder="ORD" />
-                <p class="text-xs text-neutral-400 mt-1 dark:text-neutral-500">Ex: MXC → pedido MXC-2026-00001. Somente letras e números maiúsculos.</p>
+                <p class="text-xs text-neutral-600 mt-1 dark:text-neutral-400">Ex: MXC → pedido MXC-2026-00001. Somente letras e números maiúsculos.</p>
                 @error('order_prefix') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
             <div>
                 <flux:input wire:model="email" type="email" label="E-mail da empresa" placeholder="empresa@exemplo.com" />
-                <p class="text-xs text-neutral-400 mt-1 dark:text-neutral-500">Necessário para o pagamento ser aplicado nos pedidos. Sem e-mail, o repasse fica retido.</p>
+                <p class="text-xs text-neutral-600 mt-1 dark:text-neutral-400">Necessário para o pagamento ser aplicado nos pedidos. Sem e-mail, o repasse fica retido.</p>
                 @error('email') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
         </div>
@@ -70,23 +68,23 @@
     <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
         <div>
             <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Pixels de Rastreamento</h2>
-            <p class="text-xs text-neutral-400 mt-0.5 dark:text-neutral-500">Usados para medir tráfego e conversões no chat público da sua empresa. Deixe em branco o que não usar.</p>
+            <p class="text-xs text-neutral-600 mt-0.5 dark:text-neutral-400">Usados para medir tráfego e conversões no chat público da sua empresa. Deixe em branco o que não usar.</p>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
                 <flux:input wire:model="facebook_pixel_id" label="Meta / Facebook Pixel ID" placeholder="123456789012345" />
-                <p class="text-xs text-neutral-400 mt-1 dark:text-neutral-500">Somente números.</p>
+                <p class="text-xs text-neutral-600 mt-1 dark:text-neutral-400">Somente números.</p>
                 @error('facebook_pixel_id') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
             <div>
                 <flux:input wire:model="google_analytics_id" label="Google Analytics (GA4)" placeholder="G-XXXXXXXXXX" />
-                <p class="text-xs text-neutral-400 mt-1 dark:text-neutral-500">ID de medição, começa com "G-".</p>
+                <p class="text-xs text-neutral-600 mt-1 dark:text-neutral-400">ID de medição, começa com "G-".</p>
                 @error('google_analytics_id') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
             <div>
                 <flux:input wire:model="google_ads_id" label="Google Ads" placeholder="AW-XXXXXXXXX" />
-                <p class="text-xs text-neutral-400 mt-1 dark:text-neutral-500">ID de conversão, começa com "AW-".</p>
+                <p class="text-xs text-neutral-600 mt-1 dark:text-neutral-400">ID de conversão, começa com "AW-".</p>
                 @error('google_ads_id') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
         </div>
@@ -106,55 +104,28 @@
                 </div>
             </div>
         @else
+            @php
+                $brandColors = [
+                    'primary_color' => ['Cor primária', '#7A00A3'],
+                    'primary_color_dark' => ['Cor primária escura', '#5c0079'],
+                    'primary_color_light' => ['Cor primária clara', '#9B10C8'],
+                    'secondary_color' => ['Cor secundária', '#1E2F4F'],
+                    'secondary_color_light' => ['Cor secundária clara', '#D8DEE9'],
+                    'accent_color' => ['Cor de destaque (fundo)', '#f9f0fd'],
+                ];
+            @endphp
+
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                <div>
-                    <label class="block text-sm font-medium text-neutral-700 mb-1 dark:text-neutral-300">Cor primária</label>
-                    <div class="flex items-center gap-2">
-                        <input type="color" wire:model="primary_color" class="h-9 w-14 cursor-pointer rounded border border-neutral-200 dark:border-zinc-600">
-                        <flux:input wire:model="primary_color" placeholder="#7A00A3" class="font-mono text-sm" />
+                @foreach($brandColors as $field => [$label, $placeholder])
+                    <div>
+                        <label for="color-{{ $field }}" class="block text-sm font-medium text-neutral-700 mb-1 dark:text-neutral-300">{{ $label }}</label>
+                        <div class="flex items-center gap-2">
+                            <input id="color-{{ $field }}" type="color" wire:model="{{ $field }}" class="h-9 w-14 cursor-pointer rounded border border-neutral-200 dark:border-zinc-600">
+                            <flux:input wire:model="{{ $field }}" aria-label="{{ $label }} (código hexadecimal)" placeholder="{{ $placeholder }}" class="font-mono text-sm" />
+                        </div>
+                        @error($field) <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
-                    @error('primary_color') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-neutral-700 mb-1 dark:text-neutral-300">Cor primária escura</label>
-                    <div class="flex items-center gap-2">
-                        <input type="color" wire:model="primary_color_dark" class="h-9 w-14 cursor-pointer rounded border border-neutral-200 dark:border-zinc-600">
-                        <flux:input wire:model="primary_color_dark" placeholder="#5c0079" class="font-mono text-sm" />
-                    </div>
-                    @error('primary_color_dark') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-neutral-700 mb-1 dark:text-neutral-300">Cor primária clara</label>
-                    <div class="flex items-center gap-2">
-                        <input type="color" wire:model="primary_color_light" class="h-9 w-14 cursor-pointer rounded border border-neutral-200 dark:border-zinc-600">
-                        <flux:input wire:model="primary_color_light" placeholder="#9B10C8" class="font-mono text-sm" />
-                    </div>
-                    @error('primary_color_light') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-neutral-700 mb-1 dark:text-neutral-300">Cor secundária</label>
-                    <div class="flex items-center gap-2">
-                        <input type="color" wire:model="secondary_color" class="h-9 w-14 cursor-pointer rounded border border-neutral-200 dark:border-zinc-600">
-                        <flux:input wire:model="secondary_color" placeholder="#1E2F4F" class="font-mono text-sm" />
-                    </div>
-                    @error('secondary_color') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-neutral-700 mb-1 dark:text-neutral-300">Cor secundária clara</label>
-                    <div class="flex items-center gap-2">
-                        <input type="color" wire:model="secondary_color_light" class="h-9 w-14 cursor-pointer rounded border border-neutral-200 dark:border-zinc-600">
-                        <flux:input wire:model="secondary_color_light" placeholder="#D8DEE9" class="font-mono text-sm" />
-                    </div>
-                    @error('secondary_color_light') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-neutral-700 mb-1 dark:text-neutral-300">Cor de destaque (fundo)</label>
-                    <div class="flex items-center gap-2">
-                        <input type="color" wire:model="accent_color" class="h-9 w-14 cursor-pointer rounded border border-neutral-200 dark:border-zinc-600">
-                        <flux:input wire:model="accent_color" placeholder="#f9f0fd" class="font-mono text-sm" />
-                    </div>
-                    @error('accent_color') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-                </div>
+                @endforeach
             </div>
 
             {{-- Preview dinâmico --}}
@@ -170,7 +141,7 @@
         <div class="flex items-center justify-between">
             <div>
                 <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Diferenciais do Chat</h2>
-                <p class="text-xs text-neutral-400 mt-0.5 dark:text-neutral-500">Exibidos no painel esquerdo do chat (desktop). Máximo 6 itens.</p>
+                <p class="text-xs text-neutral-600 mt-0.5 dark:text-neutral-400">Exibidos no painel esquerdo do chat (desktop). Máximo 6 itens.</p>
             </div>
             @if(!$isFree && count($chat_highlights) < 6)
                 <flux:button wire:click="addHighlight" size="sm" variant="ghost">
@@ -207,7 +178,7 @@
                                 @error("chat_highlights.{$i}.description") <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                             </div>
                         </div>
-                        <button wire:click="removeHighlight({{ $i }})" class="text-neutral-400 hover:text-red-500 transition-colors mt-1.5 shrink-0" title="Remover">
+                        <button wire:click="removeHighlight({{ $i }})" class="text-neutral-500 hover:text-red-500 transition-colors mt-1.5 shrink-0" title="Remover">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                                 <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
                             </svg>
@@ -216,7 +187,7 @@
                 @endforeach
 
                 @if(count($chat_highlights) === 0)
-                    <p class="text-sm text-neutral-400 text-center py-4 dark:text-neutral-500">Nenhum diferencial cadastrado. Clique em "+ Adicionar" para começar.</p>
+                    <p class="text-sm text-neutral-600 text-center py-4 dark:text-neutral-400">Nenhum diferencial cadastrado. Clique em "+ Adicionar" para começar.</p>
                 @endif
             </div>
         @endif
@@ -229,7 +200,7 @@
         <div class="flex items-start justify-between gap-4">
             <div>
                 <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">Absorver a taxa PIX de R$ 0,50</p>
-                <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
+                <p class="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
                     Se ativado, os R$ 0,50 serão descontados do seu repasse e o cliente pagará apenas o valor do pedido.<br>
                     Se desativado, o cliente pagará R$ 0,50 a mais no momento do pagamento.
                 </p>
@@ -261,7 +232,7 @@
         <div class="flex items-start justify-between gap-4">
             <div>
                 <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">Absorver a taxa de cartão</p>
-                <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
+                <p class="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
                     Se ativado, as taxas de cartão serão descontadas do seu repasse e o cliente pagará apenas o valor do pedido.<br>
                     Se desativado, o valor cobrado do cliente já inclui as taxas de processamento do cartão.
                 </p>
@@ -292,7 +263,7 @@
             <div class="flex items-start justify-between gap-4">
                 <div>
                     <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">Permitir desconto manual</p>
-                    <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
+                    <p class="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
                         Se ativado, o operador pode aplicar desconto manual (valor ou percentual) nas vendas do PDV.<br>
                         Se desativado, essa opção fica oculta no terminal.
                     </p>
@@ -308,13 +279,13 @@
     @endif
 
     {{-- Agendamento de Pedidos --}}
-    <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
+    <div id="agendamento" class="bg-white border rounded-xl shadow-sm p-6 space-y-4 scroll-mt-4 dark:bg-zinc-800 dark:border-zinc-700">
         <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Agendamento de Pedidos</h2>
 
         <div class="flex items-start justify-between gap-4">
             <div>
                 <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">Permitir agendamento de pedidos</p>
-                <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
+                <p class="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
                     Se ativado, o cliente poderá escolher no chat entre receber o pedido agora ou agendar para uma data/hora futura.<br>
                     Se desativado, essa pergunta não aparece no chat — o pedido segue direto para o fluxo normal.
                 </p>
@@ -337,8 +308,12 @@
                     min="0"
                     max="10080"
                 />
-                <p class="text-xs text-neutral-400 mt-1 dark:text-neutral-500">
+                <p class="text-xs text-neutral-600 mt-1 dark:text-neutral-400">
                     O horário agendado será validado contra o horário de funcionamento da filial.
+                    @if($canViewBranches)
+                        Os intervalos de agendamento de cada dia são definidos em
+                        <a href="{{ route('admin.branches.index') }}" class="font-medium underline underline-offset-2">Filiais › Dados e horários</a>.
+                    @endif
                 </p>
                 @error('scheduleMinAdvanceMinutes') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
             </div>
@@ -368,12 +343,6 @@
         </div>
     @endunless
 
-    <div class="flex gap-3 pb-8">
-        <flux:button wire:click="save" class="bg-amber-500! text-white! hover:bg-amber-600!"
-            wire:loading.attr="disabled">
-            <span wire:loading.remove wire:target="save">Salvar configurações</span>
-            <span wire:loading wire:target="save">Salvando...</span>
-        </flux:button>
-    </div>
+    <x-admin.form-actions save-label="Salvar configurações" sticky />
 
 </div>

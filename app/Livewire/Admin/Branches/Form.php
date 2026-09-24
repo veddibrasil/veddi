@@ -10,6 +10,16 @@ use Livewire\Component;
 
 class Form extends Component
 {
+    public const STATES = [
+        'AC' => 'Acre', 'AL' => 'Alagoas', 'AP' => 'Amapá', 'AM' => 'Amazonas', 'BA' => 'Bahia',
+        'CE' => 'Ceará', 'DF' => 'Distrito Federal', 'ES' => 'Espírito Santo', 'GO' => 'Goiás',
+        'MA' => 'Maranhão', 'MT' => 'Mato Grosso', 'MS' => 'Mato Grosso do Sul', 'MG' => 'Minas Gerais',
+        'PA' => 'Pará', 'PB' => 'Paraíba', 'PR' => 'Paraná', 'PE' => 'Pernambuco', 'PI' => 'Piauí',
+        'RJ' => 'Rio de Janeiro', 'RN' => 'Rio Grande do Norte', 'RS' => 'Rio Grande do Sul',
+        'RO' => 'Rondônia', 'RR' => 'Roraima', 'SC' => 'Santa Catarina', 'SP' => 'São Paulo',
+        'SE' => 'Sergipe', 'TO' => 'Tocantins',
+    ];
+
     public ?Branch $branch = null;
 
     public bool $isEditing = false;
@@ -72,7 +82,7 @@ class Form extends Component
             'complement' => ['nullable', 'string', 'max:100'],
             'neighborhood' => ['nullable', 'string', 'max:100'],
             'city' => ['required', 'string', 'max:100'],
-            'state' => ['nullable', 'string', 'size:2'],
+            'state' => ['nullable', 'string', 'size:2', 'in:'.implode(',', array_keys(self::STATES))],
             'cep' => ['nullable', 'regex:/^\\d{5}-?\\d{3}$/'],
             'phone' => ['nullable', 'regex:/^\(?\d{2}\)?[\s\-]?\d{4,5}[\-]?\d{4}$/'],
             'active' => ['boolean'],
@@ -103,6 +113,7 @@ class Form extends Component
             'address.required' => 'Informe o endereço.',
             'city.required' => 'Informe a cidade.',
             'state.size' => 'UF inválida. Use 2 letras (ex: SP).',
+            'state.in' => 'UF inválida. Selecione um estado da lista.',
             'cep.regex' => 'CEP inválido. Use o formato 00000-000.',
             'phone.regex' => 'Telefone inválido.',
             'available_days.required' => 'Selecione ao menos um dia de funcionamento.',
@@ -141,13 +152,21 @@ class Form extends Component
         $branch = $this->persistBranch($validated);
         $companyId = $branch->company_id;
 
-        session()->flash('status', $this->isEditing ? 'Filial atualizada.' : 'Filial criada.');
         session()->forget('chat_state');
 
         Cache::forget("branches:company:{$companyId}");
         Cache::forget("open_branches:company:{$companyId}");
 
-        $this->redirect(route('admin.branches.index'));
+        if ($this->isEditing) {
+            // Fica na tela: as abas da filial levam direto à próxima configuração.
+            session()->flash('status', 'Filial atualizada.');
+
+            return;
+        }
+
+        session()->flash('status', 'Filial criada! Próximo passo: configure a entrega e as pausas nas abas abaixo.');
+
+        $this->redirect(route('admin.branches.edit', $branch));
     }
 
     public function render()
@@ -159,7 +178,11 @@ class Form extends Component
                 ->get()
             : collect();
 
-        return view('livewire.admin.branches.form', compact('companies'))
+        $company = ! $this->needsCompanySelect && app()->bound('current.company') ? app('current.company') : null;
+        $schedulingEnabled = (bool) $company?->schedulingEnabled();
+        $canCompanySettings = $company && auth()->user()->hasPermission('company.settings', $company);
+
+        return view('livewire.admin.branches.form', compact('companies', 'schedulingEnabled', 'canCompanySettings'))
             ->layout('layouts.app', ['title' => $this->isEditing ? 'Editar Filial' : 'Nova Filial']);
     }
 
@@ -178,7 +201,7 @@ class Form extends Component
             return;
         }
 
-        $company = $user->companies()->first();
+        $company = app()->bound('current.company') ? app('current.company') : $user->companies()->first();
         $this->company_id = $company?->id;
 
         if (! $company) {
@@ -186,6 +209,11 @@ class Form extends Component
         }
 
         $isEditing = $branch?->exists ?? false;
+
+        if ($isEditing && $user->isBranchScoped($company) && $user->branchIdForCompany($company) !== $branch->id) {
+            abort(403);
+        }
+
         $permission = $isEditing ? 'branches.update' : 'branches.create';
         $this->canSave = $user->hasPermission($permission, $company);
     }
@@ -204,7 +232,7 @@ class Form extends Component
         $this->complement = (string) ($branch->complement ?? '');
         $this->neighborhood = (string) ($branch->neighborhood ?? '');
         $this->city = (string) ($branch->city ?? '');
-        $this->state = (string) ($branch->state ?? '');
+        $this->state = strtoupper((string) ($branch->state ?? ''));
         $this->cep = (string) ($branch->cep ?? '');
         $this->phone = (string) ($branch->phone ?? '');
         $this->active = (bool) ($branch->active ?? true);

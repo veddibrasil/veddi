@@ -104,22 +104,29 @@
                     @endif
 
                     @php
+                        // Gerente (papel travado numa filial) vê só a própria: "Minha filial" em vez de "Filiais".
                         $isBranchManager = $company && $user?->isBranchManager($company);
-                        $showBranches   = $can('branches.view') && !$isBranchManager;
+                        $isBranchScoped = $company && $user?->isBranchScoped($company);
+                        // A rota /branches só aceita admin, gerente e papéis customizados; caixa/cozinha/bar levariam 403.
+                        $showBranches   = $can('branches.view') && (!$isBranchScoped || $isBranchManager);
                         $showCategories = $can('categories.view');
                         $showProducts   = $can('products.view');
                         $showStock      = $can('stock.view');
                         $showCoupons    = $can('coupons.view');
-                        $showCardapio   = $showBranches || $showCategories || $showProducts || $showStock || $showCoupons;
+                        $showCardapio   = $showCategories || $showProducts || $showStock || $showCoupons;
                     @endphp
+
+                    {{-- Filial é a loja (endereço, horários, entrega, impressoras), não item de cardápio: grupo próprio, antes do cardápio. --}}
+                    @if($showBranches)
+                        <flux:sidebar.group heading="Loja" class="grid">
+                            <flux:sidebar.item icon="building-storefront" :href="route('admin.branches.index')" :current="request()->routeIs('admin.branches.*')" wire:navigate>
+                                {{ $isBranchScoped ? 'Minha filial' : 'Filiais' }}
+                            </flux:sidebar.item>
+                        </flux:sidebar.group>
+                    @endif
 
                     @if($showCardapio)
                         <flux:sidebar.group heading="Cardápio" class="grid">
-                            @if($showBranches)
-                                <flux:sidebar.item icon="building-storefront" :href="route('admin.branches.index')" :current="request()->routeIs('admin.branches.*')" wire:navigate>
-                                    Filiais
-                                </flux:sidebar.item>
-                            @endif
                             @if($showCategories)
                                 <flux:sidebar.item icon="tag" :href="route('admin.categories.index')" :current="request()->routeIs('admin.categories.*')" wire:navigate>
                                     Categorias
@@ -152,7 +159,7 @@
                             @endif
                             @if($can('fiscal.settings'))
                                 <flux:sidebar.item icon="cog-6-tooth" :href="route('admin.fiscal.config')" :current="request()->routeIs('admin.fiscal.config')" wire:navigate>
-                                    Configurações
+                                    Dados fiscais
                                 </flux:sidebar.item>
                             @endif
                         </flux:sidebar.group>
@@ -179,16 +186,20 @@
                         </flux:sidebar.group>
                     @endif
 
+                    {{-- Assinatura e carteira são dinheiro, não configuração: grupo próprio, antes de Configurações. --}}
                     @if($showSettings)
-                        <flux:sidebar.group heading="Configurações" class="grid">
-                            <flux:sidebar.item icon="cog-6-tooth" :href="route('admin.settings')" :current="request()->routeIs('admin.settings')" wire:navigate>
-                                Empresa
-                            </flux:sidebar.item>
+                        <flux:sidebar.group heading="Financeiro" class="grid">
                             <flux:sidebar.item icon="credit-card" :href="route('admin.billing')" :current="request()->routeIs('admin.billing')" wire:navigate>
                                 Assinatura
                             </flux:sidebar.item>
-                            <flux:sidebar.item icon="banknotes" :href="route('admin.wallet')" :current="request()->routeIs('admin.wallet')" wire:navigate target="_blank">
-                                Carteira (Yapay)
+                            <flux:sidebar.item icon="banknotes" :href="route('admin.wallet')" :current="request()->routeIs('admin.wallet')" wire:navigate>
+                                Carteira
+                            </flux:sidebar.item>
+                        </flux:sidebar.group>
+
+                        <flux:sidebar.group heading="Configurações" class="grid">
+                            <flux:sidebar.item icon="cog-6-tooth" :href="route('admin.settings')" :current="request()->routeIs('admin.settings')" wire:navigate>
+                                Empresa
                             </flux:sidebar.item>
                             @if($company?->canUseIfoodIntegration())
                                 <flux:sidebar.item icon="link" :href="route('admin.integrations.index')" :current="request()->routeIs('admin.integrations.*') || request()->routeIs('admin.settings.ifood')" wire:navigate>
@@ -261,8 +272,8 @@
 
                     <flux:menu.radio.group>
             
-                        <flux:menu.item :href="route('profile.edit')" icon="cog" wire:navigate>
-                            {{ __('Configurações') }}
+                        <flux:menu.item :href="route('profile.edit')" icon="user-circle" wire:navigate>
+                            {{ __('Minha conta') }}
                         </flux:menu.item>
                     </flux:menu.radio.group>
 
