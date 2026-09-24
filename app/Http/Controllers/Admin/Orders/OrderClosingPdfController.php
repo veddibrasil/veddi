@@ -7,7 +7,6 @@ use App\Models\Company;
 use App\Models\Scopes\CompanyScope;
 use App\Services\Order\OrderClosingReportService;
 use App\Support\Printing\ThermalReceiptPaper;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -39,10 +38,10 @@ class OrderClosingPdfController extends Controller
 
         $report = $service->build($date, $isSuperAdmin, $companyId);
 
-        $pdf = Pdf::loadView('livewire.admin.orders.closing-receipt', [
+        $pdf = ThermalReceiptPaper::pdf('livewire.admin.orders.closing-receipt', [
             'report' => $report,
             'company' => $company,
-        ])->setPaper(ThermalReceiptPaper::forWidthMm(80));
+        ], 80);
 
         return $pdf->stream('fechamento-pedidos-'.$date->format('Y-m-d').'.pdf');
     }

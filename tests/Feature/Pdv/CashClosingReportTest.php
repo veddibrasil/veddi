@@ -103,6 +103,31 @@ test('operador consegue imprimir fechamento de sessão fechada', function () {
         ->assertHeader('content-type', 'application/pdf');
 });
 
+test('PDF do fechamento tem a altura do conteúdo, sem metro de papel em branco no fim', function () {
+    ['admin' => $admin, 'company' => $company, 'branch' => $branch] = cashClosingContext();
+
+    $session = PdvCashSession::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'user_id' => $admin->id,
+        'opening_amount' => 50.00,
+        'closing_amount' => 80.00,
+        'expected_amount' => 80.00,
+        'closed_at' => now(),
+    ]);
+
+    $response = $this->actingAs($admin)
+        ->get(route('admin.pdv.cash-session.print', $session))
+        ->assertOk();
+
+    preg_match('#/MediaBox\s*\[\s*[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)\s*\]#', $response->getContent(), $box);
+    $heightMm = (float) $box[2] * 25.4 / 72;
+
+    // Antes a página era fixa em 900 mm; o relatório real cabe em bem menos que 250 mm.
+    expect($heightMm)->toBeLessThan(250.0);
+    expect($heightMm)->toBeGreaterThan(60.0);
+});
+
 test('caixa não consegue imprimir fechamento (só visualiza)', function () {
     ['company' => $company, 'branch' => $branch] = cashClosingContext();
 
