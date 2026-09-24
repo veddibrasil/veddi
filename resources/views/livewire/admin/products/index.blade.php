@@ -1,9 +1,9 @@
 <div class="space-y-4"
     x-data="{}"
     x-init="$watch(() => $wire.deletingId, val => val ? $flux.modal('confirm-delete-product').show() : $flux.modal('confirm-delete-product').close())">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-wrap items-center justify-between gap-2">
         <h1 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100">Produtos</h1>
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
             @if($canUpdate && $canReorder)
             <button type="button" wire:click="toggleReorderMode"
                 class="inline-flex items-center gap-1 text-sm font-medium px-4 py-2 rounded-lg border transition-colors
@@ -21,20 +21,20 @@
     </div>
 
     @if (session('status'))
-        <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm dark:bg-green-900/30 dark:border-green-700 dark:text-green-400">
+        <div role="status" class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm dark:bg-green-900/30 dark:border-green-700 dark:text-green-400">
             {{ session('status') }}
         </div>
     @endif
 
     @if (session('error'))
-        <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm dark:bg-red-900/30 dark:border-red-700 dark:text-red-400">
+        <div role="alert" class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm dark:bg-red-900/30 dark:border-red-700 dark:text-red-400">
             {{ session('error') }}
         </div>
     @endif
 
     @if ($reorderMode)
         <div class="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg text-sm dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-300">
-            Esta é a mesma ordem que o cliente vê no chat. Arraste o cabeçalho <span class="font-bold">⠿</span> pra reordenar categorias, e cada produto pelo ícone pra reordenar dentro da categoria.
+            Esta é a mesma ordem que o cliente vê no chat. Arraste o cabeçalho <span class="font-bold">⠿</span> pra reordenar categorias, e cada produto pelo ícone pra reordenar dentro da categoria. Também dá pra usar os botões ▲ ▼ (teclado e toque).
         </div>
 
         <div x-data="productsReorder('{{ $this->getId() }}', @js($canUpdate))" class="space-y-4">
@@ -47,24 +47,37 @@
                         @if (! $group->active)
                             <span class="text-xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-500 dark:bg-zinc-700 dark:text-neutral-400">Inativa</span>
                         @endif
+                        @if ($canUpdate)
+                            <div class="ml-auto flex items-center gap-0.5">
+                                @include('livewire.admin.products.partials.move-buttons', ['method' => 'moveCategory', 'id' => $group->id, 'label' => 'a categoria '.$group->name, 'first' => $loop->first, 'last' => $loop->last])
+                            </div>
+                        @endif
                     </div>
                     <div data-reorder-group="{{ $group->id }}" class="divide-y dark:divide-zinc-700">
                         @forelse ($group->products as $product)
                             <div wire:key="reorder-product-{{ $product->id }}" data-product-id="{{ $product->id }}"
-                                class="flex items-center gap-4 px-4 py-3 {{ $canUpdate ? 'cursor-grab active:cursor-grabbing' : '' }}">
+                                class="flex flex-wrap sm:flex-nowrap items-center gap-x-3 sm:gap-x-4 gap-y-1 px-4 py-3 {{ $canUpdate ? 'cursor-grab active:cursor-grabbing' : '' }}">
                                 <span class="text-neutral-400 text-lg shrink-0 select-none">⠿</span>
                                 @if ($product->image_path)
-                                    <img src="{{ $product->image_url }}"
+                                    <img src="{{ $product->image_url }}" alt="" loading="lazy"
                                         class="w-10 h-10 rounded-lg object-cover shrink-0" />
                                 @else
                                     <div class="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center shrink-0 text-lg dark:bg-zinc-700">
                                         🥟
                                     </div>
                                 @endif
-                                <div class="flex-1 min-w-0">
-                                    <p class="font-semibold text-sm text-neutral-800 dark:text-neutral-100">{{ $product->name }}</p>
+                                {{-- min-w no mobile: o nome nunca fica espremido; preço e botões descem para a linha de baixo. --}}
+                                <div class="flex-1 min-w-[9rem] sm:min-w-0">
+                                    <p class="font-semibold text-sm text-neutral-800 dark:text-neutral-100 break-words">{{ $product->name }}</p>
                                 </div>
-                                <p class="font-bold text-sm text-amber-600 dark:text-amber-400 shrink-0">R$ {{ number_format($product->price, 2, ',', '.') }}</p>
+                                <div class="flex items-center gap-2 shrink-0 ml-auto">
+                                    <p class="font-bold text-sm text-amber-600 dark:text-amber-400">R$ {{ number_format($product->price, 2, ',', '.') }}</p>
+                                    @if ($canUpdate)
+                                        <div class="flex items-center gap-0.5">
+                                            @include('livewire.admin.products.partials.move-buttons', ['method' => 'moveProduct', 'id' => $product->id, 'label' => $product->name, 'first' => $loop->first, 'last' => $loop->last])
+                                        </div>
+                                    @endif
+                                </div>
                             </div>
                         @empty
                             <div class="px-4 py-6 text-center text-sm text-neutral-400 dark:text-neutral-500">Nenhum produto nesta categoria.</div>
@@ -80,19 +93,19 @@
             </div>
         </div>
     @else
-    <div class="flex gap-2">
+    <div class="flex flex-col gap-2 sm:flex-row">
         <div class="flex-1">
-            <flux:input wire:model.live="search" placeholder="Buscar produto..." />
+            <flux:input wire:model.live.debounce.300ms="search" placeholder="Buscar produto..." aria-label="Buscar produto" />
         </div>
         @if($isSuperAdmin)
-        <flux:select wire:model.live="companyFilter" placeholder="Todas as empresas" class="w-48 shrink-0">
+        <flux:select wire:model.live="companyFilter" placeholder="Todas as empresas" class="w-full sm:w-48 shrink-0">
             <flux:select.option value="">Todas as empresas</flux:select.option>
             @foreach ($companies as $company)
                 <flux:select.option value="{{ $company->id }}">{{ $company->name }}</flux:select.option>
             @endforeach
         </flux:select>
         @endif
-        <flux:select wire:model.live="categoryFilter" placeholder="Todas as categorias" class="w-48 shrink-0">
+        <flux:select wire:model.live="categoryFilter" placeholder="Todas as categorias" class="w-full sm:w-48 shrink-0">
             <flux:select.option value="">Todas as categorias</flux:select.option>
             @foreach ($categories as $cat)
                 <flux:select.option value="{{ $cat->id }}">{{ $cat->name }}</flux:select.option>
@@ -100,7 +113,7 @@
         </flux:select>
     </div>
     <div class="mt-3 flex">
-        <flux:select wire:model.live="sort" class="w-56 shrink-0">
+        <flux:select wire:model.live="sort" class="w-full sm:w-56 shrink-0">
             <flux:select.option value="menu">Ordenar: Cardápio</flux:select.option>
             <flux:select.option value="price_desc">Ordenar: Maior preço</flux:select.option>
             <flux:select.option value="price_asc">Ordenar: Menor preço</flux:select.option>
@@ -110,7 +123,7 @@
 
     <div class="bg-white border rounded-xl shadow-sm overflow-hidden dark:bg-zinc-800 dark:border-zinc-700">
         {{-- Cabeçalho de colunas --}}
-        <div class="flex items-center gap-4 px-4 py-2 border-b bg-neutral-50 dark:bg-zinc-700/50 dark:border-zinc-700">
+        <div class="hidden sm:flex items-center gap-4 px-4 py-2 border-b bg-neutral-50 dark:bg-zinc-700/50 dark:border-zinc-700">
             <div class="w-12 shrink-0"></div>
             <span class="flex-1 text-xs font-medium text-neutral-400 uppercase tracking-wide">Produto</span>
             <span class="text-xs font-medium text-neutral-400 uppercase tracking-wide w-24 text-right shrink-0">Preço</span>
@@ -119,9 +132,9 @@
         </div>
         <div class="divide-y dark:divide-zinc-700">
             @forelse ($products as $product)
-                <div class="flex items-center gap-4 px-4 py-3">
+                <div class="flex flex-wrap sm:flex-nowrap items-center gap-x-4 gap-y-2 px-4 py-3">
                     @if ($product->image_path)
-                        <img src="{{ $product->image_url }}"
+                        <img src="{{ $product->image_url }}" alt="" loading="lazy"
                             class="w-12 h-12 rounded-lg object-cover shrink-0" />
                     @else
                         <div class="w-12 h-12 rounded-lg bg-amber-50 flex items-center justify-center shrink-0 text-xl dark:bg-zinc-700">
@@ -135,7 +148,9 @@
                         @endif
                         <p class="text-xs text-neutral-400 dark:text-neutral-500">{{ $product->category->name ?? '—' }}</p>
                     </div>
-                    <div class="w-24 text-right shrink-0">
+                    {{-- No mobile preço/status/ações vão para uma segunda linha; a partir de sm o wrapper some (contents) e as colunas voltam a alinhar com o cabeçalho. --}}
+                    <div class="flex basis-full items-center justify-between gap-3 sm:contents">
+                    <div class="sm:w-24 sm:text-right shrink-0">
                         @if ($product->promo_price_enabled && $product->promo_price_value !== null)
                             <p class="text-[11px] text-neutral-400 dark:text-neutral-500 line-through">
                                 R$ {{ number_format($product->price, 2, ',', '.') }}
@@ -147,49 +162,53 @@
                             <p class="font-bold text-sm text-amber-600 dark:text-amber-400">R$ {{ number_format($product->price, 2, ',', '.') }}</p>
                         @endif
                     </div>
-                    <div class="w-16 text-center shrink-0">
+                    <div class="sm:w-16 text-center shrink-0">
                         <span class="text-xs px-2 py-0.5 rounded-full
                             {{ $product->active ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400' : 'bg-neutral-100 text-neutral-500 dark:bg-zinc-700 dark:text-neutral-400' }}">
                             {{ $product->active ? 'Ativo' : 'Inativo' }}
                         </span>
                     </div>
-                    <div class="w-28 flex items-center justify-end gap-1 shrink-0">
+                    <div class="sm:w-28 flex items-center justify-end gap-1 shrink-0">
                         {{-- Estoque --}}
                         <div class="relative group">
                             <a href="{{ route('admin.stock.index', ['search' => $product->name]) }}" wire:navigate
-                                class="inline-flex items-center justify-center p-1.5 rounded text-neutral-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:text-amber-400 dark:hover:bg-amber-900/20 transition-colors">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                aria-label="Estoque de {{ $product->name }}"
+                                class="inline-flex items-center justify-center p-3 sm:p-2 rounded text-neutral-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:text-amber-400 dark:hover:bg-amber-900/20 transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                                 </svg>
                             </a>
-                            <span class="pointer-events-none absolute bottom-full right-0 mb-1.5 px-2 py-1 rounded bg-neutral-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 dark:bg-zinc-600">Estoque</span>
+                            <span class="pointer-events-none absolute bottom-full right-0 mb-1.5 px-2 py-1 rounded bg-neutral-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity z-10 dark:bg-zinc-600">Estoque</span>
                         </div>
 
                         {{-- Editar --}}
                         @if($canUpdate)
                         <div class="relative group">
                             <a href="{{ route('admin.products.edit', $product) }}"
-                                class="inline-flex items-center justify-center p-1.5 rounded text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20 transition-colors">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                aria-label="Editar {{ $product->name }}"
+                                class="inline-flex items-center justify-center p-3 sm:p-2 rounded text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20 transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                 </svg>
                             </a>
-                            <span class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded bg-neutral-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 dark:bg-zinc-600">Editar</span>
+                            <span class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded bg-neutral-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity z-10 dark:bg-zinc-600">Editar</span>
                         </div>
                         @endif
 
                         {{-- Excluir --}}
                         @if($canDelete)
                         <div class="relative group">
-                            <button wire:click="confirmDelete({{ $product->id }})"
-                                class="inline-flex items-center justify-center p-1.5 rounded text-neutral-400 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 transition-colors">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <button type="button" wire:click="confirmDelete({{ $product->id }})"
+                                aria-label="Excluir {{ $product->name }}"
+                                class="inline-flex items-center justify-center p-3 sm:p-2 rounded text-neutral-400 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                 </svg>
                             </button>
-                            <span class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded bg-neutral-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-10 dark:bg-zinc-600">Excluir</span>
+                            <span class="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 rounded bg-neutral-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity z-10 dark:bg-zinc-600">Excluir</span>
                         </div>
                         @endif
+                    </div>
                     </div>
                 </div>
             @empty
@@ -213,7 +232,8 @@
     @endif
 
     {{-- Modal de confirmação de exclusão --}}
-    <flux:modal name="confirm-delete-product" class="max-w-sm">
+    {{-- @close zera deletingId ao dispensar (Esc/clique fora); sem isso o $watch não dispara no 2º clique em Excluir do mesmo item. --}}
+    <flux:modal name="confirm-delete-product" class="max-w-sm" @close="cancelDelete">
         <div class="space-y-5">
             <div class="flex items-start gap-4">
                 <div class="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
@@ -223,7 +243,7 @@
                 </div>
                 <div>
                     <flux:heading size="lg">Excluir produto?</flux:heading>
-                    <flux:subheading class="mt-1">Esta ação não pode ser desfeita. <br> O produto será removido permanentemente.</flux:subheading>
+                    <flux:subheading class="mt-1">Esta ação não pode ser desfeita. <br> Produtos com pedidos vinculados são apenas desativados; os demais são removidos permanentemente.</flux:subheading>
                 </div>
             </div>
             <div class="flex justify-end gap-3 pt-1">

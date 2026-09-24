@@ -75,6 +75,8 @@ class StockService
                 'notes' => "Pedido {$order->order_number}",
             ]);
         }
+
+        $this->forgetMenu($order->branch_id, $order->company_id);
     }
 
     /**
@@ -126,6 +128,8 @@ class StockService
                     'type' => StockMovement::TYPE_ORDER_RESTORE,
                     'notes' => "Cancelamento do pedido {$order->order_number}",
                 ]);
+
+                $this->forgetMenu($movement->branch_id, $order->company_id);
             }
         });
     }
@@ -180,6 +184,8 @@ class StockService
             'type' => StockMovement::TYPE_ORDER_DEDUCTION,
             'notes' => "Pedido {$order->order_number}",
         ]);
+
+        $this->forgetMenu($order->branch_id, $order->company_id);
     }
 
     /**
@@ -224,6 +230,8 @@ class StockService
             'type' => StockMovement::TYPE_ORDER_RESTORE,
             'notes' => "Ajuste de item na comanda {$order->order_number}",
         ]);
+
+        $this->forgetMenu($order->branch_id, $order->company_id);
     }
 
     /**
@@ -270,6 +278,7 @@ class StockService
             ]);
 
             Cache::forget("stock:low:branch:{$branch->id}");
+            $this->forgetMenu($branch->id, $branch->company_id);
 
             Log::channel('audit')->info('Ajuste manual de estoque', [
                 'user_id' => $user?->id,
@@ -327,6 +336,7 @@ class StockService
             ]);
 
             Cache::forget("stock:low:branch:{$branch->id}");
+            $this->forgetMenu($branch->id, $branch->company_id);
 
             Log::channel('audit')->info('Quantidade de estoque definida manualmente', [
                 'user_id' => $user?->id,
@@ -352,6 +362,16 @@ class StockService
             ->update(['track_stock' => $track]);
 
         Cache::forget("stock:low:branch:{$branch->id}");
+        $this->forgetMenu($branch->id, $branch->company_id);
+    }
+
+    /**
+     * O cardápio do chat carrega `available/quantity/track_stock` do pivot: toda escrita de
+     * estoque invalida o cache da filial (após o commit, quando dentro de transação).
+     */
+    private function forgetMenu(int $branchId, ?int $companyId): void
+    {
+        app(MenuCache::class)->forgetBranch($branchId, $companyId);
     }
 
     /**

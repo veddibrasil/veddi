@@ -2,11 +2,11 @@
 
 namespace App\Livewire\Admin\Products;
 
-use App\Models\Branch;
 use App\Models\Company;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\Scopes\CompanyScope;
+use App\Services\Order\MenuCache;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Livewire\Component;
@@ -147,15 +147,75 @@ class Index extends Component
         $this->forgetMenuCache($companyId);
     }
 
+    /**
+     * Alternativa ao arrastar (teclado/toque): sobe ou desce um produto dentro da categoria.
+     */
+    public function moveProduct(int $productId, string $direction): void
+    {
+        if (! $this->canUpdate) {
+            abort(403);
+        }
+
+        $product = $this->isSuperAdmin
+            ? Product::withoutGlobalScope(CompanyScope::class)->findOrFail($productId)
+            : Product::findOrFail($productId);
+
+        $orderedIds = Product::withoutGlobalScope(CompanyScope::class)
+            ->where('product_category_id', $product->product_category_id)
+            ->where('company_id', $product->company_id)
+            ->when($this->lockedBranchId, fn ($q) => $q->whereHas('branches', fn ($bq) => $bq->where('branches.id', $this->lockedBranchId)))
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->pluck('id')
+            ->all();
+
+        $this->updateOrder($product->product_category_id, $this->shiftId($orderedIds, $productId, $direction));
+    }
+
+    /**
+     * Alternativa ao arrastar (teclado/toque): sobe ou desce uma categoria no cardápio.
+     */
+    public function moveCategory(int $categoryId, string $direction): void
+    {
+        if (! $this->canUpdate) {
+            abort(403);
+        }
+
+        $category = $this->isSuperAdmin
+            ? ProductCategory::withoutGlobalScope(CompanyScope::class)->findOrFail($categoryId)
+            : ProductCategory::findOrFail($categoryId);
+
+        $orderedIds = ProductCategory::withoutGlobalScope(CompanyScope::class)
+            ->where('company_id', $category->company_id)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->pluck('id')
+            ->all();
+
+        $this->updateCategoryOrder($this->shiftId($orderedIds, $categoryId, $direction));
+    }
+
+    /**
+     * @param  array<int, int>  $ids
+     * @return array<int, int>
+     */
+    private function shiftId(array $ids, int $id, string $direction): array
+    {
+        $index = array_search($id, $ids, true);
+        $target = $direction === 'up' ? $index - 1 : $index + 1;
+
+        if ($index === false || ! in_array($direction, ['up', 'down'], true) || ! isset($ids[$target])) {
+            return $ids;
+        }
+
+        [$ids[$index], $ids[$target]] = [$ids[$target], $ids[$index]];
+
+        return $ids;
+    }
+
     private function forgetMenuCache(int $companyId): void
     {
-        $branchIds = Branch::where('company_id', $companyId)->pluck('id');
-
-        foreach ($branchIds as $branchId) {
-            Cache::forget("menu:branch:{$branchId}:company:{$companyId}");
-            Cache::forget("pdv:products:branch:{$branchId}");
-            Cache::forget("pdv:categories:branch:{$branchId}");
-        }
+        app(MenuCache::class)->forgetCompany($companyId);
     }
 
     public function delete(): void
@@ -163,7 +223,6 @@ class Index extends Component
         $product = Product::withoutGlobalScope(CompanyScope::class)->findOrFail($this->deletingId);
         $this->authorize('delete', $product);
 
-        $branchIds = $product->branches()->pluck('branches.id');
         $companyId = $product->company_id;
 
         $product->active = false;
@@ -177,11 +236,7 @@ class Index extends Component
             session()->flash('status', 'Produto removido.');
         }
 
-        foreach ($branchIds as $branchId) {
-            Cache::forget("menu:branch:{$branchId}:company:{$companyId}");
-            Cache::forget("pdv:products:branch:{$branchId}");
-            Cache::forget("pdv:categories:branch:{$branchId}");
-        }
+        $this->forgetMenuCache($companyId);
 
         $this->deletingId = null;
     }
@@ -193,7 +248,7 @@ class Index extends Component
             : Product::with('category');
 
         $productsQuery = $productQuery
-            ->when($this->search, fn ($q) => $q->where('name', 'like', "%{$this->search}%"))
+            ->when($this->search, fn ($q) => $q->where('name', 'like', '%'.$this->search.'%'))
             ->when($this->categoryFilter, fn ($q) => $q->where('product_category_id', $this->categoryFilter))
             ->when($this->isSuperAdmin && $this->companyFilter, fn ($q) => $q->where('company_id', $this->companyFilter))
             ->when($this->lockedBranchId, fn ($q) => $q->whereHas('branches', fn ($bq) => $bq->where('branches.id', $this->lockedBranchId)));
@@ -216,7 +271,7 @@ class Index extends Component
         $canReorder = ! $this->isSuperAdmin || $this->companyFilter;
 
         $reorderGroups = ($this->reorderMode && $canReorder)
-            ? (clone $categoryQuery)->reorder('sort_order')->with(['products' => function ($q) {
+            ? (clone $categoryQuery)->reorder('sort_order')->orderBy('id')->with(['products' => function ($q) {
                 $q->when($this->isSuperAdmin, fn ($qq) => $qq->withoutGlobalScope(CompanyScope::class))
                     ->when($this->lockedBranchId, fn ($qq) => $qq->whereHas('branches', fn ($bq) => $bq->where('branches.id', $this->lockedBranchId)))
                     ->orderBy('sort_order')->orderBy('name');

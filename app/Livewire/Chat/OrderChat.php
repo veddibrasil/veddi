@@ -11,6 +11,7 @@ use App\Models\Branch;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Services\Messaging\WhatsAppService;
+use App\Services\Order\MenuCache;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
@@ -491,7 +492,8 @@ class OrderChat extends Component
         $companyId = $this->companyId;
         $branchId = $this->selectedBranchId;
 
-        return Cache::remember("menu:branch:{$branchId}:company:{$companyId}", now()->addMinutes(5), function () use ($companyId, $branchId) {
+        // Invalidado por MenuCache em toda escrita de estoque/catálogo; o TTL é só a rede de segurança.
+        return Cache::remember(MenuCache::menuKey((int) $branchId, (int) $companyId), now()->addMinutes(MenuCache::MENU_TTL_MINUTES), function () use ($companyId, $branchId) {
             return ProductCategory::withoutGlobalScopes()
                 ->where('active', true)
                 ->where('company_id', $companyId)

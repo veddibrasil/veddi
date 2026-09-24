@@ -9,8 +9,8 @@ use App\Models\ProductCategory;
 use App\Models\ProductOption;
 use App\Models\ProductOptionGroup;
 use App\Models\Scopes\CompanyScope;
+use App\Services\Order\MenuCache;
 use App\Services\Order\StockService;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -601,6 +601,14 @@ class Form extends Component
 
                 return;
             }
+
+            // Produto com variações tem preço base 0: o preço vem do 1º grupo. Se o cliente puder pular esse
+            // grupo, o item vira R$ 0,00 (o chat e o servidor agora recusam esse item).
+            if ($this->isVariant && $gi === 0 && ($minQty < 1 || ! empty($groupData['allow_skip']))) {
+                $this->addError("optionGroups.{$gi}.min_qty", 'Em produto com variações o 1º grupo define o preço: use quantidade mínima 1 ou mais e deixe "Permitir Não quero" desmarcado.');
+
+                return;
+            }
         }
 
         $imagePath = $this->isEditing ? $this->product->image_path : null;
@@ -686,9 +694,6 @@ class Form extends Component
                     'quantity' => $existing?->quantity ?? 0,
                 ];
 
-                Cache::forget("menu:branch:{$branchId}:company:{$this->company_id}");
-                Cache::forget("pdv:products:branch:{$branchId}");
-                Cache::forget("pdv:categories:branch:{$branchId}");
             }
         } else {
             foreach ($this->selectedBranches as $branchId) {
@@ -699,9 +704,6 @@ class Form extends Component
                     'quantity' => 0,
                 ];
 
-                Cache::forget("menu:branch:{$branchId}:company:{$this->company_id}");
-                Cache::forget("pdv:products:branch:{$branchId}");
-                Cache::forget("pdv:categories:branch:{$branchId}");
             }
         }
         $product->branches()->sync($branchSync);
@@ -807,6 +809,10 @@ class Form extends Component
                 }
             }
         }
+
+        // Depois de gravar filiais, grupos e opções: invalida o cardápio de todas as filiais da empresa
+        // (inclui filiais desmarcadas neste save), sem janela para outro request repopular com dado velho.
+        app(MenuCache::class)->forgetCompany((int) ($product->company_id ?? $this->company_id));
 
         $this->redirect(route('admin.products.index'));
     }
