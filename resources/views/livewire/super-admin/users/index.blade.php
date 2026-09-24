@@ -36,7 +36,7 @@
                             @endforelse
                         </td>
                         <td class="px-4 py-3 text-center">
-                            <button wire:click="toggleSuperAdmin({{ $user->id }})"
+                            <button wire:click="confirmToggleSuperAdmin({{ $user->id }})"
                                 class="px-2 py-0.5 rounded-full text-xs font-medium {{ $user->is_super_admin ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-400' : 'bg-neutral-100 text-neutral-500 dark:bg-zinc-700 dark:text-neutral-400' }}">
                                 {{ $user->is_super_admin ? 'Sim' : 'Não' }}
                             </button>
@@ -94,6 +94,25 @@
                         class="px-4 py-2 text-sm text-neutral-600 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200">
                         Cancelar
                     </button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- Confirmação de escalonamento/revogação de privilégio de super admin --}}
+    @if($togglingSuperAdminId)
+        <div class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+            <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4 dark:bg-zinc-800 dark:border dark:border-zinc-700">
+                <h3 class="font-bold text-neutral-800 dark:text-neutral-100">Alterar privilégio de super admin?</h3>
+                <p class="text-sm text-neutral-500 dark:text-neutral-400">Essa ação concede ou revoga acesso total à plataforma para este usuário. Fica registrada na trilha de auditoria.</p>
+                <div class="flex justify-end gap-3 pt-2">
+                    <button wire:click="cancelToggleSuperAdmin"
+                        class="px-4 py-2 text-sm text-neutral-600 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200">
+                        Cancelar
+                    </button>
+                    <flux:button wire:click="toggleSuperAdmin" variant="danger">
+                        Confirmar
+                    </flux:button>
                 </div>
             </div>
         </div>

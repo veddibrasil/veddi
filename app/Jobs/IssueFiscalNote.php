@@ -50,6 +50,16 @@ class IssueFiscalNote implements ShouldQueue
                 'order_id' => $this->orderId,
                 'reason' => $e->getMessage(),
             ]);
+        } catch (\RuntimeException $e) {
+            // Falha de configuração/negócio (módulo não contratado, filial sem config,
+            // config desabilitada, sem token) — não é transitória, então retentar só
+            // desperdiça as 3 tentativas (~7min de backoff) até notificar o lojista.
+            Log::channel('fiscal')->warning('IssueFiscalNote: falha de configuração, sem retry', [
+                'order_id' => $this->orderId,
+                'reason' => $e->getMessage(),
+            ]);
+
+            $this->fail($e);
         }
     }
 

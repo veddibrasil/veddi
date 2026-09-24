@@ -76,7 +76,7 @@ class MetaGraphClient
             // A mensagem do cURL traz a URL inteira, inclusive query com client_secret/code/proof
             // (troca do code é um GET). Redige antes de logar e não encadeia $e como previous,
             // senão o handler de exceções reportaria a mensagem original.
-            $error = $this->scrub($e->getMessage());
+            $error = WhatsAppCriticalLog::scrub($e->getMessage());
 
             Log::channel('whatsapp')->warning('Graph API: falha de conexão', [
                 'method' => strtoupper($method),
@@ -111,16 +111,6 @@ class MetaGraphClient
         $version = trim((string) config('services.meta.graph_version'), '/');
 
         return self::BASE_URL.'/'.$version.'/'.ltrim($endpoint, '/');
-    }
-
-    /** Redige parâmetros sensíveis de query strings dentro de mensagens de erro. */
-    private function scrub(string $message): string
-    {
-        return preg_replace(
-            '/\b(access_token|client_secret|code|input_token|appsecret_proof|fb_exchange_token|pin)=[^&\s"\']+/i',
-            '$1=***',
-            $message,
-        ) ?? '';
     }
 
     private function appSecretProof(string $token): ?string

@@ -165,7 +165,11 @@ class Show extends Component
         } elseif (app()->bound('current.company')) {
             $company = app('current.company');
             $this->canUpdate = $user->hasPermission('orders.update', $company);
-            $this->canIssueFiscal = $user->hasPermission('fiscal.issue', $company);
+            // fiscal.issue é concedida por papel (company_admin ganha por padrão), mas
+            // isso não significa que a empresa contratou o módulo fiscal em Faturamento —
+            // sem essa segunda checagem o botão aparecia e a emissão só falhava depois,
+            // dentro do job (RuntimeException não tratada em IssueFiscalNote::handle()).
+            $this->canIssueFiscal = $user->hasPermission('fiscal.issue', $company) && $company->canUseFiscalNotes();
             $this->canViewHistory = $user->isCompanyAdmin($company);
 
             $roleSlug = $user->roleForCompany($company);
@@ -268,6 +272,20 @@ class Show extends Component
             if ($previousStatus !== 'cancelled') {
                 $this->openCancelModal();
             }
+
+            return;
+        }
+
+        // Trava só o retrocesso: a operação usa os botões pra avançar rápido (inclusive
+        // pulando etapa, ex.: pending -> out_for_delivery em pedido de confiança), mas
+        // voltar "delivered" pra "pending" (ou qualquer status já ultrapassado) não tem
+        // caso de uso legítimo e só serve pra mascarar estado.
+        $rank = ['pending' => 0, 'awaiting_payment' => 0, 'paid' => 1, 'preparing' => 2, 'ready' => 3, 'out_for_delivery' => 4, 'delivered' => 5];
+        $previousRank = $rank[$previousStatus] ?? 0;
+        $targetRank = $rank[$status] ?? 0;
+
+        if ($targetRank < $previousRank) {
+            $this->addError('status', 'Não é possível retroceder o status do pedido.');
 
             return;
         }

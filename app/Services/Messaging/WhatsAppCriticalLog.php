@@ -24,8 +24,18 @@ final class WhatsAppCriticalLog
             'connection_id' => $connectionId,
             'meta_code' => $exception->getCode(),
             'http_status' => $exception->httpStatus,
-            'meta_message' => Str::limit($exception->getMessage(), 300),
+            'meta_message' => Str::limit(self::scrub($exception->getMessage()), 300),
         ]);
+    }
+
+    /** Redige parâmetros sensíveis (token, secret, code, pin, etc.) de dentro de mensagens de erro. */
+    public static function scrub(string $message): string
+    {
+        return preg_replace(
+            '/\b(access_token|client_secret|code|input_token|appsecret_proof|fb_exchange_token|pin)=[^&\s"\']+/i',
+            '$1=***',
+            $message,
+        ) ?? '';
     }
 
     /** A Meta desativou (baniu) a conta do WhatsApp Business. $connectionId nulo = WABA da própria plataforma. */

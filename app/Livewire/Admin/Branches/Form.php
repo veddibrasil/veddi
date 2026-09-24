@@ -216,6 +216,13 @@ class Form extends Component
 
         $permission = $isEditing ? 'branches.update' : 'branches.create';
         $this->canSave = $user->hasPermission($permission, $company);
+
+        // O botão "Nova filial" só some da listagem quando o limite do plano é atingido;
+        // sem essa checagem aqui, a rota de criação continuava aceitando o POST direto.
+        if (! $isEditing && $this->canSave && $company->branches()->count() >= $company->maxBranches()) {
+            $this->canSave = false;
+            session()->flash('error', 'Limite de filiais do plano atual atingido. Faça upgrade de plano para criar mais filiais.');
+        }
     }
 
     private function fillFromBranch(Branch $branch): void

@@ -12,6 +12,7 @@ use App\Models\Subscription;
 use App\Models\User;
 use App\Rules\ReservedSlug;
 use App\Services\Company\UserPermissionService;
+use App\Services\SuperAdmin\AuditLog;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
@@ -251,6 +252,8 @@ class Form extends Component
                 $baseData['status'] = 'ACTIVE';
                 $baseData['asaas_subscription_id'] = null;
                 $company->update($baseData);
+
+                AuditLog::paymentBypassed(auth()->user(), $company, $this->plan);
             } else {
                 // Normal flow: await payment via Asaas
                 $baseData['active'] = false;

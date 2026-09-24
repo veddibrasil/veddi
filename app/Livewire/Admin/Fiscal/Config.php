@@ -102,6 +102,14 @@ class Config extends Component
         $company = app('current.company');
         $user = auth()->user();
 
+        // Mesmo padrão dos outros add-ons pagos (ver Pdv\Selector, Branches\ServiceCharges):
+        // sem isso, uma empresa que nunca contratou o módulo fiscal em Faturamento
+        // conseguia registrar CNPJ e certificado real na Focus NFe (inclusive na API de
+        // produção — ver baseUrlForRegistration()) mesmo sem pagar pelo módulo. A emissão
+        // em si já era bloqueada em FiscalNoteService::issue(), mas só depois do custo/uso
+        // já ter sido feito na conta integradora da plataforma.
+        abort_unless($company->fiscal_notes_enabled, 403, 'Módulo de nota fiscal não está habilitado para esta empresa.');
+
         $this->canManage = $user->hasPermission('fiscal.settings', $company);
 
         $this->companyName = $company->name;

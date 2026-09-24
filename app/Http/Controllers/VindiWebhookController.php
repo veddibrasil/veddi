@@ -35,7 +35,9 @@ class VindiWebhookController extends Controller
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
-        Log::channel('webhook')->debug('Vindi webhook recebido', ['payload' => $data]);
+        // Nunca logar o payload completo mesmo já autenticado: a Vindi/Yapay pode trazer
+        // dado de cartão e do pagador no corpo. Só as chaves, pra depurar formato sem vazar valor.
+        Log::channel('webhook')->debug('Vindi webhook recebido', ['keys_recebidos' => array_keys($data)]);
 
         // Yapay sends token as transaction.transaction_token (also mirrored at root token_transaction)
         $transactionToken = $data['transaction']['transaction_token']
@@ -44,7 +46,7 @@ class VindiWebhookController extends Controller
         $status = $data['transaction']['status_name'] ?? null;
 
         if (! $transactionToken || ! $status) {
-            Log::channel('webhook')->warning('Vindi webhook: dados ausentes', ['payload' => $data]);
+            Log::channel('webhook')->warning('Vindi webhook: dados ausentes', ['keys_recebidos' => array_keys($data)]);
 
             return response()->json(['error' => 'Missing data'], 422);
         }

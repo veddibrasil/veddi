@@ -80,9 +80,10 @@ class ProcessAsaasWebhook implements ShouldBeUnique, ShouldQueue
             ?? null;
 
         if (! $customerId) {
+            // Nunca logar o payload completo: pode trazer dado de cobrança/cliente.
             Log::channel('webhook')->warning('Asaas webhook: customer ID ausente', [
                 'event' => $this->event,
-                'payload' => $this->payload,
+                'keys_recebidos' => array_keys($this->payload),
             ]);
 
             return;

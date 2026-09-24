@@ -28,6 +28,16 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             \App\Http\Middleware\IdentifyCompany::class,
         ]);
+        // Sem isso, IdentifyCompany rodava DEPOIS de SubstituteBindings (registro no grupo
+        // 'web' só garante posição relativa, não prioridade de execução) — toda rota com
+        // model binding implícito (ex.: {product}, {branch}) resolvia o model sem
+        // CompanyScope, porque app('current.company') ainda não existia. Isso permitia
+        // IDOR cross-tenant: um company_admin de uma empresa acessando/editando registro
+        // de outra só trocando o ID na URL. current.company precisa existir antes do bind.
+        $middleware->prependToPriorityList(
+            before: \Illuminate\Routing\Middleware\SubstituteBindings::class,
+            prepend: \App\Http\Middleware\IdentifyCompany::class,
+        );
         $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
         $middleware->alias([
             'identify.company' => \App\Http\Middleware\IdentifyCompany::class,
