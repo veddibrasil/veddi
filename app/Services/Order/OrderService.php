@@ -57,12 +57,30 @@ class OrderService implements OrderServiceInterface
         $order = $this->transactionRetryingOnOrderNumberCollision(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer, $extraDiscount, $serviceFee, $couvertFee, $channel, $externalOrderId, $externalMetadata) {
             $subtotal = 0.0;
             $optionPricing = app(CartOptionPricing::class);
+            // Pedido do cliente no chat público: o servidor não confia que a UI travou item sem escolha
+            // obrigatória ou sem preço. PDV (atendente) e iFood têm o próprio fluxo e ficam fora.
+            $enforceSelfServiceRules = $orderType !== 'pdv' && $channel === OrderChannel::Chat->value;
             foreach ($cart as $cartKey => $item) {
                 $pid = (int) ($item['product_id'] ?? explode('_', (string) $cartKey)[0]);
                 $product = $products[$pid];
                 $resolved = $optionPricing->resolve($product, is_array($item) ? $item : []);
                 $optionsExtra = (float) $resolved['extra'];
-                $subtotal += ((float) $product->effective_price + $optionsExtra) * (int) ($item['qty'] ?? 0);
+                $unitPrice = (float) $product->effective_price + $optionsExtra;
+                $qty = (int) ($item['qty'] ?? 0);
+
+                if ($enforceSelfServiceRules) {
+                    if ($qty < 1) {
+                        throw new RuntimeException("Quantidade inválida para \"{$product->name}\".");
+                    }
+
+                    $optionPricing->assertRequiredGroupsSelected($product, $resolved['options']);
+
+                    if ($unitPrice <= 0) {
+                        throw new RuntimeException("\"{$product->name}\" está sem preço: escolha as opções do produto antes de pedir.");
+                    }
+                }
+
+                $subtotal += $unitPrice * $qty;
             }
 
             $discount = 0.0;

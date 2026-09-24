@@ -8,11 +8,36 @@ function _haversineKm(lat1, lng1, lat2, lng2) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// Só ordena por proximidade sozinho quando o navegador já concedeu permissão. Caso contrário mostra o
+// botão "Usar minha localização": pedir permissão ao abrir a página, sem contexto, costuma ser negado
+// (e deixava um erro vermelho na tela de quem simplesmente ignorava o aviso).
+window.branchLocateIfGranted = function () {
+    var btn = document.getElementById('branch-locate-btn');
+
+    if (!navigator.geolocation) return;
+
+    if (!navigator.permissions || !navigator.permissions.query) {
+        if (btn) btn.classList.remove('hidden');
+        return;
+    }
+
+    navigator.permissions.query({ name: 'geolocation' }).then(function (status) {
+        if (status.state === 'granted') {
+            window.branchLocate();
+        } else if (btn) {
+            btn.classList.remove('hidden');
+        }
+    }).catch(function () {
+        if (btn) btn.classList.remove('hidden');
+    });
+};
+
 window.branchLocate = function () {
     var errEl = document.getElementById('branch-locate-error');
+    var btn = document.getElementById('branch-locate-btn');
 
     if (!navigator.geolocation) {
-        if (errEl) { errEl.textContent = '⚠ Geolocalização não suportada pelo navegador.'; errEl.classList.remove('hidden'); }
+        if (errEl) { errEl.textContent = 'Seu navegador não suporta localização. Escolha a filial na lista.'; errEl.classList.remove('hidden'); }
         return;
     }
 
@@ -20,6 +45,7 @@ window.branchLocate = function () {
 
     navigator.geolocation.getCurrentPosition(
         function (pos) {
+            if (btn) btn.classList.add('hidden');
             var userLat = pos.coords.latitude;
             var userLng = pos.coords.longitude;
 
@@ -69,7 +95,8 @@ window.branchLocate = function () {
             });
         },
         function () {
-            if (errEl) { errEl.textContent = '⚠ Não foi possível obter sua localização. Verifique as permissões.'; errEl.classList.remove('hidden'); }
+            if (btn) btn.classList.remove('hidden');
+            if (errEl) { errEl.textContent = 'Não foi possível obter sua localização. Libere o acesso no navegador ou escolha a filial na lista.'; errEl.classList.remove('hidden'); }
         },
         { enableHighAccuracy: true, timeout: 12000 }
     );

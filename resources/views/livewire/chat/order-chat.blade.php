@@ -81,10 +81,11 @@
                     @if ($customerId && !in_array($step, ['ORDER_CONFIRMED', 'EDIT_PROFILE']))
                         <button
                             wire:click="openEditProfile"
-                            class="text-white/70 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
+                            class="text-white/70 hover:text-white transition-colors p-2.5 rounded-lg hover:bg-white/10"
                             title="Editar perfil"
+                            aria-label="Editar perfil"
                         >
-                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                             </svg>
                         </button>
@@ -94,10 +95,11 @@
                     @if (!in_array($step, ['ORDER_CONFIRMED']))
                         <button
                             wire:click="startNewOrder"
-                            class="text-white/70 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
+                            class="text-white/70 hover:text-white transition-colors p-2.5 rounded-lg hover:bg-white/10"
                             title="Recomeçar"
+                            aria-label="Recomeçar pedido"
                         >
-                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                             </svg>
                         </button>
@@ -375,9 +377,16 @@
 
         {{-- ── BRANCH_SELECT ── --}}
         @elseif ($step === 'BRANCH_SELECT')
-            <div class="space-y-2" x-init="$nextTick(() => branchLocate())">
-                <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Escolha a filial</p>
-                <p id="branch-locate-error" class="text-red-500 text-xs hidden"></p>
+            {{-- Só localiza sozinho se o navegador já tem permissão; senão o pedido de permissão vem de um clique do cliente. --}}
+            <div class="space-y-2" x-init="$nextTick(() => branchLocateIfGranted())">
+                <div class="flex items-center justify-between gap-2 mb-2">
+                    <p class="text-xs font-bold text-gray-500 uppercase tracking-wider">Escolha a filial</p>
+                    <button type="button" id="branch-locate-btn" onclick="branchLocate()"
+                        class="hidden text-xs font-semibold mc-text-primary px-2.5 py-2 -my-2 -mr-2 rounded-lg hover:bg-gray-100">
+                        📍 Usar minha localização
+                    </button>
+                </div>
+                <p id="branch-locate-error" role="alert" class="text-red-500 text-xs hidden"></p>
                 <div id="branch-list" class="space-y-2">
                 @foreach ($this->branches as $branch)
                     @php $branchOpen = $branch->isOpen(); @endphp
@@ -1604,16 +1613,19 @@
         x-transition:leave-end="opacity-0 translate-y-full"
         class="absolute inset-0 z-40 bg-white shadow-2xl flex flex-col overflow-hidden"
         style="display:none"
+        role="dialog" aria-modal="true" aria-label="Cardápio"
+        x-on:keydown.escape.window="if (productSidebarOpen) { selectingProduct ? (selectingProduct = null, pendingSelections = {}) : (productSidebarOpen = false) }"
     >
         {{-- Sidebar header --}}
         <div class="shrink-0 px-4 py-3 flex items-center justify-between" style="background: linear-gradient(135deg, var(--mc-red-dark) 0%, var(--mc-red) 60%, var(--mc-red-light) 100%);">
             <p class="text-white font-bold text-sm">Cardápio</p>
             <button
                 @click="productSidebarOpen = false"
-                class="text-white/70 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
+                class="text-white/70 hover:text-white transition-colors p-2.5 -mr-2 rounded-lg hover:bg-white/10"
                 title="Fechar"
+                aria-label="Fechar cardápio"
             >
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
             </button>
@@ -1626,18 +1638,22 @@
                     <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 10.5A6.5 6.5 0 114 10.5a6.5 6.5 0 0113 0z" />
                 </svg>
                 <input
-                    type="text"
+                    type="search"
                     x-model="productSearch"
                     placeholder="Buscar produto..."
-                    class="w-full text-sm bg-gray-100 border border-gray-200 rounded-xl pl-9 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-red-200"
+                    aria-label="Buscar produto no cardápio"
+                    autocomplete="off"
+                    enterkeyhint="search"
+                    class="w-full text-sm bg-gray-100 border border-gray-200 rounded-xl pl-9 pr-8 py-2.5 focus:outline-none focus:ring-2 focus:ring-red-200"
                 >
                 <button
                     type="button"
                     x-show="productSearch"
                     x-cloak
                     @click="productSearch = ''"
-                    class="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    class="absolute right-1 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-gray-600"
                     title="Limpar"
+                    aria-label="Limpar busca"
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -1646,13 +1662,46 @@
             </div>
         </div>
 
+        {{-- Erro de carrinho (produto esgotado, opção obrigatória...) — o painel cobre o rodapé do chat --}}
+        @if ($cartError)
+            <p role="alert" class="shrink-0 mx-3 mt-2 text-red-600 text-xs flex items-start gap-1.5 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                <span aria-hidden="true">⚠</span> <span>{{ $cartError }}</span>
+            </p>
+        @endif
+
+        @php
+            $menuCategories = $this->menu->filter(fn ($c) => $c->products->isNotEmpty())->values();
+            $menuSearchIndex = $menuCategories->flatMap(fn ($c) => $c->products->map(fn ($p) => [$c->name, $p->name]))->values();
+        @endphp
+
+        {{-- Atalhos de categoria: com muitas categorias, rolar a lista inteira é lento --}}
+        @if ($menuCategories->count() > 1)
+            <nav x-show="!productSearch.trim()" aria-label="Categorias do cardápio"
+                class="shrink-0 px-3 pt-2 flex gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                @foreach ($menuCategories as $category)
+                    <button type="button"
+                        @click="document.getElementById('menu-cat-{{ $category->id }}')?.scrollIntoView({ behavior: 'smooth', block: 'start' })"
+                        class="shrink-0 whitespace-nowrap inline-flex items-center min-h-10 text-xs font-bold px-3.5 rounded-full mc-bg-primary-light mc-text-primary active:scale-95 transition-transform">
+                        {{ $category->name }}
+                    </button>
+                @endforeach
+            </nav>
+        @endif
+
         {{-- Product list --}}
-        <div class="flex-1 overflow-y-auto px-3 py-3 space-y-3 mc-scrollbar">
-            @forelse ($this->menu as $category)
+        <div class="flex-1 overflow-y-auto px-3 py-3 space-y-3 mc-scrollbar"
+            x-data="{ menuSearchIndex: @js($menuSearchIndex), get noSearchResults() { const q = productSearch.trim(); return q !== '' && !this.menuSearchIndex.some(([c, p]) => mcMatches(c, q) || mcMatches(p, q)); } }">
+            <div x-show="noSearchResults" x-cloak class="text-center py-10">
+                <p class="text-3xl mb-2" aria-hidden="true">🔎</p>
+                <p class="text-sm text-gray-500">Nenhum produto encontrado para "<span class="font-semibold" x-text="productSearch.trim()"></span>".</p>
+                <button type="button" @click="productSearch = ''" class="mt-3 text-xs font-bold mc-text-primary px-3 py-2 rounded-lg hover:bg-gray-100">Limpar busca</button>
+            </div>
+            @forelse ($menuCategories as $category)
                 @if ($category->products->isNotEmpty())
                     <div
+                        id="menu-cat-{{ $category->id }}"
                         x-data="{ categoryName: @js($category->name), categoryProductNames: @js($category->products->pluck('name')) }"
-                        x-show="!productSearch || categoryName.toLowerCase().includes(productSearch.toLowerCase()) || categoryProductNames.some(n => n.toLowerCase().includes(productSearch.toLowerCase()))"
+                        x-show="!productSearch.trim() || mcMatches(categoryName, productSearch) || categoryProductNames.some(n => mcMatches(n, productSearch))"
                     >
                         <div class="flex items-center gap-2 mb-2">
                             <p class="text-xs font-black mc-text-primary uppercase tracking-widest">{{ $category->name }}</p>
@@ -1674,12 +1723,12 @@
                                     $sbDisabled = $sbOutOfStock || $sbInsufficientStock;
                                 @endphp
                                 <div
-                                    x-show="!productSearch || categoryName.toLowerCase().includes(productSearch.toLowerCase()) || @js($product->name).toLowerCase().includes(productSearch.toLowerCase())"
+                                    x-show="!productSearch.trim() || mcMatches(categoryName, productSearch) || mcMatches(@js($product->name), productSearch)"
                                     class="flex items-center gap-3 rounded-xl p-2.5 border {{ $sbDisabled ? 'bg-gray-100 border-gray-200 opacity-70' : 'bg-gray-50 border-gray-100' }}">
                                     {{-- Image --}}
                                     <div class="w-16 h-16 rounded-xl overflow-hidden shrink-0">
                                         @if ($product->image_path)
-                                            <img src="{{ $product->image_url }}" class="w-full h-full object-cover {{ $sbDisabled ? 'grayscale' : '' }}" />
+                                            <img src="{{ $product->image_url }}" alt="" loading="lazy" decoding="async" class="w-full h-full object-cover {{ $sbDisabled ? 'grayscale' : '' }}" />
                                         @else
                                             <div class="w-full h-full bg-linear-to-br from-red-100 to-amber-100 flex items-center justify-center text-2xl">🥟</div>
                                         @endif
@@ -1687,7 +1736,7 @@
                                     {{-- Info --}}
                                     <div class="flex-1 min-w-0" x-data="{ expanded: false }">
                                         <div class="flex items-center gap-1 cursor-pointer" @click="expanded = !expanded">
-                                            <p class="font-semibold text-sm {{ $sbDisabled ? 'text-gray-400' : 'text-gray-800' }} leading-tight" :class="expanded ? '' : 'truncate'">{{ $product->name }}</p>
+                                            <p class="font-semibold text-sm {{ $sbDisabled ? 'text-gray-400' : 'text-gray-800' }} leading-tight break-words" :class="expanded ? '' : 'line-clamp-2'">{{ $product->name }}</p>
                                             @if ($sbOutOfStock)
                                                 <span class="shrink-0 text-[9px] font-bold px-1 py-0.5 rounded-full bg-gray-200 text-gray-500 uppercase">Esgotado</span>
                                             @elseif ($sbInsufficientStock)
@@ -1736,7 +1785,6 @@
                                                 @foreach ($product->optionGroups as $optGroup)
                                                     <span class="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full {{ $sbDisabled ? 'bg-gray-100 text-gray-400' : 'mc-bg-primary-light mc-text-primary' }}">
                                                         {{ $optGroup->name }}
-                                                        <span class="opacity-60">({{ $optGroup->total_qty }})</span>
                                                     </span>
                                                 @endforeach
                                             </div>
@@ -1758,9 +1806,10 @@
 	                                            @if ($hasOptions)
 	                                                {{-- Produtos com opções: mesmos controles visuais dos produtos simples --}}
 	                                                @if ($sbCartQty > 0)
-	                                                    <button wire:click="decrementProductFromCart({{ $product->id }})"
-	                                                        class="w-6 h-6 rounded-full mc-bg-primary-light mc-text-primary font-bold text-sm flex items-center justify-center">−</button>
-	                                                    <span class="w-5 text-center text-xs font-bold text-gray-800">{{ $sbCartQty }}</span>
+	                                                    <button type="button" wire:click="decrementProductFromCart({{ $product->id }})"
+	                                                        aria-label="Remover uma unidade de {{ $product->name }}"
+	                                                        class="w-9 h-9 rounded-full mc-bg-primary-light mc-text-primary font-bold text-base flex items-center justify-center">−</button>
+	                                                    <span class="w-6 text-center text-xs font-bold text-gray-800" aria-live="polite">{{ $sbCartQty }}</span>
 	                                                @endif
 	                                                @if ($sbCartQty > 0)
                                                     <button
@@ -1768,7 +1817,7 @@
                                                             @click="addOrOpenOptionSelector(@js($productData), $wire)"
                                                         @endif
                                                         @disabled($sbInsufficientStock)
-                                                        class="w-6 h-6 rounded-full font-bold text-sm flex items-center justify-center transition-colors {{ $sbInsufficientStock ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white active:scale-90' }}"
+                                                        aria-label="Adicionar mais uma unidade de {{ $product->name }}" class="w-9 h-9 rounded-full font-bold text-base flex items-center justify-center transition-colors {{ $sbInsufficientStock ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white active:scale-90' }}"
                                                     >+</button>
                                                 @else
                                                     <button
@@ -1776,7 +1825,7 @@
                                                             @click="addOrOpenOptionSelector(@js($productData), $wire)"
                                                         @endif
                                                         @disabled($sbInsufficientStock)
-                                                        class="px-3 h-8 rounded-full font-bold text-xs flex items-center justify-center gap-1 transition-colors {{ $sbInsufficientStock ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white active:scale-95' }}"
+                                                        aria-label="Adicionar {{ $product->name }}" class="px-3.5 h-10 rounded-full font-bold text-xs flex items-center justify-center gap-1 transition-colors {{ $sbInsufficientStock ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white active:scale-95' }}"
                                                     >
                                                         <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
                                                             <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
@@ -1787,16 +1836,17 @@
                                             @else
                                                 {{-- Produtos simples: controles de quantidade normais --}}
                                                 @if ($sbCartQty > 0)
-                                                    <button wire:click="updateCartQty('{{ $product->id }}', {{ $sbCartQty - 1 }})"
-                                                        class="w-6 h-6 rounded-full mc-bg-primary-light mc-text-primary font-bold text-sm flex items-center justify-center">−</button>
-                                                    <span class="w-5 text-center text-xs font-bold text-gray-800">{{ $sbCartQty }}</span>
+                                                    <button type="button" wire:click="updateCartQty('{{ $product->id }}', {{ $sbCartQty - 1 }})"
+                                                        aria-label="Remover uma unidade de {{ $product->name }}"
+                                                        class="w-9 h-9 rounded-full mc-bg-primary-light mc-text-primary font-bold text-base flex items-center justify-center">−</button>
+                                                    <span class="w-6 text-center text-xs font-bold text-gray-800" aria-live="polite">{{ $sbCartQty }}</span>
                                                 @endif
                                                 <button
                                                     @if (! $sbInsufficientStock)
                                                         wire:click="addToCart({{ $product->id }})"
                                                     @endif
                                                     @disabled($sbInsufficientStock)
-                                                    class="w-6 h-6 rounded-full font-bold text-sm flex items-center justify-center transition-colors {{ $sbInsufficientStock ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white active:scale-90' }}"
+                                                    aria-label="Adicionar mais uma unidade de {{ $product->name }}" class="w-9 h-9 rounded-full font-bold text-base flex items-center justify-center transition-colors {{ $sbInsufficientStock ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white active:scale-90' }}"
                                                 >+</button>
                                             @endif
                                         @else
@@ -1831,6 +1881,7 @@
             x-transition:leave-end="translate-x-full opacity-0"
             class="absolute inset-0 z-50 bg-white flex flex-col overflow-hidden"
             style="display:none"
+            role="dialog" aria-modal="true" :aria-label="'Opções de ' + (selectingProduct?.name || 'produto')"
         >
             {{-- Header --}}
             <div class="shrink-0 px-4 py-3 flex items-center gap-3" style="background: linear-gradient(135deg, var(--mc-red-dark) 0%, var(--mc-red) 60%, var(--mc-red-light) 100%);">
@@ -1844,7 +1895,7 @@
                 </button>
                 <div class="flex-1 min-w-0">
                     <p class="text-white font-bold text-sm truncate" x-text="selectingProduct?.name"></p>
-                    <p class="text-white/70 text-xs" x-text="'R$ ' + getTotalWithOptions().toFixed(2).replace('.', ',')"></p>
+                    <p class="text-white/70 text-xs" x-text="getTotalWithOptions() > 0 ? 'R$ ' + getTotalWithOptions().toFixed(2).replace('.', ',') : 'Escolha as opções'"></p>
                 </div>
             </div>
 
@@ -1858,7 +1909,7 @@
                                 <div class="flex items-center justify-between mb-3">
                                     <div class="flex items-center gap-2.5 min-w-0">
                                         <template x-if="group.image_url">
-                                            <img :src="group.image_url" class="w-10 h-10 rounded-lg object-cover shrink-0" />
+                                            <img :src="group.image_url" alt="" loading="lazy" class="w-10 h-10 rounded-lg object-cover shrink-0" />
                                         </template>
                                         <div>
                                             <p class="font-bold text-sm text-gray-800" x-text="group.name"></p>
@@ -1900,7 +1951,7 @@
                                         <div class="flex items-center gap-3 p-2.5 rounded-xl border transition-colors"
                                             :class="option.paused ? 'border-amber-100 bg-amber-50' : 'border-gray-100 bg-gray-50'">
                                             <template x-if="option.image_url">
-                                                <img :src="option.image_url"
+                                                <img :src="option.image_url" alt="" loading="lazy"
                                                      class="w-12 h-12 rounded-xl object-cover shrink-0"
                                                      :class="option.paused ? 'grayscale opacity-50' : ''" />
                                             </template>
@@ -1932,16 +1983,18 @@
                                                 <template x-if="!option.paused && !group.fixed">
                                                     {{-- Variável: controles de quantidade --}}
                                                     <div class="flex items-center gap-1.5">
-                                                        <button
+                                                        <button type="button"
                                                             @click="decrementOption(group, option)"
-                                                            class="w-7 h-7 rounded-full mc-bg-primary-light mc-text-primary font-bold text-base flex items-center justify-center">−</button>
-                                                        <span class="w-7 text-center text-sm font-bold text-gray-800"
+                                                            :aria-label="'Remover ' + option.name"
+                                                            class="w-9 h-9 rounded-full mc-bg-primary-light mc-text-primary font-bold text-base flex items-center justify-center">−</button>
+                                                        <span class="w-7 text-center text-sm font-bold text-gray-800" aria-live="polite"
                                                             x-text="pendingSelections[group.id]?.[option.id] || 0"></span>
-                                                        <button
+                                                        <button type="button"
                                                             @click="incrementOption(group, option)"
+                                                            :aria-label="'Adicionar ' + option.name"
                                                             :disabled="getGroupTotal(group.id) >= group.total_qty || (option.max_qty && (pendingSelections[group.id]?.[option.id] || 0) >= option.max_qty)"
                                                             :class="(getGroupTotal(group.id) >= group.total_qty || (option.max_qty && (pendingSelections[group.id]?.[option.id] || 0) >= option.max_qty)) ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white'"
-                                                            class="w-7 h-7 rounded-full font-bold text-base flex items-center justify-center">+</button>
+                                                            class="w-9 h-9 rounded-full font-bold text-base flex items-center justify-center">+</button>
                                                     </div>
                                                 </template>
                                             </div>
@@ -1956,12 +2009,13 @@
 
             {{-- Footer --}}
             <div class="shrink-0 border-t border-gray-100 px-4 py-3">
+                <p x-show="!canConfirm()" x-text="confirmHint()" role="status" class="text-xs text-center text-amber-600 font-medium mb-2"></p>
                 <button
                     @click="confirmOptions($wire)"
                     :disabled="!canConfirm()"
                     class="mc-btn-primary w-full"
                     :class="!canConfirm() ? 'opacity-50 cursor-not-allowed' : ''">
-                    Adicionar ao carrinho
+                    <span x-text="canConfirm() ? 'Adicionar ao carrinho · R$ ' + getTotalWithOptions().toFixed(2).replace('.', ',') : 'Adicionar ao carrinho'"></span>
                 </button>
             </div>
         </div>
@@ -1978,6 +2032,7 @@
                         <span class="ml-1 bg-white mc-text-primary text-xs font-black rounded-full w-5 h-5 flex items-center justify-center">
                             {{ $this->cartCount }}
                         </span>
+                        <span class="text-xs font-bold opacity-90">· R$ {{ number_format($this->cartTotal, 2, ',', '.') }}</span>
                     @endif
                 </button>
             </div>
