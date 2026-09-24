@@ -232,7 +232,24 @@ class IfoodAuthService
 
     public function refreshAuthorizedMerchants(IfoodIntegration $integration): void
     {
-        $merchants = $this->listMerchants($this->getAccessToken($integration));
+        $accessToken = $this->getAccessToken($integration);
+        $merchants = $this->listMerchants($accessToken);
+
+        if ($merchants === []) {
+            // /merchants só lista lojas em que o token tem o módulo "merchant". A
+            // autorização pode ter liberado só order/events (caso real em produção,
+            // 2026-09-23) — aí a lista vem vazia mesmo com a loja vinculada ao app, mas
+            // o id dela está no merchant_scope do próprio token.
+            $scope = $this->merchantScopeFromToken($accessToken);
+            $merchants = $this->merchantsFromScope($scope);
+
+            Log::channel('ifood')->warning('iFood: /merchants voltou vazio', [
+                'ifood_integration_id' => $integration->id,
+                'company_id' => $integration->company_id,
+                'merchant_scope' => $scope,
+                'fallback_merchant_ids' => array_column($merchants, 'id'),
+            ]);
+        }
 
         if ($merchants === []) {
             throw new IfoodNoAuthorizedMerchantsException('O iFood aceitou a autorização, mas não retornou nenhuma loja. Confira no portal do iFood se a loja foi autorizada para este aplicativo e clique em consultar lojas novamente.');
@@ -344,6 +361,44 @@ class IfoodAuthService
         return collect($merchants)
             ->filter(fn ($merchant) => ! empty($merchant['id']))
             ->map(fn ($merchant) => ['id' => $merchant['id'], 'name' => $merchant['name'] ?? $merchant['id']])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Lê o claim merchant_scope do JWT ("<merchantId>:<módulo>", ex. "abc:order").
+     * A assinatura não é verificada: o token veio direto do iFood na troca OAuth
+     * e só serve pra descobrir o id — se estiver errado, o iFood recusa nas chamadas.
+     *
+     * @return array<int, string>
+     */
+    private function merchantScopeFromToken(string $accessToken): array
+    {
+        $segments = explode('.', $accessToken);
+
+        if (count($segments) !== 3) {
+            return [];
+        }
+
+        $payload = json_decode(base64_decode(strtr($segments[1], '-_', '+/')), true);
+        $scope = is_array($payload) ? ($payload['merchant_scope'] ?? []) : [];
+
+        return is_array($scope) ? array_values(array_filter($scope, 'is_string')) : [];
+    }
+
+    /**
+     * Sem o módulo "merchant" não dá pra buscar o nome da loja — usa o id.
+     *
+     * @param  array<int, string>  $scope
+     * @return array<int, array{id: string, name: string}>
+     */
+    private function merchantsFromScope(array $scope): array
+    {
+        return collect($scope)
+            ->map(fn (string $entry) => explode(':', $entry, 2)[0])
+            ->filter()
+            ->unique()
+            ->map(fn (string $id) => ['id' => $id, 'name' => $id])
             ->values()
             ->all();
     }

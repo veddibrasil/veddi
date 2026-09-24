@@ -210,6 +210,120 @@ test('consulta de lojas pode ser repetida sem trocar o código novamente', funct
     'falha na consulta' => [503, 'A autorização foi salva, mas não foi possível consultar as lojas no iFood.'],
 ]);
 
+/** JWT sem assinatura válida — o serviço só lê o claim merchant_scope. */
+function ifoodSettingsTestJwt(array $merchantScope): string
+{
+    $encode = fn (array $data) => rtrim(strtr(base64_encode(json_encode($data)), '+/', '-_'), '=');
+
+    return $encode(['alg' => 'HS256']).'.'.$encode(['merchant_scope' => $merchantScope]).'.assinatura';
+}
+
+test('lista de lojas vazia mas token com merchant_scope ativa a integração pela loja do token', function () {
+    $company = ifoodSettingsTestCompany();
+    $branch = Branch::withoutGlobalScopes()->where('company_id', $company->id)->first();
+    app()->instance('current.company', $company);
+
+    $integration = IfoodIntegration::create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'status' => 'disconnected',
+        'user_code' => 'ABCD-1234',
+        'authorization_code_verifier' => 'verifier-xyz',
+        'user_code_expires_at' => now()->addMinutes(5),
+    ]);
+
+    // Autorização liberou só order/events: /merchants (módulo merchant) volta vazio.
+    Http::fake([
+        '*/authentication/v1.0/oauth/token' => Http::response([
+            'accessToken' => ifoodSettingsTestJwt(['merchant-from-token:order', 'merchant-from-token:events']),
+            'refreshToken' => 'refresh-final',
+            'expiresIn' => 21600,
+        ], 200),
+        '*/merchant/v1.0/merchants' => Http::response([], 200),
+    ]);
+    Bus::fake([SyncIfoodCatalogJob::class, PollIfoodEventsJob::class]);
+
+    Livewire::actingAs(ifoodSettingsAdmin($company))
+        ->test(IfoodIntegrationSettings::class)
+        ->set('authorizationCode', 'HTLM-KWVR')
+        ->call('confirmAuthorization')
+        ->assertSet('connectionState', 'connected')
+        ->assertSet('merchantId', 'merchant-from-token');
+
+    expect($integration->refresh()->merchant_id)->toBe('merchant-from-token')
+        ->and($integration->status)->toBe('active')
+        ->and($integration->available_merchants)->toBeNull();
+    Bus::assertDispatched(PollIfoodEventsJob::class);
+});
+
+test('lista de lojas vazia com mais de uma loja no merchant_scope pede escolha usando o id como nome', function () {
+    $company = ifoodSettingsTestCompany();
+    $branch = Branch::withoutGlobalScopes()->where('company_id', $company->id)->first();
+    app()->instance('current.company', $company);
+
+    IfoodIntegration::create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'status' => 'disconnected',
+        'user_code' => 'ABCD-1234',
+        'authorization_code_verifier' => 'verifier-xyz',
+        'user_code_expires_at' => now()->addMinutes(5),
+    ]);
+
+    Http::fake([
+        '*/authentication/v1.0/oauth/token' => Http::response([
+            'accessToken' => ifoodSettingsTestJwt(['merchant-a:order', 'merchant-a:events', 'merchant-b:order']),
+            'refreshToken' => 'refresh-final',
+            'expiresIn' => 21600,
+        ], 200),
+        '*/merchant/v1.0/merchants' => Http::response([], 200),
+    ]);
+    Bus::fake([SyncIfoodCatalogJob::class, PollIfoodEventsJob::class]);
+
+    Livewire::actingAs(ifoodSettingsAdmin($company))
+        ->test(IfoodIntegrationSettings::class)
+        ->set('authorizationCode', 'HTLM-KWVR')
+        ->call('confirmAuthorization')
+        ->assertSet('connectionState', 'pending_merchant_selection')
+        ->assertSet('availableMerchants', [
+            ['id' => 'merchant-a', 'name' => 'merchant-a'],
+            ['id' => 'merchant-b', 'name' => 'merchant-b'],
+        ]);
+
+    Bus::assertNotDispatched(SyncIfoodCatalogJob::class);
+});
+
+test('lista de lojas do iFood tem prioridade sobre o merchant_scope do token', function () {
+    $company = ifoodSettingsTestCompany();
+    $branch = Branch::withoutGlobalScopes()->where('company_id', $company->id)->first();
+    app()->instance('current.company', $company);
+
+    IfoodIntegration::create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'status' => 'disconnected',
+        'user_code' => 'ABCD-1234',
+        'authorization_code_verifier' => 'verifier-xyz',
+        'user_code_expires_at' => now()->addMinutes(5),
+    ]);
+
+    Http::fake([
+        '*/authentication/v1.0/oauth/token' => Http::response([
+            'accessToken' => ifoodSettingsTestJwt(['merchant-from-token:order']),
+            'refreshToken' => 'refresh-final',
+            'expiresIn' => 21600,
+        ], 200),
+        '*/merchant/v1.0/merchants' => Http::response([['id' => 'merchant-from-api', 'name' => 'Loja API']], 200),
+    ]);
+    Bus::fake([SyncIfoodCatalogJob::class, PollIfoodEventsJob::class]);
+
+    Livewire::actingAs(ifoodSettingsAdmin($company))
+        ->test(IfoodIntegrationSettings::class)
+        ->set('authorizationCode', 'HTLM-KWVR')
+        ->call('confirmAuthorization')
+        ->assertSet('merchantId', 'merchant-from-api');
+});
+
 test('pausar e retomar alteram o status sem tocar em token/merchant_id', function () {
     $company = ifoodSettingsTestCompany();
     $branch = Branch::withoutGlobalScopes()->where('company_id', $company->id)->first();
