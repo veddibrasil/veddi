@@ -251,9 +251,11 @@ trait HasCashSession
             ->where('pdv_cash_session_id', $this->cashSessionId)
             ->where('is_open_tab', false)
             ->with('customer')
+            ->select(['id', 'order_number', 'total', 'payment_method', 'status', 'order_type', 'created_at', 'customer_id', 'discount', 'manual_discount'])
+            ->withExists('payments')
             ->latest()
             ->limit(50)
-            ->get(['id', 'order_number', 'total', 'payment_method', 'status', 'created_at', 'customer_id', 'discount', 'manual_discount']);
+            ->get();
     }
 
     public function cashSessionExpected(PdvCashSession $session): float

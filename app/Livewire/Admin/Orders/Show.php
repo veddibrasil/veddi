@@ -256,14 +256,16 @@ class Show extends Component
             return;
         }
 
-        // "Pago" a partir de aguardando pagamento (PDV) sem confirmar via modal dedicado
-        // cai aqui — sem isso o pedido vira "paid" sem Payment, e o fechamento de caixa
-        // conta a venda no TOTAL VENDAS mas não em nenhuma forma de pagamento.
-        if ($status === 'paid' && $previousStatus === 'awaiting_payment' && $this->order->order_type === 'pdv' && ! $this->order->payment()->exists()) {
+        // "Pago" num pedido PDV ainda sem Payment (a receber) sem confirmar via modal dedicado
+        // cai aqui — sem isso o pedido vira "paid" sem Payment (detalhe mostra "Pago", cupom
+        // sai "NAO PAGO") e o fechamento de caixa conta a venda no TOTAL VENDAS mas não em
+        // nenhuma forma de pagamento. Não depende do status anterior: agendado costuma passar
+        // por "Entregue"/"Preparando" antes de alguém marcar "Pago".
+        if ($status === 'paid' && $this->order->needsPdvPaymentConfirmation()) {
             app(PaymentOrchestrator::class)->confirmDeliveryPayment($this->order);
-        } else {
-            $this->order->update(['status' => $status]);
         }
+
+        $this->order->update(['status' => $status]);
 
         $this->order->refresh();
 
@@ -414,13 +416,13 @@ class Show extends Component
 
         $this->showConfirmPaymentModal = false;
 
-        if ($this->order->order_type !== 'pdv' || $this->order->status !== 'awaiting_payment') {
+        if ($this->order->order_type !== 'pdv' || in_array($this->order->status, ['cancelled', 'refunded'], true)) {
             $this->addError('status', 'Este pedido não está aguardando confirmação de pagamento na entrega.');
 
             return;
         }
 
-        if ($this->order->payment()->exists()) {
+        if (! $this->order->needsPdvPaymentConfirmation()) {
             $this->addError('status', 'Já existe um pagamento registrado para este pedido.');
 
             return;

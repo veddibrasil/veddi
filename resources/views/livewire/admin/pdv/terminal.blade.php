@@ -604,7 +604,7 @@
                                 @foreach ($this->sessionOrders as $sessionOrder)
                                     @php
                                         $isCancelled = in_array($sessionOrder->status, ['cancelled', 'refunded']);
-                                        $isAwaitingPayment = $sessionOrder->status === 'awaiting_payment';
+                                        $isAwaitingPayment = $sessionOrder->needsPdvPaymentConfirmation();
                                         $methodLabel = match(strtolower($sessionOrder->payment_method ?? '')) {
                                             'pix' => 'PIX',
                                             'credit_card' => 'Cartão',

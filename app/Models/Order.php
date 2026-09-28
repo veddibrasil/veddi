@@ -261,6 +261,28 @@ class Order extends Model
         return $this->scheduled_at !== null;
     }
 
+    /**
+     * Pedido do PDV "a receber" (na entrega/retirada) que ainda não tem Payment registrado.
+     * Não dá pra olhar só pro status 'awaiting_payment': o operador costuma avançar o pedido
+     * (preparando, pronto, entregue...) antes de receber — principalmente agendado, que fica
+     * horas esperando — e o pagamento continua pendente. Usa `payments_exists` quando a
+     * query trouxe `withExists('payments')`, pra listagem não fazer uma query por pedido.
+     */
+    public function needsPdvPaymentConfirmation(): bool
+    {
+        if ($this->order_type !== 'pdv' || in_array($this->status, ['cancelled', 'refunded'], true)) {
+            return false;
+        }
+
+        $hasPayment = match (true) {
+            array_key_exists('payments_exists', $this->getAttributes()) => (bool) $this->payments_exists,
+            $this->relationLoaded('payments') => $this->payments->isNotEmpty(),
+            default => $this->payments()->exists(),
+        };
+
+        return ! $hasPayment;
+    }
+
     /** Returns the delivery address snapshot, falling back to customer address for legacy orders. */
     public function deliveryFullAddress(): string
     {

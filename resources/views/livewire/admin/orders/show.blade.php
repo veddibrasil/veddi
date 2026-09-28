@@ -805,7 +805,7 @@
                     </div>
                 @endif
 
-                @if ($order->payments->isEmpty() && $order->order_type === 'pdv' && $order->status === 'awaiting_payment')
+                @if ($order->needsPdvPaymentConfirmation())
                     <div class="mt-3 bg-yellow-50 border border-yellow-200 rounded-xl p-3 dark:bg-yellow-900/20 dark:border-yellow-700">
                         <p class="text-xs text-yellow-700 dark:text-yellow-400 mb-2">A receber na entrega.</p>
                         <button wire:click="openConfirmPaymentModal"

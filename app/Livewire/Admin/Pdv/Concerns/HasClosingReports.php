@@ -41,7 +41,7 @@ trait HasClosingReports
             ->where('pdv_cash_session_id', $this->cashSessionId)
             ->find($orderId);
 
-        if (! $order || $order->order_type !== 'pdv' || $order->status !== 'awaiting_payment' || $order->payment()->exists()) {
+        if (! $order || ! $order->needsPdvPaymentConfirmation()) {
             return;
         }
 

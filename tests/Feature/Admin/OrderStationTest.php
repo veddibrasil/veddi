@@ -844,6 +844,66 @@ test('show: botão rápido "Pago" num pedido PDV aguardando pagamento cria o Pay
     expect($payment->status)->toBe('paid');
 });
 
+test('show: pedido PDV agendado que passou por "Entregue" antes de "Pago" ganha o Payment e o cupom sai PAGO', function () {
+    ['company' => $company, 'admin' => $admin, 'branch' => $branch] = stationOrderContext();
+    $order = pdvAwaitingPaymentOrder($company, $branch);
+    $order->update(['scheduled_at' => now()->addHour(), 'delivery_type' => 'retirar']);
+
+    $this->actingAs($admin);
+
+    // Mesma sequência do pedido real em produção: aguardando pagamento → entregue → pago.
+    // Antes o Payment só era criado se o status anterior fosse 'awaiting_payment', então o
+    // detalhe mostrava "Pago" e o cupom saía "NAO PAGO".
+    Livewire::test(Show::class, ['order' => $order])
+        ->call('updateStatus', 'delivered')
+        ->call('updateStatus', 'paid');
+
+    $order->refresh();
+    expect($order->status)->toBe('paid');
+    expect(\App\Models\Payment::where('order_id', $order->id)->where('status', 'paid')->count())->toBe(1);
+
+    $receipt = app(\App\Contracts\PrinterServiceInterface::class)
+        ->buildOrderReceipt($order->load(['items', 'customer', 'branch', 'payment']), 'geral');
+
+    expect($receipt)->toContain('Status: PAGO');
+});
+
+test('kanban: pedido PDV que saiu de aguardando pagamento sem Payment ganha o Payment ao ir pra pago, sem duplicar', function () {
+    ['company' => $company, 'admin' => $admin, 'branch' => $branch] = stationOrderContext();
+    $order = pdvAwaitingPaymentOrder($company, $branch);
+
+    $this->actingAs($admin);
+
+    Livewire::test(OrdersIndex::class)
+        ->call('updateOrderStatus', $order->id, 'delivered')
+        ->call('updateOrderStatus', $order->id, 'paid')
+        ->call('updateOrderStatus', $order->id, 'paid');
+
+    expect($order->fresh()->status)->toBe('paid');
+    expect(\App\Models\Payment::where('order_id', $order->id)->count())->toBe(1);
+});
+
+test('show: "Confirmar pagamento" continua disponível depois que o pedido avançou e não regride o status', function () {
+    ['company' => $company, 'admin' => $admin, 'branch' => $branch] = stationOrderContext();
+    $order = pdvAwaitingPaymentOrder($company, $branch);
+    $order->update(['status' => 'delivered']);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Show::class, ['order' => $order])
+        ->assertSee('A receber na entrega.')
+        ->call('openConfirmPaymentModal')
+        ->call('confirmPayment')
+        ->assertHasNoErrors();
+
+    $order->refresh();
+    expect($order->status)->toBe('delivered');
+    expect(\App\Models\Payment::where('order_id', $order->id)->where('status', 'paid')->exists())->toBeTrue();
+
+    Livewire::test(Show::class, ['order' => $order])
+        ->assertDontSee('A receber na entrega.');
+});
+
 test('kanban: pedido online (order_type=delivery) aguardando webhook Vindi/Asaas não ganha Payment fake ao ser arrastado pra pago', function () {
     ['company' => $company, 'admin' => $admin, 'branch' => $branch] = stationOrderContext();
     $order = pdvAwaitingPaymentOrder($company, $branch);

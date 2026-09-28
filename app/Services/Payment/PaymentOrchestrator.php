@@ -496,7 +496,8 @@ class PaymentOrchestrator
 
     /**
      * Confirma pagamento coletado no ato da entrega (PDV "receber na entrega").
-     * O pedido nasceu 'awaiting_payment' sem Payment; aqui cria o Payment e marca 'paid'.
+     * O pedido nasceu 'awaiting_payment' sem Payment; aqui cria o Payment e marca 'paid'
+     * (ou mantém o status, se o pedido já avançou no preparo antes do pagamento).
      */
     public function confirmDeliveryPayment(Order $order): array
     {
@@ -531,8 +532,10 @@ class PaymentOrchestrator
                 ->value('id')
             : null;
 
+        // Pedido que já avançou no preparo (preparando, pronto, entregue...) sem ter o pagamento
+        // registrado mantém a etapa atual — só quem ainda está aguardando pagamento vira 'paid'.
         $order->update([
-            'status' => 'paid',
+            'status' => in_array($order->status, ['pending', 'awaiting_payment'], true) ? 'paid' : $order->status,
             'pdv_cash_session_id' => $currentSessionId ?? $order->pdv_cash_session_id,
         ]);
 

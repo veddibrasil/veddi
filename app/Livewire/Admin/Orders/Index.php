@@ -301,15 +301,16 @@ class Index extends Component
             return;
         }
 
-        // "Pago" a partir de aguardando pagamento (PDV) arrastado no kanban, sem passar pelo
-        // modal "Confirmar pagamento", cai aqui — sem isso o pedido vira "paid" sem Payment,
+        // "Pago" num pedido PDV ainda sem Payment (a receber) arrastado no kanban, sem passar
+        // pelo modal "Confirmar pagamento", cai aqui — sem isso o pedido vira "paid" sem Payment,
         // e o fechamento de caixa conta a venda no TOTAL VENDAS mas não em nenhuma forma de
-        // pagamento (ver CashClosingReportService).
-        if ($newStatus === 'paid' && $previousStatus === 'awaiting_payment' && $order->order_type === 'pdv' && ! $order->payment()->exists()) {
+        // pagamento (ver CashClosingReportService). Não depende do status anterior: agendado
+        // costuma passar por "Entregue"/"Preparando" antes de alguém marcar "Pago".
+        if ($newStatus === 'paid' && $order->needsPdvPaymentConfirmation()) {
             app(PaymentOrchestrator::class)->confirmDeliveryPayment($order);
-        } else {
-            $order->update(['status' => $newStatus]);
         }
+
+        $order->update(['status' => $newStatus]);
 
         $order->refresh();
 
@@ -408,7 +409,7 @@ class Index extends Component
             ? Order::withoutGlobalScope(CompanyScope::class)->findOrFail($orderId)
             : Order::findOrFail($orderId);
 
-        if ($order->order_type !== 'pdv' || $order->status !== 'awaiting_payment' || $order->payment()->exists()) {
+        if (! $order->needsPdvPaymentConfirmation()) {
             return;
         }
 
@@ -564,7 +565,8 @@ class Index extends Component
             $kanbanColumns = collect(self::KANBAN_STATUSES)
                 ->mapWithKeys(function ($status) use ($baseQuery, $perPage, $totals) {
                     $limit = $this->kanbanPages[$status] * $perPage;
-                    $fetched = (clone $baseQuery)->where('status', $status)->latest()->limit($limit + 1)->get();
+                    // payments_exists alimenta o botão "Confirmar pagamento" do card sem uma query por pedido.
+                    $fetched = (clone $baseQuery)->withExists('payments')->where('status', $status)->latest()->limit($limit + 1)->get();
                     $hasMore = $fetched->count() > $limit;
 
                     return [

@@ -1920,6 +1920,52 @@ test('confirmar pagamento em "Pedidos da sessão" cria o Payment e o fechamento 
         ->and($paymentsSum)->toBe($report['revenue']);
 });
 
+test('"Pedidos da sessão" não mostra "Pago" pra pedido que avançou sem Payment e confirma sem regredir o status', function () {
+    ['admin' => $admin, 'company' => $company, 'branch' => $branch] = pdvContext();
+
+    $customer = Customer::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Cliente Retirada',
+        'phone' => '11999990010',
+    ]);
+
+    $session = PdvCashSession::withoutGlobalScopes()
+        ->where('company_id', $company->id)
+        ->where('branch_id', $branch->id)
+        ->whereNull('closed_at')
+        ->first();
+
+    // Agendado "pagar na retirada" que o operador já marcou como entregue sem registrar o pagamento.
+    $order = Order::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'customer_id' => $customer->id,
+        'branch_id' => $branch->id,
+        'pdv_cash_session_id' => $session->id,
+        'subtotal' => 44.90,
+        'total' => 44.90,
+        'fee' => 0,
+        'net_value' => 44.90,
+        'status' => 'delivered',
+        'payment_method' => 'pix',
+        'order_type' => 'pdv',
+        'delivery_type' => 'retirar',
+        'scheduled_at' => now()->subHour(),
+        'is_open_tab' => false,
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('showSessionHistory')
+        ->assertSee('Ag. pagamento')
+        ->assertSeeHtml('confirmSessionOrderPayment('.$order->id.')')
+        ->call('confirmSessionOrderPayment', $order->id);
+
+    $order->refresh();
+    expect($order->status)->toBe('delivered');
+    expect(Payment::where('order_id', $order->id)->where('status', 'paid')->exists())->toBeTrue();
+});
+
 test('confirmar pagamento ignora pedido que não é do PDV (aguardando webhook Vindi/Asaas)', function () {
     ['admin' => $admin, 'company' => $company, 'branch' => $branch] = pdvContext();
 
