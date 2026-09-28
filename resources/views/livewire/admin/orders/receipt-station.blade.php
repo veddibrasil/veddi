@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Cupom {{ strtoupper($station) }} {{ $order->order_number }}</title>
+    @php $ifood = $order->ifoodDetails(); @endphp
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: DejaVu Sans Mono, monospace; font-size: 9px; color: #1a0025; background: #fff; padding: 10px 10px; }
@@ -29,7 +30,7 @@
 
     <div class="type-banner">{{ ['cozinha' => 'COZINHA', 'bar' => 'BAR', 'entrega' => 'ENTREGA'][$station] }}</div>
 
-    @if ($order->scheduled_at)
+    @if ($order->scheduled_at && ! $ifood)
         <div class="type-banner" style="background-color: #b45309;">
             AGENDADO: {{ $order->scheduled_at->setTimezone(config('app.timezone'))->format('d/m/Y H:i') }}
         </div>
@@ -38,7 +39,7 @@
     <table style="width: 100%;">
         <tr>
             <td>Pedido</td>
-            <td style="text-align: right;" class="order-number">{{ $order->order_number }}</td>
+            <td style="text-align: right;" class="order-number">{{ $ifood ? 'iFood #'.$ifood->displayId() : $order->order_number }}</td>
         </tr>
         @if ($order->table_label)
             <tr>
@@ -52,13 +53,22 @@
         </tr>
     </table>
 
+    @if ($ifood)
+        <div class="divider"></div>
+        @foreach ($ifood->receiptLines($station) as $line)
+            <div class="{{ $line['bold'] ? 'bold' : '' }}">{{ $line['text'] }}</div>
+        @endforeach
+    @endif
+
     @if ($station === 'entrega')
         <div class="divider"></div>
 
         @php $isGuestCustomer = $order->customer?->phone === 'pdv-guest'; @endphp
         @if (! $isGuestCustomer)
             <div class="bold">{{ $order->customer->name }}</div>
-            <div class="sm muted">{{ $order->customer->phone }}</div>
+            @unless ($ifood)
+                <div class="sm muted">{{ $order->customer->phone }}</div>
+            @endunless
         @endif
 
         <div class="address-bar">
@@ -90,6 +100,9 @@
                     </div>
                 @endif
             @endforeach
+            @if ($item->notes)
+                <div class="bold" style="padding-left: 8px;">Obs: {{ $item->notes }}</div>
+            @endif
         </div>
     @empty
         <div class="center muted" style="padding: 10px 0;">Nenhum item desta estação neste pedido.</div>
@@ -97,7 +110,7 @@
 
     <div class="divider"></div>
 
-    @if ($station === 'entrega')
+    @if ($station === 'entrega' && ! $ifood)
         <table style="width: 100%;">
             <tr>
                 <td>Pagamento</td>
@@ -122,7 +135,7 @@
     @endif
 
     @if ($order->notes)
-        <div class="sm"><span class="bold">Obs: </span>{{ $order->notes }}</div>
+        <div class="bold"><span>Obs. do pedido: </span>{{ $order->notes }}</div>
         <div class="divider"></div>
     @endif
 

@@ -93,7 +93,7 @@
                     </div>
                     @error('selectedMerchantId') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
 
-                    <div class="flex items-center gap-3">
+                    <div class="flex flex-wrap items-center gap-3">
                         @if(! empty($availableMerchants))
                             <flux:button wire:click="selectMerchant" variant="primary">Confirmar loja</flux:button>
                         @endif
@@ -106,7 +106,7 @@
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                         <div>
                             <p class="text-neutral-500 dark:text-neutral-400">Merchant ID</p>
-                            <p class="font-medium">{{ $merchantId }}</p>
+                            <p class="font-medium break-all">{{ $merchantId }}</p>
                         </div>
                         <div>
                             <p class="text-neutral-500 dark:text-neutral-400">Status</p>
@@ -120,11 +120,11 @@
                         </div>
                     </div>
 
-                    <div class="flex items-center gap-3">
+                    <div class="flex flex-wrap items-center gap-3">
                         @if($status === 'active')
-                            <flux:button wire:click="pause" variant="ghost" size="sm">Pausar</flux:button>
+                            <flux:button wire:click="pause" variant="ghost" size="sm">Pausar integração</flux:button>
                         @else
-                            <flux:button wire:click="resume" variant="ghost" size="sm">Retomar</flux:button>
+                            <flux:button wire:click="resume" variant="ghost" size="sm">Retomar integração</flux:button>
                         @endif
                         <flux:button wire:click="syncCatalogNow" wire:loading.attr="disabled" variant="ghost" size="sm">Sincronizar cardápio agora</flux:button>
                         <flux:button wire:click="disconnect" variant="danger" size="sm">Desconectar</flux:button>
@@ -134,6 +134,7 @@
         </div>
 
         @if($connectionState === 'connected')
+            @include('livewire.admin.settings.ifood-merchant')
             <div class="bg-white border rounded-xl shadow-sm p-6 space-y-3 dark:bg-zinc-800 dark:border-zinc-700">
                 <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Saúde da conexão</h2>
 

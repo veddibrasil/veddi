@@ -15,7 +15,7 @@ Tambem ha integracoes de pagamento e webhook:
 
 - Asaas para onboarding, taxa de ativacao e cobrancas recorrentes;
 - Vindi para PIX e parte do fluxo financeiro;
-- carteira, saque, antecipacao e conciliacao interna por empresa;
+- carteira (historico e saldo interno por empresa) e conciliacao; saque e antecipacao sao feitos no portal Vindi. O split do pagamento e calculado uma vez em `PaymentSplitCalculator`, gravado no `Payment` (`platform_fee`, `company_net_amount`) e reusado pela carteira e pelas transacoes;
 - WhatsApp Cloud API (Meta) para avisar o cliente a cada etapa do pedido, com numero proprio de cada empresa (detalhes na secao "Notificacoes por WhatsApp").
 
 ## Stack principal

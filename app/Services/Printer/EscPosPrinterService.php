@@ -72,7 +72,9 @@ class EscPosPrinterService implements PrinterServiceInterface
             $printer->setJustification(Printer::JUSTIFY_LEFT);
         }
 
-        if ($order->scheduled_at) {
+        $ifood = $order->ifoodDetails();
+
+        if ($order->scheduled_at && ! $ifood) {
             $printer->setJustification(Printer::JUSTIFY_CENTER);
             $printer->setEmphasis(true);
             $printer->text('*** AGENDADO: '.$order->scheduled_at->setTimezone(config('app.timezone'))->format('d/m/Y H:i')." ***\n");
@@ -80,7 +82,7 @@ class EscPosPrinterService implements PrinterServiceInterface
             $printer->setJustification(Printer::JUSTIFY_LEFT);
         }
 
-        $printer->text("Pedido: {$order->order_number}\n");
+        $printer->text($ifood ? "Pedido: iFood #{$ifood->displayId()} ({$order->order_number})\n" : "Pedido: {$order->order_number}\n");
 
         if ($order->table_label) {
             $printer->text("Mesa/Comanda: {$order->table_label}\n");
@@ -90,6 +92,15 @@ class EscPosPrinterService implements PrinterServiceInterface
 
         $isDeliveryTicket = $station === 'entrega';
         $isGeneralReceipt = $station === 'geral';
+
+        if ($ifood) {
+            $this->divider($printer);
+            foreach ($ifood->receiptLines($station) as $line) {
+                $printer->setEmphasis($line['bold']);
+                $printer->text($line['text']."\n");
+            }
+            $printer->setEmphasis(false);
+        }
 
         if ($isDeliveryTicket) {
             $this->divider($printer);
@@ -134,6 +145,12 @@ class EscPosPrinterService implements PrinterServiceInterface
                 }
             }
 
+            if ($item->notes) {
+                $printer->setEmphasis(true);
+                $printer->text("  Obs: {$item->notes}\n");
+                $printer->setEmphasis(false);
+            }
+
             if ($isGeneralReceipt) {
                 $printer->setJustification(Printer::JUSTIFY_RIGHT);
                 $printer->text('R$ '.number_format((float) $item->subtotal, 2, ',', '.')."\n");
@@ -144,8 +161,11 @@ class EscPosPrinterService implements PrinterServiceInterface
         if ($isGeneralReceipt) {
             $this->divider($printer);
             $this->printTotals($printer, $order);
-            $this->divider($printer);
-            $this->printPayment($printer, $order);
+            // Pedido iFood: forma de pagamento, troco e valor a cobrar já saíram no bloco iFood.
+            if (! $ifood) {
+                $this->divider($printer);
+                $this->printPayment($printer, $order);
+            }
             $this->divider($printer);
             $this->printCustomerAndAddress($printer, $order);
         } elseif ($isDeliveryTicket && $order->payment_method === 'cash' && ! $order->payment) {
@@ -157,7 +177,9 @@ class EscPosPrinterService implements PrinterServiceInterface
 
         if ($order->notes) {
             $this->divider($printer);
-            $printer->text("Obs: {$order->notes}\n");
+            $printer->setEmphasis(true);
+            $printer->text("Obs. do pedido: {$order->notes}\n");
+            $printer->setEmphasis(false);
         }
 
         if ($isGeneralReceipt) {
@@ -347,7 +369,7 @@ class EscPosPrinterService implements PrinterServiceInterface
         }
 
         if ((float) ($order->manual_discount ?? 0) > 0) {
-            $printer->text('Desconto operador: - R$ '.number_format((float) $order->manual_discount, 2, ',', '.')."\n");
+            $printer->text(($order->channel === 'ifood' ? 'Cupom iFood' : 'Desconto operador').': - R$ '.number_format((float) $order->manual_discount, 2, ',', '.')."\n");
         }
 
         $printer->setEmphasis(true);
@@ -405,7 +427,12 @@ class EscPosPrinterService implements PrinterServiceInterface
             $printer->setEmphasis(true);
             $printer->text($order->customer->name."\n");
             $printer->setEmphasis(false);
-            $printer->text($order->customer->phone."\n");
+
+            // Cadastro iFood guarda um marcador interno no telefone; o contato (0800 +
+            // localizador) já saiu no bloco iFood.
+            if ($order->channel !== 'ifood') {
+                $printer->text($order->customer->phone."\n");
+            }
         }
 
         if ($order->delivery_address_id) {

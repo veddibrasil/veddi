@@ -26,17 +26,10 @@ Schedule::command('whatsapp:check-connections')
     ->withoutOverlapping()
     ->onOneServer();
 
+// Não é necessário para o saldo: BalanceService já trata como liberada a transação
+// confirmed cuja release_date chegou.
 // Schedule::job(new \App\Jobs\ReleaseCompanyTransactionsJob)
 //     ->name('release-company-transactions')
-//     ->everyMinute()
-//     ->withoutOverlapping(expiresAt: 5)
-//     ->onOneServer();
-
-// Atualiza snapshots de saldo de todas as empresas (após liberação das transações)
-// Comentado: saldo exibido agora é calculado on-demand via BalanceService::calculateBalance().
-// Reabilitar se snapshots periódicos voltarem a ser necessários.
-// Schedule::job(new \App\Jobs\UpdateCompanyBalancesJob)
-//     ->name('update-company-balances')
 //     ->everyMinute()
 //     ->withoutOverlapping(expiresAt: 5)
 //     ->onOneServer();

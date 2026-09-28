@@ -37,6 +37,8 @@ class NotificationBell extends Component
             // Pega o aviso de pedido agendado (NotifyScheduledOrderJob) e outras mudanças de
             // status em tempo real — sem isso a notificação só aparece no próximo re-render.
             "echo-private:orders.{$this->companyId},OrderStatusUpdated" => 'onNewOrder',
+            // Aviso de negociação e de cancelamento recusado no iFood.
+            "echo-private:orders.{$this->companyId},IfoodOrderUpdated" => 'onNewOrder',
         ];
     }
 

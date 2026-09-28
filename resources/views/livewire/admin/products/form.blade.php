@@ -166,6 +166,7 @@
                     @endif
                     <div class="pb-1">
                         <flux:checkbox wire:model="available_in_delivery" label="Disponível no Delivery" />
+                        <flux:checkbox wire:model="available_in_ifood" label="Disponível no iFood" />
                     </div>
                 </div>
             </div>

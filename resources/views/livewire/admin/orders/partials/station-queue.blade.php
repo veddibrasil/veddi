@@ -53,8 +53,8 @@
         <div wire:key="station-card-{{ $order->id }}" class="bg-white border rounded-xl shadow-sm overflow-hidden dark:bg-zinc-800 dark:border-zinc-700">
             <div class="flex items-start justify-between gap-2 px-4 pt-4 pb-2">
                 <div class="min-w-0">
-                    <p class="font-mono font-semibold text-xs text-neutral-400 dark:text-neutral-500">{{ $order->order_number }}</p>
-                    <p class="text-sm font-semibold text-neutral-800 dark:text-neutral-100">{{ $order->table_label ?: $order->origin_label }}</p>
+                    <p class="font-mono font-semibold text-xs text-neutral-400 dark:text-neutral-500">{{ $order->channel === 'ifood' ? 'iFood #'.$order->ifoodDetails()->displayId() : $order->order_number }}</p>
+                    <p class="text-sm font-semibold text-neutral-800 dark:text-neutral-100">{{ $order->table_label ?: ($order->channel === 'ifood' ? 'iFood · '.$order->ifoodDetails()->orderTypeLabel() : $order->origin_label) }}</p>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
                     <span class="text-xs px-2 py-1 rounded-full font-medium {{ $urgencyClasses }}">
@@ -81,6 +81,9 @@
                                 <p class="text-xs text-neutral-400 leading-tight dark:text-neutral-500">{{ $sel['qty'] ?? 0 }}× {{ $sel['name'] ?? '-' }}</p>
                             @endforeach
                         @endforeach
+                        @if ($item->notes)
+                            <p class="mt-1 text-xs font-semibold text-amber-700 dark:text-amber-400">Obs: {{ $item->notes }}</p>
+                        @endif
                     </div>
                 @endforeach
             </div>
@@ -95,7 +98,7 @@
                 <button wire:click="updateOrderStatus({{ $order->id }}, 'preparing')"
                         wire:loading.attr="disabled"
                         class="w-full py-3.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 transition-colors border-t dark:border-zinc-700">
-                    Iniciar preparo
+                    {{ $order->ifoodDetails()?->awaitingConfirmation() ? 'Aceitar no iFood e iniciar preparo' : 'Iniciar preparo' }}
                 </button>
             @elseif ($canUpdate && $order->status === 'preparing')
                 <button wire:click="updateOrderStatus({{ $order->id }}, 'ready')"

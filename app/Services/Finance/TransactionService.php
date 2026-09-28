@@ -7,15 +7,23 @@ use App\Models\Company;
 use App\Models\CompanyTransaction;
 use App\Models\Order;
 use App\Models\Payment;
+use App\Services\Payment\PaymentSplitCalculator;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class TransactionService implements TransactionServiceInterface
 {
+    public function __construct(
+        private readonly PaymentSplitCalculator $splits = new PaymentSplitCalculator,
+    ) {}
+
     /**
      * Cria uma CompanyTransaction quando um pagamento é confirmado.
-     * Chamado pelo ProcessAsaasWebhook::handleOrderPayment() após WalletService::creditForOrder().
+     * Chamado pelos webhooks/orchestrator logo após WalletService::creditForOrder().
+     *
+     * net_value vem do mesmo split da carteira (PaymentSplitCalculator), e a criação é
+     * idempotente por payment_id — um chamador a mais não duplica o saldo.
      */
     public function createForPayment(Order $order, Payment $payment): CompanyTransaction
     {
@@ -24,28 +32,24 @@ class TransactionService implements TransactionServiceInterface
         $paymentDate = now()->toDateString();
         $releaseDate = $this->resolveReleaseDate($type, $paymentDate, $payment->anticipation_days);
 
-        // Card: 100% goes to affiliate via Yapay split — net_value = full order amount, no fee.
-        // PIX: platform retains vindi_pix_platform_rate + plan fee.
-        if ($type === 'cartao' && $payment->original_amount !== null) {
-            $value = (float) $payment->amount;
-            $cardFeeAbsorbed = $company->card_fee_absorbed_by_company ?? false;
-            $netValue = ($cardFeeAbsorbed && $payment->card_fee)
-                ? round((float) $payment->original_amount - (float) $payment->card_fee, 2)
-                : (float) $payment->original_amount;
-        } else {
-            $planFeeRate = $company->plan?->feePercentage() ?? 0.0;
-            $platformFeeRate = $payment->payment_gateway === 'vindi'
-                ? (float) config('payments.vindi_pix_platform_rate', 0.0014)
-                : 0.0;
-            $feeRate = $planFeeRate + $platformFeeRate;
-            $value = (float) $payment->amount;
-            $pixFee = ($type === 'pix' && ($company->pix_fee_absorbed_by_company ?? false))
-                ? (float) $payment->pix_fee
-                : 0.0;
-            $netValue = round(($value - $pixFee) * (1 - $feeRate), 2);
-        }
+        $value = (float) $payment->amount;
+        $netValue = $this->splits->forPayment($order, $payment)->companyNet;
 
         return DB::transaction(function () use ($order, $payment, $company, $type, $value, $netValue, $paymentDate, $releaseDate) {
+            $existing = CompanyTransaction::withoutGlobalScopes()
+                ->where('payment_id', $payment->id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($existing) {
+                Log::channel('payments')->info('CompanyTransaction já existe para o pagamento (idempotente)', [
+                    'transaction_id' => $existing->id,
+                    'payment_id' => $payment->id,
+                ]);
+
+                return $existing;
+            }
+
             $transaction = CompanyTransaction::withoutGlobalScopes()->create([
                 'company_id' => $company->id,
                 'order_id' => $order->id,
@@ -69,6 +73,8 @@ class TransactionService implements TransactionServiceInterface
                     'original_amount' => $payment->original_amount,
                 ],
             ]);
+
+            app(BalanceService::class)->broadcastUpdate($company->id);
 
             Log::channel('payments')->info('CompanyTransaction criada', [
                 'transaction_id' => $transaction->id,

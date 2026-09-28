@@ -20,14 +20,19 @@ class VindiWebhookController extends Controller
             ?? $data['token_account']
             ?? '';
 
-        if (! hash_equals((string) config('payments.vindi_token_account'), $sellerToken)) {
+        $expected = (string) config('payments.vindi_token_account');
+
+        // Sem token configurado, hash_equals('', '') aceitaria qualquer POST sem token —
+        // falha fechada, igual ao webhook do Asaas.
+        if ($expected === '' || ! hash_equals($expected, (string) $sellerToken)) {
             // Nunca logar o payload completo de uma requisição ainda não autenticada —
             // só metadados, senão qualquer POST não autenticado a este endpoint público
-            // grava o corpo bruto (potencialmente forjado) no log/Nightwatch.
-            Log::channel('webhook')->warning('Vindi webhook: token_account inválido', [
+            // grava o corpo bruto (potencialmente forjado) no log/Nightwatch. Nem prefixo
+            // do token esperado: é segredo da conta.
+            Log::channel('webhook')->warning('Vindi webhook: token_account inválido ou não configurado', [
                 'ip' => $request->ip(),
-                'received_prefix' => $sellerToken !== '' ? substr($sellerToken, 0, 8).'…' : '(vazio)',
-                'expected_prefix' => substr((string) config('payments.vindi_token_account'), 0, 8).'…',
+                'token_missing' => $expected === '',
+                'received_prefix' => $sellerToken !== '' ? substr((string) $sellerToken, 0, 4).'…' : '(vazio)',
                 'content_type' => $request->header('Content-Type'),
                 'keys_recebidos' => array_keys($data),
             ]);

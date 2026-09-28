@@ -1,7 +1,7 @@
 @props(['backRoute' => null, 'title', 'titleClass' => '', 'backLabel' => 'Voltar'])
 
-<div class="flex items-center justify-between gap-3">
-    <div class="flex items-center gap-2">
+<div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="flex min-w-0 items-center gap-2">
         @if ($backRoute)
             <a
                 href="{{ $backRoute }}"
@@ -12,7 +12,7 @@
                 <span aria-hidden="true">←</span>
             </a>
         @endif
-        <h1 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100 {{ $titleClass }}">{{ $title }}</h1>
+        <h1 class="min-w-0 text-2xl font-bold text-neutral-800 dark:text-neutral-100 {{ $titleClass }}">{{ $title }}</h1>
     </div>
     @isset($actions)
         {{ $actions }}

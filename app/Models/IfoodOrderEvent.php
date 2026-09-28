@@ -19,6 +19,7 @@ class IfoodOrderEvent extends Model
         'ifood_integration_id',
         'payload',
         'status',
+        'attempts',
         'processed_at',
         'acknowledged_at',
     ];

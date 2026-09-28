@@ -2,8 +2,10 @@
 
 namespace App\Livewire\Admin\Products;
 
+use App\Jobs\SyncIfoodCatalogJob;
 use App\Models\Branch;
 use App\Models\Company;
+use App\Models\IfoodIntegration;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\ProductOption;
@@ -54,6 +56,8 @@ class Form extends Component
 
     public bool $available_in_delivery = true;
 
+    public bool $available_in_ifood = false;
+
     public int $sort_order = 0;
 
     public $image;
@@ -91,7 +95,7 @@ class Form extends Component
         return [
             'company_id' => $this->isSuperAdmin ? ['required', 'integer', 'exists:companies,id'] : ['nullable'],
             'product_category_id' => ['required', 'integer', 'exists:product_categories,id'],
-            'name' => ['required', 'string', 'max:150'],
+            'name' => ['required', 'string', $this->available_in_ifood ? 'max:100' : 'max:150'],
             'description' => ['nullable', 'string', 'max:5000'],
             'price' => $this->isVariant ? ['nullable', 'numeric', 'min:0'] : ['required', 'numeric', 'min:0.01'],
             'promo_price_enabled' => $this->isVariant ? ['boolean'] : ['boolean'],
@@ -100,8 +104,9 @@ class Form extends Component
             'active' => ['boolean'],
             'available_in_pdv' => ['boolean'],
             'available_in_delivery' => ['boolean'],
+            'available_in_ifood' => ['boolean'],
             'sort_order' => ['integer', 'min:0'],
-            'image' => ['nullable', 'image', 'max:2048'],
+            'image' => ['nullable', 'image', 'max:2048', ...($this->available_in_ifood ? ['mimes:jpg,jpeg,png'] : [])],
             'selectedBranches' => ['array'],
             'selectedBranches.*' => [
                 Rule::exists('branches', 'id')->where(fn ($q) => $q->where('company_id', $this->company_id)),
@@ -113,14 +118,14 @@ class Form extends Component
             'optionGroups.*.fixed' => ['boolean'],
             'optionGroups.*.allow_skip' => ['boolean'],
             'optionGroups.*.options' => ['array'],
-            'optionGroups.*.options.*.name' => ['required_with:optionGroups.*.options.*', 'string', 'max:150'],
+            'optionGroups.*.options.*.name' => ['required_with:optionGroups.*.options.*', 'string', $this->available_in_ifood ? 'max:100' : 'max:150'],
             'optionGroups.*.options.*.active' => ['boolean'],
             'optionGroups.*.options.*.description' => ['nullable', 'string', 'max:2000'],
             'optionGroups.*.options.*.additional_price' => ['required_with:optionGroups.*.options.*', 'numeric', 'min:0'],
             'optionGroups.*.options.*.default_qty' => ['required_with:optionGroups.*.options.*', 'integer', 'min:0'],
             'optionGroups.*.options.*.max_qty' => ['nullable', 'integer', 'min:1'],
             'groupImages.*' => ['nullable', 'image', 'max:2048'],
-            'optionImages.*' => ['nullable', 'image', 'max:2048'],
+            'optionImages.*' => ['nullable', 'image', 'max:2048', ...($this->available_in_ifood ? ['mimes:jpg,jpeg,png'] : [])],
         ];
     }
 
@@ -189,6 +194,7 @@ class Form extends Component
             $this->isEditing = true;
             $this->company_id = $product->company_id;
             $this->fill($product->only('product_category_id', 'name', 'active', 'available_in_pdv', 'available_in_delivery', 'sort_order'));
+            $this->available_in_ifood = (bool) ($product->available_in_ifood ?? true);
             $this->description = $product->description ?? '';
             $this->price = (string) $product->price;
             $this->isVariant = (bool) $product->is_variant;
@@ -639,6 +645,7 @@ class Form extends Component
             'active' => $validated['active'],
             'available_in_pdv' => $this->pdvEnabled ? $validated['available_in_pdv'] : false,
             'available_in_delivery' => $validated['available_in_delivery'],
+            'available_in_ifood' => $validated['available_in_ifood'],
             'sort_order' => $validated['sort_order'],
             'image_path' => $imagePath,
         ];
@@ -813,6 +820,19 @@ class Form extends Component
         // Depois de gravar filiais, grupos e opções: invalida o cardápio de todas as filiais da empresa
         // (inclui filiais desmarcadas neste save), sem janela para outro request repopular com dado velho.
         app(MenuCache::class)->forgetCompany((int) ($product->company_id ?? $this->company_id));
+
+        // O formulário grava relações depois do produto; publicar apenas o estado final.
+        $integrations = IfoodIntegration::withoutGlobalScopes()
+            ->where('company_id', $product->company_id)->where('status', 'active')
+            ->whereIn('branch_id', $product->branches()->pluck('branches.id'))->get();
+        foreach ($integrations as $integration) {
+            try {
+                SyncIfoodCatalogJob::dispatch($integration->branch_id, $product->id, true)->afterCommit();
+            } catch (\Throwable $e) {
+                report($e);
+                session()->flash('error', 'Produto salvo. A sincronização com o iFood não foi concluída; use Sincronizar cardápio agora nas configurações da integração para tentar novamente.');
+            }
+        }
 
         $this->redirect(route('admin.products.index'));
     }

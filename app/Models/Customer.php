@@ -15,6 +15,7 @@ class Customer extends Model
         'company_id',
         'name',
         'phone',
+        'ifood_customer_id',
         'email',
         'tax_id',
         'address_id',

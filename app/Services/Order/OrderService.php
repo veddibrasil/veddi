@@ -166,6 +166,7 @@ class OrderService implements OrderServiceInterface
                     'quantity' => (int) ($item['qty'] ?? 0),
                     'subtotal' => $unitPrice * (int) ($item['qty'] ?? 0),
                     'options' => $resolved['options'] !== [] ? $resolved['options'] : null,
+                    'notes' => is_array($item) && filled($item['notes'] ?? null) ? mb_substr(trim((string) $item['notes']), 0, 500) : null,
                 ]);
             }
 

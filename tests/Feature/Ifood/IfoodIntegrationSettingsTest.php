@@ -360,7 +360,7 @@ test('escolher a loja confirma o merchant e ativa a integração', function () {
     Bus::assertDispatched(SyncIfoodCatalogJob::class, fn ($job) => $job->branchId === $branch->id);
 });
 
-test('sincronizar cardápio agora dispara o job pra filial conectada', function () {
+test('sincronizar cardápio agora conclui a operação antes de indicar sucesso', function () {
     $company = ifoodSettingsTestCompany();
     $branch = Branch::withoutGlobalScopes()->where('company_id', $company->id)->first();
     app()->instance('current.company', $company);
@@ -374,15 +374,13 @@ test('sincronizar cardápio agora dispara o job pra filial conectada', function 
         'status' => 'active',
     ]);
 
-    Bus::fake([SyncIfoodCatalogJob::class, PollIfoodEventsJob::class]);
+    $this->mock(\App\Services\Ifood\IfoodCatalogSyncService::class)->shouldReceive('syncFullCatalog')->once();
     $admin = ifoodSettingsAdmin($company);
 
     Livewire::actingAs($admin)
         ->test(IfoodIntegrationSettings::class)
         ->set('branchId', $branch->id)
-        ->call('syncCatalogNow');
-
-    Bus::assertDispatched(SyncIfoodCatalogJob::class, fn ($job) => $job->branchId === $branch->id);
+        ->call('syncCatalogNow')->assertSee('Cardápio sincronizado');
 });
 
 test('autorização revogada exibe reconexão e não permite retomar sem autorizar', function () {

@@ -245,6 +245,26 @@ function ifoodKanbanOrder(array $ctx, string $status = 'paid', string $externalO
     ]);
 }
 
+/** API do iFood falsa: token + detalhes do pedido. */
+function fakeIfoodApi(array $orderDetails): void
+{
+    \Illuminate\Support\Facades\Http::fake([
+        '*/authentication/v1.0/oauth/token' => \Illuminate\Support\Facades\Http::response(['accessToken' => 'tok-test', 'expiresIn' => 3600], 200),
+        '*/order/v1.0/orders/*' => \Illuminate\Support\Facades\Http::response($orderDetails, 200),
+    ]);
+}
+
+/** Roda ProcessIfoodOrderJob direto (sem fila), como o polling faz. */
+function runIfoodOrderJob(int $eventId): void
+{
+    (new \App\Jobs\ProcessIfoodOrderJob($eventId))->handle(
+        app(\App\Contracts\IfoodGatewayContract::class),
+        app(\App\Services\Ifood\IfoodOrderMapper::class),
+        app(\App\Contracts\OrderServiceInterface::class),
+        app(\App\Services\Payment\PaymentOrchestrator::class),
+    );
+}
+
 /** Payload de detalhes de pedido (GET /order/v1.0/orders/{id}) — 1 item, sem complemento. */
 function ifoodOrderDetailsPayload(string $ifoodOrderId, string $merchantId, string $ifoodItemId, int $quantity = 2): array
 {

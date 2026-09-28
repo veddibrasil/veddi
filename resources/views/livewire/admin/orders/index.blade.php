@@ -11,6 +11,38 @@
     </div>
 @endif
 
+@if ($ifoodAwaiting->isNotEmpty())
+    {{-- Pedidos iFood esperando aceite: o iFood cancela o pedido imediato não confirmado no prazo. --}}
+    <div role="alert" data-testid="ifood-awaiting-alert" class="rounded-xl border border-red-300 bg-red-50 p-3 space-y-2 dark:border-red-800 dark:bg-red-900/20">
+        <p class="text-sm font-bold text-red-700 dark:text-red-300">
+            {{ $ifoodAwaiting->count() === 1 ? '1 pedido iFood aguardando aceite' : $ifoodAwaiting->count().' pedidos iFood aguardando aceite' }}
+        </p>
+        @foreach ($ifoodAwaiting as $awaiting)
+            @php $awaitingIfood = $awaiting->ifoodDetails(); $awaitingDeadline = $awaitingIfood->confirmationDeadline(); @endphp
+            <div wire:key="ifood-awaiting-{{ $awaiting->id }}" class="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-white px-3 py-2 dark:bg-zinc-800">
+                <a href="{{ route('admin.orders.show', $awaiting) }}" class="font-mono font-bold text-neutral-800 hover:underline dark:text-neutral-100">#{{ $awaitingIfood->displayId() }}</a>
+                <span class="text-sm text-neutral-600 dark:text-neutral-300">{{ $awaitingIfood->orderTypeLabel() }} · R$ {{ number_format($awaiting->total, 2, ',', '.') }}</span>
+                @if ($awaitingDeadline)
+                    <span x-data="acceptanceCountdown({{ $awaitingDeadline->getTimestampMs() }})"
+                          class="rounded px-2 py-0.5 font-mono text-sm font-bold"
+                          :class="urgent ? 'bg-red-600 text-white' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'"
+                          x-text="label"></span>
+                @else
+                    <span class="text-sm text-amber-700 dark:text-amber-400">Agendado: {{ $awaitingIfood->scheduleWindow() }}</span>
+                @endif
+                @if ($canUpdate)
+                    <span class="ml-auto flex gap-2">
+                        <button wire:click="acceptIfoodOrder({{ $awaiting->id }})" wire:loading.attr="disabled"
+                                class="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">Aceitar</button>
+                        <button wire:click="openIfoodCancelModal({{ $awaiting->id }})" wire:loading.attr="disabled"
+                                class="rounded-lg bg-red-100 px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-200 dark:bg-red-900/40 dark:text-red-300">Recusar</button>
+                    </span>
+                @endif
+            </div>
+        @endforeach
+    </div>
+@endif
+
 @if ($userStation === 'entrega')
     {{-- ── ENTREGA: fila mobile em cards, sem kanban ──────────────────────── --}}
     <div class="flex items-center justify-between">
@@ -39,15 +71,19 @@
         @forelse ($orders as $order)
             @php
                 $addrFull = $order->deliveryFullAddress();
-                $rawPhone = preg_replace('/\D/', '', $order->customer?->phone ?? '');
+                // iFood: o contato é o 0800 do pedido (o cadastro guarda um marcador interno).
+                $rawPhone = preg_replace('/\D/', '', $order->channel === 'ifood' ? ($order->ifoodDetails()->customerPhone() ?? '') : ($order->customer?->phone ?? ''));
                 $whatsappPhone = strlen($rawPhone) <= 11 ? '55'.$rawPhone : $rawPhone;
             @endphp
             <div wire:key="entrega-card-{{ $order->id }}" class="bg-white border rounded-xl shadow-sm overflow-hidden dark:bg-zinc-800 dark:border-zinc-700">
                 <a href="{{ route('admin.orders.show', $order) }}" wire:navigate class="block px-4 pt-4 pb-3">
                     <div class="flex items-start justify-between gap-2">
                         <div class="min-w-0">
-                            <p class="font-mono font-semibold text-xs text-neutral-400 dark:text-neutral-500">{{ $order->order_number }}</p>
+                            <p class="font-mono font-semibold text-xs text-neutral-400 dark:text-neutral-500">{{ $order->channel === 'ifood' ? 'iFood #'.$order->ifoodDetails()->displayId() : $order->order_number }}</p>
                             <p class="text-base font-semibold text-neutral-800 dark:text-neutral-100 truncate">{{ $order->customer->name ?? '—' }}</p>
+                            @if ($order->channel === 'ifood' && $order->ifoodDetails()->phoneLocalizer())
+                                <p class="text-xs text-neutral-500 dark:text-neutral-400">Localizador {{ $order->ifoodDetails()->phoneLocalizer() }}</p>
+                            @endif
                             @if ($addrFull)
                                 <p class="text-sm text-neutral-500 dark:text-neutral-400 truncate">{{ $addrFull }}</p>
                             @endif
@@ -74,15 +110,17 @@
                 </a>
 
                 @if ($addrFull || $rawPhone)
-                    <div class="grid grid-cols-3 border-t dark:border-zinc-700 divide-x dark:divide-zinc-700">
+                    <div class="grid {{ $order->channel === 'ifood' ? 'grid-cols-2' : 'grid-cols-3' }} border-t dark:border-zinc-700 divide-x dark:divide-zinc-700">
                         <a href="tel:{{ $rawPhone }}"
                            class="flex items-center justify-center gap-1.5 py-3 text-xs font-medium text-neutral-600 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-zinc-700/50 transition-colors">
                             📞 Ligar
                         </a>
+                        @if ($order->channel !== 'ifood')
                         <a href="https://wa.me/{{ $whatsappPhone }}" target="_blank"
                            class="flex items-center justify-center gap-1.5 py-3 text-xs font-medium text-green-700 dark:text-green-400 hover:bg-neutral-50 dark:hover:bg-zinc-700/50 transition-colors">
                             💬 WhatsApp
                         </a>
+                        @endif
                         <a href="https://maps.google.com/?q={{ urlencode($addrFull) }}" target="_blank"
                            class="flex items-center justify-center gap-1.5 py-3 text-xs font-medium text-blue-700 dark:text-blue-400 hover:bg-neutral-50 dark:hover:bg-zinc-700/50 transition-colors">
                             📍 Mapa
@@ -90,7 +128,18 @@
                     </div>
                 @endif
 
-                @if ($canUpdate && in_array($order->status, ['paid', 'preparing', 'ready']))
+                @if ($order->channel === 'ifood')
+                    {{-- iFood: despacho só depois do "pronto" e só na entrega própria; conclusão é do iFood. --}}
+                    @if ($canUpdate && $order->ifoodDetails()->canDispatch())
+                        <button wire:click="updateOrderStatus({{ $order->id }}, 'out_for_delivery')"
+                                wire:loading.attr="disabled"
+                                class="w-full py-3.5 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 active:bg-purple-800 disabled:opacity-50 transition-colors border-t dark:border-zinc-700">
+                            Saiu para entrega
+                        </button>
+                    @elseif ($order->ifoodDetails()->waitingMessage())
+                        <p class="px-4 py-3 text-xs text-neutral-500 border-t dark:border-zinc-700 dark:text-neutral-400">{{ $order->ifoodDetails()->waitingMessage() }}</p>
+                    @endif
+                @elseif ($canUpdate && in_array($order->status, ['paid', 'preparing', 'ready']))
                     <button wire:click="updateOrderStatus({{ $order->id }}, 'out_for_delivery')"
                             wire:loading.attr="disabled"
                             class="w-full py-3.5 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 active:bg-purple-800 disabled:opacity-50 transition-colors border-t dark:border-zinc-700">
@@ -216,7 +265,13 @@
                     <a href="{{ route('admin.orders.show', $order) }}"
                         class="flex-1 flex items-center justify-between gap-4 min-w-0">
                         <div class="min-w-0">
-                            <p class="font-mono font-semibold text-sm text-neutral-800 dark:text-neutral-100">{{ $order->order_number }}</p>
+                            <p class="font-mono font-semibold text-sm text-neutral-800 dark:text-neutral-100">
+                                @if ($order->channel === 'ifood')
+                                    iFood #{{ $order->ifoodDetails()->displayId() }} <span class="font-normal text-xs text-neutral-400">{{ $order->order_number }}</span>
+                                @else
+                                    {{ $order->order_number }}
+                                @endif
+                            </p>
                             @if(auth()->user()->isSuperAdmin() && $order->company)
                                 <p class="text-xs font-medium text-amber-600 dark:text-amber-400">{{ $order->company->name }}</p>
                             @endif
@@ -327,7 +382,7 @@
                     <div class="flex items-start justify-between gap-2 mb-1">
                         <a href="{{ route('admin.orders.show', $order) }}"
                            class="font-mono text-xs font-semibold text-neutral-800 dark:text-neutral-100 hover:underline">
-                            {{ $order->order_number }}
+                            {{ $order->channel === 'ifood' ? 'iFood #'.$order->ifoodDetails()->displayId() : $order->order_number }}
                         </a>
                         <a href="{{ route('admin.orders.receipt', $userStation ? ['order' => $order->id, 'station' => $userStation] : $order) }}" target="_blank"
                            title="{{ $userStation ? 'Imprimir cupom '.$userStation : 'Imprimir cupom' }}"
@@ -339,7 +394,29 @@
                         </a>
                     </div>
                     <p class="text-sm text-neutral-700 dark:text-neutral-300 truncate">{{ $order->customer->name ?? '—' }}</p>
-                    <span class="inline-block text-xs px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-500 dark:bg-zinc-700 dark:text-neutral-400">{{ $order->origin_label }}</span>
+                    <span @class([
+                        'inline-block text-xs px-1.5 py-0.5 rounded',
+                        'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400' => $order->channel === 'ifood',
+                        'bg-neutral-100 text-neutral-500 dark:bg-zinc-700 dark:text-neutral-400' => $order->channel !== 'ifood',
+                    ])>{{ $order->channel === 'ifood' ? 'iFood · '.$order->ifoodDetails()->orderTypeLabel() : $order->origin_label }}</span>
+                    @if ($order->channel === 'ifood' && $order->ifoodDetails()->awaitingConfirmation() && $order->ifoodDetails()->confirmationExpired())
+                        <p class="mt-2 rounded-lg bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 dark:bg-red-900/20 dark:text-red-300">Prazo de aceite encerrado: confira no Gestor de Pedidos</p>
+                    @elseif ($order->channel === 'ifood' && $order->ifoodDetails()->awaitingConfirmation())
+                        @php $cardDeadline = $order->ifoodDetails()->confirmationDeadline(); @endphp
+                        <div class="mt-2 flex items-center justify-between gap-2 rounded-lg bg-red-50 px-2 py-1 dark:bg-red-900/20">
+                            <span class="text-xs font-semibold text-red-700 dark:text-red-300">Aguardando aceite</span>
+                            @if ($cardDeadline)
+                                <span x-data="acceptanceCountdown({{ $cardDeadline->getTimestampMs() }})" x-text="label"
+                                      class="font-mono text-xs font-bold" :class="urgent ? 'text-red-600 dark:text-red-400' : 'text-amber-700 dark:text-amber-400'"></span>
+                            @endif
+                        </div>
+                        @if ($canUpdate)
+                            <button wire:click.stop="acceptIfoodOrder({{ $order->id }})"
+                                    class="w-full mt-2 py-1 text-xs font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors">
+                                Aceitar pedido
+                            </button>
+                        @endif
+                    @endif
                     <div class="flex items-center justify-between mt-2">
                         <p class="text-xs text-neutral-400 dark:text-neutral-500">{{ $order->created_at->format('d/m H:i') }}</p>
                         <p class="text-sm font-bold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($order->total, 2, ',', '.') }}</p>

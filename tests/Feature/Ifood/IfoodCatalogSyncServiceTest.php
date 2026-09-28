@@ -17,6 +17,7 @@ test('syncFullCatalog mapeia produto pro payload e atribui ifood_item_id (UUID) 
     DB::table('branch_product')->where('branch_id', $branch->id)->where('product_id', $product->id)->update(['ifood_item_id' => null]);
 
     $gateway = Mockery::mock(IfoodGatewayContract::class);
+    $gateway->shouldReceive('getCatalogItem')->andReturnNull()->byDefault();
     $gateway->shouldReceive('createCategory')->once()->andReturn('categoria-ifood-1');
 
     $capturedPayload = null;
@@ -44,6 +45,7 @@ test('syncFullCatalog reusa ifood_item_id já existente em vez de gerar outro', 
     ['branch' => $branch, 'product' => $product, 'integration' => $integration] = ifoodContext('cat2');
 
     $gateway = Mockery::mock(IfoodGatewayContract::class);
+    $gateway->shouldReceive('getCatalogItem')->andReturnNull()->byDefault();
     $gateway->shouldReceive('createCategory')->once()->andReturn('categoria-ifood-2');
 
     $capturedPayload = null;
@@ -68,6 +70,7 @@ test('syncFullCatalog reusa ifood_category_id já mapeado sem chamar createCateg
     ]);
 
     $gateway = Mockery::mock(IfoodGatewayContract::class);
+    $gateway->shouldReceive('getCatalogItem')->andReturnNull()->byDefault();
     $gateway->shouldNotReceive('createCategory');
 
     $capturedPayload = null;
@@ -80,7 +83,7 @@ test('syncFullCatalog reusa ifood_category_id já mapeado sem chamar createCateg
     expect($capturedPayload['item']['categoryId'])->toBe('categoria-ja-mapeada');
 });
 
-test('syncFullCatalog monta item COMBO_V2 com grupo de complemento (OFFER_UNIT)', function () {
+test('syncFullCatalog monta item DEFAULT com grupo de complemento (OFFER_UNIT) sem associationType', function () {
     ['branch' => $branch, 'product' => $product, 'integration' => $integration] = ifoodContext('cat2c');
 
     $group = App\Models\ProductOptionGroup::create([
@@ -104,6 +107,7 @@ test('syncFullCatalog monta item COMBO_V2 com grupo de complemento (OFFER_UNIT)'
     ]);
 
     $gateway = Mockery::mock(IfoodGatewayContract::class);
+    $gateway->shouldReceive('getCatalogItem')->andReturnNull()->byDefault();
     $gateway->shouldReceive('createCategory')->once()->andReturn('categoria-ifood-2c');
 
     $capturedPayload = null;
@@ -113,12 +117,12 @@ test('syncFullCatalog monta item COMBO_V2 com grupo de complemento (OFFER_UNIT)'
 
     (new IfoodCatalogSyncService($gateway))->syncFullCatalog($integration);
 
-    expect($capturedPayload['item']['type'])->toBe('COMBO_V2')
+    expect($capturedPayload['item']['type'])->toBe('DEFAULT')
         ->and($capturedPayload['optionGroups'])->toHaveCount(1)
         ->and($capturedPayload['optionGroups'][0]['optionGroupType'])->toBe('OFFER_UNIT')
         ->and($capturedPayload['optionGroups'][0]['optionIds'])->toHaveCount(1)
         ->and($capturedPayload['options'][0]['price']['value'])->toBe(2.5)
-        ->and($capturedPayload['products'][0]['optionGroups'][0]['associationType'])->toBe('MAIN')
+        ->and($capturedPayload['products'][0]['optionGroups'][0])->not->toHaveKey('associationType')
         ->and($capturedPayload['products'])->toHaveCount(2);
 
     $option->refresh();
@@ -127,10 +131,11 @@ test('syncFullCatalog monta item COMBO_V2 com grupo de complemento (OFFER_UNIT)'
         ->and($capturedPayload['options'][0]['id'])->toBe($option->ifood_option_id);
 });
 
-test('syncFullCatalog gera novo ifood_item_id quando produto ganha grupo de complemento (DEFAULT -> COMBO_V2)', function () {
+test('syncFullCatalog mantém o item DEFAULT e o ifood_item_id quando o produto ganha grupo de complemento', function () {
     ['branch' => $branch, 'product' => $product, 'integration' => $integration] = ifoodContext('cat2d');
 
     $gateway = Mockery::mock(IfoodGatewayContract::class);
+    $gateway->shouldReceive('getCatalogItem')->andReturnNull()->byDefault();
     $gateway->shouldReceive('createCategory')->once()->andReturn('categoria-ifood-2d');
     $gateway->shouldReceive('syncCatalog')->twice();
 
@@ -140,7 +145,7 @@ test('syncFullCatalog gera novo ifood_item_id quando produto ganha grupo de comp
     $original = DB::table('branch_product')->where('branch_id', $branch->id)->where('product_id', $product->id)->first(['ifood_item_id', 'ifood_item_type']);
     expect($original->ifood_item_type)->toBe('DEFAULT');
 
-    // Produto ganha grupo de complemento -> vira COMBO_V2 na próxima sync.
+    // Produto ganha grupo de complemento: continua DEFAULT, com o mesmo item.
     $group = App\Models\ProductOptionGroup::create([
         'company_id' => $product->company_id,
         'name' => 'Escolha o sabor',
@@ -164,9 +169,8 @@ test('syncFullCatalog gera novo ifood_item_id quando produto ganha grupo de comp
     (new IfoodCatalogSyncService($gateway))->syncFullCatalog($integration->fresh());
 
     $updated = DB::table('branch_product')->where('branch_id', $branch->id)->where('product_id', $product->id)->first(['ifood_item_id', 'ifood_item_type']);
-    expect($updated->ifood_item_type)->toBe('COMBO_V2')
-        ->and($updated->ifood_item_id)->not->toBe($original->ifood_item_id)
-        ->and(Str::isUuid($updated->ifood_item_id))->toBeTrue();
+    expect($updated->ifood_item_type)->toBe('DEFAULT')
+        ->and($updated->ifood_item_id)->toBe($original->ifood_item_id);
 });
 
 test('syncFullCatalog reusa ifood_item_id quando ifood_item_type nunca foi registrado (backfill sem regenerar)', function () {
@@ -177,6 +181,7 @@ test('syncFullCatalog reusa ifood_item_id quando ifood_item_type nunca foi regis
     $preExisting = DB::table('branch_product')->where('branch_id', $branch->id)->where('product_id', $product->id)->value('ifood_item_id');
 
     $gateway = Mockery::mock(IfoodGatewayContract::class);
+    $gateway->shouldReceive('getCatalogItem')->andReturnNull()->byDefault();
     $gateway->shouldReceive('createCategory')->once()->andReturn('categoria-ifood-2e');
     $gateway->shouldReceive('syncCatalog')->once();
 
@@ -192,6 +197,7 @@ test('syncAvailability não faz nada quando produto ainda não tem ifood_item_id
     DB::table('branch_product')->where('branch_id', $branch->id)->where('product_id', $product->id)->update(['ifood_item_id' => null]);
 
     $gateway = Mockery::mock(IfoodGatewayContract::class);
+    $gateway->shouldReceive('getCatalogItem')->andReturnNull()->byDefault();
     $gateway->shouldNotReceive('syncCatalog');
     $gateway->shouldNotReceive('createCategory');
 
@@ -208,17 +214,11 @@ test('syncAvailability envia UNAVAILABLE quando produto é pausado (active=false
     $product->update(['active' => false]);
 
     $gateway = Mockery::mock(IfoodGatewayContract::class);
-    $gateway->shouldReceive('createCategory')->once()->andReturn('categoria-ifood-4');
-
-    $capturedPayload = null;
-    $gateway->shouldReceive('syncCatalog')->once()->andReturnUsing(function ($int, $payload) use (&$capturedPayload) {
-        $capturedPayload = $payload;
-    });
+    $gateway->shouldReceive('getCatalogItem')->andReturnNull()->byDefault();
+    $gateway->shouldNotReceive('syncCatalog');
+    $gateway->shouldReceive('updateItemStatuses')->once()->withArgs(fn ($integration, $items) => $items === [['id' => 'ifood-item-coxinha-cat4', 'status' => 'UNAVAILABLE']]);
 
     (new IfoodCatalogSyncService($gateway))->syncAvailability($branch, $product);
-
-    expect($capturedPayload['item']['id'])->toBe('ifood-item-coxinha-cat4')
-        ->and($capturedPayload['item']['status'])->toBe('UNAVAILABLE');
 });
 
 test('ProductObserver dispara SyncIfoodCatalogJob quando active muda e há integração ativa na filial', function () {

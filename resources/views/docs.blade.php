@@ -1145,7 +1145,8 @@
                         <p class="sub-title">Histórico de movimentações <span class="font-mono text-purple-700 text-xs font-normal">/admin/wallet</span></p>
                         <ul class="list">
                             <li>Lista os lançamentos da carteira: créditos de pedidos, saques e estornos</li>
-                            <li>Taxas (gateway, cartão, antecipação) ficam ocultas no histórico para simplificar a visualização</li>
+                            <li>Cada crédito mostra as taxas descontadas (gateway e plataforma) e o valor líquido que você recebe</li>
+                            <li>Em um estorno, a devolução das taxas aparece como entrada (+), já que volta para você</li>
                             <li>A lista é paginada e atualizada em tempo real quando um novo lançamento ocorre</li>
                         </ul>
                     </div>
