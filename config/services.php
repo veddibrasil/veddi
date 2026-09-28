@@ -40,6 +40,26 @@ return [
         'whatsapp_number' => env('SUPPORT_WHATSAPP_NUMBER'),
     ],
 
+    // App Meta (Graph API) — usado pela integração oficial com a WhatsApp Cloud API.
+    'meta' => [
+        'app_id' => env('META_APP_ID'),
+        'app_secret' => env('META_APP_SECRET'),
+        'graph_version' => env('META_GRAPH_VERSION', 'v25.0'),
+    ],
+
+    // WhatsApp Cloud API: cada restaurante conecta o próprio número via Embedded Signup.
+    // O bloco 'platform' é o número da própria Veddi, usado só para homologação/fallback.
+    'whatsapp' => [
+        'es_config_id' => env('WHATSAPP_ES_CONFIG_ID'),
+        'webhook_verify_token' => env('WHATSAPP_WEBHOOK_VERIFY_TOKEN'),
+        'platform' => [
+            'waba_id' => env('WHATSAPP_PLATFORM_WABA_ID'),
+            'phone_number_id' => env('WHATSAPP_PLATFORM_PHONE_NUMBER_ID'),
+            'token' => env('WHATSAPP_PLATFORM_TOKEN'),
+        ],
+        'fallback_to_platform' => env('WHATSAPP_FALLBACK_TO_PLATFORM', false),
+    ],
+
     // Par de chaves do QZ Tray em base64 (evita problema de newline em env
     // var). Usado como alternativa aos arquivos em storage/app/private/qz/
     // pra ambientes sem acesso a shell (ex.: Laravel Cloud).

@@ -20,6 +20,7 @@ class PaymentOrchestrator
 {
     public function __construct(
         private readonly VindiService $vindi,
+        private readonly PaymentSplitCalculator $splits = new PaymentSplitCalculator,
     ) {}
 
     /**
@@ -96,34 +97,21 @@ class PaymentOrchestrator
             'has_affiliate' => (bool) $affiliateEmail,
         ]);
 
-        $gatewayRate = (float) config('payments.vindi_pix_rate', 0.0085);
-        $platformRate = (float) config('payments.vindi_pix_platform_rate', 0.0014);
-        $planExtraRate = $company->feePercentageForOrder($order);
-
         // Same rule as card: platform commission (1%/3%) applies to the actual
         // net received after gateway fees — not the inflated charge — with
-        // delivery fee carved out first.
-        $netAfterGateway = round($chargeAmount * (1.0 - $gatewayRate - $platformRate), 3);
-        $deliveryFee = (float) ($order->delivery_fee ?? 0);
-        $platformFeeBase = round($netAfterGateway - $deliveryFee, 3);
-        $commissionAmount = round($platformFeeBase * $planExtraRate, 3);
-        $affiliateAmount = round($netAfterGateway - $commissionAmount, 3);
-        $affiliatePercentual = $chargeAmount > 0
-            ? round($affiliateAmount / $chargeAmount * 100, 4)
-            : round((1.0 - $gatewayRate - $platformRate - $planExtraRate) * 100, 4);
+        // delivery fee carved out first. Ver PaymentSplitCalculator.
+        $split = $this->splits->pix($order, $company, $chargeAmount);
+        $affiliatePercentual = $split->affiliatePercentual;
 
         Log::channel('payments')->info('Orchestrator: criando cobrança PIX via Vindi', [
             'order_id' => $order->id,
             'subtotal' => $order->subtotal,
             'delivery_fee' => $order->delivery_fee,
             'charge_amount' => $chargeAmount,
-            'commission_amount' => $commissionAmount,
-            'platform_fee_base' => $platformFeeBase,
+            'platform_fee' => $split->platformFee,
+            'company_net' => $split->companyNet,
             'affiliate_percentual' => $affiliatePercentual,
             'has_affiliate' => (bool) $affiliateEmail,
-            'gateway_rate_pct' => round($gatewayRate * 100, 3).'%',
-            'platform_rate_pct' => round($platformRate * 100, 3).'%',
-            'plan_extra_rate_pct' => round($planExtraRate * 100, 3).'%',
         ]);
 
         $tokenAccount = config('payments.vindi_token_account');
@@ -167,6 +155,8 @@ class PaymentOrchestrator
                 'pix_copy_paste' => $result['pix_copy_paste'],
                 'amount' => $chargeAmount,
                 'pix_fee' => 0.0,
+                'platform_fee' => $split->platformFee,
+                'company_net_amount' => $split->companyNet,
                 'status' => 'pending',
                 'expires_at' => now()->addMinutes(30),
                 'payment_token' => hash('sha256', $order->id.$customer->id.Str::random(32)),
@@ -199,6 +189,8 @@ class PaymentOrchestrator
                     .'6009SAO PAULO62070503***6304ABCD',
                 'amount' => $chargeAmount,
                 'pix_fee' => 0.0,
+                'platform_fee' => $split->platformFee,
+                'company_net_amount' => $split->companyNet,
                 'status' => 'pending',
                 'expires_at' => now()->addMinutes(30),
                 'payment_token' => hash('sha256', $order->id.$customer->id.Str::random(32)),
@@ -268,18 +260,12 @@ class PaymentOrchestrator
             : (float) $order->total;
 
         $cardFee = round($chargeAmount * $cardRate, 3);
-        $planFeeRate = $company->feePercentageForOrder($order);
 
         // Platform commission (1%/3%) is applied straight to the actual amount received
         // after the card fee — not inflated by it — with delivery fee carved out first.
-        $netAfterCard = round($chargeAmount - $cardFee, 3);
-        $deliveryFee = (float) ($order->delivery_fee ?? 0);
-        $platformFeeBase = round($netAfterCard - $deliveryFee, 3);
-        $platformFeeAmount = round($platformFeeBase * $planFeeRate, 3);
-        $targetCompanyNet = round($netAfterCard - $platformFeeAmount, 3);
-        $affiliatePercentual = $chargeAmount > 0
-            ? round($targetCompanyNet / $chargeAmount * 100, 4)
-            : round((1.0 - $planFeeRate) * 100, 4);
+        // Ver PaymentSplitCalculator.
+        $split = $this->splits->card($order, $company, $chargeAmount, $cardRate);
+        $affiliatePercentual = $split->affiliatePercentual;
 
         Log::channel('payments')->info('Orchestrator: criando cobrança cartão via Vindi', [
             'order_id' => $order->id,
@@ -289,8 +275,8 @@ class PaymentOrchestrator
             'card_brand' => $brand->value,
             'card_rate_pct' => round($cardRate * 100, 3).'%',
             'card_fee_absorbed' => $cardFeeAbsorbed,
-            'plan_fee_pct' => round($planFeeRate * 100, 3).'%',
-            'platform_fee_base' => $platformFeeBase,
+            'platform_fee' => $split->platformFee,
+            'company_net' => $split->companyNet,
             'affiliate_percentual' => $affiliatePercentual,
             'has_affiliate' => (bool) $affiliateEmail,
         ]);
@@ -393,7 +379,7 @@ class PaymentOrchestrator
         $paymentToken = hash('sha256', $order->id.$customer->id.Str::random(32));
 
         try {
-            DB::transaction(function () use ($order, $customer, $cardData, $savedCard, $brand, $cardToken, $transactionToken, $transactionId, $chargeAmount, $cardFee, $cardRate, $installments, $paymentToken, $approved) {
+            DB::transaction(function () use ($order, $customer, $cardData, $savedCard, $brand, $cardToken, $transactionToken, $transactionId, $chargeAmount, $cardFee, $cardRate, $split, $installments, $paymentToken, $approved) {
                 $payment = Payment::create([
                     'order_id' => $order->id,
                     'vindi_transaction_token' => $transactionToken,
@@ -403,6 +389,8 @@ class PaymentOrchestrator
                     'original_amount' => (float) $order->total,
                     'card_fee' => $cardFee,
                     'card_fee_rate' => $cardRate,
+                    'platform_fee' => $split->platformFee,
+                    'company_net_amount' => $split->companyNet,
                     'installments' => $installments,
                     'status' => $approved ? 'paid' : 'pending',
                     'paid_at' => $approved ? now() : null,
@@ -550,34 +538,49 @@ class PaymentOrchestrator
     }
 
     /**
-     * Pedido do iFood chega pré-pago — o iFood já custodiou o pagamento, não a
-     * Vindi/Asaas do Veddi. Só registra o Payment local (mesmo racional de
-     * processCash/processCardMachine); não credita carteira aqui — o crédito
-     * líquido real (descontada a comissão do iFood) vem só da conciliação de
-     * repasses (Fase 5.2), que lê o extrato real da Financial API do iFood.
+     * Pedido iFood: quem cobra o cliente é o iFood, aqui só fica o registro. A parte paga
+     * online entra como paga; a parte a cobrar na entrega (dinheiro ou maquininha) fica
+     * pendente e é dada como recebida quando o iFood conclui o pedido
+     * (IfoodOrderStatusSync). Nunca chama gateway de cobrança.
+     *
+     * @return array<int, array{id: int, status: string, gateway: string, amount: float}>
      */
-    public function processIfoodPrepaid(Order $order): array
+    public function processIfoodPayments(Order $order, float $prepaidAmount, float $pendingAmount): array
     {
-        $payment = Payment::create([
+        $total = (float) $order->total;
+        $pending = min($total, max(0.0, round($pendingAmount, 2)));
+        $parts = array_filter([
+            'paid' => round($total - $pending, 2),
+            'pending' => $pending,
+        ], fn (float $amount) => $amount > 0);
+
+        if ($parts === []) {
+            $parts = ['paid' => $total];
+        }
+
+        $created = [];
+        foreach ($parts as $status => $amount) {
+            $payment = Payment::create([
+                'order_id' => $order->id,
+                'payment_gateway' => 'ifood',
+                'amount' => $amount,
+                'pix_fee' => 0.0,
+                'status' => $status,
+                'paid_at' => $status === 'paid' ? now() : null,
+                'payment_token' => hash('sha256', 'ifood'.$order->id.$status.now()->timestamp.Str::random(8)),
+            ]);
+
+            $created[] = ['id' => $payment->id, 'status' => $status, 'gateway' => 'ifood', 'amount' => $amount];
+        }
+
+        Log::channel('payments')->info('Pagamento iFood registrado', [
             'order_id' => $order->id,
-            'payment_gateway' => 'ifood',
-            'amount' => (float) $order->total,
-            'pix_fee' => 0.0,
-            'status' => 'paid',
-            'paid_at' => now(),
-            'payment_token' => hash('sha256', 'ifood'.$order->id.now()->timestamp.Str::random(8)),
+            'amount' => $total,
+            'prepaid_reported' => $prepaidAmount,
+            'pending' => $pending,
         ]);
 
-        Log::channel('payments')->info('Pagamento iFood (pré-pago) registrado', [
-            'order_id' => $order->id,
-            'amount' => $order->total,
-        ]);
-
-        return [
-            'id' => $payment->id,
-            'status' => 'paid',
-            'gateway' => 'ifood',
-        ];
+        return $created;
     }
 
     private function vindiAddressFromOrder(Order $order, Customer $customer): array

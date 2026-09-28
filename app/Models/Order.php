@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToCompany;
+use App\Support\Ifood\IfoodOrderDetails;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -256,6 +257,11 @@ class Order extends Model
         return $this->hasOne(FiscalNote::class)->whereIn('status', ['pending', 'authorized'])->latestOfMany();
     }
 
+    public function whatsappMessages(): HasMany
+    {
+        return $this->hasMany(WhatsAppMessage::class);
+    }
+
     public function isScheduled(): bool
     {
         return $this->scheduled_at !== null;
@@ -273,19 +279,35 @@ class Order extends Model
         ]));
     }
 
-    /** Returns the status codes that allow admin editing of address and items. */
+    /**
+     * Returns the status codes that allow admin editing of address and items. Pedido iFood
+     * nunca é editável aqui: itens, valores e endereço são do iFood.
+     */
     public function isEditable(): bool
     {
-        return in_array($this->status, ['pending', 'awaiting_payment', 'paid', 'preparing', 'ready', 'scheduled']);
+        return $this->channel !== 'ifood'
+            && in_array($this->status, ['pending', 'awaiting_payment', 'paid', 'preparing', 'ready', 'scheduled']);
     }
 
     public function getStatusLabelAttribute(): string
     {
-        if ($this->channel === 'ifood' && $this->status === 'delivered') {
-            return 'Concluído';
+        if ($ifood = $this->ifoodDetails()) {
+            if ($this->status === 'delivered') {
+                return 'Concluído';
+            }
+
+            if ($ifood->awaitingConfirmation()) {
+                return $this->status === 'scheduled' ? 'Agendado (aguardando aceite)' : 'Aguardando aceite';
+            }
         }
 
         return static::statusLabel($this->status);
+    }
+
+    /** Snapshot e regras do pedido iFood; null pra pedidos de outros canais. */
+    public function ifoodDetails(): ?IfoodOrderDetails
+    {
+        return IfoodOrderDetails::for($this);
     }
 
     public static function statusLabel(string $status): string

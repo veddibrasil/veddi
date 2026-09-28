@@ -1,11 +1,11 @@
 <div class="w-full space-y-6">
-    <h1 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100">Integração iFood</h1>
+    <x-admin.page-header
+        :back-route="route('admin.integrations.index')"
+        back-label="Voltar para integrações"
+        title="Integração iFood"
+    />
 
-    @if(session('status'))
-        <div class="bg-green-50 border border-green-200 text-green-700 rounded-lg px-4 py-3 text-sm dark:bg-green-900/30 dark:border-green-700 dark:text-green-400">
-            {{ session('status') }}
-        </div>
-    @endif
+    <x-admin.flash-status />
 
     @if(session('error'))
         <div class="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm dark:bg-red-900/30 dark:border-red-700 dark:text-red-400">
@@ -54,7 +54,7 @@
                         <p class="text-xs text-neutral-500 dark:text-neutral-400">Passo 1 — Código de conexão</p>
                         <p class="text-2xl font-mono font-bold tracking-widest text-neutral-800 dark:text-neutral-100">{{ $userCode }}</p>
                         @if($userCodeExpiresAt)
-                            <p class="text-xs text-neutral-400 dark:text-neutral-500">Expira {{ $userCodeExpiresAt }}</p>
+                            <p class="text-xs text-neutral-600 dark:text-neutral-400">Expira {{ $userCodeExpiresAt }}</p>
                         @endif
                     </div>
 
@@ -86,14 +86,14 @@
                                 <input type="radio" wire:model="selectedMerchantId" value="{{ $merchant['id'] }}" class="shrink-0">
                                 <span>
                                     <span class="block font-medium text-neutral-800 dark:text-neutral-100">{{ $merchant['name'] ?? $merchant['id'] }}</span>
-                                    <span class="block text-xs text-neutral-400 dark:text-neutral-500">{{ $merchant['id'] }}</span>
+                                    <span class="block text-xs text-neutral-600 dark:text-neutral-400">{{ $merchant['id'] }}</span>
                                 </span>
                             </label>
                         @endforeach
                     </div>
                     @error('selectedMerchantId') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
 
-                    <div class="flex items-center gap-3">
+                    <div class="flex flex-wrap items-center gap-3">
                         @if(! empty($availableMerchants))
                             <flux:button wire:click="selectMerchant" variant="primary">Confirmar loja</flux:button>
                         @endif
@@ -106,7 +106,7 @@
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                         <div>
                             <p class="text-neutral-500 dark:text-neutral-400">Merchant ID</p>
-                            <p class="font-medium">{{ $merchantId }}</p>
+                            <p class="font-medium break-all">{{ $merchantId }}</p>
                         </div>
                         <div>
                             <p class="text-neutral-500 dark:text-neutral-400">Status</p>
@@ -120,11 +120,11 @@
                         </div>
                     </div>
 
-                    <div class="flex items-center gap-3">
+                    <div class="flex flex-wrap items-center gap-3">
                         @if($status === 'active')
-                            <flux:button wire:click="pause" variant="ghost" size="sm">Pausar</flux:button>
+                            <flux:button wire:click="pause" variant="ghost" size="sm">Pausar integração</flux:button>
                         @else
-                            <flux:button wire:click="resume" variant="ghost" size="sm">Retomar</flux:button>
+                            <flux:button wire:click="resume" variant="ghost" size="sm">Retomar integração</flux:button>
                         @endif
                         <flux:button wire:click="syncCatalogNow" wire:loading.attr="disabled" variant="ghost" size="sm">Sincronizar cardápio agora</flux:button>
                         <flux:button wire:click="disconnect" variant="danger" size="sm">Desconectar</flux:button>
@@ -134,6 +134,7 @@
         </div>
 
         @if($connectionState === 'connected')
+            @include('livewire.admin.settings.ifood-merchant')
             <div class="bg-white border rounded-xl shadow-sm p-6 space-y-3 dark:bg-zinc-800 dark:border-zinc-700">
                 <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Saúde da conexão</h2>
 

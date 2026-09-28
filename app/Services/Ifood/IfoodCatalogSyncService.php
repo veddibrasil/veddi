@@ -10,26 +10,14 @@ use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\ProductOption;
 use App\Models\ProductOptionGroup;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Ramsey\Uuid\Uuid;
 
-/**
- * Catalog API v2.0 do iFood: cada item de cardápio precisa de um categoryId
- * (criado antes, via POST /categories) e é enviado individualmente via
- * PUT /items — não existe endpoint de lote. Os ids de item/produto/opção são
- * gerados por nós (UUID v4, exigido pelo iFood) e persistidos localmente
- * (branch_product.ifood_item_id/ifood_product_id, product_options.
- * ifood_option_id/ifood_product_id) pra manter o mesmo id entre sincronizações
- * — PUT é idempotente por id, reenviar o mesmo id sobrescreve em vez de duplicar.
- *
- * Produto com grupo de complemento vira item COMBO_V2 com grupo(s) do tipo
- * OFFER_UNIT — exatamente um grupo precisa ser o "MAIN" (vínculo declarado em
- * products[].optionGroups, com associationType: MAIN só no primeiro; os demais
- * omitem o campo). Formato confirmado contra sandbox real em 2026-09-04
- * (categoria, item simples e item com complemento retornaram 200/201).
- */
+/** Publica a estrutura por PUT e altera preços/disponibilidade por PATCH dedicado. */
 class IfoodCatalogSyncService
 {
     /** Namespace fixo pra gerar UUID v5 determinístico do grupo de opção (ver ensureOptionGroupId). */
@@ -37,99 +25,146 @@ class IfoodCatalogSyncService
 
     public function __construct(private readonly IfoodGatewayContract $gateway) {}
 
-    /**
-     * Sincronização completa (produtos, categorias, preço, disponibilidade) —
-     * batch periódico de segurança. Garante que todo produto/opção elegível
-     * tenha um ifood_item_id/ifood_option_id atribuído e envie um PUT /items
-     * por produto.
-     */
+    /** Inclui itens já publicados mesmo quando foram pausados ou removidos do canal. */
     public function syncFullCatalog(IfoodIntegration $integration): void
     {
-        $branch = $integration->branch;
-
-        $products = Product::where('company_id', $integration->company_id)
-            ->where('active', true)
-            ->where('available_in_ifood', true)
-            ->whereHas('branches', fn ($q) => $q
-                ->where('branches.id', $branch->id)
-                ->where('branch_product.available', true)
-            )
-            ->with(['category', 'optionGroups.options'])
-            ->get();
-
-        $synced = 0;
-
-        foreach ($products as $product) {
-            if (! $product->category) {
-                Log::channel('ifood')->warning('iFood: produto sem categoria, pulando sync', [
-                    'product_id' => $product->id,
-                    'branch_id' => $branch->id,
-                ]);
-
-                continue;
-            }
-
-            $this->gateway->syncCatalog($integration, $this->buildItemPayload($integration, $branch, $product));
-            $synced++;
-        }
-
-        $integration->update(['last_synced_at' => now()]);
-
-        Log::channel('ifood')->info('iFood: catálogo sincronizado (completo)', [
-            'ifood_integration_id' => $integration->id,
-            'items_count' => $synced,
-        ]);
+        Cache::lock("ifood:catalog:{$integration->id}", 300)->block(5, function () use ($integration) {
+            $products = Product::where('company_id', $integration->company_id)
+                ->whereHas('branches', fn ($q) => $q->where('branches.id', $integration->branch_id)
+                    ->where(fn ($q) => $q->whereNotNull('branch_product.ifood_item_id')
+                        ->orWhere(fn ($q) => $q->where('branch_product.available', true)->where('products.active', true)->where('products.available_in_ifood', true))))
+                ->with(['category', 'optionGroups.options'])->get();
+            $this->syncProducts($integration, $products);
+            $integration->update(['last_synced_at' => now()]);
+        });
     }
 
-    /**
-     * Sincronização em tempo real de disponibilidade (pausar/despausar 1 item).
-     * Exige que o item já tenha passado por syncFullCatalog ao menos uma vez
-     * (senão não existe ifood_item_id ainda pra referenciar) — se não tiver,
-     * loga e não faz nada (não é um erro fatal, só significa "ainda não sincronizado").
-     */
+    public function syncProduct(IfoodIntegration $integration, Product $product): void
+    {
+        if ($product->company_id !== $integration->company_id) {
+            return;
+        }
+        $pivot = DB::table('branch_product')->where('branch_id', $integration->branch_id)->where('product_id', $product->id)->first();
+        if (! $pivot || (! $pivot->ifood_item_id && (! $product->available_in_ifood || ! $product->active || ! $pivot->available))) {
+            return;
+        }
+        Cache::lock("ifood:catalog:{$integration->id}", 300)->block(5, function () use ($integration, $product) {
+            $this->syncProducts($integration, [$product->load(['category', 'optionGroups.options'])]);
+        });
+    }
+
     public function syncAvailability(Branch $branch, Product $product): void
     {
-        $integration = IfoodIntegration::where('branch_id', $branch->id)
-            ->where('status', 'active')
-            ->first();
-
-        if (! $integration) {
+        if ($branch->company_id !== $product->company_id) {
             return;
         }
-
-        $ifoodItemId = DB::table('branch_product')
-            ->where('branch_id', $branch->id)
-            ->where('product_id', $product->id)
-            ->value('ifood_item_id');
-
-        if (! $ifoodItemId) {
-            Log::channel('ifood')->info('iFood: produto ainda sem ifood_item_id, pulando sync de disponibilidade (precisa de syncFullCatalog primeiro)', [
-                'product_id' => $product->id,
-                'branch_id' => $branch->id,
-            ]);
-
+        $integration = IfoodIntegration::where('company_id', $branch->company_id)->where('branch_id', $branch->id)->where('status', 'active')->first();
+        $id = DB::table('branch_product')->where('branch_id', $branch->id)->where('product_id', $product->id)->value('ifood_item_id');
+        if (! $integration || ! $id) {
             return;
         }
+        $available = DB::table('branch_product')->where('branch_id', $branch->id)->where('product_id', $product->id)->value('available');
+        Cache::lock("ifood:catalog:{$integration->id}", 300)->block(5, function () use ($integration, $id, $available, $product) {
+            $this->gateway->updateItemStatuses($integration, [[
+                'id' => $id, 'status' => $available && $product->active && $product->available_in_ifood ? 'AVAILABLE' : 'UNAVAILABLE',
+            ]]);
+        });
+    }
 
-        if (! $product->category) {
-            return;
+    private function syncProducts(IfoodIntegration $integration, $products): void
+    {
+        $prices = $statuses = $prepared = $optionPrices = $optionStatuses = [];
+        foreach ($products as $product) {
+            if (! $product->category) {
+                throw new \RuntimeException("Produto {$product->id} sem categoria; sincronização interrompida.");
+            }
+            $oldId = DB::table('branch_product')->where('branch_id', $integration->branch_id)->where('product_id', $product->id)->value('ifood_item_id');
+            $old = $oldId ? $this->gateway->getCatalogItem($integration, $oldId) : null;
+            $payload = $this->buildItemPayload($integration, $integration->branch, $product);
+            if ($old && $old['item']['id'] !== $payload['item']['id']) {
+                // Troca de tipo exige um novo ID; o item anterior precisa sair de venda.
+                $statuses[$oldId] = ['id' => $oldId, 'status' => 'UNAVAILABLE'];
+                $old = null;
+            }
+            if ($old) {
+                $item = $payload['item'];
+                if ($old['item']['price'] != $item['price']) {
+                    $prices[$item['id']] = ['itemId' => $item['id'], 'price' => $item['price']['value']];
+                }
+                if ($old['item']['status'] !== $item['status']) {
+                    $statuses[$item['id']] = ['id' => $item['id'], 'status' => $item['status']];
+                }
+                $oldOptions = collect($old['options'] ?? [])->keyBy('id');
+                foreach ($payload['options'] as $option) {
+                    $previous = $oldOptions->get($option['id']);
+                    if ($previous && $previous['price'] != $option['price']) {
+                        $optionPrices[$option['id']] = $option['price'];
+                    }
+                    if ($previous && $previous['status'] !== $option['status']) {
+                        $optionStatuses[$option['id']] = $option['status'];
+                    }
+                }
+            }
+            $prepared[] = [$payload, $old];
+        }
+        // Todos os preços/status existentes são alterados exclusivamente por PATCH.
+        if ($prices) {
+            $this->gateway->updateItemPrices($integration, array_values($prices));
+        }
+        if ($statuses) {
+            $this->gateway->updateItemStatuses($integration, array_values($statuses));
+        }
+        foreach ($optionPrices as $id => $price) {
+            $this->gateway->updateOptionPrice($integration, $id, $price);
+        }
+        foreach ($optionStatuses as $id => $status) {
+            $this->gateway->updateOptionStatus($integration, $id, $status);
+        }
+        foreach ($prepared as [$payload, $old]) {
+            if (! $old || $this->structure($payload) != $this->structure($old)) {
+                $this->gateway->syncCatalog($integration, $payload);
+                DB::table('branch_product')->where('branch_id', $integration->branch_id)->where('ifood_product_id', $payload['item']['productId'])
+                    ->update(['ifood_item_id' => $payload['item']['id'], 'ifood_item_type' => $payload['item']['type']]);
+            }
+        }
+    }
+
+    private function structure(array $payload): array
+    {
+        unset($payload['item']['price'], $payload['item']['status']);
+        $payload['options'] ??= [];
+        foreach ($payload['options'] as &$option) {
+            unset($option['price'], $option['status']);
         }
 
-        // PUT /items não expõe um endpoint dedicado só de status — reenvia o item
-        // inteiro com o status atualizado (idempotente, mesmo custo de payload).
-        $this->gateway->syncCatalog($integration, $this->buildItemPayload($integration, $branch, $product->fresh(['category', 'optionGroups.options'])));
+        return $payload;
+    }
 
-        Log::channel('ifood')->info('iFood: disponibilidade de item sincronizada', [
-            'product_id' => $product->id,
-            'branch_id' => $branch->id,
-        ]);
+    private function imagePath(IfoodIntegration $integration, ?string $path): ?string
+    {
+        if (! $path) {
+            return null;
+        }
+        $contents = Storage::disk('s3')->get($path);
+        if (! is_string($contents) || $contents === '' || strlen($contents) > 5 * 1024 * 1024) {
+            throw new \RuntimeException('A foto do catálogo deve ter até 5 MB e estar disponível no armazenamento.');
+        }
+        $mime = (new \finfo(FILEINFO_MIME_TYPE))->buffer($contents);
+        if (! in_array($mime, ['image/jpeg', 'image/png'], true)) {
+            throw new \RuntimeException('O iFood aceita fotos JPG ou PNG.');
+        }
+
+        return Cache::remember('ifood:image:'.$integration->merchant_id.':'.hash('sha256', $contents), now()->addDays(30),
+            fn () => $this->gateway->uploadCatalogImage($integration, 'data:'.$mime.';base64,'.base64_encode($contents)));
     }
 
     /** Monta o payload completo (item + products + optionGroups + options) de UM produto. */
     private function buildItemPayload(IfoodIntegration $integration, Branch $branch, Product $product): array
     {
         $categoryId = $this->ensureCategoryId($integration, $branch, $product->category);
-        $itemType = $product->optionGroups->isEmpty() ? 'DEFAULT' : 'COMBO_V2';
+        // Complementos ficam no próprio item DEFAULT. COMBO_V2 exige "produtos do combo";
+        // com o grupo como MAIN o Portal mostrava "Combo vazio" e o item sumia do app.
+        $itemType = 'DEFAULT';
         $itemId = $this->ensureItemId($branch->id, $product, $itemType);
         $itemProductId = $this->ensureItemProductId($branch->id, $product);
 
@@ -153,11 +188,15 @@ class IfoodCatalogSyncService
                 $optionId = $this->ensureOptionId($option);
                 $optionProductId = $this->ensureOptionProductId($option);
 
-                $products[] = [
+                $optionProduct = [
                     'id' => $optionProductId,
                     'name' => $option->name,
                     'externalCode' => "veddi-option-{$option->id}",
                 ];
+                if ($option->image_path) {
+                    $optionProduct['imagePath'] = $this->imagePath($integration, $option->image_path);
+                }
+                $products[] = $optionProduct;
 
                 $options[] = [
                     'id' => $optionId,
@@ -177,21 +216,13 @@ class IfoodCatalogSyncService
                 'optionIds' => $optionIds,
             ];
 
-            // Exatamente um grupo precisa ser o "MAIN" do combo — o primeiro.
-            // Os demais entram no vínculo sem associationType (ver doc de exemplo
-            // real: og-soda-choice não leva o campo).
-            $relation = [
+            // associationType MAIN só existe em COMBO_V2; item DEFAULT vincula o grupo sem ele.
+            $mainProductOptionGroups[] = [
                 'id' => $groupId,
                 'min' => $group->min_qty,
                 'max' => $group->total_qty,
                 'index' => $index,
             ];
-
-            if ($index === 0) {
-                $relation['associationType'] = 'MAIN';
-            }
-
-            $mainProductOptionGroups[] = $relation;
         }
 
         $itemProduct = [
@@ -199,6 +230,10 @@ class IfoodCatalogSyncService
             'name' => $product->name,
             'externalCode' => "veddi-product-{$product->id}",
         ];
+
+        if ($product->image_path) {
+            $itemProduct['imagePath'] = $this->imagePath($integration, $product->image_path);
+        }
 
         if ($mainProductOptionGroups !== []) {
             $itemProduct['optionGroups'] = $mainProductOptionGroups;
@@ -247,10 +282,9 @@ class IfoodCatalogSyncService
 
     /**
      * iFood rejeita PUT /items reaproveitando o mesmo id se o tipo mudar
-     * (DEFAULT -> COMBO_V2 ou vice-versa: "Item type cannot be changed") — se o
-     * produto tinha um item sincronizado com outro tipo, gera um id novo em vez
-     * de reenviar o antigo. O item antigo fica órfão do lado do iFood (nunca
-     * mais atualizado, mas também não removido automaticamente de lá).
+     * ("Item type cannot be changed") — itens publicados antes como COMBO_V2
+     * ganham um id novo DEFAULT em vez de reenviar o antigo. syncProducts pausa
+     * o ID anterior antes de publicar o novo.
      */
     private function ensureItemId(int $branchId, Product $product, string $itemType): string
     {
@@ -280,8 +314,13 @@ class IfoodCatalogSyncService
                 'branch_id' => $branchId,
                 'tipo_anterior' => $row->ifood_item_type,
                 'tipo_novo' => $itemType,
-                'item_id_orfao' => $row->ifood_item_id,
+                'item_id_anterior' => $row->ifood_item_id,
             ]);
+        }
+
+        if ($row?->ifood_item_id) {
+            // Preserva o UUID v4 nas retentativas sem perder a referência do item anterior.
+            return Cache::rememberForever('ifood:item-type:'.$branchId.':'.$row->ifood_item_id.':'.$itemType, fn () => (string) Str::uuid());
         }
 
         $uuid = (string) Str::uuid();

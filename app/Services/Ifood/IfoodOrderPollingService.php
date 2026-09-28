@@ -23,7 +23,12 @@ class IfoodOrderPollingService
      */
     public function pollFor(IfoodIntegration $integration): void
     {
-        $rawEvents = $this->gateway->pollEvents($integration);
+        // O lote não vem garantidamente em ordem: processar pelo createdAt evita aplicar
+        // CONFIRMED/CANCELLED antes do PLACED que cria o pedido.
+        $rawEvents = collect($this->gateway->pollEvents($integration))
+            ->sortBy(fn ($raw) => is_array($raw) ? (string) ($raw['createdAt'] ?? '') : '')
+            ->values()
+            ->all();
         $ackableIds = [];
 
         foreach ($rawEvents as $raw) {
@@ -47,11 +52,16 @@ class IfoodOrderPollingService
                 ]);
             } catch (UniqueConstraintViolationException) {
                 // Evento já existe (chegou via webhook antes, ou de um ciclo de polling
-                // anterior que persistiu mas não conseguiu confirmar ACK) — mesmo assim
-                // precisa de ACK, senão o iFood devolve esse evento pra sempre.
-                $ackableIds[] = $eventId;
+                // anterior que persistiu mas não conseguiu confirmar ACK). Se ficou
+                // 'pending' por falha transitória, processa de novo; senão só confirma —
+                // sem ACK o iFood devolve esse evento pra sempre.
+                $event = IfoodOrderEvent::where('ifood_integration_id', $integration->id)->where('event_id', $eventId)->first();
 
-                continue;
+                if ($event?->status !== 'pending') {
+                    $ackableIds[] = $eventId;
+
+                    continue;
+                }
             }
 
             try {

@@ -46,6 +46,8 @@ Plataforma SaaS multiempresa para operação de pedidos, cardápio e gestão fin
 |--------|------|---------|--------------|
 | POST | `/webhooks/asaas` | Asaas | Header `asaas-access-token` |
 | POST | `/webhooks/stark` | Stark Bank | Header `Authorization: Bearer <token>` |
+| GET | `/webhooks/whatsapp` | Meta (WhatsApp Cloud API) | Verificação: `hub.verify_token` (`WHATSAPP_WEBHOOK_VERIFY_TOKEN`) |
+| POST | `/webhooks/whatsapp` | Meta (WhatsApp Cloud API) | Header `X-Hub-Signature-256` (HMAC com `META_APP_SECRET`) — ver `docs/whatsapp.md` |
 
 ---
 
@@ -86,8 +88,8 @@ Requer: `auth`, `verified`, `company.role:company_admin`
 |--------|------|-----------|
 | GET | `/api/company/balance` | Saldo atual da empresa |
 | GET | `/api/company/balance/forecast` | Previsão financeira 30 dias |
-| POST | `/api/company/withdraw` | Solicitar retirada (PIX/TED) |
-| POST | `/api/company/anticipate` | Solicitar antecipação de recebíveis |
+
+Saque e antecipação não têm endpoint local: são feitos no portal Vindi.
 
 ---
 
@@ -295,31 +297,22 @@ net_value = total - fee - pix_fee (se absorvida) - card_fee (se absorvida)
 | 2x a 6x | 3,49% |
 | 7x a 12x | 3,99% |
 
-### Antecipação
-| Prazo | Taxa extra |
-|-------|-----------|
-| D+2 | 2,99% |
-| D+7 | 2,49% |
-| D+15 | 1,99% |
-| D+30 | 0% |
+### Antecipação e saque
+Feitos no portal Vindi (botão "Ver Saldo" em `/admin/wallet`). Não há fluxo local.
+
+### Split e carteira
+O `PaymentSplitCalculator` calcula uma vez, na criação da cobrança, quanto fica com o
+gateway, com a plataforma e com a empresa (comissão do plano sobre o valor após a taxa do
+gateway, sem a taxa de entrega). O resultado vai no split da Vindi e é gravado no `Payment`
+(`platform_fee`, `company_net_amount`); `WalletService` e `TransactionService` leem esses
+valores. O estorno reverte os lançamentos originais do pedido, sem recalcular taxas.
 
 ### Saldo
 ```
-total_balance     = confirmed + released (não sacado)
-blocked_balance   = confirmed apenas (não liberado)
-available_balance = released_não_sacado - 10% reserva
-reserve_balance   = 10% do total_balance
-```
-
-### Fluxo de Retirada
-```
-1. POST /api/company/withdraw
-2. WithdrawalService.validateWithdrawal() — verifica saldo disponível
-3. CompanyWithdrawal criado (status=pending)
-4. Transactions elegíveis bloqueadas para saque
-5. ProcessWithdrawal job → StarkService.createTransfer() ou AsaasService
-6. CompanyWithdrawal → done/failed
-7. CompanyTransactions → withdrawn
+blocked_balance   = confirmed com release_date no futuro ("a receber")
+available_balance = released, ou confirmed com release_date já vencida (não sacado)
+total_balance     = blocked + available
+refunded/chargeback ficam fora do saldo
 ```
 
 ---
@@ -340,8 +333,7 @@ reserve_balance   = 10% do total_balance
 | `WalletService` | Crédito/débito na carteira da empresa |
 | `TransactionService` | Criação e transições de CompanyTransaction |
 | `BalanceService` | Cálculo de saldo em tempo real + forecast |
-| `WithdrawalService` | Validação e solicitação de retiradas |
-| `AnticipationService` | Antecipação de recebíveis com taxa |
+| `PaymentSplitCalculator` | Split do pagamento (gateway / plataforma / empresa) |
 | `ReleaseService` | Liberação diária de transações confirmadas |
 | `DeliveryService` | Cálculo de taxa de entrega (flat/bairro/distância) |
 | `CompanyService` | Transições de status da empresa (ativar, bloquear, etc.) |
@@ -453,7 +445,6 @@ Eventos processados:
 
 ```
 pix_payment_fee:      R$0,50 por transação PIX
-pix_withdrawal_fee:   R$0,50 por saque PIX
 release_days:
   pix:    2 dias
   boleto: 2 dias

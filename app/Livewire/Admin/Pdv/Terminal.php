@@ -18,6 +18,7 @@ use App\Livewire\Admin\Pdv\Concerns\HasProductLookup;
 use App\Livewire\Admin\Pdv\Concerns\HasScheduling;
 use App\Livewire\Admin\Pdv\Concerns\HasSplitPayment;
 use App\Models\PdvAuditLog;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 /** Venda direta / balcão. Fluxo de mesa/comanda fica em {@see TabTerminal}. */
@@ -79,8 +80,10 @@ class Terminal extends Component
 
     public string $manualDiscountInput = '';
 
+    #[Locked]
     public float $manualDiscountAmount = 0.0;
 
+    #[Locked]
     public bool $manualDiscountAllowed = false;
 
     public bool $serviceFeeWaived = false;
@@ -91,6 +94,7 @@ class Terminal extends Component
     // só a impressão automática da nota (a emissão em si é sempre obrigatória).
     public bool $printFiscalNote = false;
 
+    #[Locked]
     public bool $canUseFiscalNotes = false;
 
     // ── Entrega ───────────────────────────────────────────────────────────────
@@ -110,6 +114,7 @@ class Terminal extends Component
 
     public string $deliveryCep = '';
 
+    #[Locked]
     public float $deliveryFeeAmount = 0.0;
 
     public ?string $deliveryFeeError = null;
@@ -161,6 +166,7 @@ class Terminal extends Component
     public ?string $createCustomerError = null;
 
     // ── Caixa (sessão PDV) ────────────────────────────────────────────────────
+    #[Locked]
     public ?int $cashSessionId = null;
 
     public string $openingAmountInput = '';
@@ -191,15 +197,18 @@ class Terminal extends Component
     public ?int $viewingClosedSessionId = null;
 
     // ── Permissões ────────────────────────────────────────────────────────────
+    #[Locked]
     public bool $canOperate = false;
 
     /** Caixa não vê o botão de imprimir fechamento (relatório é só visualização pra ele). */
+    #[Locked]
     public bool $isCaixa = false;
 
     // Sempre false no Terminal: garçom (pdv.waiter_operate sem pdv.operate) é redirecionado pro
     // TabTerminal (mesa/comanda) já no Selector, antes de chegar aqui. Propriedade continua
     // existindo porque traits compartilhadas com TabTerminal (HasCashSession, HasManualDiscount,
     // HasOrderCancellation, HasClosingReports) checam `$this->isWaiter` internamente.
+    #[Locked]
     public bool $isWaiter = false;
 
     public function mount(): void
@@ -228,6 +237,8 @@ class Terminal extends Component
 
     public function updatedSelectedBranchId(): void
     {
+        $this->assertSelectedBranchBelongsToCurrentCompany();
+
         $this->cart = [];
         $this->activeCategoryId = null;
         $this->search = '';

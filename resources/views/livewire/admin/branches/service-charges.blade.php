@@ -1,18 +1,21 @@
 <div class="w-full space-y-6">
+    <x-admin.unsaved-guard />
+
     <x-admin.page-header
-        :back-route="route('admin.branches.index')"
         :title="'Taxa de Serviço e Couvert — ' . $branch->name"
     />
 
-    @if (session('status'))
-        <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm dark:bg-green-900/30 dark:border-green-700 dark:text-green-400">
-            {{ session('status') }}
-        </div>
-    @endif
+    <x-admin.branch-nav :branch="$branch" current="service-charges" />
+
+    <x-admin.flash-status />
+
 
     <p class="text-sm text-neutral-500 dark:text-neutral-400">
         Aplicadas automaticamente em todo pedido do PDV (balcão e mesa/comanda) desta filial. Não afeta pedidos do cardápio público.
     </p>
+
+    <fieldset @disabled(! $canSave) class="min-w-0 space-y-6">
+    <legend class="sr-only">Taxa de serviço e couvert</legend>
 
     <x-admin.form-card title="Taxa de Serviço">
         <div class="flex items-center">
@@ -60,8 +63,12 @@
         </div>
     </x-admin.form-card>
 
+    </fieldset>
+
     <x-admin.form-actions
         save-label="Salvar configurações"
         :cancel-route="route('admin.branches.index')"
+        cancel-label="Voltar à lista"
+        :can-save="$canSave"
     />
 </div>

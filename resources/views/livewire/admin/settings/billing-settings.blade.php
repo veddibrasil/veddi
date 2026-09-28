@@ -73,7 +73,7 @@
         @endif
 
         @if($setupFeePaidAt)
-            <p class="text-xs text-neutral-400 dark:text-neutral-500">Taxa de ativação paga em {{ $setupFeePaidAt }}</p>
+            <p class="text-xs text-neutral-600 dark:text-neutral-400">Taxa de ativação paga em {{ $setupFeePaidAt }}</p>
         @endif
 
         @if(in_array($plan, ['essencial', 'pro']) && $amount)
@@ -115,7 +115,7 @@
         @if(in_array($plan, ['essencial', 'pro']))
             <div class="pt-1 border-t dark:border-zinc-700">
                 <button wire:click="confirmChangePlan('free')"
-                        class="text-sm text-neutral-400 hover:text-red-500 dark:text-neutral-500 dark:hover:text-red-400 transition-colors">
+                        class="text-sm text-neutral-600 hover:text-red-500 dark:text-neutral-400 dark:hover:text-red-400 transition-colors">
                     Voltar ao plano gratuito
                 </button>
             </div>
@@ -140,7 +140,7 @@
                         Ativo
                     </span>
                     <button wire:click="confirmPdvCancellation"
-                            class="text-sm text-neutral-400 hover:text-red-500 dark:text-neutral-500 dark:hover:text-red-400 transition-colors">
+                            class="text-sm text-neutral-600 hover:text-red-500 dark:text-neutral-400 dark:hover:text-red-400 transition-colors">
                         Cancelar módulo
                     </button>
                 @else
@@ -176,12 +176,12 @@
                         <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
                         Ativo
                     </span>
-                    <a href="{{ route('admin.settings') }}" wire:navigate
+                    <a href="{{ route('admin.fiscal.config') }}" wire:navigate
                        class="text-sm text-[#7A00A3] hover:underline dark:text-purple-300">
                         Configurar
                     </a>
                     <button wire:click="confirmFiscalCancellation"
-                            class="text-sm text-neutral-400 hover:text-red-500 dark:text-neutral-500 dark:hover:text-red-400 transition-colors">
+                            class="text-sm text-neutral-600 hover:text-red-500 dark:text-neutral-400 dark:hover:text-red-400 transition-colors">
                         Cancelar módulo
                     </button>
                 @else
@@ -218,7 +218,7 @@
                         Ativo
                     </span>
                     <button wire:click="confirmWaiterCancellation"
-                            class="text-sm text-neutral-400 hover:text-red-500 dark:text-neutral-500 dark:hover:text-red-400 transition-colors">
+                            class="text-sm text-neutral-600 hover:text-red-500 dark:text-neutral-400 dark:hover:text-red-400 transition-colors">
                         Cancelar módulo
                     </button>
                 @elseif($pdvModuleEnabled)
@@ -233,7 +233,7 @@
                         Ativar módulo
                     </button>
                 @else
-                    <span class="text-sm text-neutral-400 dark:text-neutral-500 italic">Ative o módulo PDV para habilitar</span>
+                    <span class="text-sm text-neutral-600 dark:text-neutral-400 italic">Ative o módulo PDV para habilitar</span>
                 @endif
             </div>
         </div>
@@ -332,7 +332,7 @@
                                                 Pagar
                                             </a>
                                         @else
-                                            <span class="text-xs text-neutral-400 dark:text-neutral-500">—</span>
+                                            <span class="text-xs text-neutral-600 dark:text-neutral-400">—</span>
                                         @endif
                                     </td>
                                 </tr>
@@ -427,7 +427,7 @@
                     <div class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 dark:border-zinc-700 p-4">
                         <div>
                             <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">Usar cartão salvo</p>
-                            <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">{{ $savedCardLabel }}</p>
+                            <p class="text-xs text-neutral-600 dark:text-neutral-400 mt-1">{{ $savedCardLabel }}</p>
                         </div>
                         <flux:switch wire:model.live="useSavedCard" />
                     </div>
@@ -488,7 +488,7 @@
                 </div>
 
                 <hr class="border-zinc-100 dark:border-zinc-700">
-                <p class="text-xs text-neutral-400 dark:text-neutral-500 -mt-2">Dados do titular para cobrança</p>
+                <p class="text-xs text-neutral-600 dark:text-neutral-400 -mt-2">Dados do titular para cobrança</p>
 
                 <div>
                     <flux:input
@@ -548,7 +548,7 @@
                     </span>
                 </button>
 
-                <p class="text-center text-xs text-neutral-400 dark:text-neutral-500 flex items-center justify-center gap-1">
+                <p class="text-center text-xs text-neutral-600 dark:text-neutral-400 flex items-center justify-center gap-1">
                     <svg class="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
                     </svg>
@@ -720,7 +720,7 @@
                     <div class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 dark:border-zinc-700 p-4">
                         <div>
                             <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">Usar cartão salvo</p>
-                            <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">{{ $savedCardLabel }}</p>
+                            <p class="text-xs text-neutral-600 dark:text-neutral-400 mt-1">{{ $savedCardLabel }}</p>
                         </div>
                         <flux:switch wire:model.live="useSavedCard" />
                     </div>
@@ -781,7 +781,7 @@
                 </div>
 
                 <hr class="border-zinc-100 dark:border-zinc-700">
-                <p class="text-xs text-neutral-400 dark:text-neutral-500 -mt-2">Dados do titular para cobrança</p>
+                <p class="text-xs text-neutral-600 dark:text-neutral-400 -mt-2">Dados do titular para cobrança</p>
 
                 <div>
                     <flux:input
@@ -840,7 +840,7 @@
                     </span>
                 </button>
 
-                <p class="text-center text-xs text-neutral-400 dark:text-neutral-500 flex items-center justify-center gap-1">
+                <p class="text-center text-xs text-neutral-600 dark:text-neutral-400 flex items-center justify-center gap-1">
                     <svg class="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
                     </svg>
@@ -992,7 +992,7 @@
                         </svg>
                     </div>
                     <p class="font-semibold text-neutral-800 dark:text-neutral-100">Pagamento confirmado!</p>
-                    <p class="text-sm text-neutral-500 dark:text-neutral-400">Módulo Fiscal ativado. Configure o CRT, inscrição estadual e demais dados em <a href="{{ route('admin.settings') }}" wire:navigate class="text-[#7A00A3] hover:underline">Configurações da Empresa</a>.</p>
+                    <p class="text-sm text-neutral-500 dark:text-neutral-400">Módulo Fiscal ativado. Configure o CRT, inscrição estadual e demais dados em <a href="{{ route('admin.fiscal.config') }}" wire:navigate class="text-[#7A00A3] hover:underline">Dados fiscais</a>.</p>
                     <flux:modal.close>
                         <flux:button variant="primary">Fechar</flux:button>
                     </flux:modal.close>
@@ -1012,7 +1012,7 @@
                     <div class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 dark:border-zinc-700 p-4">
                         <div>
                             <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">Usar cartão salvo</p>
-                            <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">{{ $savedCardLabel }}</p>
+                            <p class="text-xs text-neutral-600 dark:text-neutral-400 mt-1">{{ $savedCardLabel }}</p>
                         </div>
                         <flux:switch wire:model.live="useSavedCard" />
                     </div>
@@ -1073,7 +1073,7 @@
                 </div>
 
                 <hr class="border-zinc-100 dark:border-zinc-700">
-                <p class="text-xs text-neutral-400 dark:text-neutral-500 -mt-2">Dados do titular para cobrança</p>
+                <p class="text-xs text-neutral-600 dark:text-neutral-400 -mt-2">Dados do titular para cobrança</p>
 
                 <div>
                     <flux:input
@@ -1132,7 +1132,7 @@
                     </span>
                 </button>
 
-                <p class="text-center text-xs text-neutral-400 dark:text-neutral-500 flex items-center justify-center gap-1">
+                <p class="text-center text-xs text-neutral-600 dark:text-neutral-400 flex items-center justify-center gap-1">
                     <svg class="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
                     </svg>
@@ -1304,7 +1304,7 @@
                     <div class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 dark:border-zinc-700 p-4">
                         <div>
                             <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">Usar cartão salvo</p>
-                            <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">{{ $savedCardLabel }}</p>
+                            <p class="text-xs text-neutral-600 dark:text-neutral-400 mt-1">{{ $savedCardLabel }}</p>
                         </div>
                         <flux:switch wire:model.live="useSavedCard" />
                     </div>
@@ -1365,7 +1365,7 @@
                 </div>
 
                 <hr class="border-zinc-100 dark:border-zinc-700">
-                <p class="text-xs text-neutral-400 dark:text-neutral-500 -mt-2">Dados do titular para cobrança</p>
+                <p class="text-xs text-neutral-600 dark:text-neutral-400 -mt-2">Dados do titular para cobrança</p>
 
                 <div>
                     <flux:input
@@ -1424,7 +1424,7 @@
                     </span>
                 </button>
 
-                <p class="text-center text-xs text-neutral-400 dark:text-neutral-500 flex items-center justify-center gap-1">
+                <p class="text-center text-xs text-neutral-600 dark:text-neutral-400 flex items-center justify-center gap-1">
                     <svg class="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
                     </svg>
@@ -1604,7 +1604,7 @@
                     <p>Estes termos podem ser atualizados periodicamente. Em caso de alterações relevantes, notificaremos por e-mail com antecedência mínima de <strong>15 dias</strong>. A continuidade do uso da plataforma após o prazo de notificação implica a aceitação automática dos novos termos.</p>
                 </div>
 
-                <p class="text-xs text-neutral-400 dark:text-neutral-500 pt-2">Em caso de dúvidas, entre em contato com nosso suporte.</p>
+                <p class="text-xs text-neutral-600 dark:text-neutral-400 pt-2">Em caso de dúvidas, entre em contato com nosso suporte.</p>
             </div>
             <div class="flex justify-end pt-4 border-t dark:border-zinc-700">
                 <flux:button x-on:click="$flux.modal('terms-modal').close()">Fechar</flux:button>

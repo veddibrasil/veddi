@@ -15,6 +15,8 @@ use Livewire\Component;
 
 class IfoodIntegrationSettings extends Component
 {
+    use Concerns\ManagesIfoodMerchant;
+
     // Cada filial tem sua própria conexão com o iFood (merchant_id/tokens próprios),
     // mesmo padrão de App\Livewire\Admin\Fiscal\Config — trocar a filial selecionada
     // troca o registro inteiro carregado.
@@ -239,9 +241,21 @@ class IfoodIntegrationSettings extends Component
             return;
         }
 
-        SyncIfoodCatalogJob::dispatch($branch->id);
-        session()->flash('status', 'Sincronização de cardápio disparada.');
-        $this->loadForBranch($company, $branch);
+        abort_unless($company->canUseIfoodIntegration(), 403);
+        if ($integration->status !== 'active') {
+            session()->flash('error', 'Retome a integração antes de sincronizar o cardápio.');
+
+            return;
+        }
+        session()->forget(['error', 'status']);
+        try {
+            app(\App\Services\Ifood\IfoodCatalogSyncService::class)->syncFullCatalog($integration);
+            session()->flash('status', 'Cardápio sincronizado com o iFood. Confira o resultado no Portal do Parceiro.');
+            $this->loadForBranch($company, $branch);
+        } catch (\Throwable $e) {
+            report($e);
+            session()->flash('error', 'A sincronização não foi concluída. Confira fotos, permissões do aplicativo e disponibilidade do iFood antes de tentar novamente.');
+        }
     }
 
     public function pause(): void
@@ -304,6 +318,8 @@ class IfoodIntegrationSettings extends Component
 
     private function loadForBranch(Company $company, ?Branch $branch): void
     {
+        $this->reset('merchantStores', 'merchantDetails', 'merchantStatus', 'interruptions', 'interruptionsLoaded', 'openingShifts', 'hoursBranchId', 'merchantCheckedAt', 'interruptionDescription', 'interruptionStart', 'interruptionEnd');
+        $this->resetErrorBag();
         $integration = $branch
             ? IfoodIntegration::where('company_id', $company->id)->where('branch_id', $branch->id)->first()
             : null;

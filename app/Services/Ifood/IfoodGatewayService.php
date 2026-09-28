@@ -106,11 +106,11 @@ class IfoodGatewayService implements IfoodGatewayContract
     }
 
     /**
-     * Não existe endpoint pra "delivered": dispatch com deliveredBy=MERCHANT (entrega
-     * própria do restaurante, único modo suportado aqui) já faz o iFood concluir o
-     * pedido sozinho e gerar o evento CONCLUDED automaticamente — não fica nenhum
-     * status local sem correspondente por falta de chamada. Confirmado via doc
-     * pública do iFood (developer.ifood.com.br), não validado ainda em sandbox real.
+     * Não existe endpoint pra "delivered": o iFood conclui o pedido sozinho e manda o
+     * evento CONCLUDED. dispatch só vale pra entrega própria (deliveredBy=MERCHANT); a
+     * entrega feita pelo iFood é despachada quando o entregador retira (quem decide é
+     * IfoodOrderDetails::canDispatch). Confirmado na loja de teste em 21/09/2026: o
+     * evento DISPATCHED volta com deliveredBy=MERCHANT e origem ORDER_API.
      */
     public function updateOrderStatus(IfoodIntegration $integration, string $ifoodOrderId, string $status): void
     {
@@ -126,6 +126,12 @@ class IfoodGatewayService implements IfoodGatewayContract
         if ($response->failed()) {
             $this->logAndThrow($integration, 'updateOrderStatus', $response);
         }
+
+        Log::channel('ifood')->info("iFood: {$endpoint} aceito pela API", [
+            'ifood_integration_id' => $integration->id,
+            'ifood_order_id' => $ifoodOrderId,
+            'http_status' => $response->status(),
+        ]);
     }
 
     public function getCancellationReasons(IfoodIntegration $integration, string $ifoodOrderId): array
@@ -163,6 +169,190 @@ class IfoodGatewayService implements IfoodGatewayContract
             'cancellation_code' => $reasonCode,
             'http_status' => $response->status(),
         ]);
+    }
+
+    public function acceptDispute(IfoodIntegration $integration, string $disputeId, ?string $reason = null): void
+    {
+        $this->disputeRequest($integration, 'acceptDispute', "/order/v1.0/disputes/{$disputeId}/accept", $reason ? ['reason' => $reason] : []);
+    }
+
+    public function rejectDispute(IfoodIntegration $integration, string $disputeId, string $reason): void
+    {
+        $this->disputeRequest($integration, 'rejectDispute', "/order/v1.0/disputes/{$disputeId}/reject", ['reason' => $reason]);
+    }
+
+    public function proposeDisputeAlternative(IfoodIntegration $integration, string $disputeId, string $alternativeId, array $body): void
+    {
+        $this->disputeRequest($integration, 'proposeDisputeAlternative', "/order/v1.0/disputes/{$disputeId}/alternatives/{$alternativeId}", $body);
+    }
+
+    private function disputeRequest(IfoodIntegration $integration, string $operation, string $path, array $body): void
+    {
+        $response = $this->client($integration)->post($path, $body);
+
+        if ($response->failed()) {
+            $this->logAndThrow($integration, $operation, $response);
+        }
+
+        Log::channel('ifood')->info("iFood: {$operation} aceito pela API", [
+            'ifood_integration_id' => $integration->id,
+            'path' => $path,
+            'http_status' => $response->status(),
+        ]);
+    }
+
+    public function listMerchants(IfoodIntegration $integration): array
+    {
+        $merchants = [];
+        for ($page = 1; ; $page++) {
+            $rows = $this->requestData($integration, 'get', '/merchant/v1.0/merchants', ['page' => $page, 'size' => 100]);
+            $merchants = array_merge($merchants, $rows);
+            if (count($rows) < 100) {
+                return $merchants;
+            }
+        }
+    }
+
+    public function getMerchantDetails(IfoodIntegration $integration): array
+    {
+        return $this->requestData($integration, 'get', $this->merchantPath($integration));
+    }
+
+    public function getMerchantStatus(IfoodIntegration $integration): array
+    {
+        return $this->requestData($integration, 'get', $this->merchantPath($integration).'/status');
+    }
+
+    public function listInterruptions(IfoodIntegration $integration): array
+    {
+        return $this->requestData($integration, 'get', $this->merchantPath($integration).'/interruptions');
+    }
+
+    public function createInterruption(IfoodIntegration $integration, array $data): array
+    {
+        return $this->requestData($integration, 'post', $this->merchantPath($integration).'/interruptions', $data);
+    }
+
+    public function deleteInterruption(IfoodIntegration $integration, string $id): void
+    {
+        $this->requestData($integration, 'delete', $this->merchantPath($integration).'/interruptions/'.rawurlencode($id));
+    }
+
+    public function getOpeningHours(IfoodIntegration $integration): array
+    {
+        return $this->requestData($integration, 'get', $this->merchantPath($integration).'/opening-hours');
+    }
+
+    public function setOpeningHours(IfoodIntegration $integration, array $shifts): void
+    {
+        $this->requestData($integration, 'put', $this->merchantPath($integration).'/opening-hours', [
+            'storeId' => $integration->merchant_id, 'shifts' => $shifts,
+        ]);
+    }
+
+    public function getCatalogItem(IfoodIntegration $integration, string $id): ?array
+    {
+        $response = $this->client($integration)->get($this->catalogPath($integration).'/items/'.rawurlencode($id).'/flat');
+        if ($response->status() === 404) {
+            return null;
+        }
+        if ($response->failed()) {
+            $this->logAndThrow($integration, 'getCatalogItem', $response);
+        }
+        $body = $response->json();
+        if (! is_array($body) || ! isset($body['item']['id'], $body['item']['price'], $body['item']['status'])) {
+            throw new RuntimeException('iFood: resposta de item incompleta; sincronização interrompida.');
+        }
+
+        return $body;
+    }
+
+    public function uploadCatalogImage(IfoodIntegration $integration, string $image): string
+    {
+        $body = $this->requestData($integration, 'post', $this->catalogPath($integration).'/image/upload', ['image' => $image]);
+
+        if (! is_string($body['imagePath'] ?? null) || $body['imagePath'] === '') {
+            throw new RuntimeException('iFood: upload sem imagePath.');
+        }
+
+        return $body['imagePath'];
+    }
+
+    // A API aceita um item por PATCH ({itemId, price}); o corpo em lote ({prices: [...]})
+    // é recusado com "PatchItemPriceDto.itemId must be a UUID".
+    public function updateItemPrices(IfoodIntegration $integration, array $prices): void
+    {
+        foreach ($prices as $price) {
+            $this->catalogPatch($integration, 'items/price', ['itemId' => $price['itemId'], 'price' => ['value' => $price['price']]]);
+        }
+    }
+
+    public function updateItemStatuses(IfoodIntegration $integration, array $items): void
+    {
+        foreach ($items as $item) {
+            $this->catalogPatch($integration, 'items/status', ['itemId' => $item['id'], 'status' => $item['status']]);
+        }
+    }
+
+    public function updateOptionPrice(IfoodIntegration $integration, string $id, array $price): void
+    {
+        $this->catalogPatch($integration, 'options/price', ['optionId' => $id, 'price' => $price]);
+    }
+
+    public function updateOptionStatus(IfoodIntegration $integration, string $id, string $status): void
+    {
+        $this->catalogPatch($integration, 'options/status', ['optionId' => $id, 'status' => $status]);
+    }
+
+    private function catalogPatch(IfoodIntegration $integration, string $endpoint, array $data): void
+    {
+        $result = $this->requestData($integration, 'patch', $this->catalogPath($integration).'/'.$endpoint, $data);
+        if (isset($result['batchId'])) {
+            // Não considerar a aceitação do lote como sucesso de todos os recursos.
+            for ($attempt = 0; $attempt < 10; $attempt++) {
+                $batch = $this->requestData($integration, 'get', $this->catalogPath($integration).'/batch/'.rawurlencode($result['batchId']));
+                $status = $batch['batchStatus'] ?? $batch['status'] ?? null;
+                if ($status === 'COMPLETED') {
+                    if (empty($batch['results']) && ! isset($batch['successCount'], $batch['failureCount'])) {
+                        throw new RuntimeException('iFood: lote sem resultados de processamento.');
+                    }
+                    if (($batch['failureCount'] ?? 0) > 0 || collect($batch['results'] ?? [])->contains(fn ($row) => ($row['result'] ?? null) !== 'SUCCESS')) {
+                        throw new RuntimeException('iFood: lote concluído com falhas. Consulte o catálogo e tente novamente.');
+                    }
+
+                    return;
+                }
+                if (in_array($status, ['FAILED', 'CANCELLED'], true)) {
+                    throw new RuntimeException('iFood: falha ao processar lote.');
+                }
+                usleep(500000);
+            }
+            throw new RuntimeException('iFood: lote ainda em processamento. Consulte o catálogo antes de tentar novamente.');
+        }
+    }
+
+    private function merchantPath(IfoodIntegration $integration): string
+    {
+        return '/merchant/v1.0/merchants/'.rawurlencode($integration->merchant_id);
+    }
+
+    private function catalogPath(IfoodIntegration $integration): string
+    {
+        return '/catalog/v2.0/merchants/'.rawurlencode($integration->merchant_id);
+    }
+
+    private function requestData(IfoodIntegration $integration, string $method, string $path, array $data = []): array
+    {
+        $response = $this->client($integration)->{$method}($path, $data);
+        if ($response->failed()) {
+            $this->logAndThrow($integration, $method.' '.$path, $response);
+        }
+        if ($method === 'patch' && $response->status() === 202 && ! $response->json('batchId')) {
+            throw new RuntimeException('iFood: atualização aceita sem identificador para acompanhamento.');
+        }
+        Log::channel('ifood')->info('iFood: operação aceita pela API', ['ifood_integration_id' => $integration->id, 'method' => strtoupper($method), 'path' => $path, 'http_status' => $response->status()]);
+
+        return $response->json() ?? [];
     }
 
     public function createCategory(IfoodIntegration $integration, string $name): string
@@ -237,7 +427,7 @@ class IfoodGatewayService implements IfoodGatewayContract
     {
         return Http::baseUrl(config('ifood.api_base_url'))
             ->withToken($this->auth->getAccessToken($integration))
-            ->acceptJson();
+            ->acceptJson()->connectTimeout(10)->timeout(30);
     }
 
     /**

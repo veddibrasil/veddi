@@ -22,7 +22,20 @@ interface RefundServiceInterface
     ): PaymentRefund;
 
     /**
-     * Mark a refund as succeeded and apply wallet debit.
+     * Registra um reembolso já feito fora do gateway (dinheiro devolvido pela loja).
+     * Nunca aciona o gateway: cria o PaymentRefund com gateway=offline e já o conclui.
+     */
+    public function recordOfflineRefund(
+        Order $order,
+        Payment $payment,
+        string $requesterType,
+        ?int $requesterId = null,
+        ?string $reason = null,
+        array $details = [],
+    ): PaymentRefund;
+
+    /**
+     * Mark a refund as succeeded and apply wallet debit. Idempotent.
      */
     public function markSucceeded(PaymentRefund $refund, array $gatewayResponse): void;
 

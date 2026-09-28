@@ -2,7 +2,7 @@
 <html lang="pt-BR" class="h-full">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ isset($currentCompany) ? $currentCompany->name . ($currentCompany->tagline ? ' — ' . $currentCompany->tagline : '') : config('app.name') }}</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
@@ -20,10 +20,10 @@
     <link rel="manifest" href="/favicon/site.webmanifest" />
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wght@0,6..12,300;0,6..12,400;0,6..12,500;0,6..12,600;0,6..12,700;1,6..12,400&family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="" defer></script>
+    {{-- Bunny Fonts: é o único host de fontes liberado no CSP (SecurityHeaders); Google Fonts era bloqueado. --}}
+    <link rel="preconnect" href="https://fonts.bunny.net" crossorigin>
+    <link href="https://fonts.bunny.net/css?family=nunito-sans:300,400,500,600,700,400i|montserrat:300,400,500,600,700&display=swap" rel="stylesheet">
 </head>
 <body class="mc-chat-bg h-full overflow-x-hidden font-sans">
 
@@ -87,7 +87,8 @@
         </div>
 
         {{-- ═══════ Painel do chat (mobile: tela cheia | desktop: coluna direita) ═══════ --}}
-        <div class="flex-1 lg:flex-none lg:w-125 flex items-center justify-center lg:bg-gray-100/80 lg:px-8 lg:py-8">
+        {{-- min-w-0: sem isso o item flex cresce até o min-content do painel de filiais e o chat passa de 100% da largura no mobile (scroll horizontal). --}}
+        <div class="flex-1 min-w-0 lg:flex-none lg:w-125 flex items-center justify-center lg:bg-gray-100/80 lg:px-8 lg:py-8">
             {{ $slot }}
         </div>
 

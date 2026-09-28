@@ -22,9 +22,10 @@ class CouponService
     public function validate(string $code, int $customerId, array $cart, float $subtotal): Coupon
     {
         $normalizedCode = strtoupper(trim($code));
+        $companyId = app('current.company')->id;
 
         $coupon = Cache::remember(
-            "coupon:code:{$normalizedCode}",
+            "coupon:code:{$companyId}:{$normalizedCode}",
             now()->addMinutes(5),
             fn () => Coupon::where('code', $normalizedCode)->where('active', true)->first()
         );

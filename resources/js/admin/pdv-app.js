@@ -19,10 +19,7 @@ function bindPdvGlobalListenersOnce() {
     window.addEventListener('pdv-barcode-processed', () => pdvActiveInstance?._focusBarcode());
     window.addEventListener('product-added-to-cart', (e) => pdvActiveInstance?.showToast(`${e.detail.name} adicionado ao carrinho`));
     window.addEventListener('order-paid', (e) => pdvActiveInstance?._handleOrderPaid(e.detail));
-    window.addEventListener('tab-order-finalized', (e) => {
-        console.log('[auto-print] window recebeu evento tab-order-finalized', e.detail, '| instancia Alpine ativa?', !!pdvActiveInstance);
-        pdvActiveInstance?._handleTabOrderFinalized(e.detail);
-    });
+    window.addEventListener('tab-order-finalized', (e) => pdvActiveInstance?._handleTabOrderFinalized(e.detail));
     window.addEventListener('pdv-toast', (e) => pdvActiveInstance?.showToast(e.detail.message));
 
     window.addEventListener('keydown', (e) => {
@@ -41,7 +38,7 @@ function bindPdvGlobalListenersOnce() {
         if (e.key === 'Enter') {
             if (instance._barcodeBuffer.length >= 3) {
                 // Dispatch to Livewire: set barcodeInput + call lookupByBarcode
-                const wire = Livewire.find(document.querySelector('[wire\\:id]')?.getAttribute('wire:id'));
+                const wire = instance._wire();
                 if (wire) {
                     wire.set('barcodeInput', instance._barcodeBuffer).then(() => {
                         wire.call('lookupByBarcode');
@@ -79,12 +76,42 @@ function bindPdvGlobalListenersOnce() {
         if (!wire) return;
         const step = wire.get('step');
 
+        // Teclas de função não digitam nada, então funcionam mesmo com foco num campo: o caixa
+        // digita o "valor recebido" e confirma com F10 sem tirar a mão do teclado. (Antes o guard
+        // de "está digitando" vinha primeiro e F2/F10 morriam justamente nessa hora.)
+        if (e.key === 'F2') {
+            e.preventDefault();
+            // Aciona o botão "Ir para pagamento" em vez de chamar o método direto: o botão só existe
+            // com carrinho no Terminal (a comanda não tem esse passo), então o atalho herda essas
+            // regras sem duplicá-las. Só a partir do catálogo: proceedToPayment() zera o formulário
+            // de pagamento, e F2 dentro do checkout apagaria forma/desconto/valor recebido.
+            const proceedBtn = document.getElementById('pdv-proceed-payment-btn');
+            if (step === 'catalog' && proceedBtn && !proceedBtn.disabled) {
+                proceedBtn.click();
+            }
+            return;
+        }
+
+        if (e.key === 'F10') {
+            e.preventDefault();
+            // Botao "Confirmar" fica disabled (wire:loading.attr) enquanto ha uma
+            // requisicao em curso — F10 respeita o mesmo estado pra nao disparar
+            // processOrder() de novo por cima de um clique/F10 anterior ainda em voo.
+            // O clique reaproveita o wire:click do botão, que já envia o valor atual do campo
+            // "Valor recebido" (ele sincroniza com debounce; F10 logo após digitar chegaria velho)
+            // e funciona igual em Terminal (processOrder) e TabTerminal (confirmCloseTab...).
+            const confirmBtn = document.getElementById('pdv-confirm-order-btn');
+            if (step === 'payment' && confirmBtn && !confirmBtn.disabled) {
+                confirmBtn.click();
+            }
+            return;
+        }
+
         // Esc rodava ANTES desse guard: apertar Esc com foco num campo de texto do
         // modal de pagamento (busca de cliente, desconto, valor recebido, observação
         // — pra limpar o campo, fechar um autocomplete do navegador, ou só por hábito)
         // fechava o modal inteiro na hora, descartando forma de pagamento/desconto já
-        // preenchidos. Os outros atalhos (F2/F10//) já respeitavam esse guard — Esc
-        // passa a respeitar também, só fecha o modal quando o foco não está num campo.
+        // preenchidos. Esc e "/" (que digita uma barra) só valem fora de campos.
         if (typing) return;
 
         if (e.key === 'Escape') {
@@ -101,24 +128,6 @@ function bindPdvGlobalListenersOnce() {
         if (e.key === '/') {
             e.preventDefault();
             instance._focusSearch();
-            return;
-        }
-
-        if (e.key === 'F2') {
-            e.preventDefault();
-            wire.call('proceedToPayment');
-            return;
-        }
-
-        if (e.key === 'F10') {
-            e.preventDefault();
-            // Botao "Confirmar" fica disabled (wire:loading.attr) enquanto ha uma
-            // requisicao em curso — F10 respeita o mesmo estado pra nao disparar
-            // processOrder() de novo por cima de um clique/F10 anterior ainda em voo.
-            const confirmBtn = document.getElementById('pdv-confirm-order-btn');
-            if (step === 'payment' && !confirmBtn?.disabled) {
-                wire.call('processOrder');
-            }
         }
     });
 }
@@ -259,8 +268,11 @@ Alpine.data('pdvApp', () => ({
         this._prevPdvStep = step;
     },
 
+    // O componente Livewire dono deste x-data (Terminal/TabTerminal). Antes buscava o primeiro
+    // [wire:id] da página, que é o sino de notificações do layout: F2, F10, Esc e o leitor de
+    // código de barras mandavam as chamadas pro componente errado e nunca chegavam ao PDV.
     _wire() {
-        return Livewire.find(document.querySelector('[wire\\:id]')?.getAttribute('wire:id'));
+        return this.$wire;
     },
 
     _focusSearch() {

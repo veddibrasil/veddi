@@ -5,7 +5,7 @@
         @if (! (isset($deliveryType, $deliveryPaymentStatus) && $deliveryType === 'entrega' && $deliveryPaymentStatus === 'on_delivery'))
             <label class="flex items-center gap-2 text-xs font-medium text-neutral-500 dark:text-neutral-400 cursor-pointer">
                 Dividir pagamento
-                <flux:switch wire:model.live="isSplitPayment" />
+                <flux:switch wire:model.live="isSplitPayment" aria-label="Dividir pagamento" />
             </label>
         @endif
     </div>
@@ -21,19 +21,26 @@
             <div class="pt-3 space-y-1.5">
                 <flux:label class="text-xs font-semibold">Valor recebido</flux:label>
                 <flux:input
-                    wire:model.live.debounce.500ms="cashReceivedInput"
+                    id="pdv-cash-received-input"
+                    wire:model.live.debounce.300ms="cashReceivedInput"
                     placeholder="Em branco = valor exato"
                     type="number"
                     step="0.01"
                     min="{{ $this->cartTotalAfterDiscount }}"
                 />
-                @if (filled($cashReceivedInput) && (float) str_replace(',', '.', $cashReceivedInput) >= $this->cartTotalAfterDiscount)
-                    @php $changePreview = max(0, (float) str_replace(',', '.', $cashReceivedInput) - $this->cartTotalAfterDiscount); @endphp
-                    <div class="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 dark:bg-amber-900/20 dark:border-amber-700">
-                        <p class="text-sm text-amber-700 dark:text-amber-300 font-semibold">
-                            Troco: R$ {{ number_format($changePreview, 2, ',', '.') }}
+                @if (filled($cashReceivedInput))
+                    @php $cashReceivedValue = \App\Support\MoneyInput::toFloat($cashReceivedInput); @endphp
+                    @if ($cashReceivedValue >= $this->cartTotalAfterDiscount)
+                        <div class="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 dark:bg-amber-900/20 dark:border-amber-700">
+                            <p class="text-sm text-amber-700 dark:text-amber-300 font-semibold">
+                                Troco: R$ {{ number_format($cashReceivedValue - $this->cartTotalAfterDiscount, 2, ',', '.') }}
+                            </p>
+                        </div>
+                    @else
+                        <p class="text-xs font-semibold text-red-600 dark:text-red-400" role="alert">
+                            Valor recebido menor que o total (R$ {{ number_format($this->cartTotalAfterDiscount, 2, ',', '.') }}).
                         </p>
-                    </div>
+                    @endif
                 @endif
             </div>
         @endif
@@ -48,7 +55,7 @@
                     </flux:select>
 
                     <flux:input
-                        wire:model.live.debounce.500ms="splitPayments.{{ $index }}.amount"
+                        wire:model.live.debounce.300ms="splitPayments.{{ $index }}.amount"
                         type="number"
                         step="0.01"
                         min="0"
@@ -58,7 +65,7 @@
 
                     @if ($part['method'] === 'cash')
                         <flux:input
-                            wire:model.live.debounce.500ms="splitPayments.{{ $index }}.cash_received"
+                            wire:model.live.debounce.300ms="splitPayments.{{ $index }}.cash_received"
                             type="number"
                             step="0.01"
                             min="0"
@@ -77,6 +84,7 @@
                             type="button"
                             wire:click="removeSplitPart({{ $index }})"
                             title="Remover parte"
+                            aria-label="Remover parte {{ $index + 1 }} do pagamento"
                             class="shrink-0 text-neutral-400 hover:text-red-600 dark:hover:text-red-400"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -87,8 +95,8 @@
 
                     @if ($part['method'] === 'cash' && filled($part['cash_received'] ?? null))
                         @php
-                            $partAmount = (float) str_replace(',', '.', $part['amount'] ?: 0);
-                            $partReceived = (float) str_replace(',', '.', $part['cash_received']);
+                            $partAmount = \App\Support\MoneyInput::toFloat($part['amount']);
+                            $partReceived = \App\Support\MoneyInput::toFloat($part['cash_received']);
                         @endphp
                         @if ($partReceived >= $partAmount)
                             <div class="w-full bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5 dark:bg-amber-900/20 dark:border-amber-700">
@@ -96,6 +104,10 @@
                                     Troco: R$ {{ number_format($partReceived - $partAmount, 2, ',', '.') }}
                                 </p>
                             </div>
+                        @else
+                            <p class="w-full text-xs font-semibold text-red-600 dark:text-red-400" role="alert">
+                                Recebido menor que a parte em dinheiro.
+                            </p>
                         @endif
                     @endif
                 </div>

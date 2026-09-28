@@ -1,35 +1,11 @@
 <?php
 
-use App\Contracts\IfoodGatewayContract;
-use App\Contracts\OrderServiceInterface;
-use App\Jobs\ProcessIfoodOrderJob;
 use App\Models\IfoodOrderEvent;
 use App\Models\Order;
 use App\Models\Payment;
-use App\Services\Ifood\IfoodOrderMapper;
-use App\Services\Payment\PaymentOrchestrator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Http;
 
 uses(RefreshDatabase::class);
-
-function fakeIfoodApi(array $orderDetails): void
-{
-    Http::fake([
-        '*/authentication/v1.0/oauth/token' => Http::response(['accessToken' => 'tok-test', 'expiresIn' => 3600], 200),
-        '*/order/v1.0/orders/*' => Http::response($orderDetails, 200),
-    ]);
-}
-
-function runIfoodOrderJob(int $eventId): void
-{
-    (new ProcessIfoodOrderJob($eventId))->handle(
-        app(IfoodGatewayContract::class),
-        app(IfoodOrderMapper::class),
-        app(OrderServiceInterface::class),
-        app(PaymentOrchestrator::class),
-    );
-}
 
 test('processa evento PLC e cria pedido com channel ifood, company_id e fee corretos', function () {
     ['company' => $company, 'branch' => $branch, 'integration' => $integration] = ifoodContext('job1');
@@ -57,7 +33,9 @@ test('processa evento PLC e cria pedido com channel ifood, company_id e fee corr
         ->and($order->branch_id)->toBe($branch->id)
         ->and($order->channel)->toBe('ifood')
         ->and($order->external_order_id)->toBe('ifood-order-job1')
-        ->and($order->status)->toBe('paid');
+        // Entra aguardando aceite: o iFood cancela sozinho se a loja não confirmar no prazo.
+        ->and($order->status)->toBe('pending')
+        ->and($order->status_label)->toBe('Aguardando aceite');
 
     $payment = Payment::where('order_id', $order->id)->first();
     expect($payment)->not->toBeNull()

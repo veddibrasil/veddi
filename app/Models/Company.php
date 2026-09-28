@@ -168,14 +168,14 @@ class Company extends Model
         return $this->hasMany(CompanyTransaction::class);
     }
 
-    public function balance(): HasOne
-    {
-        return $this->hasOne(CompanyBalance::class);
-    }
-
     public function whatsappSetting(): HasOne
     {
         return $this->hasOne(WhatsAppSetting::class);
+    }
+
+    public function whatsappConnection(): HasOne
+    {
+        return $this->hasOne(WhatsAppConnection::class);
     }
 
     public function isPro(): bool

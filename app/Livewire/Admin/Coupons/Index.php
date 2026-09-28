@@ -113,7 +113,10 @@ class Index extends Component
             'name' => ['required', 'string', 'max:100'],
             'description' => ['nullable', 'string', 'max:500'],
             'type' => ['required', Rule::in(['percentage', 'fixed', 'free_delivery', 'free_product'])],
-            'discount_value' => ['nullable', 'numeric', 'min:0.01', 'required_if:type,percentage', 'required_if:type,fixed'],
+            'discount_value' => [
+                'nullable', 'numeric', 'min:0.01', 'required_if:type,percentage', 'required_if:type,fixed',
+                Rule::when($this->type === 'percentage', ['max:100']),
+            ],
             'free_product_id' => ['nullable', 'integer', 'exists:products,id', 'required_if:type,free_product'],
             'scope' => ['required', Rule::in(['order', 'category', 'product'])],
             'scope_ids' => ['nullable', 'array'],
@@ -136,6 +139,7 @@ class Index extends Component
             'type.required' => 'Selecione o tipo de desconto.',
             'discount_value.required_if' => 'Informe o valor do desconto.',
             'discount_value.min' => 'O valor deve ser maior que zero.',
+            'discount_value.max' => 'Desconto percentual não pode passar de 100%.',
             'free_product_id.required_if' => 'Selecione o produto grátis.',
             'expires_at.after_or_equal' => 'A data de expiração deve ser após a data de início.',
         ];

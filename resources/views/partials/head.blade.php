@@ -13,9 +13,9 @@
 <meta name="apple-mobile-web-app-title" content="MyWebSite" />
 <link rel="manifest" href="/favicon/site.webmanifest" />
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wght@0,6..12,300;0,6..12,400;0,6..12,500;0,6..12,600;0,6..12,700;1,6..12,400&family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+{{-- Bunny Fonts: é o único host de fontes liberado no CSP (SecurityHeaders); Google Fonts era bloqueado. --}}
+<link rel="preconnect" href="https://fonts.bunny.net" crossorigin>
+<link href="https://fonts.bunny.net/css?family=nunito-sans:300,400,500,600,700,400i|montserrat:300,400,500,600,700&display=swap" rel="stylesheet">
 {{-- Avenir LT Pro (system font on macOS/iOS) with Nunito Sans as web fallback --}}
 {{-- Gotham Book with Montserrat as web fallback --}}
 

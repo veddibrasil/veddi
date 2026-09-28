@@ -2,7 +2,9 @@
     $supportWhatsappNumber = config('services.support.whatsapp_number');
 @endphp
 
-@if ($supportWhatsappNumber)
+{{-- Nas telas operacionais do PDV o botão flutuante cobria a ação principal (barra "Ir para pagamento"
+     no mobile, rodapé do carrinho no desktop). Suporte segue disponível nas demais telas. --}}
+@if ($supportWhatsappNumber && ! request()->routeIs('admin.pdv.checkout', 'admin.pdv.tabs'))
     <a
         href="https://wa.me/{{ $supportWhatsappNumber }}"
         target="_blank"

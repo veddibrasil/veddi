@@ -79,7 +79,12 @@ class DeliverySettings extends Component
         if ($user->isSuperAdmin()) {
             $this->canSave = true;
         } elseif (app()->bound('current.company')) {
-            $this->canSave = $user->hasPermission('branches.update', app('current.company'));
+            $company = app('current.company');
+            $this->canSave = $user->hasPermission('branches.update', $company);
+
+            if ($user->isBranchScoped($company) && $user->branchIdForCompany($company) !== $branch->id) {
+                abort(403);
+            }
         }
 
         $settings = $branch->deliverySetting;

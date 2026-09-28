@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\PdvCashSession;
 use App\Services\Pdv\CashClosingReportService;
 use App\Support\Printing\ThermalReceiptPaper;
-use Barryvdh\DomPDF\Facade\Pdf;
 
 class CashClosingReportController extends Controller
 {
@@ -25,10 +24,10 @@ class CashClosingReportController extends Controller
 
         $paperWidth = $cashSession->branch->printerForStation('geral')?->paper_width ?? 80;
 
-        $pdf = Pdf::loadView('livewire.admin.pdv.cash-closing-receipt', [
+        $pdf = ThermalReceiptPaper::pdf('livewire.admin.pdv.cash-closing-receipt', [
             'report' => $report,
             'company' => $company,
-        ])->setPaper(ThermalReceiptPaper::forWidthMm($paperWidth));
+        ], $paperWidth);
 
         return $pdf->stream('fechamento-caixa-'.$cashSession->id.'.pdf');
     }

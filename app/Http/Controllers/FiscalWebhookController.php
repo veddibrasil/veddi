@@ -30,6 +30,15 @@ class FiscalWebhookController extends Controller
         $token = $request->header('x-focus-nfe-token', '');
         $expected = $config?->resolveWebhookToken() ?: config('fiscal.focus_nfe.webhook_token');
 
+        // resolveWebhookToken() já cai pro secret global internamente quando a filial não
+        // tem token próprio — checa o valor bruto aqui só pra sinalizar essa configuração
+        // mais fraca, que hoje passa em silêncio total.
+        if ($note && $config && blank($config->webhook_token)) {
+            Log::channel('fiscal')->warning('Focus NFe webhook: filial sem token próprio, usando secret global', [
+                'company_id' => $note->company_id,
+            ]);
+        }
+
         if (empty($expected) || ! hash_equals((string) $expected, (string) $token)) {
             Log::channel('fiscal')->warning('Focus NFe webhook: token inválido', [
                 'ip' => $request->ip(),

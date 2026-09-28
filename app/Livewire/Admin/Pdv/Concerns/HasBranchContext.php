@@ -49,7 +49,9 @@ trait HasBranchContext
     /**
      * `selectedBranchId` é propriedade pública Livewire (settable via payload do
      * client) — nunca confiar que ela ainda aponta pra uma filial da empresa do
-     * operador antes de usá-la para buscar produto/estoque/pedido.
+     * operador antes de usá-la para buscar produto/estoque/pedido. Usuário preso a
+     * uma filial (caixa, garçom, gerente...) também não pode operar outra da mesma
+     * empresa: o select some da tela pra ele, mas o payload continua forjável.
      */
     private function assertSelectedBranchBelongsToCurrentCompany(): void
     {
@@ -65,6 +67,13 @@ trait HasBranchContext
             ->exists();
 
         if (! $belongs) {
+            throw new \Illuminate\Auth\Access\AuthorizationException;
+        }
+
+        $user = auth()->user();
+        $fixedBranchId = $user && $user->isBranchScoped($company) ? $user->branchIdForCompany($company) : null;
+
+        if ($fixedBranchId && (int) $fixedBranchId !== (int) $this->selectedBranchId) {
             throw new \Illuminate\Auth\Access\AuthorizationException;
         }
     }

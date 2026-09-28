@@ -6,13 +6,12 @@ use App\Events\NewOrderPlaced;
 use App\Events\OrderStatusUpdated;
 use App\Models\Branch;
 use App\Services\Order\OrderService;
-use App\Services\Payment\PaymentOrchestrator;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 trait HasPaymentFlow
 {
     use HasAutoPrint;
+    use HasPaymentSettlement;
 
     // Guarda contra double-submit: se duas chamadas a processOrder() caírem na mesma
     // requisição (ex.: F10 e clique no botão disparados no mesmo tick, que o Livewire
@@ -30,6 +29,8 @@ trait HasPaymentFlow
             return;
         }
 
+        $this->assertSelectedBranchBelongsToCurrentCompany();
+
         $this->step = 'payment';
         $this->resetPaymentState();
         $this->resetDeliveryState();
@@ -44,9 +45,16 @@ trait HasPaymentFlow
         $this->resetScheduleState();
     }
 
-    public function processOrder(): void
+    /**
+     * `$cashReceived` é o valor que está no campo "Valor recebido" no instante do clique/F10. O campo
+     * sincroniza com debounce (`wire:model.live`); sem isso, confirmar antes do debounce vencer
+     * gravava o valor antigo (ou vazio = "exato") como dinheiro recebido.
+     */
+    public function processOrder(?string $cashReceived = null): void
     {
         abort_unless(! $this->isWaiter, 403);
+
+        $this->syncCashReceivedFromClient($cashReceived);
 
         if ($this->processingOrder) {
             return;
@@ -55,6 +63,8 @@ trait HasPaymentFlow
         if (empty($this->cart) || ! $this->selectedBranchId) {
             return;
         }
+
+        $this->assertSelectedBranchBelongsToCurrentCompany();
 
         $this->processingOrder = true;
 
@@ -121,127 +131,100 @@ trait HasPaymentFlow
             }
         }
 
-        $orderCart = $this->buildOrderCart();
-
-        DB::beginTransaction();
-        try {
-            $isPaidOnCreate = ($this->isSplitPayment || in_array($this->paymentMethod, ['cash', 'credit_card', 'pix']))
-                && ! ($this->deliveryType === 'entrega' && $this->deliveryPaymentStatus === 'on_delivery')
-                && ! ($this->deliveryType === 'retirar' && $this->pickupPaymentStatus === 'on_pickup');
-
-            // Pedido agendado: pagamento pode ser coletado agora, mas o status fica 'scheduled'
-            // (não 'paid') pra não disparar preparo/nota fiscal antes da hora combinada — mesma
-            // convenção usada no agendamento do chat público.
-            $status = $isPaidOnCreate
-                ? ($scheduledAt ? 'scheduled' : 'paid')
-                : 'awaiting_payment';
-
-            $order = app(OrderService::class)->createOrder(
-                customerId: $customerId,
-                branchId: $this->selectedBranchId,
-                cart: $orderCart,
-                notes: $this->notes,
-                paymentMethod: $this->effectivePaymentMethod(),
-                orderType: 'pdv',
-                status: $status,
-                deliveryFee: $this->deliveryFeeAmount,
-                scheduledAt: $scheduledAt,
-                extraDiscount: $this->manualDiscountAmount,
-                serviceFee: $this->serviceFeeAmount,
-                couvertFee: $this->couvertFeeAmount,
-            );
-
-            $order->delivery_type = $this->deliveryType;
-
-            // Link order to current cash session
-            if ($this->cashSessionId) {
-                $order->pdv_cash_session_id = $this->cashSessionId;
-            }
-
-            $order->save();
-
-            if ($this->deliveryType === 'entrega') {
-                $order->delivery_address = $this->deliveryAddress;
-                $order->delivery_number = $this->deliveryNumber;
-                $order->delivery_complement = $this->deliveryComplement;
-                $order->delivery_neighborhood = $this->deliveryNeighborhood;
-                $order->delivery_city = $this->deliveryCity;
-                $order->delivery_cep = $this->deliveryCep;
-                $order->save();
-            }
-
-            if ($isPaidOnCreate) {
-                if ($this->isSplitPayment) {
-                    $parts = $this->buildSplitPartsForOrchestrator();
-                    $cashPart = collect($parts)->firstWhere('method', 'cash');
-
-                    if ($cashPart) {
-                        $order->cash_received = $cashPart['cash_received'];
-                        $order->cash_change = max(0.0, round($cashPart['cash_received'] - $cashPart['amount'], 2));
-                        $order->save();
-                    }
-
-                    $results = app(PaymentOrchestrator::class)->processSplit($order, $parts);
-                    $this->changeAmount = collect($results)->sum('change');
-                } elseif ($this->paymentMethod === 'cash') {
-                    $cashReceived = (float) str_replace(',', '.', $this->cashReceivedInput ?: $order->total);
-                    $order->cash_received = $cashReceived;
-                    $order->cash_change = max(0.0, round($cashReceived - (float) $order->total, 2));
-                    $order->save();
-
-                    $result = app(PaymentOrchestrator::class)->processCash($order);
-                    $this->changeAmount = $result['change'];
-                } elseif ($this->paymentMethod === 'credit_card') {
-                    app(PaymentOrchestrator::class)->processCardMachine($order);
-                } elseif ($this->paymentMethod === 'pix') {
-                    app(PaymentOrchestrator::class)->processPixManual($order);
-                }
-            }
-
-            DB::commit();
-
-            // Fora da transação: pedido nasce 'paid' aqui (à vista/cartão/pix no PDV, quando não
-            // agendado) e nunca passa por outra transição depois — sem isso a nota fiscal automática
-            // nunca dispara. Se agendado, status é 'scheduled' e o listener de nota fiscal ignora.
-            if ($isPaidOnCreate) {
-                OrderStatusUpdated::dispatch($order);
-            }
-
-            // Notifica cozinha/bar (mesmo canal usado pro chat) — sem isso quem só opera pelo PDV
-            // não sabe que um pedido novo chegou pra preparar.
-            NewOrderPlaced::dispatch($order->load('customer'));
-
-            if ($isPaidOnCreate) {
-                $this->dispatchAutoPrintPayload($order);
-            }
-
-            $this->lastOrderTotal = (float) $order->total;
-            $this->audit('order_created', [
-                'order_id' => $order->id,
-                'amount' => (float) $order->total,
-                'metadata' => [
-                    'payment_method' => $this->effectivePaymentMethod(),
-                    'cart_count' => $this->cartCount,
-                    'manual_discount' => $this->manualDiscountAmount,
-                ],
-            ]);
-        } catch (\Illuminate\Database\QueryException $e) {
-            DB::rollBack();
-
-            // Erro de SQL (ex.: colisão de order_number entre terminais concorrentes)
-            // não deve chegar cru pro caixa — só orienta a tentar de novo.
-            Log::channel('orders')->error('Falha de banco ao processar pedido no PDV', [
-                'error' => $e->getMessage(),
-            ]);
-            $this->addError('order', 'Não foi possível processar o pedido agora. Tente novamente.');
-
-            return;
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            $this->addError('order', $e->getMessage());
+        if ($error = $this->manualDiscountError($company)) {
+            $this->addError('order', $error);
 
             return;
         }
+
+        $orderCart = $this->buildOrderCart();
+
+        $isPaidOnCreate = ($this->isSplitPayment || in_array($this->paymentMethod, ['cash', 'credit_card', 'pix']))
+            && ! ($this->deliveryType === 'entrega' && $this->deliveryPaymentStatus === 'on_delivery')
+            && ! ($this->deliveryType === 'retirar' && $this->pickupPaymentStatus === 'on_pickup');
+
+        // Pedido agendado: pagamento pode ser coletado agora, mas o status fica 'scheduled'
+        // (não 'paid') pra não disparar preparo/nota fiscal antes da hora combinada — mesma
+        // convenção usada no agendamento do chat público.
+        $status = $isPaidOnCreate
+            ? ($scheduledAt ? 'scheduled' : 'paid')
+            : 'awaiting_payment';
+
+        try {
+            $order = DB::transaction(function () use ($customerId, $orderCart, $status, $scheduledAt, $isPaidOnCreate) {
+                $order = app(OrderService::class)->createOrder(
+                    customerId: $customerId,
+                    branchId: $this->selectedBranchId,
+                    cart: $orderCart,
+                    notes: $this->notes,
+                    paymentMethod: $this->effectivePaymentMethod(),
+                    orderType: 'pdv',
+                    status: $status,
+                    deliveryFee: $this->effectiveDeliveryFee(),
+                    scheduledAt: $scheduledAt,
+                    extraDiscount: $this->manualDiscountAmount,
+                    serviceFee: $this->serviceFeeAmount,
+                    couvertFee: $this->couvertFeeAmount,
+                );
+
+                $order->delivery_type = $this->deliveryType;
+
+                // Link order to current cash session
+                if ($this->cashSessionId) {
+                    $order->pdv_cash_session_id = $this->cashSessionId;
+                }
+
+                if ($this->deliveryType === 'entrega') {
+                    $order->delivery_address = $this->deliveryAddress;
+                    $order->delivery_number = $this->deliveryNumber;
+                    $order->delivery_complement = $this->deliveryComplement;
+                    $order->delivery_neighborhood = $this->deliveryNeighborhood;
+                    $order->delivery_city = $this->deliveryCity;
+                    $order->delivery_cep = $this->deliveryCep;
+                }
+
+                $order->save();
+
+                if ($isPaidOnCreate) {
+                    $this->settleOrderPayment($order);
+                }
+
+                $this->audit('order_created', [
+                    'order_id' => $order->id,
+                    'amount' => (float) $order->total,
+                    'metadata' => [
+                        'payment_method' => $this->effectivePaymentMethod(),
+                        'cart_count' => $this->cartCount,
+                        'manual_discount' => $this->manualDiscountAmount,
+                    ],
+                ]);
+
+                return $order;
+            });
+        } catch (\Throwable $e) {
+            $this->reportPaymentFailure($e);
+
+            return;
+        }
+
+        // Fora da transação: pedido nasce 'paid' aqui (à vista/cartão/pix no PDV, quando não
+        // agendado) e nunca passa por outra transição depois — sem isso a nota fiscal automática
+        // nunca dispara. Se agendado, status é 'scheduled' e o listener de nota fiscal ignora.
+        // Cada efeito é isolado: o pedido já foi gravado e pago, então uma falha aqui (Reverb fora
+        // do ar, SEFAZ) não pode virar "erro ao processar" e induzir o operador a refazer a venda.
+        if ($isPaidOnCreate) {
+            $this->afterCommit('order_status_updated', $order, fn () => OrderStatusUpdated::dispatch($order));
+        }
+
+        // Notifica cozinha/bar (mesmo canal usado pro chat) — sem isso quem só opera pelo PDV
+        // não sabe que um pedido novo chegou pra preparar.
+        $this->afterCommit('new_order_broadcast', $order, fn () => NewOrderPlaced::dispatch($order->load('customer')));
+
+        if ($isPaidOnCreate) {
+            $this->afterCommit('auto_print', $order, fn () => $this->dispatchAutoPrintPayload($order));
+        }
+
+        $this->lastOrderTotal = (float) $order->total;
 
         $this->lastOrderNumber = $order->order_number;
         $this->lastOrderId = $order->id;

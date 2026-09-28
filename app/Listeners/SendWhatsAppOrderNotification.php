@@ -3,7 +3,7 @@
 namespace App\Listeners;
 
 use App\Events\NewOrderPlaced;
-use App\Jobs\SendWhatsAppMessage;
+use App\Jobs\SendWhatsAppOrderNotificationJob;
 use App\Services\Messaging\WhatsAppService;
 
 class SendWhatsAppOrderNotification
@@ -13,19 +13,16 @@ class SendWhatsAppOrderNotification
     public function handle(NewOrderPlaced $event): void
     {
         $order = $event->order;
-        $settings = $order->company?->whatsappSetting;
 
-        if (! $settings?->enabled || ! $settings->notify_on_new_order) {
+        // Pedido em dinheiro agendado nasce 'scheduled' sem nenhum OrderStatusUpdated depois;
+        // o template "agendado" já traz a confirmação. O aviso tardio do
+        // NotifyScheduledOrderJob cai na idempotência (order_id + event).
+        $notification = $order->status === 'scheduled' ? 'scheduled' : 'new_order';
+
+        if (! $this->whatsApp->shouldNotify($order, $notification)) {
             return;
         }
 
-        $phone = $order->customer?->phone;
-        if (! $phone) {
-            return;
-        }
-
-        $message = $this->whatsApp->buildMessage($order, 'new_order');
-
-        SendWhatsAppMessage::dispatch($phone, $message, $order->company_id);
+        SendWhatsAppOrderNotificationJob::dispatch($order->id, $notification);
     }
 }

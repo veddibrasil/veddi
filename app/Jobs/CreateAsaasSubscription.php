@@ -6,6 +6,7 @@ use App\Contracts\AsaasServiceInterface;
 use App\Exceptions\AsaasCircuitOpenException;
 use App\Models\Company;
 use App\Models\Subscription;
+use App\Services\Company\AddonModulePricing;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -50,25 +51,9 @@ class CreateAsaasSubscription implements ShouldBeUnique, ShouldQueue
         $plan = $this->company->pending_plan ?? $this->company->plan;
         $billingType = $this->company->subscription_payment_method ?? 'PIX';
 
-        $extraParts = [];
-        $extraAmount = 0.0;
-
-        if ($this->company->pdv_module_enabled) {
-            $extraAmount += (float) config('pdv.addon_monthly_price', 99.00);
-            $extraParts[] = 'Módulo PDV';
-        }
-
-        if ($this->company->fiscal_notes_enabled) {
-            $extraAmount += (float) config('fiscal.addon_monthly_price', 149.00);
-            $extraParts[] = 'Módulo Fiscal';
-        }
-
-        if ($this->company->waiter_module_enabled) {
-            $extraAmount += (float) config('waiter.addon_monthly_price', 99.00);
-            $extraParts[] = 'Módulo Garçom';
-        }
-
-        $extraDescription = implode(' + ', $extraParts);
+        $extra = AddonModulePricing::extraFor($this->company);
+        $extraAmount = $extra['amount'];
+        $extraDescription = $extra['description'];
 
         try {
             $result = $asaasService->createSubscription(

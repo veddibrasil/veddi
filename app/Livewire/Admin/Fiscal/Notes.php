@@ -38,6 +38,10 @@ class Notes extends Component
         $company = app('current.company');
         $user = auth()->user();
 
+        // Mesmo padrão dos outros add-ons pagos (ver Config::mount()) — sem isso, a tela
+        // de notas ficava acessível mesmo pra empresa que nunca contratou o módulo.
+        abort_unless($company->fiscal_notes_enabled, 403, 'Módulo de nota fiscal não está habilitado para esta empresa.');
+
         $this->canView = $user->hasPermission('fiscal.view', $company);
         $this->canIssue = $user->hasPermission('fiscal.issue', $company);
 

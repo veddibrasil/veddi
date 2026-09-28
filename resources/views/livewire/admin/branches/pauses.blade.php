@@ -1,15 +1,13 @@
 <div class="w-full space-y-6"
     x-init="$watch(() => $wire.deletingId, val => val ? $flux.modal('confirm-delete-pause').show() : $flux.modal('confirm-delete-pause').close())">
     <x-admin.page-header
-        :back-route="route('admin.branches.index')"
         :title="'Pausas e Feriados — ' . $branch->name"
     />
 
-    @if (session('status'))
-        <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm dark:bg-green-900/30 dark:border-green-700 dark:text-green-400">
-            {{ session('status') }}
-        </div>
-    @endif
+    <x-admin.branch-nav :branch="$branch" current="pauses" />
+
+    <x-admin.flash-status />
+
 
     <p class="text-sm text-neutral-500 dark:text-neutral-400">
         Cadastre períodos em que esta filial não deve receber pedidos, mesmo dentro do horário normal de
@@ -41,7 +39,7 @@
                     </div>
                 </div>
             </div>
-            <p class="text-xs text-neutral-400 dark:text-neutral-500 -mt-2">
+            <p class="text-xs text-neutral-500 dark:text-neutral-400 -mt-2">
                 Sem horário, a pausa considera o dia todo (00:00 até 23:59).
             </p>
 
@@ -52,7 +50,7 @@
 
             <div>
                 <flux:checkbox wire:model="recurring_annual" label="Repetir todo ano nesta mesma data" />
-                <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
+                <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
                     Em pausas recorrentes, o ano informado é ignorado — só o dia/mês/horário se repetem.
                 </p>
             </div>
@@ -63,7 +61,7 @@
 
     <x-admin.form-card title="Pausas cadastradas">
         @if ($this->pauses->isEmpty())
-            <p class="text-sm text-neutral-400 dark:text-neutral-500">Nenhuma pausa cadastrada.</p>
+            <p class="text-sm text-neutral-500 dark:text-neutral-400">Nenhuma pausa cadastrada.</p>
         @else
             <div class="divide-y divide-neutral-100 dark:divide-zinc-700">
                 @foreach ($this->pauses as $pause)
@@ -80,11 +78,11 @@
                                 @endif
                             </div>
                             @if ($pause->reason)
-                                <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">{{ $pause->reason }}</p>
+                                <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{{ $pause->reason }}</p>
                             @endif
                         </div>
                         @if ($canSave)
-                            <flux:button wire:click="confirmDelete({{ $pause->id }})" variant="ghost" size="sm">
+                            <flux:button wire:click="confirmDelete({{ $pause->id }})" variant="ghost" size="sm" aria-label="Excluir pausa de {{ $pause->starts_at->format('d/m/Y') }}">
                                 Excluir
                             </flux:button>
                         @endif

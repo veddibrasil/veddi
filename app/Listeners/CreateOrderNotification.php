@@ -15,8 +15,12 @@ class CreateOrderNotification
             'is_delivery' => $event->order->isDeliveryOrder(),
             'is_kitchen' => $event->order->hasItemsForStation('cozinha'),
             'is_bar' => $event->order->hasItemsForStation('bar'),
-            'title' => 'Novo pedido: '.$event->order->order_number,
-            'subtitle' => $event->order->customer?->name ?? 'Cliente',
+            'title' => ($ifood = $event->order->ifoodDetails())
+                ? 'Novo pedido iFood #'.$ifood->displayId()
+                : 'Novo pedido: '.$event->order->order_number,
+            'subtitle' => $ifood?->awaitingConfirmation()
+                ? ($ifood->isScheduled() ? 'Agendado: aceite no iFood' : 'Aceite em até '.$ifood::CONFIRMATION_MINUTES.' min')
+                : ($event->order->customer?->name ?? 'Cliente'),
             'link' => route('admin.orders.show', $event->order->id),
         ]);
     }

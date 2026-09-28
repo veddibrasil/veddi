@@ -4,9 +4,9 @@ namespace App\Services\Finance;
 
 use App\Events\WalletBalanceUpdated;
 use App\Models\Company;
-use App\Models\CompanyBalance;
 use App\Models\CompanyTransaction;
-use App\Models\CompanyWithdrawal;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 
 class BalanceService
 {
@@ -14,90 +14,61 @@ class BalanceService
      * Calcula o saldo completo da empresa sem persistir.
      * Seguro para chamadas frequentes (ex.: resposta de API em tempo real).
      *
-     * Fórmula:
-     *   total_balance     = SUM(net_value) WHERE status IN (confirmed, released) AND withdrawn=false
-     *   blocked_balance   = SUM(net_value) WHERE status=confirmed AND withdrawn=false
-     *   withdrawn_balance = SUM(net_value) WHERE withdrawn=true
-     *   released_gross    = SUM(net_value) WHERE status=released AND withdrawn=false
-     *   available_balance = released_gross
+     * Uma transação conta como liberada quando status=released OU quando está
+     * confirmed e a release_date já chegou — assim o saldo não depende de um job
+     * de liberação rodando (o ReleaseCompanyTransactionsJob está desligado desde
+     * que saque/antecipação foram para o portal Vindi).
      *
-     * O saldo disponível reflete apenas transações efetivamente sacadas (withdrawn=true).
-     * Saques pendentes/em processamento não reduzem o saldo exibido — o débito visível
-     * ocorre somente quando o job conclui e marca as transações como withdrawn.
-     * A proteção contra sobre-saque é feita atomicamente em WithdrawalService via
-     * lockForUpdate + whereNull('withdrawal_id').
+     * Estornadas (refunded) e em chargeback ficam fora de todos os saldos.
+     *
+     *   blocked_balance   = confirmed com release_date no futuro ("a receber")
+     *   available_balance = liberadas e não sacadas
+     *   total_balance     = blocked + available
+     *   withdrawn_balance = já sacadas
      */
     public function calculateBalance(Company $company): array
     {
-        $companyId = $company->id;
+        $today = now()->toDateString();
 
-        $totalBalance = (float) CompanyTransaction::withoutGlobalScopes()
-            ->where('company_id', $companyId)
-            ->whereIn('status', ['confirmed', 'released'])
-            ->where('withdrawn', false)
-            ->sum('net_value');
-
-        $blockedBalance = (float) CompanyTransaction::withoutGlobalScopes()
-            ->where('company_id', $companyId)
+        $blockedBalance = (float) $this->unwithdrawn($company)
             ->where('status', 'confirmed')
-            ->where('withdrawn', false)
+            ->where('release_date', '>', $today)
             ->sum('net_value');
 
-        $releasedGross = (float) CompanyTransaction::withoutGlobalScopes()
-            ->where('company_id', $companyId)
-            ->where('status', 'released')
-            ->where('withdrawn', false)
+        $availableBalance = (float) $this->unwithdrawn($company)
+            ->where(fn (Builder $query) => $this->releasedBy($query, $today))
             ->sum('net_value');
 
         $withdrawnBalance = (float) CompanyTransaction::withoutGlobalScopes()
-            ->where('company_id', $companyId)
+            ->where('company_id', $company->id)
             ->where('withdrawn', true)
             ->sum('net_value');
 
-        $reserveBalance = 0.0;
-        $availableBalance = round(max(0, $releasedGross), 2);
-
         return [
-            'total_balance' => round($totalBalance, 2),
+            'total_balance' => round($blockedBalance + $availableBalance, 2),
             'blocked_balance' => round($blockedBalance, 2),
-            'available_balance' => $availableBalance,
+            'available_balance' => round(max(0, $availableBalance), 2),
             'withdrawn_balance' => round($withdrawnBalance, 2),
-            'reserve_balance' => $reserveBalance,
+            'reserve_balance' => 0.0,
         ];
     }
 
     /**
-     * Persiste (upsert) o snapshot de saldo para uma empresa.
-     * Chamado pelo UpdateCompanyBalancesJob.
+     * Avisa a tela da carteira/dashboard (canal wallet.{companyId}) que o saldo mudou.
+     * Só depois do commit, para a tela não recarregar um saldo que ainda pode ser revertido.
      */
-    public function updateSnapshot(Company $company): CompanyBalance
+    public function broadcastUpdate(int $companyId): void
     {
-        $data = $this->calculateBalance($company);
+        DB::afterCommit(function () use ($companyId) {
+            $company = Company::withoutGlobalScopes()->find($companyId);
 
-        $balance = CompanyBalance::updateOrCreate(
-            ['company_id' => $company->id],
-            array_merge($data, ['last_calculated_at' => now()])
-        );
-
-        WalletBalanceUpdated::dispatch(
-            $company->id,
-            $data['available_balance'],
-            $data['blocked_balance'],
-        );
-
-        return $balance;
-    }
-
-    /**
-     * Recalcula e persiste snapshots para TODAS as empresas ativas.
-     * Chamado pelo UpdateCompanyBalancesJob.
-     */
-    public function updateAllSnapshots(): void
-    {
-        Company::where('active', true)->chunkById(100, function ($companies) {
-            foreach ($companies as $company) {
-                $this->updateSnapshot($company);
+            if (! $company) {
+                return;
             }
+
+            $balance = $this->calculateBalance($company);
+
+            WalletBalanceUpdated::dispatch($companyId, $balance['available_balance'], $balance['blocked_balance']);
         });
     }
 
@@ -113,31 +84,19 @@ class BalanceService
         $today = now()->toDateString();
         $until = now()->addDays($days)->toDateString();
 
-        // Baseline: liberado mas ainda não sacado (descontando saques pendentes)
-        $releasedGross = (float) CompanyTransaction::withoutGlobalScopes()
-            ->where('company_id', $company->id)
-            ->where('status', 'released')
-            ->where('withdrawn', false)
-            ->sum('net_value');
-
-        $pendingWithdrawals = (float) CompanyWithdrawal::withoutGlobalScopes()
-            ->where('company_id', $company->id)
-            ->whereIn('status', ['pending', 'processing'])
-            ->sum('amount');
-
-        $currentAvailable = max(0.0, $releasedGross - $pendingWithdrawals);
+        // Baseline: o que já está liberado hoje.
+        $currentAvailable = $this->calculateBalance($company)['available_balance'];
 
         // Transações confirmadas agrupadas por release_date (futuras)
-        $releasing = CompanyTransaction::withoutGlobalScopes()
+        $releasing = $this->unwithdrawn($company)
             ->selectRaw('release_date, SUM(net_value) as daily_amount')
-            ->where('company_id', $company->id)
             ->where('status', 'confirmed')
-            ->where('withdrawn', false)
-            ->whereBetween('release_date', [$today, $until])
+            ->where('release_date', '>', $today)
+            ->where('release_date', '<=', $until)
             ->groupBy('release_date')
             ->orderBy('release_date')
             ->get()
-            ->keyBy('release_date');
+            ->keyBy(fn ($row) => $row->release_date->toDateString());
 
         $forecast = [];
         $cumulative = $currentAvailable;
@@ -155,5 +114,20 @@ class BalanceService
         }
 
         return $forecast;
+    }
+
+    private function unwithdrawn(Company $company): Builder
+    {
+        return CompanyTransaction::withoutGlobalScopes()
+            ->where('company_id', $company->id)
+            ->where('withdrawn', false);
+    }
+
+    private function releasedBy(Builder $query, string $date): void
+    {
+        $query->where('status', 'released')
+            ->orWhere(fn (Builder $confirmed) => $confirmed
+                ->where('status', 'confirmed')
+                ->where('release_date', '<=', $date));
     }
 }

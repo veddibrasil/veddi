@@ -15,7 +15,7 @@ class IfoodOrderMapper
      * referência — nunca é confiado como unit_price (OrderService reprecifica
      * tudo via resolveProducts()).
      *
-     * @return array<string, array{product_id: int, qty: int, name: string, price: float, options: array}>
+     * @return array<string, array{product_id: int, qty: int, name: string, price: float, options: array, notes: ?string}>
      *
      * @throws IfoodMappingException se algum item/opção não estiver mapeado, ou se
      *                               houver complemento aninhado (2+ níveis, não suportado).
@@ -56,6 +56,7 @@ class IfoodOrderMapper
                 'name' => $item['name'],
                 'price' => $item['unitPrice'],
                 'options' => $options,
+                'notes' => $item['observations'] ?? null,
             ];
         }
 

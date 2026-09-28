@@ -169,8 +169,11 @@ class CompanySettings extends Component
 
     public function render()
     {
+        $company = app('current.company');
+
         return view('livewire.admin.settings.company-settings', [
-            'currentCompany' => app('current.company'),
+            'currentCompany' => $company,
+            'canViewBranches' => (bool) auth()->user()?->hasPermission('branches.view', $company),
         ])->layout('layouts.app', ['title' => 'Configurações da Empresa']);
     }
 }

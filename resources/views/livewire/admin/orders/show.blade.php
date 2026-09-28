@@ -1,7 +1,7 @@
 <div class="space-y-4 {{ $userStation === 'entrega' ? 'pb-24 lg:pb-4' : '' }}" x-data="stationPrintListener()">
-    <x-admin.page-header :back-route="route('admin.orders.index')" :title="$order->order_number" title-class="font-mono">
+    <x-admin.page-header :back-route="route('admin.orders.index')" :title="$order->channel === 'ifood' ? 'iFood #'.$order->ifoodDetails()->displayId() : $order->order_number" title-class="font-mono whitespace-nowrap">
         <x-slot:actions>
-            <div class="flex items-center gap-1.5">
+            <div class="flex flex-wrap items-center gap-1.5">
             @if (! $userStation)
                 <a href="{{ route('admin.orders.receipt', $order) }}" target="_blank"
                    @click.prevent="printStation({{ $order->id }}, 'geral', $el.href)"
@@ -47,15 +47,8 @@
     </x-admin.page-header>
 
     @if ($order->channel === 'ifood')
-        <div data-testid="ifood-order-summary" class="rounded-xl border border-neutral-200 bg-white p-5 space-y-2 dark:border-zinc-700 dark:bg-zinc-800">
-            <p class="text-sm font-semibold text-neutral-500 dark:text-neutral-400">Pedido iFood</p>
-            <div class="flex flex-wrap items-center justify-between gap-3">
-                <p class="text-xl font-bold text-neutral-800 dark:text-neutral-100">{{ $order->external_metadata['display_id'] ?? $order->order_number }}</p>
-                <p class="text-lg font-semibold text-neutral-800 dark:text-neutral-100">{{ $order->status_label }}</p>
-            </div>
-            <p class="text-sm text-neutral-500 break-all dark:text-neutral-400">ID iFood: {{ $order->external_order_id }}</p>
-            <p class="text-sm text-neutral-500 dark:text-neutral-400">Pedido no sistema: {{ $order->order_number }}</p>
-        </div>
+        @include('livewire.admin.orders.partials.ifood-summary')
+        @include('livewire.admin.orders.partials.ifood-disputes')
     @endif
 
     @if (session('status'))
@@ -76,7 +69,7 @@
         </div>
     @enderror
 
-    @if ($order->scheduled_at)
+    @if ($order->scheduled_at && $order->channel !== 'ifood')
         <div class="flex items-center gap-3 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 dark:bg-amber-900/20 dark:border-amber-700">
             <span class="text-2xl shrink-0">🕐</span>
             <div>
@@ -100,9 +93,23 @@
                 <x-admin.form-card padding="p-4">
                     <p class="text-xs text-neutral-400 uppercase tracking-wide mb-2 dark:text-neutral-500">Cliente</p>
                     <p class="font-semibold text-neutral-800 dark:text-neutral-100">{{ $order->customer->name }}</p>
-                    <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ $order->customer->phone }}</p>
-                    <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ $order->customer->email }}</p>
-                    <p class="text-sm text-neutral-400 mt-1 dark:text-neutral-500">{{ $order->customer->address }}, {{ $order->customer->neighborhood }}</p>
+                    @if ($order->channel === 'ifood')
+                        {{-- O telefone do cadastro iFood é interno; o contato é o 0800 + localizador do pedido. --}}
+                        @if ($order->ifoodDetails()->customerPhone())
+                            <p class="text-sm text-neutral-500 dark:text-neutral-400">
+                                {{ $order->ifoodDetails()->customerPhone() }}@if ($order->ifoodDetails()->phoneLocalizer()) · localizador {{ $order->ifoodDetails()->phoneLocalizer() }}@endif
+                            </p>
+                        @endif
+                    @else
+                        <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ $order->customer->phone }}</p>
+                        @if ($order->customer->email)
+                            <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ $order->customer->email }}</p>
+                        @endif
+                        @php $customerAddress = implode(', ', array_filter([$order->customer->address, $order->customer->neighborhood])); @endphp
+                        @if ($customerAddress !== '')
+                            <p class="text-sm text-neutral-400 mt-1 dark:text-neutral-500">{{ $customerAddress }}</p>
+                        @endif
+                    @endif
                 </x-admin.form-card>
                 <x-admin.form-card padding="p-4">
                     <p class="text-xs text-neutral-400 uppercase tracking-wide mb-2 dark:text-neutral-500">Filial</p>
@@ -130,8 +137,11 @@
                     ]));
                     $googleMapsUrl = 'https://maps.google.com/?q=' . urlencode($addrFull);
 
-                    $rawPhone = preg_replace('/\D/', '', $order->customer?->phone ?? '');
-                    $whatsappPhone = strlen($rawPhone) <= 11 ? '55' . $rawPhone : $rawPhone;
+                    // Pedido iFood não tem telefone real do cliente (é 0800 + localizador) e,
+                    // na entrega pelo iFood, não há motoboy da loja pra chamar.
+                    $rawPhone = $order->channel === 'ifood' ? '' : preg_replace('/\D/', '', $order->customer?->phone ?? '');
+                    $whatsappPhone = $rawPhone === '' ? null : (strlen($rawPhone) <= 11 ? '55' . $rawPhone : $rawPhone);
+                    $showMotoboyLink = ! $order->ifoodDetails()?->isDeliveredByIfood();
                     $whatsappUrl = 'https://wa.me/' . $whatsappPhone;
 
                     $motoboyMsg = "🛵 *Entrega #{$order->order_number}*\n\n📍 *Endereço:* {$addrFull} \n\n {$googleMapsUrl}" ;
@@ -280,7 +290,7 @@
                                     Cliente
                                 </a>
                             @endif
-                            @if ($addrFull)
+                            @if ($addrFull && $showMotoboyLink)
                                 <a href="{{ $motoboyWhatsappUrl }}" target="_blank"
                                    class="sm:flex-1 flex items-center justify-center gap-1.5 text-xs font-medium bg-orange-50 text-orange-700 hover:bg-orange-100 dark:bg-orange-900/30 dark:text-orange-400 dark:hover:bg-orange-900/50 px-3 py-3 rounded-lg transition-colors">
                                     <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z"/></svg>
@@ -351,6 +361,9 @@
                                             @endforeach
                                         @endif
                                     @endforeach
+                                    @if ($item->notes)
+                                        <p class="mt-1 text-xs font-semibold text-amber-700 dark:text-amber-400">Obs: {{ $item->notes }}</p>
+                                    @endif
                                 </div>
                             </div>
                         @empty
@@ -463,7 +476,7 @@
                             @endif
                             @if ($order->manual_discount > 0)
                                 <div class="flex items-center justify-between text-sm text-green-600 dark:text-green-400">
-                                    <span>Desconto manual</span>
+                                    <span>{{ $order->channel === 'ifood' ? 'Cupom/desconto iFood' : 'Desconto manual' }}</span>
                                     <span>− R$ {{ number_format($order->manual_discount, 2, ',', '.') }}</span>
                                 </div>
                             @endif
@@ -491,8 +504,8 @@
                         @foreach ($order->items as $item)
                             <div class="flex items-center justify-between px-4 py-3">
                                 <div class="min-w-0">
-                                    <p class="font-medium text-sm text-neutral-800 dark:text-neutral-100">{{ $item->product_name }}</p>
                                     @php $hasItemOptions = !empty($item->options); @endphp
+                                    <p class="font-medium text-sm text-neutral-800 dark:text-neutral-100">{{ $hasItemOptions ? $item->quantity.'x ' : '' }}{{ $item->product_name }}</p>
                                     @if ($hasItemOptions)
                                         @foreach (($item->options ?? []) as $group)
                                             <p class="text-xs font-medium text-neutral-500 mt-0.5 dark:text-neutral-400">{{ $group['group_name'] ?? 'Opções' }}:</p>
@@ -504,6 +517,9 @@
                                         @endforeach
                                     @else
                                         <p class="text-xs text-neutral-400 dark:text-neutral-500">{{ $item->quantity }}x R$ {{ number_format($item->unit_price, 2, ',', '.') }}</p>
+                                    @endif
+                                    @if ($item->notes)
+                                        <p class="mt-1 text-xs font-semibold text-amber-700 dark:text-amber-400">Obs: {{ $item->notes }}</p>
                                     @endif
                                 </div>
                                 <p class="font-semibold text-sm text-neutral-800 dark:text-neutral-100">
@@ -547,7 +563,7 @@
                             @endif
                             @if ($order->manual_discount > 0)
                                 <div class="flex items-center justify-between text-sm text-green-600 dark:text-green-400">
-                                    <span>Desconto manual</span>
+                                    <span>{{ $order->channel === 'ifood' ? 'Cupom/desconto iFood' : 'Desconto manual' }}</span>
                                     <span>− R$ {{ number_format($order->manual_discount, 2, ',', '.') }}</span>
                                 </div>
                             @endif
@@ -723,7 +739,7 @@
 
             @if ($order->notes)
                 <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 dark:bg-amber-900/20 dark:border-amber-700">
-                    <p class="text-xs font-semibold text-amber-700 mb-1 dark:text-amber-400">Observações do cliente</p>
+                    <p class="text-xs font-semibold text-amber-700 mb-1 dark:text-amber-400">{{ $order->channel === 'ifood' ? 'Observações do pedido' : 'Observações do cliente' }}</p>
                     <p class="text-sm text-amber-800 dark:text-amber-300">{{ $order->notes }}</p>
                 </div>
             @endif
@@ -733,6 +749,11 @@
         <div class="space-y-4">
 
             {{-- Status --}}
+            @if ($order->channel === 'ifood')
+            <x-admin.form-card padding="p-4">
+                @include('livewire.admin.orders.partials.ifood-actions')
+            </x-admin.form-card>
+            @else
             <x-admin.form-card padding="p-4 space-y-3">
                 <div class="flex items-center justify-between">
                     <p class="font-semibold text-neutral-700 dark:text-neutral-200">Atualizar status</p>
@@ -749,6 +770,7 @@
                     @endforeach
                 </div>
             </x-admin.form-card>
+            @endif
 
             {{-- Payment --}}
             @if (! $userStation)
@@ -761,6 +783,7 @@
                         @elseif ($order->payment_method === 'card') Cartão de Crédito
                         @elseif ($order->payment_method === 'cash') Dinheiro
                         @elseif ($order->payment_method === 'split') Dividido
+                        @elseif ($order->payment_method === 'ifood') iFood
                         @else {{ $order->payment_method }}
                         @endif
                     </div>
@@ -790,6 +813,7 @@
                                     @if ($partPayment->payment_gateway === 'cash') Dinheiro
                                     @elseif ($partPayment->payment_gateway === 'card_machine') Cartão
                                     @elseif ($partPayment->payment_gateway === 'pix_manual') PIX
+                                    @elseif ($partPayment->payment_gateway === 'ifood') {{ $partPayment->status === 'paid' ? 'iFood (online)' : 'iFood (na entrega)' }}
                                     @else {{ $partPayment->payment_gateway }}
                                     @endif
                                 </span>
@@ -814,7 +838,7 @@
                         </button>
                     </div>
                 @endif
-                @if ($order->payments->where('status', 'paid')->isNotEmpty())
+                @if ($order->payments->where('status', 'paid')->isNotEmpty() && $order->channel !== 'ifood')
                     <button wire:click="openManualRefundModal"
                             class="mt-3 w-full text-sm bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 px-4 py-2 rounded-lg transition-colors">
                         Iniciar Reembolso
@@ -905,6 +929,41 @@
                             @endforeach
                         </div>
                     @endif
+                </x-admin.form-card>
+            @endif
+
+            {{-- Notificações WhatsApp enviadas ao cliente --}}
+            @if ($this->whatsappMessages->isNotEmpty())
+                <x-admin.form-card padding="p-4">
+                    <p class="font-semibold text-neutral-700 mb-1 dark:text-neutral-200">Notificações WhatsApp</p>
+                    <p class="text-xs text-neutral-400 dark:text-neutral-500 mb-3">Avisos enviados ao cliente sobre este pedido.</p>
+
+                    <div class="space-y-2">
+                        @foreach ($this->whatsappMessages as $message)
+                            @php
+                                $messageColors = [
+                                    'queued' => 'bg-neutral-100 text-neutral-600 dark:bg-zinc-700 dark:text-neutral-300',
+                                    'sent' => 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+                                    'delivered' => 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
+                                    'read' => 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
+                                    'failed' => 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+                                ];
+                                $messageAt = $message->read_at ?? $message->delivered_at ?? $message->sent_at ?? $message->created_at;
+                            @endphp
+                            <div class="border rounded-lg p-3 dark:border-zinc-700">
+                                <div class="flex items-center justify-between gap-2">
+                                    <span class="text-sm font-medium text-neutral-800 dark:text-neutral-100">{{ $message->eventLabel() }}</span>
+                                    <span class="px-2 py-0.5 rounded-full text-xs font-medium {{ $messageColors[$message->status] ?? $messageColors['queued'] }}">
+                                        {{ $message->statusLabel() }}
+                                    </span>
+                                </div>
+                                <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">{{ $messageAt->format('d/m/Y H:i') }}</p>
+                                @if ($message->friendlyError())
+                                    <p class="text-xs text-red-600 dark:text-red-400 mt-1">{{ $message->friendlyError() }}</p>
+                                @endif
+                            </div>
+                        @endforeach
+                    </div>
                 </x-admin.form-card>
             @endif
         </div>

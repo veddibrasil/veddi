@@ -7,6 +7,7 @@ use App\Enums\OrderChannel;
 use App\Events\OrderItemsUpdated;
 use App\Events\OrderStatusUpdated;
 use App\Jobs\IssueFiscalNote;
+use App\Models\IfoodDispute;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
@@ -47,6 +48,24 @@ class Show extends Component
     public string $ifoodCancelReason = '';
 
     public array $ifoodCancellationReasons = [];
+
+    // ── Plataforma de Negociação iFood ──────────────────────────────────────
+
+    /** Disputa com o formulário de resposta aberto, ou null. */
+    public ?int $disputeId = null;
+
+    /** 'accept' | 'reject' | 'alternative' */
+    public string $disputeMode = '';
+
+    public string $disputeReason = '';
+
+    public string $disputeAlternativeId = '';
+
+    public string $disputeAmount = '';
+
+    public string $disputeMinutes = '';
+
+    public string $disputeTimeReason = '';
 
     // ── Manual refund ────────────────────────────────────────────────────────
 
@@ -139,6 +158,7 @@ class Show extends Component
         return [
             "echo-private:order.{$this->order->id},OrderStatusUpdated" => '$refresh',
             "echo-private:order.{$this->order->id},OrderItemsUpdated" => '$refresh',
+            "echo-private:order.{$this->order->id},IfoodOrderUpdated" => '$refresh',
         ];
     }
 
@@ -165,7 +185,11 @@ class Show extends Component
         } elseif (app()->bound('current.company')) {
             $company = app('current.company');
             $this->canUpdate = $user->hasPermission('orders.update', $company);
-            $this->canIssueFiscal = $user->hasPermission('fiscal.issue', $company);
+            // fiscal.issue é concedida por papel (company_admin ganha por padrão), mas
+            // isso não significa que a empresa contratou o módulo fiscal em Faturamento —
+            // sem essa segunda checagem o botão aparecia e a emissão só falhava depois,
+            // dentro do job (RuntimeException não tratada em IssueFiscalNote::handle()).
+            $this->canIssueFiscal = $user->hasPermission('fiscal.issue', $company) && $company->canUseFiscalNotes();
             $this->canViewHistory = $user->isCompanyAdmin($company);
 
             $roleSlug = $user->roleForCompany($company);
@@ -177,6 +201,22 @@ class Show extends Component
         if ($this->canViewHistory) {
             $this->order->loadMissing(['statusHistories' => fn ($q) => $q->latest()->with('user')]);
         }
+    }
+
+    /**
+     * Notificações de WhatsApp deste pedido (uma linha por evento). Não é propriedade pública nem
+     * carrega o telefone do cliente: a tela só precisa de evento, status, horário e motivo da falha.
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, \App\Models\WhatsAppMessage>
+     */
+    #[Computed]
+    public function whatsappMessages(): \Illuminate\Database\Eloquent\Collection
+    {
+        if ($this->userStation) {
+            return new \Illuminate\Database\Eloquent\Collection;
+        }
+
+        return $this->order->whatsappMessages()->orderBy('created_at')->orderBy('id')->get();
     }
 
     /**
@@ -220,31 +260,13 @@ class Show extends Component
 
         $previousStatus = $this->order->status;
 
-        // Pedido iFood: aceitar/recusar precisa chamar a API do iFood (senão o
-        // pedido nunca é confirmado lá e acaba expirando/cancelando sozinho do
-        // lado deles, mesmo que aqui pareça "preparando"). Cancelamento de pedido
-        // iFood exige motivo fechado — passa pelo modal em vez do botão direto.
+        // Pedido iFood: toda etapa passa pela API do iFood antes de mudar aqui (senão o
+        // pedido expira ou fica parado do lado deles). Cancelamento exige motivo fechado
+        // e passa pelo modal; conclusão é sempre do iFood.
         if ($this->order->channel === OrderChannel::Ifood->value) {
-            if ($status === 'cancelled') {
-                $this->openIfoodCancelModal();
+            $this->updateIfoodStatus($status);
 
-                return;
-            }
-
-            if ($status === 'preparing' && $previousStatus !== 'preparing') {
-                try {
-                    app(IfoodOrderActionService::class)->accept($this->order);
-                } catch (Throwable $e) {
-                    session()->flash('error', $e->getMessage());
-
-                    return;
-                }
-
-                $this->order->refresh();
-                session()->flash('status', 'Status atualizado.');
-
-                return;
-            }
+            return;
         }
 
         // Cancelamento exige motivo obrigatório — abre modal em vez de aplicar direto.
@@ -252,6 +274,20 @@ class Show extends Component
             if ($previousStatus !== 'cancelled') {
                 $this->openCancelModal();
             }
+
+            return;
+        }
+
+        // Trava só o retrocesso: a operação usa os botões pra avançar rápido (inclusive
+        // pulando etapa, ex.: pending -> out_for_delivery em pedido de confiança), mas
+        // voltar "delivered" pra "pending" (ou qualquer status já ultrapassado) não tem
+        // caso de uso legítimo e só serve pra mascarar estado.
+        $rank = ['pending' => 0, 'awaiting_payment' => 0, 'paid' => 1, 'preparing' => 2, 'ready' => 3, 'out_for_delivery' => 4, 'delivered' => 5];
+        $previousRank = $rank[$previousStatus] ?? 0;
+        $targetRank = $rank[$status] ?? 0;
+
+        if ($targetRank < $previousRank) {
+            $this->addError('status', 'Não é possível retroceder o status do pedido.');
 
             return;
         }
@@ -279,6 +315,48 @@ class Show extends Component
         ]);
 
         session()->flash('status', 'Status atualizado.');
+    }
+
+    private function updateIfoodStatus(string $status): void
+    {
+        if ($status === 'cancelled') {
+            $this->openIfoodCancelModal();
+
+            return;
+        }
+
+        $awaitingConfirmation = $this->order->ifoodDetails()->awaitingConfirmation();
+        $service = app(IfoodOrderActionService::class);
+
+        $action = match ($status) {
+            'preparing' => $awaitingConfirmation
+                ? fn () => $service->accept($this->order, auth()->id())
+                : fn () => $service->startPreparation($this->order, auth()->id()),
+            'ready' => fn () => $service->markReady($this->order, auth()->id()),
+            'out_for_delivery' => fn () => $service->dispatch($this->order, auth()->id()),
+            default => null,
+        };
+
+        if ($action === null) {
+            $this->addError('status', 'No iFood essa etapa não é feita pela loja: a conclusão e o pagamento são registrados pelo próprio iFood.');
+
+            return;
+        }
+
+        try {
+            $action();
+        } catch (Throwable $e) {
+            session()->flash('error', $e->getMessage());
+
+            return;
+        }
+
+        $this->order->refresh();
+        session()->flash('status', match ($status) {
+            'preparing' => $awaitingConfirmation ? 'Pedido aceito no iFood.' : 'Preparo iniciado no iFood.',
+            'ready' => 'iFood avisado: pedido pronto.',
+            default => 'Pedido despachado no iFood.',
+        });
     }
 
     public function openCancelModal(): void
@@ -361,7 +439,7 @@ class Show extends Component
         }
 
         $reason = $this->ifoodCancelReason;
-        $wasAccepted = in_array($this->order->status, ['preparing', 'ready', 'out_for_delivery'], true);
+        $wasAccepted = ! $this->order->ifoodDetails()?->awaitingConfirmation();
 
         $this->closeIfoodCancelModal();
 
@@ -369,10 +447,10 @@ class Show extends Component
             $service = app(IfoodOrderActionService::class);
 
             if ($wasAccepted) {
-                $service->requestCancellation($this->order, $reason);
+                $service->requestCancellation($this->order, $reason, auth()->id());
                 session()->flash('status', 'Cancelamento solicitado ao iFood — aguardando confirmação.');
             } else {
-                $service->reject($this->order, $reason);
+                $service->reject($this->order, $reason, auth()->id());
                 session()->flash('status', 'Recusa solicitada ao iFood — aguardando confirmação.');
             }
         } catch (Throwable $e) {
@@ -389,6 +467,83 @@ class Show extends Component
             'reason' => $reason,
             'ja_aceito' => $wasAccepted,
         ]);
+    }
+
+    /**
+     * Negociações iFood deste pedido, abertas primeiro.
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, IfoodDispute>
+     */
+    #[Computed]
+    public function ifoodDisputes(): \Illuminate\Database\Eloquent\Collection
+    {
+        if ($this->order->channel !== OrderChannel::Ifood->value || $this->userStation) {
+            return new \Illuminate\Database\Eloquent\Collection;
+        }
+
+        return IfoodDispute::where('order_id', $this->order->id)->latest()->get()
+            ->sortByDesc(fn (IfoodDispute $dispute) => $dispute->isOpen())->values();
+    }
+
+    public function openDisputeResponse(int $disputeId, string $mode, string $alternativeId = ''): void
+    {
+        abort_unless($this->canUpdate && ! $this->userStation, 403);
+        abort_unless(in_array($mode, ['accept', 'reject', 'alternative'], true), 404);
+
+        $this->findDispute($disputeId);
+        $this->resetErrorBag();
+        $this->disputeId = $disputeId;
+        $this->disputeMode = $mode;
+        $this->disputeReason = '';
+        $this->disputeAlternativeId = $alternativeId;
+        $this->disputeAmount = '';
+        $this->disputeMinutes = '';
+        $this->disputeTimeReason = '';
+    }
+
+    public function closeDisputeResponse(): void
+    {
+        $this->disputeId = null;
+        $this->disputeMode = '';
+        $this->resetErrorBag();
+    }
+
+    public function submitDisputeResponse(): void
+    {
+        abort_unless($this->canUpdate && ! $this->userStation && $this->disputeId, 403);
+
+        $dispute = $this->findDispute($this->disputeId);
+        $service = app(IfoodOrderActionService::class);
+
+        try {
+            match ($this->disputeMode) {
+                'accept' => $service->acceptDispute($dispute, $this->disputeReason ?: null, auth()->id()),
+                'reject' => $service->rejectDispute($dispute, $this->disputeReason, auth()->id()),
+                'alternative' => $service->proposeAlternative($dispute, $this->disputeAlternativeId, [
+                    'amount' => $this->disputeAmount,
+                    'minutes' => $this->disputeMinutes,
+                    'reason' => $this->disputeTimeReason,
+                ], auth()->id()),
+            };
+        } catch (\InvalidArgumentException $e) {
+            $this->addError('disputeReason', $e->getMessage());
+
+            return;
+        } catch (Throwable $e) {
+            $this->closeDisputeResponse();
+            session()->flash('error', $e->getMessage());
+
+            return;
+        }
+
+        $this->closeDisputeResponse();
+        unset($this->ifoodDisputes);
+        session()->flash('status', 'Resposta enviada ao iFood.');
+    }
+
+    private function findDispute(int $disputeId): IfoodDispute
+    {
+        return IfoodDispute::where('order_id', $this->order->id)->findOrFail($disputeId);
     }
 
     /**
@@ -1139,7 +1294,8 @@ class Show extends Component
 
     public function openManualRefundModal(): void
     {
-        abort_unless($this->canUpdate, 403);
+        // Reembolso de pedido iFood é feito pelo iFood (cancelamento ou negociação).
+        abort_unless($this->canUpdate && $this->order->channel !== OrderChannel::Ifood->value, 403);
 
         $this->order->loadMissing('payments');
 
@@ -1161,7 +1317,7 @@ class Show extends Component
 
     public function manualRefund(): void
     {
-        abort_unless($this->canUpdate, 403);
+        abort_unless($this->canUpdate && $this->order->channel !== OrderChannel::Ifood->value, 403);
 
         $this->validate([
             'manualRefundType' => ['required', 'in:gateway,offline'],
@@ -1208,23 +1364,24 @@ class Show extends Component
         }
 
         foreach ($payments as $payment) {
-            $refund = app(RefundServiceInterface::class)->initiateRefund(
-                $this->order,
-                $payment,
-                (float) $payment->amount,
-                'admin',
-                auth()->id(),
-                $reason,
-            );
-
-            if ($this->manualRefundType === 'offline') {
-                // Mark immediately as succeeded — no gateway call needed
-                app(RefundServiceInterface::class)->markSucceeded($refund, [
-                    'external_refund_id' => null,
-                    'external_status' => 'OFFLINE',
-                    'raw' => ['justification' => $this->manualRefundJustification],
-                ]);
-            }
+            // Offline: a loja já devolveu o dinheiro — registra sem nunca acionar o gateway.
+            $refund = $this->manualRefundType === 'offline'
+                ? app(RefundServiceInterface::class)->recordOfflineRefund(
+                    $this->order,
+                    $payment,
+                    'admin',
+                    auth()->id(),
+                    $reason,
+                    ['justification' => $this->manualRefundJustification],
+                )
+                : app(RefundServiceInterface::class)->initiateRefund(
+                    $this->order,
+                    $payment,
+                    (float) $payment->amount,
+                    'admin',
+                    auth()->id(),
+                    $reason,
+                );
 
             Log::channel('payments')->info('Reembolso manual iniciado pelo admin', [
                 'order_id' => $this->order->id,

@@ -54,6 +54,28 @@ class CustomerService
     }
 
     /**
+     * Registra o consentimento para notificações por WhatsApp (Meta + LGPD). O consentimento é
+     * por empresa: createFromGlobal não o herda. Quem já consentiu mantém a data original; quem
+     * tinha pedido para parar (opt-out) volta a receber ao consentir de novo. Desmarcar o
+     * checkbox no chat nunca chega aqui — só o opt-out pelo WhatsApp revoga.
+     */
+    public function registerWhatsAppOptIn(Customer $customer): Customer
+    {
+        if ($customer->canReceiveWhatsApp()) {
+            return $customer;
+        }
+
+        $customer->forceFill([
+            'whatsapp_opt_in_at' => now(),
+            'whatsapp_opt_out_at' => null,
+        ])->save();
+
+        Log::channel('chat')->info('Cliente aceitou notificações por WhatsApp', ['customer_id' => $customer->id]);
+
+        return $customer;
+    }
+
+    /**
      * Atualiza os dados de perfil de um cliente existente.
      */
     public function updateProfile(int $customerId, array $data): Customer
