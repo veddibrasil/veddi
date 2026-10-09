@@ -60,5 +60,37 @@ test('lista integração iFood como conectada quando há filial ativa', function
 
     Livewire::actingAs($admin)
         ->test(Index::class)
-        ->assertSee('1 filial conectada');
+        ->assertSee('Conectado')
+        ->assertSee('1 de 1 filial conectada');
 });
+
+test('filial suspensa ou aguardando reconexão aparece como precisando de atenção', function (string $status) {
+    $company = integrationsTestCompany();
+    app()->instance('current.company', $company);
+
+    $branch = Branch::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Filial',
+        'address' => 'Rua A',
+        'city' => 'SP',
+        'active' => true,
+        'opens_at' => '00:00:00',
+        'closes_at' => '23:59:59',
+    ]);
+
+    IfoodIntegration::create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'merchant_id' => 'merchant-abc',
+        'status' => $status,
+    ]);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+
+    Livewire::actingAs($admin)
+        ->test(Index::class)
+        ->assertSee('Precisa de atenção')
+        ->assertSee('1 filial precisa de atenção')
+        ->assertDontSee('Não conectado');
+})->with(['paused', 'reauthorization_required']);

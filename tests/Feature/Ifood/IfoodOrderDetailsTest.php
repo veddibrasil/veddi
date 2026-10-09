@@ -232,7 +232,8 @@ test('pedido agendado guarda o horário do iFood e entra como agendado', functio
     expect($order->status)->toBe('scheduled')
         ->and($order->scheduled_at->equalTo($start))->toBeTrue()
         ->and($order->status_label)->toBe('Agendado (aguardando aceite)')
-        ->and($order->ifoodDetails()->confirmationDeadline())->toBeNull()
+        // O iFood exige confirmar em até 8 minutos também o pedido agendado.
+        ->and($order->ifoodDetails()->confirmationDeadline())->not->toBeNull()
         ->and($order->ifoodDetails()->scheduleWindow())->toBe($start->copy()->setTimezone(config('app.timezone'))->format('d/m/Y H:i').' às '.$start->copy()->addHour()->setTimezone(config('app.timezone'))->format('H:i'));
 });
 

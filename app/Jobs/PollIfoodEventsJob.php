@@ -19,10 +19,12 @@ class PollIfoodEventsJob implements ShouldQueue
 
     public function handle(IfoodOrderPollingService $pollingService): void
     {
-        $integrations = IfoodIntegration::withoutGlobalScopes()
-            ->where('status', 'active')
-            ->whereNotNull('merchant_id')
-            ->get();
+        // Só lojas operacionais: empresa bloqueada (ou sem o módulo) para de consultar e a loja
+        // sai do ar no iFood, em vez de receber pedidos que ninguém vê no painel.
+        $integrations = IfoodIntegration::operational()
+            ->with('company')
+            ->get()
+            ->filter(fn (IfoodIntegration $integration) => $integration->isOperational());
 
         foreach ($integrations as $integration) {
             try {

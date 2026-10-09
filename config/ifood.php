@@ -17,4 +17,11 @@ return [
     'api_base_url' => env('IFOOD_API_BASE_URL', 'https://merchant-api.ifood.com.br'),
     'webhook_enabled' => (bool) env('IFOOD_WEBHOOK_ENABLED', true),
     'polling_fallback_interval' => (int) env('IFOOD_POLLING_FALLBACK_INTERVAL', 30),
+
+    /*
+    | Ferramentas de homologação na tela da integração (Client ID, respostas completas da API,
+    | listagem de todas as lojas do aplicativo e o preenchimento de horários do roteiro).
+    | Desligado, o restaurante vê só o resumo. Ligar apenas no ambiente usado nas gravações.
+    */
+    'homologation_mode' => (bool) env('IFOOD_HOMOLOGATION_MODE', false),
 ];

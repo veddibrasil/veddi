@@ -2,8 +2,11 @@
 
 namespace App\Services\Order;
 
+use App\Enums\OrderChannel;
 use App\Exceptions\InsufficientStockException;
+use App\Jobs\SyncIfoodCatalogJob;
 use App\Models\Branch;
+use App\Models\IfoodIntegration;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\StockMovement;
@@ -44,15 +47,34 @@ class StockService
                 continue;
             }
 
+            $deducted = $item->quantity;
+
             if ($pivot->quantity < $item->quantity) {
-                throw new InsufficientStockException(
-                    $item->product,
-                    $pivot->quantity,
-                    $item->quantity
-                );
+                if ($order->channel !== OrderChannel::Ifood->value) {
+                    throw new InsufficientStockException(
+                        $item->product,
+                        $pivot->quantity,
+                        $item->quantity
+                    );
+                }
+
+                // O pedido do iFood já foi feito (e pago) lá: recusar aqui só perderia o pedido.
+                // Baixa o que houver; o estoque fica zerado e o item sai de venda no iFood.
+                $deducted = max(0, $pivot->quantity);
+                Log::channel('ifood')->warning('iFood: pedido com item acima do estoque da filial', [
+                    'order_id' => $order->id,
+                    'branch_id' => $order->branch_id,
+                    'product_id' => $item->product_id,
+                    'requested' => $item->quantity,
+                    'in_stock' => $pivot->quantity,
+                ]);
+
+                if ($deducted === 0) {
+                    continue;
+                }
             }
 
-            $newQty = $pivot->quantity - $item->quantity;
+            $newQty = $pivot->quantity - $deducted;
 
             DB::table('branch_product')
                 ->where('branch_id', $order->branch_id)
@@ -61,6 +83,7 @@ class StockService
                     'quantity' => $newQty,
                     'available' => $newQty > 0,
                 ]);
+            $this->syncIfoodAvailability($order->branch_id, $item->product_id, (bool) $pivot->available, $newQty > 0);
 
             StockMovement::withoutGlobalScopes()->create([
                 'company_id' => $order->company_id,
@@ -68,7 +91,7 @@ class StockService
                 'product_id' => $item->product_id,
                 'order_id' => $order->id,
                 'user_id' => null,
-                'quantity' => -$item->quantity,
+                'quantity' => -$deducted,
                 'quantity_before' => $pivot->quantity,
                 'quantity_after' => $newQty,
                 'type' => StockMovement::TYPE_ORDER_DEDUCTION,
@@ -115,6 +138,7 @@ class StockService
                         'quantity' => $newQty,
                         'available' => true,
                     ]);
+                $this->syncIfoodAvailability($movement->branch_id, $movement->product_id, (bool) $pivot->available, true);
 
                 StockMovement::withoutGlobalScopes()->create([
                     'company_id' => $order->company_id,
@@ -171,6 +195,7 @@ class StockService
                 'quantity' => $newQty,
                 'available' => $newQty > 0,
             ]);
+        $this->syncIfoodAvailability($order->branch_id, $productId, (bool) $pivot->available, $newQty > 0);
 
         StockMovement::withoutGlobalScopes()->create([
             'company_id' => $order->company_id,
@@ -217,6 +242,7 @@ class StockService
                 'quantity' => $newQty,
                 'available' => true,
             ]);
+        $this->syncIfoodAvailability($order->branch_id, $productId, (bool) $pivot->available, true);
 
         StockMovement::withoutGlobalScopes()->create([
             'company_id' => $order->company_id,
@@ -261,6 +287,7 @@ class StockService
                     'quantity' => $newQty,
                     'available' => $newQty > 0,
                 ]);
+            $this->syncIfoodAvailability($branch->id, $product->id, (bool) ($pivot?->available ?? false), $newQty > 0);
 
             $type = $quantity >= 0 ? StockMovement::TYPE_MANUAL_ADD : StockMovement::TYPE_MANUAL_REMOVE;
 
@@ -321,6 +348,7 @@ class StockService
                     'quantity' => $safeQty,
                     'available' => $safeQty > 0,
                 ]);
+            $this->syncIfoodAvailability($branch->id, $product->id, (bool) ($pivot?->available ?? false), $safeQty > 0);
 
             $movement = StockMovement::withoutGlobalScopes()->create([
                 'company_id' => $branch->company_id,
@@ -363,6 +391,27 @@ class StockService
 
         Cache::forget("stock:low:branch:{$branch->id}");
         $this->forgetMenu($branch->id, $branch->company_id);
+    }
+
+    /**
+     * Estoque zerado (ou reposto) muda a disponibilidade do item na filial: avisa o iFood,
+     * senão ele segue vendendo sem estoque. O job sai depois do commit e confere sozinho se o
+     * item já foi publicado.
+     */
+    private function syncIfoodAvailability(int $branchId, int $productId, bool $wasAvailable, bool $isAvailable): void
+    {
+        if ($wasAvailable === $isAvailable) {
+            return;
+        }
+
+        $hasIntegration = IfoodIntegration::withoutGlobalScopes()
+            ->where('branch_id', $branchId)
+            ->where('status', 'active')
+            ->exists();
+
+        if ($hasIntegration) {
+            SyncIfoodCatalogJob::dispatch($branchId, $productId)->afterCommit();
+        }
     }
 
     /**

@@ -58,10 +58,11 @@
                     @if ($disputeMode === 'accept')
                         <p class="text-sm text-neutral-700 dark:text-neutral-200">Aceitar o pedido do cliente no iFood.</p>
                         @if ($dispute->acceptReasons() !== [])
-                            <select wire:model="disputeReason" class="w-full rounded-lg border-neutral-300 text-sm dark:border-zinc-600 dark:bg-zinc-900">
+                            <label class="text-sm font-medium text-neutral-700 dark:text-neutral-200" for="dispute-accept-reason-{{ $dispute->id }}">Motivo do aceite</label>
+                            <select id="dispute-accept-reason-{{ $dispute->id }}" wire:model="disputeReason" class="w-full rounded-lg border-neutral-300 text-sm dark:border-zinc-600 dark:bg-zinc-900">
                                 <option value="">Selecione o motivo</option>
                                 @foreach ($dispute->acceptReasons() as $reason)
-                                    <option value="{{ $reason }}">{{ $reason }}</option>
+                                    <option value="{{ $reason }}">{{ \App\Models\IfoodDispute::reasonLabel($reason) }}</option>
                                 @endforeach
                             </select>
                         @endif
@@ -73,18 +74,24 @@
                         @php $alternative = $alternatives->firstWhere('id', $disputeAlternativeId); @endphp
                         @if (($alternative['type'] ?? null) === 'ADDITIONAL_TIME')
                             <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                <select wire:model="disputeMinutes" class="rounded-lg border-neutral-300 text-sm dark:border-zinc-600 dark:bg-zinc-900">
-                                    <option value="">Tempo adicional</option>
-                                    @foreach ($alternative['metadata']['allowedsAdditionalTimeInMinutes'] ?? [] as $minutes)
-                                        <option value="{{ $minutes }}">{{ $minutes }} min</option>
-                                    @endforeach
-                                </select>
-                                <select wire:model="disputeTimeReason" class="rounded-lg border-neutral-300 text-sm dark:border-zinc-600 dark:bg-zinc-900">
-                                    <option value="">Motivo do atraso</option>
-                                    @foreach ($alternative['metadata']['allowedsAdditionalTimeReasons'] ?? [] as $timeReason)
-                                        <option value="{{ $timeReason }}">{{ $timeReason }}</option>
-                                    @endforeach
-                                </select>
+                                <div class="space-y-1">
+                                    <label class="text-sm font-medium text-neutral-700 dark:text-neutral-200" for="dispute-minutes-{{ $dispute->id }}">Tempo adicional</label>
+                                    <select id="dispute-minutes-{{ $dispute->id }}" wire:model="disputeMinutes" class="w-full rounded-lg border-neutral-300 text-sm dark:border-zinc-600 dark:bg-zinc-900">
+                                        <option value="">Selecione</option>
+                                        @foreach ($alternative['metadata']['allowedsAdditionalTimeInMinutes'] ?? [] as $minutes)
+                                            <option value="{{ $minutes }}">{{ $minutes }} min</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="space-y-1">
+                                    <label class="text-sm font-medium text-neutral-700 dark:text-neutral-200" for="dispute-time-reason-{{ $dispute->id }}">Motivo do atraso</label>
+                                    <select id="dispute-time-reason-{{ $dispute->id }}" wire:model="disputeTimeReason" class="w-full rounded-lg border-neutral-300 text-sm dark:border-zinc-600 dark:bg-zinc-900">
+                                        <option value="">Selecione</option>
+                                        @foreach ($alternative['metadata']['allowedsAdditionalTimeReasons'] ?? [] as $timeReason)
+                                            <option value="{{ $timeReason }}">{{ \App\Models\IfoodDispute::reasonLabel($timeReason) }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
                             </div>
                         @else
                             @php $max = isset($alternative['metadata']['maxAmount']['value']) ? ((int) $alternative['metadata']['maxAmount']['value']) / 100 : null; @endphp
@@ -101,7 +108,7 @@
 
                     <div class="flex justify-end gap-2">
                         <button wire:click="closeDisputeResponse" class="px-3 py-2 text-sm text-neutral-600 hover:text-neutral-800 dark:text-neutral-400">Voltar</button>
-                        <button wire:click="submitDisputeResponse" wire:loading.attr="disabled"
+                        <button wire:click="submitDisputeResponse" wire:loading.attr="disabled" wire:target="submitDisputeResponse"
                                 class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50">
                             <span wire:loading.remove wire:target="submitDisputeResponse">Enviar ao iFood</span>
                             <span wire:loading wire:target="submitDisputeResponse">Enviando...</span>

@@ -13,7 +13,7 @@
             <p class="text-xs font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">
                 Pedido iFood
                 @if ($ifood->isTest())
-                    <span class="ml-1 rounded bg-neutral-200 px-1.5 py-0.5 text-[10px] text-neutral-600 dark:bg-zinc-700 dark:text-neutral-300">teste</span>
+                    <flux:badge size="sm" color="zinc" class="ml-1 normal-case tracking-normal">teste</flux:badge>
                 @endif
             </p>
             <p class="text-3xl font-bold text-neutral-800 dark:text-neutral-100">#{{ $ifood->displayId() }}</p>
@@ -38,7 +38,7 @@
              :class="urgent ? 'bg-red-600 text-white' : 'bg-amber-50 text-amber-900 dark:bg-amber-900/20 dark:text-amber-200'">
             <div class="flex flex-wrap items-center justify-between gap-2">
                 <p class="text-sm font-semibold">Aceite ou recuse até {{ $deadline->format('H:i') }}: o iFood cancela pedido não confirmado.</p>
-                <p class="font-mono text-2xl font-bold" x-text="label"></p>
+                <p class="font-mono text-2xl font-bold" x-text="label" aria-hidden="true"></p>
             </div>
             {{-- No celular a coluna de ações fica no fim da página; aqui o aceite fica junto do prazo. --}}
             @if ($canUpdate && in_array($userStation, [null, 'cozinha', 'bar'], true))
@@ -46,21 +46,18 @@
                     <button wire:click="updateStatus('preparing')" wire:loading.attr="disabled" wire:target="updateStatus"
                             class="flex-1 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">Aceitar pedido</button>
                     @unless ($userStation)
-                        <button wire:click="openIfoodCancelModal" wire:loading.attr="disabled"
+                        <button wire:click="openIfoodCancelModal" wire:loading.attr="disabled" wire:target="openIfoodCancelModal"
                                 class="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50">Recusar</button>
                     @endunless
                 </div>
             @endif
         </div>
-    @elseif ($ifood->awaitingConfirmation())
-        <div class="px-4 py-3 border-b border-amber-100 bg-amber-50 text-sm font-semibold text-amber-900 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200">
-            Pedido agendado aguardando aceite.
-        </div>
     @endif
 
     @if ($ifood->isScheduled())
         <div class="px-4 py-2 border-b border-neutral-100 text-sm text-neutral-700 dark:border-zinc-700 dark:text-neutral-300">
-            🕐 Entrega agendada: <strong>{{ $ifood->scheduleWindow() }}</strong>
+            <flux:icon.clock variant="mini" class="inline size-4 align-text-bottom text-neutral-500 dark:text-neutral-400" aria-hidden="true" />
+            Entrega agendada: <strong>{{ $ifood->scheduleWindow() }}</strong>
             @if ($ifood->preparationStartAt())
                 · iniciar preparo às <strong>{{ $ifood->preparationStartAt()->format('d/m H:i') }}</strong>
             @endif
@@ -179,7 +176,10 @@
         </div>
     @endif
 
-    <p class="border-t border-neutral-100 px-4 py-2 text-xs text-neutral-500 break-all dark:border-zinc-700 dark:text-neutral-400">
-        Pedido no sistema {{ $order->order_number }} · ID iFood {{ $order->external_order_id }}
-    </p>
+    <div class="flex flex-wrap items-center gap-x-2 border-t border-neutral-100 px-4 py-2 text-xs text-neutral-500 dark:border-zinc-700 dark:text-neutral-400" x-data="{ copied: false }">
+        <span class="break-all">Pedido no sistema {{ $order->order_number }} · ID iFood {{ $order->external_order_id }}</span>
+        <button type="button" class="rounded px-1 font-medium text-neutral-600 underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500 dark:text-neutral-300"
+                x-on:click="navigator.clipboard.writeText(@js($order->external_order_id)); copied = true; setTimeout(() => copied = false, 2000)"
+                x-text="copied ? 'Copiado' : 'Copiar ID iFood'">Copiar ID iFood</button>
+    </div>
 </div>

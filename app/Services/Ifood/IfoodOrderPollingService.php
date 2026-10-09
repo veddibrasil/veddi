@@ -85,6 +85,7 @@ class IfoodOrderPollingService
                 ->update(['acknowledged_at' => now()]);
         }
 
-        $integration->update(['last_synced_at' => now()]);
+        // last_synced_at é do cardápio; aqui fica só o sinal de vida da consulta ao iFood.
+        $integration->update(['last_polled_at' => now()]);
     }
 }

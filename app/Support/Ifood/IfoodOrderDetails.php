@@ -129,10 +129,13 @@ class IfoodOrderDetails
             : $this->order->created_at;
     }
 
-    /** Prazo pra aceitar (só pedido imediato; o agendado tem janela própria no iFood). */
+    /**
+     * Prazo pra aceitar: 8 minutos a partir da criação, para pedido imediato ou agendado
+     * (critério de homologação do iFood: "regardless of orderTiming").
+     */
     public function confirmationDeadline(): ?CarbonInterface
     {
-        if (! $this->awaitingConfirmation() || $this->isScheduled()) {
+        if (! $this->awaitingConfirmation()) {
             return null;
         }
 

@@ -69,7 +69,7 @@ class PropagateIfoodStatusJob implements ShouldQueue
         $integration = IfoodIntegration::withoutGlobalScopes()
             ->where('company_id', $order->company_id)
             ->where('branch_id', $order->branch_id)
-            ->where('status', 'active')
+            ->whereIn('status', ['active', 'paused'])
             ->first();
 
         if (! $integration) {

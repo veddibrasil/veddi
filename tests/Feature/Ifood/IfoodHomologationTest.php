@@ -18,6 +18,8 @@ uses(RefreshDatabase::class);
 
 function merchantScreen(array $ctx)
 {
+    // Os testes seguem o roteiro gravado pro iFood, com as ferramentas de homologação ligadas.
+    config(['ifood.homologation_mode' => true]);
     $user = User::factory()->create();
     $user->companies()->attach($ctx['company']->id, ['role' => 'company_admin']);
     app()->instance('current.company', $ctx['company']);
@@ -37,6 +39,35 @@ test('merchant consulta lojas detalhes e disponibilidade e não expõe tokens', 
         ->assertSee('Loja teste')->assertSee('São Paulo')->assertSee('OK')->assertSee('test-client')
         ->assertDontSee($ctx['integration']->access_token)->assertDontSee($ctx['integration']->refresh_token);
     Http::assertSentCount(3);
+});
+
+test('merchant lista todas as lojas pela ação independente com autenticação e paginação', function () {
+    $ctx = ifoodContext('merchant-list-action');
+    Http::preventStrayRequests();
+    Http::fake([
+        '*/merchant/v1.0/merchants?*' => Http::sequence()
+            ->push(array_map(fn ($id) => ['id' => (string) $id, 'name' => 'Loja '.$id], range(1, 100)))
+            ->push([['id' => '101', 'name' => 'Última loja']]),
+    ]);
+    merchantScreen($ctx)->call('consultMerchantStores')->assertHasNoErrors()
+        ->assertCount('merchantStores', 101)->assertSet('merchantStoresLoaded', true)
+        ->assertSee('Última loja')->assertSet('merchantDetails', [])->assertSet('merchantStatus', []);
+    Http::assertSentCount(2);
+    Http::assertSent(fn ($r) => $r->method() === 'GET'
+        && parse_url($r->url(), PHP_URL_PATH) === '/merchant/v1.0/merchants'
+        && $r['page'] === 2 && $r['size'] === 100
+        && $r->hasHeader('Authorization', 'Bearer '.$ctx['integration']->access_token));
+});
+
+test('merchant distingue lista vazia de falha e limpa resultado anterior', function () {
+    $ctx = ifoodContext('merchant-list-empty');
+    Http::fake(['*/merchant/v1.0/merchants?*' => Http::sequence()
+        ->push([['id' => 'store-1', 'name' => 'Loja anterior']])->push([])->push([], 403)]);
+    merchantScreen($ctx)->call('consultMerchantStores')->assertSee('Loja anterior')
+        ->call('consultMerchantStores')->assertHasNoErrors()->assertSet('merchantStores', [])
+        ->assertSet('merchantStoresLoaded', true)->assertSee('Nenhuma loja autorizada')
+        ->call('consultMerchantStores')->assertHasErrors('merchantOperation')
+        ->assertSet('merchantStoresLoaded', false)->assertDontSee('Nenhuma loja autorizada');
 });
 
 test('merchant pagina até listar todas as lojas', function () {
@@ -104,9 +135,10 @@ test('horários da homologação preservam os outros dias e são consultáveis d
 test('horários sobrepostos não chegam à API inclusive na virada da semana', function () {
     $ctx = ifoodContext('merchant-overlap');
     Http::fake(['*' => Http::response(['shifts' => []])]);
+    // Domingo 23:00 até 01:00 (passa da meia-noite) cruza com segunda 00:30.
     merchantScreen($ctx)->call('consultOpeningHours')->set('openingShifts', [
-        ['dayOfWeek' => 'SUNDAY', 'start' => '23:00', 'duration' => 120],
-        ['dayOfWeek' => 'MONDAY', 'start' => '00:30', 'duration' => 60],
+        ['dayOfWeek' => 'SUNDAY', 'start' => '23:00', 'end' => '01:00'],
+        ['dayOfWeek' => 'MONDAY', 'start' => '00:30', 'end' => '01:30'],
     ])->call('saveOpeningHours')->assertHasErrors('openingShifts');
     Http::assertNotSent(fn ($r) => $r->method() === 'PUT');
 });

@@ -92,7 +92,7 @@
                         'hover:bg-blue-50 dark:hover:bg-blue-900/20' => ! $notif->isRead(),
                     ])>
                         {{-- Icon --}}
-                        @php($isError = in_array($notif->type, ['refund_failed', 'fiscal_note_failed', 'order_failed', 'whatsapp_alert'], true))
+                        @php($isError = in_array($notif->type, ['refund_failed', 'fiscal_note_failed', 'order_failed', 'whatsapp_alert', 'ifood_alert'], true))
                         <div @class([
                             'w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5',
                             'bg-green-100 dark:bg-green-900/40' => $notif->type === 'order',
@@ -116,7 +116,7 @@
 
                         {{-- Content --}}
                         <a
-                            href="{{ $notif->link ?? '#' }}"
+                            href="{{ $notif->link && ! in_array(parse_url($notif->link, PHP_URL_PATH), $adminOnlyPaths, true) ? $notif->link : '#' }}"
                             wire:navigate
                             wire:click="markRead({{ $notif->id }})"
                             x-on:click="open = false"

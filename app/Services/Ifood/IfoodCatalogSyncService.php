@@ -3,6 +3,8 @@
 namespace App\Services\Ifood;
 
 use App\Contracts\IfoodGatewayContract;
+use App\Exceptions\IfoodApiException;
+use App\Exceptions\IfoodCatalogItemException;
 use App\Models\Branch;
 use App\Models\IfoodCategory;
 use App\Models\IfoodIntegration;
@@ -25,17 +27,35 @@ class IfoodCatalogSyncService
 
     public function __construct(private readonly IfoodGatewayContract $gateway) {}
 
-    /** Inclui itens já publicados mesmo quando foram pausados ou removidos do canal. */
-    public function syncFullCatalog(IfoodIntegration $integration): void
+    /**
+     * Inclui itens já publicados mesmo quando foram pausados ou removidos do canal.
+     * Segue item a item: um produto com problema fica registrado no próprio cadastro
+     * (branch_product.ifood_sync_error) e não impede os demais. Só falha por inteiro quando
+     * nenhum item foi aceito — aí a data do último envio não é atualizada.
+     *
+     * @return array{synced: int, failed: array<int, string>}
+     */
+    public function syncFullCatalog(IfoodIntegration $integration): array
     {
-        Cache::lock("ifood:catalog:{$integration->id}", 300)->block(5, function () use ($integration) {
+        return Cache::lock("ifood:catalog:{$integration->id}", 300)->block(5, function () use ($integration) {
             $products = Product::where('company_id', $integration->company_id)
                 ->whereHas('branches', fn ($q) => $q->where('branches.id', $integration->branch_id)
                     ->where(fn ($q) => $q->whereNotNull('branch_product.ifood_item_id')
                         ->orWhere(fn ($q) => $q->where('branch_product.available', true)->where('products.active', true)->where('products.available_in_ifood', true))))
                 ->with(['category', 'optionGroups.options'])->get();
-            $this->syncProducts($integration, $products);
-            $integration->update(['last_synced_at' => now()]);
+            $result = $this->syncProducts($integration, $products);
+
+            if ($result['synced'] === 0 && $result['failed'] !== []) {
+                // Mensagem já é a do item (pra tela): o failed() do job mostra na aba Cardápio.
+                throw new IfoodCatalogItemException('Nenhum item do cardápio foi aceito pelo iFood. '.reset($result['failed']));
+            }
+
+            $integration->update([
+                'last_synced_at' => now(),
+                'catalog_merchant_id' => $integration->catalog_merchant_id ?? $integration->merchant_id,
+            ]);
+
+            return $result;
         });
     }
 
@@ -49,7 +69,11 @@ class IfoodCatalogSyncService
             return;
         }
         Cache::lock("ifood:catalog:{$integration->id}", 300)->block(5, function () use ($integration, $product) {
-            $this->syncProducts($integration, [$product->load(['category', 'optionGroups.options'])]);
+            $result = $this->syncProducts($integration, [$product->load(['category', 'optionGroups.options'])]);
+            // Envio de um produto só: relança pra fila tentar de novo (o erro já ficou no cadastro).
+            if ($result['failed'] !== []) {
+                throw new \RuntimeException(reset($result['failed']));
+            }
         });
     }
 
@@ -71,19 +95,44 @@ class IfoodCatalogSyncService
         });
     }
 
-    private function syncProducts(IfoodIntegration $integration, $products): void
+    /**
+     * Tira de venda um item que perdeu o vínculo local (produto excluído ou desmarcado da
+     * filial): sem o pivot, syncAvailability não acha mais o id e o iFood seguiria vendendo.
+     */
+    public function disableItem(IfoodIntegration $integration, string $itemId): void
+    {
+        Cache::lock("ifood:catalog:{$integration->id}", 300)->block(5, function () use ($integration, $itemId) {
+            $this->gateway->updateItemStatuses($integration, [['id' => $itemId, 'status' => 'UNAVAILABLE']]);
+        });
+    }
+
+    /**
+     * @param  iterable<Product>  $products
+     * @return array{synced: int, failed: array<int, string>}
+     */
+    private function syncProducts(IfoodIntegration $integration, $products): array
     {
         $prices = $statuses = $prepared = $optionPrices = $optionStatuses = [];
+        $failed = [];
+        // Dono de cada recurso enviado, pra registrar a falha no produto certo.
+        $owners = [];
         foreach ($products as $product) {
-            if (! $product->category) {
-                throw new \RuntimeException("Produto {$product->id} sem categoria; sincronização interrompida.");
+            try {
+                if (! $product->category) {
+                    throw new IfoodCatalogItemException('Produto sem categoria. Escolha uma categoria no cadastro.');
+                }
+                $oldId = DB::table('branch_product')->where('branch_id', $integration->branch_id)->where('product_id', $product->id)->value('ifood_item_id');
+                $old = $oldId ? $this->gateway->getCatalogItem($integration, $oldId) : null;
+                $payload = $this->buildItemPayload($integration, $integration->branch, $product);
+            } catch (\Throwable $e) {
+                $failed[$product->id] = $this->failureMessage($integration, $product, $e);
+
+                continue;
             }
-            $oldId = DB::table('branch_product')->where('branch_id', $integration->branch_id)->where('product_id', $product->id)->value('ifood_item_id');
-            $old = $oldId ? $this->gateway->getCatalogItem($integration, $oldId) : null;
-            $payload = $this->buildItemPayload($integration, $integration->branch, $product);
             if ($old && $old['item']['id'] !== $payload['item']['id']) {
                 // Troca de tipo exige um novo ID; o item anterior precisa sair de venda.
                 $statuses[$oldId] = ['id' => $oldId, 'status' => 'UNAVAILABLE'];
+                $owners['item:'.$oldId] = $product->id;
                 $old = null;
             }
             if ($old) {
@@ -103,30 +152,78 @@ class IfoodCatalogSyncService
                     if ($previous && $previous['status'] !== $option['status']) {
                         $optionStatuses[$option['id']] = $option['status'];
                     }
+                    $owners['option:'.$option['id']] = $product->id;
                 }
             }
-            $prepared[] = [$payload, $old];
+            $owners['item:'.$payload['item']['id']] = $product->id;
+            $prepared[$product->id] = [$product, $payload, $old];
         }
-        // Todos os preços/status existentes são alterados exclusivamente por PATCH.
-        if ($prices) {
-            $this->gateway->updateItemPrices($integration, array_values($prices));
+
+        // Todos os preços/status existentes são alterados exclusivamente por PATCH, um recurso por vez.
+        $attempt = function (string $owner, \Closure $call) use (&$failed, $integration, $prepared, $owners) {
+            $productId = $owners[$owner] ?? null;
+            if ($productId !== null && isset($failed[$productId])) {
+                return;
+            }
+            try {
+                $call();
+            } catch (\Throwable $e) {
+                if ($productId !== null) {
+                    $failed[$productId] = $this->failureMessage($integration, $prepared[$productId][0] ?? null, $e);
+                }
+            }
+        };
+        foreach ($prices as $id => $price) {
+            $attempt('item:'.$id, fn () => $this->gateway->updateItemPrices($integration, [$price]));
         }
-        if ($statuses) {
-            $this->gateway->updateItemStatuses($integration, array_values($statuses));
+        foreach ($statuses as $id => $status) {
+            $attempt('item:'.$id, fn () => $this->gateway->updateItemStatuses($integration, [$status]));
         }
         foreach ($optionPrices as $id => $price) {
-            $this->gateway->updateOptionPrice($integration, $id, $price);
+            $attempt('option:'.$id, fn () => $this->gateway->updateOptionPrice($integration, $id, $price));
         }
         foreach ($optionStatuses as $id => $status) {
-            $this->gateway->updateOptionStatus($integration, $id, $status);
+            $attempt('option:'.$id, fn () => $this->gateway->updateOptionStatus($integration, $id, $status));
         }
-        foreach ($prepared as [$payload, $old]) {
-            if (! $old || $this->structure($payload) != $this->structure($old)) {
+        foreach ($prepared as $productId => [$product, $payload, $old]) {
+            if (isset($failed[$productId]) || ($old && $this->structure($payload) == $this->structure($old))) {
+                continue;
+            }
+            $attempt('item:'.$payload['item']['id'], function () use ($integration, $payload) {
                 $this->gateway->syncCatalog($integration, $payload);
                 DB::table('branch_product')->where('branch_id', $integration->branch_id)->where('ifood_product_id', $payload['item']['productId'])
                     ->update(['ifood_item_id' => $payload['item']['id'], 'ifood_item_type' => $payload['item']['type']]);
-            }
+            });
         }
+
+        $synced = array_diff(array_keys($prepared), array_keys($failed));
+        if ($synced !== []) {
+            DB::table('branch_product')->where('branch_id', $integration->branch_id)->whereIn('product_id', $synced)
+                ->update(['ifood_sync_error' => null, 'ifood_synced_at' => now()]);
+        }
+        foreach ($failed as $productId => $message) {
+            DB::table('branch_product')->where('branch_id', $integration->branch_id)->where('product_id', $productId)
+                ->update(['ifood_sync_error' => mb_substr($message, 0, 255)]);
+        }
+
+        return ['synced' => count($synced), 'failed' => $failed];
+    }
+
+    /** Mensagem pro cadastro do produto, com o motivo da recusa do iFood; o detalhe técnico vai pro log. */
+    private function failureMessage(IfoodIntegration $integration, ?Product $product, \Throwable $e): string
+    {
+        Log::channel('ifood')->warning('iFood: item do cardápio não sincronizado', [
+            'ifood_integration_id' => $integration->id,
+            'branch_id' => $integration->branch_id,
+            'product_id' => $product?->id,
+            'error' => $e->getMessage(),
+        ]);
+
+        return match (true) {
+            $e instanceof IfoodCatalogItemException => $e->getMessage(),
+            $e instanceof IfoodApiException => $e->userMessage(),
+            default => 'O iFood não aceitou o envio deste item. Tente sincronizar o cardápio de novo.',
+        };
     }
 
     private function structure(array $payload): array
@@ -147,11 +244,11 @@ class IfoodCatalogSyncService
         }
         $contents = Storage::disk('s3')->get($path);
         if (! is_string($contents) || $contents === '' || strlen($contents) > 5 * 1024 * 1024) {
-            throw new \RuntimeException('A foto do catálogo deve ter até 5 MB e estar disponível no armazenamento.');
+            throw new IfoodCatalogItemException('A foto deve ter até 5 MB e estar disponível no armazenamento.');
         }
         $mime = (new \finfo(FILEINFO_MIME_TYPE))->buffer($contents);
         if (! in_array($mime, ['image/jpeg', 'image/png'], true)) {
-            throw new \RuntimeException('O iFood aceita fotos JPG ou PNG.');
+            throw new IfoodCatalogItemException('O iFood aceita fotos JPG ou PNG. Troque a foto deste produto.');
         }
 
         return Cache::remember('ifood:image:'.$integration->merchant_id.':'.hash('sha256', $contents), now()->addDays(30),

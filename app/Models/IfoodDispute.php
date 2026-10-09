@@ -102,6 +102,32 @@ class IfoodDispute extends Model
         return array_values(array_filter((array) ($this->metadata['acceptCancellationReasons'] ?? []), 'is_string'));
     }
 
+    /**
+     * Rótulo legível de um código de motivo do iFood (aceite ou atraso). Códigos conhecidos são
+     * traduzidos; desconhecidos em CAIXA_ALTA viram texto corrido; o valor enviado continua o código.
+     */
+    public static function reasonLabel(string $code): string
+    {
+        $known = [
+            'HIGH_STORE_DEMAND' => 'Alta demanda na loja',
+            'DRIVER_SHORTAGE' => 'Falta de entregadores',
+            'LACK_OF_DRIVERS' => 'Falta de entregadores',
+            'TECHNICAL_ISSUES' => 'Problema técnico',
+            'TECHNICAL_PROBLEM' => 'Problema técnico',
+            'TRAFFIC' => 'Trânsito',
+            'WEATHER' => 'Condições do clima',
+            'BAD_WEATHER' => 'Condições do clima',
+            'PRODUCT_UNAVAILABLE' => 'Produto indisponível',
+            'ITEM_UNAVAILABLE' => 'Item indisponível',
+        ];
+
+        if (isset($known[$code])) {
+            return $known[$code];
+        }
+
+        return preg_match('/^[A-Z0-9_]+$/', $code) ? ucfirst(strtolower(str_replace('_', ' ', $code))) : $code;
+    }
+
     public function settlementLabel(): ?string
     {
         $status = $this->settlement['status'] ?? null;

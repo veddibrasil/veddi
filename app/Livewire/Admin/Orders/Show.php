@@ -6,6 +6,7 @@ use App\Contracts\RefundServiceInterface;
 use App\Enums\OrderChannel;
 use App\Events\OrderItemsUpdated;
 use App\Events\OrderStatusUpdated;
+use App\Exceptions\IfoodApiException;
 use App\Jobs\IssueFiscalNote;
 use App\Models\IfoodDispute;
 use App\Models\Order;
@@ -346,7 +347,7 @@ class Show extends Component
         try {
             $action();
         } catch (Throwable $e) {
-            session()->flash('error', $e->getMessage());
+            session()->flash('error', IfoodApiException::messageFor($e));
 
             return;
         }
@@ -412,7 +413,7 @@ class Show extends Component
         try {
             $this->ifoodCancellationReasons = app(IfoodOrderActionService::class)->getCancellationReasons($this->order);
         } catch (Throwable $e) {
-            session()->flash('error', $e->getMessage());
+            session()->flash('error', IfoodApiException::messageFor($e));
 
             return;
         }
@@ -454,7 +455,7 @@ class Show extends Component
                 session()->flash('status', 'Recusa solicitada ao iFood — aguardando confirmação.');
             }
         } catch (Throwable $e) {
-            session()->flash('error', $e->getMessage());
+            session()->flash('error', IfoodApiException::messageFor($e));
 
             return;
         }
@@ -531,7 +532,7 @@ class Show extends Component
             return;
         } catch (Throwable $e) {
             $this->closeDisputeResponse();
-            session()->flash('error', $e->getMessage());
+            session()->flash('error', IfoodApiException::messageFor($e));
 
             return;
         }

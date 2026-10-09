@@ -1,4 +1,4 @@
-@props(['backRoute' => null, 'title', 'titleClass' => '', 'backLabel' => 'Voltar'])
+@props(['backRoute' => null, 'title', 'titleClass' => '', 'backLabel' => 'Voltar', 'description' => null])
 
 <div class="flex flex-wrap items-center justify-between gap-3">
     <div class="flex min-w-0 items-center gap-2">
@@ -12,7 +12,14 @@
                 <span aria-hidden="true">←</span>
             </a>
         @endif
-        <h1 class="min-w-0 text-2xl font-bold text-neutral-800 dark:text-neutral-100 {{ $titleClass }}">{{ $title }}</h1>
+        @if ($description)
+            <div class="min-w-0">
+                <h1 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100 {{ $titleClass }}">{{ $title }}</h1>
+                <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{{ $description }}</p>
+            </div>
+        @else
+            <h1 class="min-w-0 text-2xl font-bold text-neutral-800 dark:text-neutral-100 {{ $titleClass }}">{{ $title }}</h1>
+        @endif
     </div>
     @isset($actions)
         {{ $actions }}

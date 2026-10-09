@@ -44,7 +44,8 @@ class IfoodOrderMapper
 
             if (! $productId) {
                 throw new IfoodMappingException(
-                    "Item iFood '{$item['name']}' (ifoodItemId={$item['ifoodItemId']}) não está mapeado para nenhum produto na filial #{$branchId}."
+                    "Item iFood '{$item['name']}' (ifoodItemId={$item['ifoodItemId']}) não está mapeado para nenhum produto na filial #{$branchId}.",
+                    "O item \"{$item['name']}\" do iFood não está ligado a nenhum produto desta filial."
                 );
             }
 
@@ -82,7 +83,8 @@ class IfoodOrderMapper
         foreach ($this->flattenOptions($item['options']) as $option) {
             if ($option['hasNestedOptions']) {
                 throw new IfoodMappingException(
-                    "Item '{$item['name']}' tem complemento aninhado (complemento-de-complemento) — não suportado pelo schema atual de produtos (product_option_groups → product_options, 1 nível só)."
+                    "Item '{$item['name']}' tem complemento aninhado (complemento-de-complemento) — não suportado pelo schema atual de produtos (product_option_groups → product_options, 1 nível só).",
+                    "O item \"{$item['name']}\" tem complemento dentro de complemento, que o painel não suporta."
                 );
             }
 
@@ -107,7 +109,8 @@ class IfoodOrderMapper
 
             if (! $productOption || ! $belongsToProduct) {
                 throw new IfoodMappingException(
-                    "Complemento iFood '{$option['name']}' (ifoodOptionId={$option['ifoodOptionId']}) não está mapeado para uma opção do produto #{$productId}."
+                    "Complemento iFood '{$option['name']}' (ifoodOptionId={$option['ifoodOptionId']}) não está mapeado para uma opção do produto #{$productId}.",
+                    "O complemento \"{$option['name']}\" do iFood não está ligado a nenhuma opção do produto."
                 );
             }
 

@@ -475,14 +475,17 @@ class OrderService implements OrderServiceInterface
             array_keys($cart)
         )));
 
+        // Pedido do iFood já foi feito (e pago) lá: o item só precisa existir nesta filial. Pausa,
+        // estoque ou canal desligado aqui chegam ao iFood com atraso, e recusar perderia o pedido.
+        $fromIfood = $channelColumn === 'available_in_ifood';
+
         $products = Product::withoutGlobalScopes()
             ->whereIn('id', $productIds)
             ->whereHas('branches', fn ($q) => $q
                 ->where('branches.id', $branchId)
-                ->where('branch_product.available', true)
+                ->when(! $fromIfood, fn ($q) => $q->where('branch_product.available', true))
             )
-            ->where('active', true)
-            ->where($channelColumn, true)
+            ->when(! $fromIfood, fn ($q) => $q->where('active', true)->where($channelColumn, true))
             ->with('optionGroups')
             ->get()
             ->keyBy('id');

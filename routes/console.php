@@ -19,6 +19,13 @@ Artisan::command('inspire', function () {
 // Bloqueia empresas inadimplentes após 3 dias úteis do vencimento
 Schedule::command('companies:block-overdue')->dailyAt('08:00');
 
+// Avisa restaurantes com integração iFood sem autorização ou sem consultar o iFood (pedidos não chegam)
+Schedule::command('ifood:check-connections')
+    ->name('ifood-check-connections')
+    ->everyTenMinutes()
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // Avisa restaurantes com WhatsApp inativo (coexistência sem uso do app), com erro ou com qualidade baixa
 Schedule::command('whatsapp:check-connections')
     ->name('whatsapp-check-connections')
@@ -86,11 +93,14 @@ Schedule::job(new MonitorIfoodWebhookHealthJob)
 
 // Sync completo de catálogo iFood (preço/cardápio) — segurança além do sync em
 // tempo real de disponibilidade (ProductObserver -> SyncIfoodCatalogJob por item).
+// Só lojas operacionais e com o cardápio já publicado pelo restaurante (publicação é opt-in).
 Schedule::call(function () {
-    IfoodIntegration::withoutGlobalScopes()
-        ->where('status', 'active')
-        ->pluck('branch_id')
-        ->each(fn ($branchId) => SyncIfoodCatalogJob::dispatch($branchId));
+    IfoodIntegration::operational()
+        ->with('company')
+        ->whereNotNull('catalog_published_at')
+        ->get()
+        ->filter(fn (IfoodIntegration $integration) => $integration->isOperational())
+        ->each(fn (IfoodIntegration $integration) => SyncIfoodCatalogJob::dispatch($integration->branch_id));
 })
     ->name('sync-ifood-catalog-full')
     ->dailyAt('05:00')

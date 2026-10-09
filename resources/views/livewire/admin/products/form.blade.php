@@ -158,17 +158,24 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
-                    @if ($this->pdvEnabled)
-                        <div class="pb-1">
+                <fieldset class="space-y-3">
+                    <legend class="text-sm font-medium text-neutral-700 dark:text-neutral-200">Onde vender</legend>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        @if ($this->pdvEnabled)
                             <flux:checkbox wire:model="available_in_pdv" label="Disponível no PDV" />
-                        </div>
-                    @endif
-                    <div class="pb-1">
+                        @endif
                         <flux:checkbox wire:model="available_in_delivery" label="Disponível no Delivery" />
-                        <flux:checkbox wire:model="available_in_ifood" label="Disponível no iFood" />
+                        @if ($this->ifoodEnabled)
+                            <flux:checkbox wire:model.live="available_in_ifood" label="Disponível no iFood"
+                                description="O iFood aceita nome com até 100 caracteres e foto JPG ou PNG." />
+                        @endif
                     </div>
-                </div>
+                    @foreach ($this->ifoodSyncErrors as $syncError)
+                        <x-admin.alert variant="warning" icon="exclamation-triangle">
+                            <strong>iFood ({{ $syncError['branch'] }}):</strong> {{ $syncError['error'] }} Corrija e salve para enviar de novo.
+                        </x-admin.alert>
+                    @endforeach
+                </fieldset>
             </div>
 
             {{-- Filiais --}}

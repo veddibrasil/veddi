@@ -280,8 +280,10 @@ class IfoodOrderActionService
         if ($order->channel !== 'ifood' || ! $order->external_order_id) {
             throw new InvalidArgumentException('Pedido não pertence ao iFood.');
         }
+        // Suspensa ('paused') não recebe pedido novo, mas os que já estão em andamento precisam
+        // terminar: aceitar, avisar pronto, despachar e cancelar continuam liberados.
         $integration = IfoodIntegration::withoutGlobalScopes()->where('company_id', $order->company_id)->where('branch_id', $order->branch_id)
-            ->where('status', 'active')
+            ->whereIn('status', ['active', 'paused'])
             ->first();
 
         if (! $integration) {

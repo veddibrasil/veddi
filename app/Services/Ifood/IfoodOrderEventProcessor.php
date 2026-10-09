@@ -3,6 +3,7 @@
 namespace App\Services\Ifood;
 
 use App\Enums\OrderChannel;
+use App\Events\IfoodOrderNotImported;
 use App\Events\IfoodOrderUpdated;
 use App\Models\CompanyNotification;
 use App\Models\IfoodDispute;
@@ -203,7 +204,23 @@ class IfoodOrderEventProcessor
             IfoodOrderUpdated::dispatch($order);
             $this->notify($order, 'Negociação iFood no pedido #'.$order->ifoodDetails()->displayId(),
                 $dispute->actionLabel().'. Responda antes de '.($dispute->expires_at?->format('H:i') ?? 'o prazo acabar').'.');
+
+            return;
         }
+
+        // Pedido que não entrou no painel: sem tela pra responder aqui, o restaurante precisa
+        // saber pra responder no Gestor de Pedidos do iFood antes do prazo.
+        CompanyNotification::create([
+            'company_id' => $dispute->company_id,
+            'type' => 'ifood_alert',
+            'is_delivery' => false,
+            'is_kitchen' => false,
+            'is_bar' => false,
+            'title' => 'Negociação iFood em pedido fora do painel',
+            'subtitle' => mb_substr($dispute->actionLabel().'. Responda pelo Gestor de Pedidos do iFood antes de '.($dispute->expires_at?->format('H:i') ?? 'o prazo acabar').'.', 0, 255),
+            'link' => route('admin.orders.index'),
+        ]);
+        IfoodOrderNotImported::dispatch($dispute->company_id, $event->id);
     }
 
     private function settleDispute(IfoodOrderEvent $event, Order $order): void
@@ -212,7 +229,10 @@ class IfoodOrderEventProcessor
         $disputeId = $metadata['disputeId'] ?? null;
 
         $dispute = $disputeId
-            ? IfoodDispute::withoutGlobalScopes()->where('dispute_id', (string) $disputeId)->first()
+            ? IfoodDispute::withoutGlobalScopes()
+                ->where('ifood_integration_id', $event->ifood_integration_id)
+                ->where('dispute_id', (string) $disputeId)
+                ->first()
             : null;
 
         if (! $dispute) {

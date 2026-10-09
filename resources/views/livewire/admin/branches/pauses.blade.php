@@ -7,6 +7,7 @@
     <x-admin.branch-nav :branch="$branch" current="pauses" />
 
     <x-admin.flash-status />
+    <x-admin.flash-error />
 
 
     <p class="text-sm text-neutral-500 dark:text-neutral-400">
@@ -49,11 +50,20 @@
             </div>
 
             <div>
-                <flux:checkbox wire:model="recurring_annual" label="Repetir todo ano nesta mesma data" />
+                <flux:checkbox wire:model.live="recurring_annual" label="Repetir todo ano nesta mesma data" />
                 <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
                     Em pausas recorrentes, o ano informado é ignorado — só o dia/mês/horário se repetem.
                 </p>
             </div>
+
+            @if ($this->ifoodConnected)
+                <div>
+                    <flux:checkbox wire:model="close_in_ifood" label="Fechar também a loja no iFood"
+                        description="A loja aparece fechada no app do iFood no mesmo período (até 7 dias, sem repetição anual)."
+                        :disabled="$recurring_annual" />
+                    @error('close_in_ifood') <p role="alert" class="text-red-600 text-xs mt-1 dark:text-red-400">{{ $message }}</p> @enderror
+                </div>
+            @endif
 
             <flux:button wire:click="create" variant="primary">Adicionar pausa</flux:button>
         </x-admin.form-card>
@@ -75,6 +85,9 @@
                                     <span class="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400">
                                         Recorrente
                                     </span>
+                                @endif
+                                @if ($pause->ifood_interruption_id)
+                                    <flux:badge size="sm" color="red">Também no iFood</flux:badge>
                                 @endif
                             </div>
                             @if ($pause->reason)

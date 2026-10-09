@@ -5,8 +5,10 @@ namespace App\Services\Ifood;
 use App\Exceptions\IfoodInvalidAuthorizationCodeException;
 use App\Exceptions\IfoodMerchantAlreadyLinkedException;
 use App\Exceptions\IfoodNoAuthorizedMerchantsException;
+use App\Models\IfoodCategory;
 use App\Models\IfoodIntegration;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -122,6 +124,13 @@ class IfoodAuthService
             'refresh_token' => null,
             'token_expires_at' => null,
         ]);
+
+        // Avisa na hora (sino + e-mail): até reconectar, nenhum pedido novo chega ao painel.
+        try {
+            app(IfoodConnectionMonitor::class)->process($integration);
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         throw new RuntimeException('A autorização do iFood expirou. Reconecte a loja nas configurações.');
     }
@@ -256,11 +265,7 @@ class IfoodAuthService
         }
 
         if (count($merchants) === 1) {
-            $this->assertMerchantNotLinkedElsewhere($integration, $merchants[0]['id']);
-
-            $integration->merchant_id = $merchants[0]['id'];
-            $integration->available_merchants = null;
-            $integration->status = 'active';
+            $this->activateMerchant($integration, $merchants[0]['id'], $merchants[0]['name'] ?? null);
         } else {
             // Autorização cobre mais de uma loja — não dá pra escolher sozinho, guarda
             // a lista e deixa status fora de 'active' até o admin escolher (ver
@@ -292,26 +297,70 @@ class IfoodAuthService
             throw new RuntimeException("iFood: merchant_id '{$merchantId}' não está entre os merchants autorizados desta integração (integration_id={$integration->id}).");
         }
 
-        $this->assertMerchantNotLinkedElsewhere($integration, $merchantId);
-
-        $integration->merchant_id = $merchantId;
-        $integration->available_merchants = null;
-        $integration->status = 'active';
+        $name = collect($merchants)->firstWhere('id', $merchantId)['name'] ?? null;
+        $this->activateMerchant($integration, $merchantId, $name);
         $integration->save();
     }
 
     /**
-     * Um merchant_id do iFood só pode estar ativo numa empresa Veddi por vez —
-     * sem essa checagem, duas empresas conectando a mesma loja iFood (troca de
+     * Liga a loja escolhida à integração. Se o cardápio desta filial foi montado em outra loja
+     * (troca da loja de teste pela real, por exemplo), o mapeamento antigo é descartado: catálogo,
+     * categorias e itens daquela loja não existem nesta, e a publicação volta a ser opt-in.
+     */
+    private function activateMerchant(IfoodIntegration $integration, string $merchantId, ?string $name): void
+    {
+        $this->ensureMerchantAvailable($integration, $merchantId);
+
+        if ($integration->catalog_merchant_id !== null && $integration->catalog_merchant_id !== $merchantId) {
+            $this->resetCatalogMapping($integration);
+        }
+
+        $integration->merchant_id = $merchantId;
+        // Sem o módulo merchant o iFood não devolve o nome e a lista usa o próprio id.
+        $integration->merchant_name = $name !== null && $name !== $merchantId ? $name : null;
+        $integration->available_merchants = null;
+        $integration->status = 'active';
+        // Ponto de partida do monitor de polling: 10 minutos até a primeira consulta.
+        $integration->last_polled_at = now();
+    }
+
+    private function resetCatalogMapping(IfoodIntegration $integration): void
+    {
+        Log::channel('ifood')->warning('iFood: filial trocou de loja, mapeamento do cardápio reiniciado', [
+            'ifood_integration_id' => $integration->id,
+            'company_id' => $integration->company_id,
+            'branch_id' => $integration->branch_id,
+        ]);
+
+        IfoodCategory::withoutGlobalScopes()->where('branch_id', $integration->branch_id)->delete();
+        DB::table('branch_product')->where('branch_id', $integration->branch_id)->update([
+            'ifood_item_id' => null,
+            'ifood_item_type' => null,
+            'ifood_product_id' => null,
+            'ifood_sync_error' => null,
+            'ifood_synced_at' => null,
+        ]);
+
+        $integration->catalog_id = null;
+        $integration->catalog_merchant_id = null;
+        $integration->catalog_published_at = null;
+        $integration->catalog_sync_status = null;
+        $integration->catalog_sync_error = null;
+        $integration->last_synced_at = null;
+    }
+
+    /**
+     * Um merchant_id do iFood só pode estar ligado a uma integração por vez, em qualquer
+     * status — sem essa checagem, duas empresas conectando a mesma loja iFood (troca de
      * conta, erro do lojista, etc.) fazem o polling correr em paralelo pro mesmo
      * merchant e o pedido cai aleatoriamente numa empresa ou outra (bug real
-     * encontrado em sandbox em 2026-09-04, ver [[ifood_integration]]).
+     * encontrado em sandbox em 2026-09-04, ver [[ifood_integration]]). Pausada ou aguardando
+     * reautorização também conta: ao retomar, as duas ficariam ativas.
      */
-    private function assertMerchantNotLinkedElsewhere(IfoodIntegration $integration, string $merchantId): void
+    public function ensureMerchantAvailable(IfoodIntegration $integration, string $merchantId): void
     {
         $conflict = IfoodIntegration::withoutGlobalScopes()
             ->where('merchant_id', $merchantId)
-            ->where('status', 'active')
             ->where('id', '!=', $integration->id)
             ->first();
 

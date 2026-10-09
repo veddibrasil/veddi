@@ -3,6 +3,7 @@
 namespace App\Services\Ifood;
 
 use App\Contracts\IfoodGatewayContract;
+use App\Exceptions\IfoodApiException;
 use App\Models\IfoodIntegration;
 use Carbon\CarbonInterface;
 use Illuminate\Http\Client\PendingRequest;
@@ -316,14 +317,23 @@ class IfoodGatewayService implements IfoodGatewayContract
                     if (empty($batch['results']) && ! isset($batch['successCount'], $batch['failureCount'])) {
                         throw new RuntimeException('iFood: lote sem resultados de processamento.');
                     }
-                    if (($batch['failureCount'] ?? 0) > 0 || collect($batch['results'] ?? [])->contains(fn ($row) => ($row['result'] ?? null) !== 'SUCCESS')) {
-                        throw new RuntimeException('iFood: lote concluído com falhas. Consulte o catálogo e tente novamente.');
+                    $failures = collect($batch['results'] ?? [])->reject(fn ($row) => ($row['result'] ?? null) === 'SUCCESS');
+                    if (($batch['failureCount'] ?? 0) > 0 || $failures->isNotEmpty()) {
+                        Log::channel('ifood')->error('iFood: lote concluído com falhas', [
+                            'ifood_integration_id' => $integration->id,
+                            'batch_id' => $result['batchId'],
+                            'results' => $failures->values()->all(),
+                        ]);
+                        // Formato das linhas não documentado: aproveita o motivo da primeira que trouxer um.
+                        $reason = $failures->map(fn ($row) => IfoodApiException::reasonFrom($row))->filter()->first();
+
+                        throw new IfoodApiException('iFood: lote concluído com falhas. Consulte o catálogo e tente novamente.', reason: $reason);
                     }
 
                     return;
                 }
                 if (in_array($status, ['FAILED', 'CANCELLED'], true)) {
-                    throw new RuntimeException('iFood: falha ao processar lote.');
+                    throw new IfoodApiException('iFood: falha ao processar lote.', reason: IfoodApiException::reasonFrom($batch));
                 }
                 usleep(500000);
             }
@@ -453,7 +463,8 @@ class IfoodGatewayService implements IfoodGatewayContract
             throw new RuntimeException("iFood: nenhum catalogId encontrado pro merchant (integration_id={$integration->id})");
         }
 
-        $integration->update(['catalog_id' => $catalogId]);
+        // Guarda de qual loja é o catálogo: trocar de loja reinicia o mapeamento (IfoodAuthService).
+        $integration->update(['catalog_id' => $catalogId, 'catalog_merchant_id' => $integration->merchant_id]);
 
         return $catalogId;
     }
@@ -466,6 +477,6 @@ class IfoodGatewayService implements IfoodGatewayContract
             'body' => $response->body(),
         ]);
 
-        throw new RuntimeException("iFood: falha em {$operation} (integration_id={$integration->id}, status {$response->status()})");
+        throw IfoodApiException::fromResponse($operation, $integration->id, $response);
     }
 }

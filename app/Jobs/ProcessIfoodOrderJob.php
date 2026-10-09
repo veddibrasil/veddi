@@ -6,8 +6,10 @@ use App\Contracts\IfoodGatewayContract;
 use App\Contracts\OrderServiceInterface;
 use App\DTOs\IfoodOrderDTO;
 use App\Enums\OrderChannel;
+use App\Events\IfoodOrderNotImported;
 use App\Events\NewOrderPlaced;
 use App\Exceptions\IfoodMappingException;
+use App\Models\CompanyNotification;
 use App\Models\Customer;
 use App\Models\IfoodOrderEvent;
 use App\Models\Order;
@@ -150,6 +152,8 @@ class ProcessIfoodOrderJob implements ShouldBeUnique, ShouldQueue
                 'event_id' => $event->event_id,
                 'error' => $e->getMessage(),
             ]);
+
+            $this->notifyNotImported($event, $e->userMessage(), $dto ?? null);
         } catch (Throwable $e) {
             $retryable = $event->attempts < self::MAX_ATTEMPTS;
             $event->update(['status' => $retryable ? 'pending' : 'failed']);
@@ -162,9 +166,59 @@ class ProcessIfoodOrderJob implements ShouldBeUnique, ShouldQueue
                 'error' => $e->getMessage(),
             ]);
 
+            if (! $retryable && $event->event_type === self::EVENT_TYPE_PLACED) {
+                $this->notifyNotImported($event, 'Não conseguimos registrar o pedido depois de várias tentativas.', $dto ?? null);
+            }
+
             throw $e;
         } finally {
             app()->forgetInstance('current.company');
+        }
+    }
+
+    /**
+     * A fila desistiu ($tries) antes de o evento chegar a MAX_ATTEMPTS: sem isto ele ficava
+     * 'pending' pra sempre, ninguém era avisado e as negociações/cancelamentos do pedido
+     * esperavam um PLC "ainda sendo criado" que nunca termina.
+     */
+    public function failed(?Throwable $e): void
+    {
+        $event = IfoodOrderEvent::with('ifoodIntegration')->find($this->ifoodOrderEventId);
+
+        // 'failed' já tratado no catch (com aviso); 'processed' não tem o que fazer.
+        if (! $event || $event->status !== 'pending') {
+            return;
+        }
+
+        $event->update(['status' => 'failed']);
+
+        if ($event->event_type === self::EVENT_TYPE_PLACED && $event->ifoodIntegration) {
+            $this->notifyNotImported($event, 'Não conseguimos registrar o pedido depois de várias tentativas.', null);
+        }
+    }
+
+    /**
+     * O pedido existe no iFood mas não no painel: avisa o restaurante pra resolver pelo Gestor
+     * de Pedidos do iFood dentro do prazo (o iFood cancela sozinho o que não for confirmado).
+     */
+    private function notifyNotImported(IfoodOrderEvent $event, string $reason, ?IfoodOrderDTO $dto): void
+    {
+        $companyId = $event->ifoodIntegration->company_id;
+        $label = $dto?->displayId ? "#{$dto->displayId}" : 'do iFood';
+        $event->update(['error' => mb_substr(($dto?->displayId ? "Pedido #{$dto->displayId}: " : '').$reason, 0, 255)]);
+
+        try {
+            CompanyNotification::create([
+                'company_id' => $companyId,
+                'type' => 'ifood_alert',
+                'title' => "Pedido {$label} não entrou no painel",
+                'subtitle' => mb_substr($reason.' Aceite ou cancele pelo Gestor de Pedidos do iFood e confira o cadastro.', 0, 255),
+                'link' => route('admin.orders.index'),
+            ]);
+
+            IfoodOrderNotImported::dispatch($companyId, $event->id);
+        } catch (Throwable $e) {
+            report($e);
         }
     }
 

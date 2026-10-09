@@ -215,6 +215,8 @@ function ifoodContext(string $suffix = 'A'): array
         'refresh_token' => "refresh-ctx-{$suffix}",
         'token_expires_at' => now()->addHours(6),
         'status' => 'active',
+        // Loja já conectada e com cardápio publicado: os syncs automáticos valem pra ela.
+        'catalog_published_at' => now(),
     ]);
 
     return compact('company', 'branch', 'category', 'product', 'integration');

@@ -7,6 +7,14 @@
         default => ['preparing', 'ready', 'out_for_delivery', 'cancelled'],
     };
     $buttonBase = 'inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50';
+    // Etapas que a loja vê andar; entrega pelo iFood, retirada e consumo no local terminam em "Pronto".
+    $steps = array_filter([
+        'CONFIRMED' => 'Aceito',
+        'READY_TO_PICKUP' => 'Pronto',
+        'DISPATCHED' => $ifood->canBeDispatchedByStore() ? 'Saiu para entrega' : null,
+        'CONCLUDED' => 'Concluído',
+    ]);
+    $cancelled = $ifood->status() === 'CANCELLED';
 @endphp
 <div class="space-y-3">
     <div class="flex items-center justify-between gap-2">
@@ -15,6 +23,28 @@
             Atual: <span class="font-semibold text-neutral-700 dark:text-neutral-300">{{ $order->status_label }}</span>
         </p>
     </div>
+
+    @unless ($cancelled)
+        <ol class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs" aria-label="Etapas do pedido no iFood">
+            @foreach ($steps as $step => $label)
+                @php $done = $ifood->reached($step); @endphp
+                <li @class([
+                    'inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium',
+                    'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' => $done,
+                    'bg-neutral-100 text-neutral-600 dark:bg-zinc-700 dark:text-neutral-300' => ! $done,
+                ])>
+                    @if ($done)
+                        <flux:icon.check variant="micro" class="size-3" />
+                        <span class="sr-only">Concluída:</span>
+                    @endif
+                    {{ $label }}
+                </li>
+                @if (! $loop->last)
+                    <li aria-hidden="true" class="text-neutral-400 dark:text-neutral-500">›</li>
+                @endif
+            @endforeach
+        </ol>
+    @endunless
 
     @if ($canUpdate)
         <div class="flex flex-wrap gap-2">
@@ -25,7 +55,7 @@
                 </button>
             @endif
             @if ($ifood->awaitingConfirmation() && ! $ifood->confirmationExpired() && in_array('cancelled', $allowed, true))
-                <button wire:click="openIfoodCancelModal" wire:loading.attr="disabled"
+                <button wire:click="openIfoodCancelModal" wire:loading.attr="disabled" wire:target="openIfoodCancelModal"
                         class="{{ $buttonBase }} bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50">
                     Recusar
                 </button>
@@ -60,8 +90,8 @@
     @endif
 
     @if ($canUpdate && ! $ifood->awaitingConfirmation() && ! $ifood->isFinished() && in_array('cancelled', $allowed, true))
-        <button wire:click="openIfoodCancelModal" wire:loading.attr="disabled"
-                class="text-sm font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">
+        <button wire:click="openIfoodCancelModal" wire:loading.attr="disabled" wire:target="openIfoodCancelModal"
+                class="text-sm font-medium text-red-600 hover:text-red-700 disabled:opacity-50 dark:text-red-400 dark:hover:text-red-300">
             Solicitar cancelamento ao iFood
         </button>
     @endif

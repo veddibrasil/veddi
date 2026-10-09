@@ -3,16 +3,24 @@
 namespace App\Livewire\Admin;
 
 use App\Models\CompanyNotification;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 class NotificationBell extends Component
 {
+    // Locked: CompanyNotification não tem escopo global, então a empresa vem só do mount.
+    #[Locked]
     public int $companyId = 0;
 
     public bool $confirmingClearAll = false;
 
     /** Estação do usuário logado ('cozinha'|'bar'|'entrega') quando o papel é restrito a uma estação, senão null. */
+    #[Locked]
     public ?string $userStation = null;
+
+    /** Alertas de conexão (iFood/WhatsApp) levam a telas só de administrador. */
+    #[Locked]
+    public bool $canOpenIntegrationSettings = false;
 
     public function mount(): void
     {
@@ -20,8 +28,10 @@ class NotificationBell extends Component
             $company = app('current.company');
             $this->companyId = $company->id;
 
-            $roleSlug = auth()->user()?->roleForCompany($company);
+            $user = auth()->user();
+            $roleSlug = $user?->roleForCompany($company);
             $this->userStation = in_array($roleSlug, ['cozinha', 'bar', 'entrega']) ? $roleSlug : null;
+            $this->canOpenIntegrationSettings = (bool) ($user?->isSuperAdmin() || $user?->isCompanyAdmin($company));
         }
     }
 
@@ -39,6 +49,8 @@ class NotificationBell extends Component
             "echo-private:orders.{$this->companyId},OrderStatusUpdated" => 'onNewOrder',
             // Aviso de negociação e de cancelamento recusado no iFood.
             "echo-private:orders.{$this->companyId},IfoodOrderUpdated" => 'onNewOrder',
+            // Pedido do iFood que não entrou no painel (resolver pelo Gestor de Pedidos do iFood).
+            "echo-private:orders.{$this->companyId},IfoodOrderNotImported" => 'onNewOrder',
         ];
     }
 
@@ -111,8 +123,12 @@ class NotificationBell extends Component
 
         $unreadCount = $notifications->whereNull('read_at')->count();
 
+        // Sem acesso à tela da integração, o alerta continua no sino mas sem levar a um 403.
+        $adminOnlyPaths = $this->canOpenIntegrationSettings ? [] : [route('admin.settings.ifood', absolute: false), route('admin.settings.whatsapp', absolute: false)];
+
         return view('livewire.admin.notification-bell', [
             'notifications' => $notifications,
+            'adminOnlyPaths' => $adminOnlyPaths,
             'unreadCount' => $unreadCount,
             'modalName' => 'confirm-clear-notifications-'.$this->getId(),
         ]);
