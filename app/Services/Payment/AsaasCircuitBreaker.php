@@ -34,7 +34,6 @@ class AsaasCircuitBreaker
         'CreateAsaasSetupFee',
         'CreateAsaasSubscription',
         'RefundPayment',
-        'ProcessWithdrawal',
     ];
 
     /**

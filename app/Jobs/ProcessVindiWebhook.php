@@ -9,6 +9,8 @@ use App\Events\OrderStatusUpdated;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\PaymentRefund;
+use App\Services\Finance\BalanceService;
+use App\Services\Payment\VindiService;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -40,6 +42,12 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
 
     public function handle(): void
     {
+        // Status que movem dinheiro (crédito na carteira / débito por chargeback) só são
+        // aplicados depois de confirmados na API da Vindi — o payload do webhook é só um aviso.
+        if (in_array($this->status, ['Aprovada', 'Em Contestação'], true) && ! $this->statusConfirmedByGateway()) {
+            return;
+        }
+
         match ($this->status) {
             'Aprovada' => $this->handlePaymentApproved(),
             'Cancelada', 'Não Aprovada', 'Reprovada' => $this->handlePaymentFailed(),
@@ -47,6 +55,38 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
             'Em Contestação' => $this->handleChargeback(),
             default => $this->logIgnored(),
         };
+    }
+
+    /**
+     * Reconsulta a transação na Vindi e só segue se o status real bater com o do webhook.
+     * Sem credencial configurada (modo simulação) não há API para consultar.
+     *
+     * @throws \RuntimeException quando a Vindi não responde, para o job ser retentado
+     */
+    private function statusConfirmedByGateway(): bool
+    {
+        if (empty(config('payments.vindi_token_account')) || str_starts_with($this->transactionToken, 'sim_vindi_')) {
+            return true;
+        }
+
+        $realStatus = app(VindiService::class)->getTransactionStatus($this->transactionToken);
+
+        if ($realStatus === 'unknown') {
+            throw new \RuntimeException('Vindi webhook: não foi possível confirmar o status da transação na API.');
+        }
+
+        if ($realStatus !== $this->status) {
+            Log::channel('discord')->critical('Vindi webhook: status do payload não confere com a API — ignorado', [
+                'type' => 'payments',
+                'transaction_token' => $this->transactionToken,
+                'payload_status' => $this->status,
+                'gateway_status' => $realStatus,
+            ]);
+
+            return false;
+        }
+
+        return true;
     }
 
     private function handlePaymentApproved(): void
@@ -139,6 +179,9 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
                     'status' => 'paid',
                     'paid_at' => now(),
                     'amount' => $payment->amount,
+                    // Pagamento achado pelo fallback de order_number ainda não tem o token:
+                    // sem ele a carteira fica sem referência e estorno/chargeback não o acham.
+                    'vindi_transaction_token' => $payment->vindi_transaction_token ?? $this->transactionToken,
                     'webhook_payload' => $this->payload,
                     'idempotency_key' => $idempotencyKey,
                 ]);
@@ -281,6 +324,8 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
                     'status' => 'chargeback',
                     'updated_at' => now(),
                 ]);
+
+            app(BalanceService::class)->broadcastUpdate($order->company_id);
 
             Log::channel('discord')->critical('Chargeback recebido via Vindi', [
                 'type' => 'payments',

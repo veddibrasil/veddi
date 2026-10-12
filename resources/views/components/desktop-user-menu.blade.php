@@ -19,8 +19,8 @@
         </div>
         <flux:menu.separator />
         <flux:menu.radio.group>
-            <flux:menu.item :href="route('profile.edit')" icon="cog" wire:navigate>
-                {{ __('Configurações') }}
+            <flux:menu.item :href="route('profile.edit')" icon="user-circle" wire:navigate>
+                {{ __('Minha conta') }}
             </flux:menu.item>
             <flux:menu.item :href="route('docs')" icon="book-open-text" wire:navigate>
                 {{ __('Documentação') }}

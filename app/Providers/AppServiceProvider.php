@@ -10,6 +10,8 @@ use App\Contracts\PrinterServiceInterface;
 use App\Contracts\RefundServiceInterface;
 use App\Contracts\TransactionServiceInterface;
 use App\Contracts\WalletServiceInterface;
+use App\Contracts\WhatsAppManagementInterface;
+use App\Contracts\WhatsAppProviderInterface;
 use App\Events\CompanyActivated;
 use App\Events\NewOrderPlaced;
 use App\Events\OrderStatusUpdated;
@@ -44,6 +46,7 @@ use App\Services\Finance\TransactionService;
 use App\Services\Finance\WalletService;
 use App\Services\Fiscal\FocusNfeService;
 use App\Services\Ifood\IfoodGatewayService;
+use App\Services\Messaging\MetaCloudApiProvider;
 use App\Services\Order\OrderService;
 use App\Services\Payment\AsaasService;
 use App\Services\Printer\EscPosPrinterService;
@@ -97,6 +100,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(RefundServiceInterface::class, RefundService::class);
         $this->app->bind(PrinterServiceInterface::class, EscPosPrinterService::class);
         $this->app->bind(IfoodGatewayContract::class, IfoodGatewayService::class);
+        $this->app->bind(WhatsAppProviderInterface::class, MetaCloudApiProvider::class);
+        $this->app->bind(WhatsAppManagementInterface::class, MetaCloudApiProvider::class);
     }
 
     /**

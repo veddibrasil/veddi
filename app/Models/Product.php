@@ -28,6 +28,7 @@ class Product extends Model
         'active',
         'available_in_pdv',
         'available_in_delivery',
+        'available_in_ifood',
         'is_variant',
         'sort_order',
         'fiscal_data',
@@ -40,6 +41,7 @@ class Product extends Model
         'active' => 'boolean',
         'available_in_pdv' => 'boolean',
         'available_in_delivery' => 'boolean',
+        'available_in_ifood' => 'boolean',
         'is_variant' => 'boolean',
         'fiscal_data' => 'array',
     ];

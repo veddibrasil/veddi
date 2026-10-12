@@ -17,7 +17,6 @@ class AsaasRetryFailed extends Command
         'CreateAsaasSetupFee',
         'CreateAsaasSubscription',
         'RefundPayment',
-        'ProcessWithdrawal',
     ];
 
     public function handle(): int

@@ -33,13 +33,13 @@ function makeSettledIfoodOrder(array $ctx, float $fee = 2.00): Order
     ]);
 }
 
-test('processIfoodPrepaid nunca dispara chamada HTTP de cobrança', function () {
+test('processIfoodPayments nunca dispara chamada HTTP de cobrança', function () {
     $ctx = ifoodContext('pay1');
     $order = makeSettledIfoodOrder($ctx);
 
     Http::fake();
 
-    app(PaymentOrchestrator::class)->processIfoodPrepaid($order);
+    app(PaymentOrchestrator::class)->processIfoodPayments($order, 50.00, 0.0);
 
     Http::assertNothingSent();
 });

@@ -58,21 +58,33 @@
         @else
             <div class="space-y-2">
                 @foreach($entries as $entry)
-                    <div class="flex items-center justify-between py-2 border-b border-neutral-100 dark:border-zinc-700 last:border-0">
-                        <div>
+                    @php
+                        // Efeito no saldo: crédito soma; os demais tipos subtraem. Estorno de taxa
+                        // é gravado com valor negativo, então devolve dinheiro (aparece como +).
+                        $effect = $entry->type === 'credit' ? (float) $entry->amount : -(float) $entry->amount;
+                        $fees = $entry->type === 'credit' ? ($feesByCredit[$entry->order_id.'|'.$entry->reference] ?? 0.0) : 0.0;
+                    @endphp
+                    <div class="flex items-center justify-between gap-3 py-2 border-b border-neutral-100 dark:border-zinc-700 last:border-0">
+                        <div class="min-w-0">
                             <p class="text-sm text-neutral-800 dark:text-neutral-200">{{ $entry->description }}</p>
                             <p class="text-xs text-neutral-400 dark:text-neutral-500">
                                 {{ $entry->created_at->format('d/m/Y H:i') }}
                             </p>
                         </div>
-                        <span @class([
-                            'text-sm font-semibold',
-                            'text-green-600 dark:text-green-400' => $entry->type === 'credit',
-                            'text-red-500 dark:text-red-400' => in_array($entry->type, ['withdrawal', 'refund']),
-                        ])>
-                            {{ $entry->type === 'credit' ? '+' : '-' }}
-                            R$ {{ number_format(abs($entry->amount), 2, ',', '.') }}
-                        </span>
+                        <div class="text-right shrink-0">
+                            <span @class([
+                                'text-sm font-semibold',
+                                'text-green-600 dark:text-green-400' => $effect >= 0,
+                                'text-red-500 dark:text-red-400' => $effect < 0,
+                            ])>
+                                {{ $effect >= 0 ? '+' : '-' }} R$ {{ number_format(abs($effect), 2, ',', '.') }}
+                            </span>
+                            @if($fees > 0)
+                                <p class="text-xs text-neutral-500 dark:text-neutral-400">
+                                    Taxas R$ {{ number_format($fees, 2, ',', '.') }} · líquido R$ {{ number_format($effect - $fees, 2, ',', '.') }}
+                                </p>
+                            @endif
+                        </div>
                     </div>
                 @endforeach
             </div>

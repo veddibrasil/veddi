@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Admin\Pdv\Concerns;
 
+use App\Support\MoneyInput;
 use Livewire\Attributes\Computed;
 
 /**
@@ -59,10 +60,10 @@ trait HasSplitPayment
         $ratio = $targetTotal / $currentSum;
 
         $this->splitPayments = array_map(function ($part) use ($ratio) {
-            $part['amount'] = number_format(round(((float) str_replace(',', '.', $part['amount'] ?: 0)) * $ratio, 2), 2, '.', '');
+            $part['amount'] = number_format(round((MoneyInput::toFloat($part['amount'])) * $ratio, 2), 2, '.', '');
 
             if ($part['method'] === 'cash' && filled($part['cash_received'] ?? null)) {
-                $part['cash_received'] = number_format(round(((float) str_replace(',', '.', $part['cash_received'])) * $ratio, 2), 2, '.', '');
+                $part['cash_received'] = number_format(round(MoneyInput::toFloat($part['cash_received']) * $ratio, 2), 2, '.', '');
             }
 
             return $part;
@@ -74,11 +75,11 @@ trait HasSplitPayment
 
         if (abs($diff) > 0.0) {
             $lastIndex = array_key_last($this->splitPayments);
-            $lastAmount = (float) str_replace(',', '.', $this->splitPayments[$lastIndex]['amount']);
+            $lastAmount = MoneyInput::toFloat($this->splitPayments[$lastIndex]['amount']);
             $this->splitPayments[$lastIndex]['amount'] = number_format($lastAmount + $diff, 2, '.', '');
 
             if ($this->splitPayments[$lastIndex]['method'] === 'cash' && filled($this->splitPayments[$lastIndex]['cash_received'] ?? null)) {
-                $lastReceived = (float) str_replace(',', '.', $this->splitPayments[$lastIndex]['cash_received']);
+                $lastReceived = MoneyInput::toFloat($this->splitPayments[$lastIndex]['cash_received']);
                 $this->splitPayments[$lastIndex]['cash_received'] = number_format($lastReceived + $diff, 2, '.', '');
             }
         }
@@ -103,7 +104,7 @@ trait HasSplitPayment
     public function splitPaymentsTotal(): float
     {
         return round(array_sum(array_map(
-            fn ($part) => (float) str_replace(',', '.', $part['amount'] ?: 0),
+            fn ($part) => MoneyInput::toFloat($part['amount']),
             $this->splitPayments
         )), 2);
     }
@@ -120,7 +121,7 @@ trait HasSplitPayment
     public function splitPaymentsPaidAmount(): float
     {
         return round(array_sum(array_map(
-            fn ($part) => ($part['paid'] ?? false) ? (float) str_replace(',', '.', $part['amount'] ?: 0) : 0.0,
+            fn ($part) => ($part['paid'] ?? false) ? MoneyInput::toFloat($part['amount']) : 0.0,
             $this->splitPayments
         )), 2);
     }
@@ -151,14 +152,14 @@ trait HasSplitPayment
                 return 'Método de pagamento inválido em uma das partes.';
             }
 
-            $amount = (float) str_replace(',', '.', $part['amount'] ?: 0);
+            $amount = MoneyInput::toFloat($part['amount']);
             if ($amount <= 0) {
                 return 'Todas as partes precisam de um valor maior que zero.';
             }
 
             if ($part['method'] === 'cash') {
                 $cashCount++;
-                $received = (float) str_replace(',', '.', $part['cash_received'] ?: $amount);
+                $received = (MoneyInput::parse($part['cash_received']) ?? $amount);
                 if ($received < $amount) {
                     return 'Valor recebido em dinheiro não pode ser menor que a parte em dinheiro.';
                 }
@@ -180,11 +181,11 @@ trait HasSplitPayment
     private function buildSplitPartsForOrchestrator(): array
     {
         return array_map(function ($part) {
-            $amount = round((float) str_replace(',', '.', $part['amount']), 2);
+            $amount = round(MoneyInput::toFloat($part['amount']), 2);
             $result = ['method' => $part['method'], 'amount' => $amount];
 
             if ($part['method'] === 'cash') {
-                $result['cash_received'] = round((float) str_replace(',', '.', $part['cash_received'] ?: $amount), 2);
+                $result['cash_received'] = round((MoneyInput::parse($part['cash_received']) ?? $amount), 2);
             }
 
             return $result;

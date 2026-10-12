@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Admin\Orders;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Support\Printing\ThermalReceiptPaper;
-use Barryvdh\DomPDF\Facade\Pdf;
 
 class ReceiptPdfController extends Controller
 {
@@ -41,14 +40,12 @@ class ReceiptPdfController extends Controller
                 ? $order->items
                 : $order->items->filter(fn ($item) => $item->matchesStation($station))->values();
 
-            $pdf = Pdf::loadView('livewire.admin.orders.receipt-station', compact('order', 'company', 'station', 'items'))
-                ->setPaper(ThermalReceiptPaper::forWidthMm($paperWidth));
+            $pdf = ThermalReceiptPaper::pdf('livewire.admin.orders.receipt-station', compact('order', 'company', 'station', 'items'), $paperWidth);
 
             return $pdf->stream('cupom-'.$station.'-'.$order->order_number.'.pdf');
         }
 
-        $pdf = Pdf::loadView('livewire.admin.orders.receipt', compact('order', 'company'))
-            ->setPaper(ThermalReceiptPaper::forWidthMm($paperWidth));
+        $pdf = ThermalReceiptPaper::pdf('livewire.admin.orders.receipt', compact('order', 'company'), $paperWidth);
 
         return $pdf->stream('cupom-'.$order->order_number.'.pdf');
     }

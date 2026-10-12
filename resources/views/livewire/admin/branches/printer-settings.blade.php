@@ -1,14 +1,14 @@
 <div class="w-full space-y-6">
+    <x-admin.unsaved-guard :save="['save', 'resetForm', 'edit']" />
+
     <x-admin.page-header
-        :back-route="route('admin.branches.index')"
         :title="'Configurar Impressoras — ' . $branch->name"
     />
 
-    @if (session('status'))
-        <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm dark:bg-green-900/30 dark:border-green-700 dark:text-green-400">
-            {{ session('status') }}
-        </div>
-    @endif
+    <x-admin.branch-nav :branch="$branch" current="printer" />
+
+    <x-admin.flash-status />
+
 
     <x-admin.form-card title="Como instalar e configurar o QZ Tray">
         <p class="text-sm text-neutral-600 dark:text-neutral-300">
@@ -74,7 +74,7 @@
                                 {{ ucfirst($printer->station) }}
                                 @if ($printer->name) — {{ $printer->name }} @endif
                                 @unless ($printer->active)
-                                    <span class="text-xs text-neutral-400">(inativa)</span>
+                                    <span class="text-xs text-neutral-500 dark:text-neutral-400">(inativa)</span>
                                 @endunless
                             </div>
                             <div class="text-xs text-neutral-500 dark:text-neutral-400">
@@ -88,17 +88,20 @@
                                 @if ($printer->print_fiscal_note) · nota fiscal automática @endif
                             </div>
                         </div>
-                        <div class="flex items-center gap-2">
-                            <flux:button wire:click="edit({{ $printer->id }})" variant="outline" size="sm">Editar</flux:button>
-                            <flux:button wire:click="delete({{ $printer->id }})" wire:confirm="Remover esta impressora?"
-                                variant="outline" size="sm" class="!text-red-600">Remover</flux:button>
-                        </div>
+                        @if ($canSave)
+                            <div class="flex items-center gap-2">
+                                <flux:button wire:click="edit({{ $printer->id }})" variant="outline" size="sm">Editar</flux:button>
+                                <flux:button wire:click="delete({{ $printer->id }})" wire:confirm="Remover esta impressora?"
+                                    variant="outline" size="sm" class="!text-red-600">Remover</flux:button>
+                            </div>
+                        @endif
                     </div>
                 @endforeach
             </div>
         @endif
     </x-admin.form-card>
 
+    @if ($canSave)
     <x-admin.form-card :title="$editingId ? 'Editar impressora' : 'Adicionar impressora'">
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -203,11 +206,12 @@
             @endif
         </div>
     </x-admin.form-card>
+    @endif
 
     <div class="pb-8">
         <a href="{{ route('admin.branches.index') }}"
             class="inline-flex items-center px-4 py-2 text-sm text-neutral-600 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200">
-            Voltar
+            Voltar à lista
         </a>
     </div>
 </div>

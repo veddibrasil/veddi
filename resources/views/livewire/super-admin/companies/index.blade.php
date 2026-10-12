@@ -16,6 +16,12 @@
         </div>
     @endif
 
+    @if(session('error'))
+        <div class="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm dark:bg-red-900/30 dark:border-red-700 dark:text-red-400">
+            {{ session('error') }}
+        </div>
+    @endif
+
     <div class="flex gap-3">
         <flux:input wire:model.live="search" placeholder="Buscar empresa..." class="max-w-sm" />
     </div>

@@ -114,13 +114,51 @@ trait HasCartManagement
         $this->dispatch('product-added-to-cart', name: $product->name);
     }
 
+    /** Teto por linha — só barra digitação absurda (ex.: 99999999); o estoque real é conferido logo abaixo e no commit. */
+    private const MAX_CART_LINE_QTY = 999;
+
     public function updateCartQty(string $cartKey, int $qty): void
     {
+        // Chave que não está no carrinho (payload forjado ou linha já removida) criaria uma
+        // linha fantasma sem product_id, que derrubava buildOrderCart() na confirmação.
+        if (! isset($this->cart[$cartKey])) {
+            return;
+        }
+
         if ($qty <= 0) {
             $this->removeItem($cartKey);
 
             return;
         }
+
+        $qty = min($qty, self::MAX_CART_LINE_QTY);
+
+        $productId = (int) ($this->cart[$cartKey]['product_id'] ?? 0);
+        $stocks = $this->productStocks;
+
+        if ($productId && array_key_exists($productId, $stocks)) {
+            $otherLines = 0;
+
+            foreach ($this->cart as $key => $item) {
+                if ((string) $key !== $cartKey && (int) ($item['product_id'] ?? 0) === $productId) {
+                    $otherLines += (int) ($item['qty'] ?? 0);
+                }
+            }
+
+            $maxForLine = max(0, (int) $stocks[$productId] - $otherLines);
+
+            if ($qty > $maxForLine) {
+                $this->addError('stock', "Estoque insuficiente para \"{$this->cart[$cartKey]['name']}\": disponível {$stocks[$productId]}.");
+                $qty = $maxForLine;
+
+                if ($qty <= 0) {
+                    $this->removeItem($cartKey);
+
+                    return;
+                }
+            }
+        }
+
         $this->cart[$cartKey]['qty'] = $qty;
         $this->cart = $this->cart;
     }

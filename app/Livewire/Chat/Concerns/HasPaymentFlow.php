@@ -135,6 +135,20 @@ trait HasPaymentFlow
         if ($this->submitting) {
             return;
         }
+
+        // Sem limite aqui, um cliente conseguia gerar pedidos `pending`/`awaiting_payment`
+        // em sequência sem nunca pagar (spam) — o único freio antes era o debounce de clique.
+        $rateLimitKey = "place-order:{$this->customerId}";
+
+        if (RateLimiter::tooManyAttempts($rateLimitKey, 8)) {
+            Log::channel('chat')->warning('placeOrder rate limitado', ['customer_id' => $this->customerId]);
+            $this->addMessage('bot', 'Muitas tentativas de pedido em pouco tempo. Aguarde alguns minutos e tente novamente.');
+
+            return;
+        }
+
+        RateLimiter::hit($rateLimitKey, 300);
+
         $this->submitting = true;
         $this->isLoading = true;
 

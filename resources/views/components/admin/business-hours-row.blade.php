@@ -13,7 +13,7 @@
             :disabled="! $isActive"
             class="w-32"
         />
-        <span class="text-neutral-400 dark:text-neutral-500 text-sm mt-5">até</span>
+        <span class="text-neutral-600 dark:text-neutral-400 text-sm mt-5">até</span>
         <flux:input
             wire:model="day_hours.{{ $dayIndex }}.closes_at"
             type="time"

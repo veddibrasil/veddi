@@ -107,7 +107,8 @@ class CartOptionPricing
                 if ($groupQty > $group->total_qty) {
                     throw new RuntimeException("Quantidade selecionada no grupo \"{$group->name}\" excede o máximo ({$group->total_qty}).");
                 }
-                if ($groupQty < $group->min_qty) {
+                // "Não quero" (allow_skip) permite zerar o grupo mesmo com mínimo > 0 — o chat já aceita isso.
+                if ($groupQty < $group->min_qty && ! ($group->allow_skip && $groupQty === 0)) {
                     throw new RuntimeException("Quantidade selecionada no grupo \"{$group->name}\" é menor que o mínimo ({$group->min_qty}).");
                 }
             }
@@ -117,6 +118,35 @@ class CartOptionPricing
         }
 
         return ['extra' => round($extra, 2), 'options' => $normalized];
+    }
+
+    /**
+     * `resolve()` só valida os grupos que vieram no payload; um item enviado sem `options` pulava
+     * o mínimo de todos os grupos. Aqui o servidor confere os grupos do produto, um a um.
+     *
+     * @param  array<int, array<string, mixed>>  $normalizedOptions  o campo `options` devolvido por resolve()
+     */
+    public function assertRequiredGroupsSelected(Product $product, array $normalizedOptions): void
+    {
+        if (! $product->relationLoaded('optionGroups')) {
+            $product->load('optionGroups');
+        }
+
+        foreach ($product->optionGroups as $group) {
+            if ($group->fixed || (int) $group->min_qty <= 0) {
+                continue;
+            }
+
+            $selected = (int) array_sum(array_column($normalizedOptions[$group->id]['selections'] ?? [], 'qty'));
+
+            if ($selected === 0 && $group->allow_skip) {
+                continue;
+            }
+
+            if ($selected < (int) $group->min_qty) {
+                throw new RuntimeException("Escolha ao menos {$group->min_qty} opção(ões) em \"{$group->name}\" para \"{$product->name}\".");
+            }
+        }
     }
 
     /**

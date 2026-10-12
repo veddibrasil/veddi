@@ -80,13 +80,10 @@ test('operador PDV não pode adicionar ao carrinho produto/filial de outra empre
 
     $this->actingAs($operator);
 
+    // O 403 agora sai já na troca de filial forjada (antes só ao adicionar produto): o operador
+    // nem chega a ter uma filial de outra empresa como contexto. A checagem em addProduct*
+    // continua como segunda barreira.
     Livewire::test(Terminal::class)
         ->set('selectedBranchId', $branchB->id)
-        ->call('addProduct', $productB->id)
-        ->assertForbidden();
-
-    Livewire::test(Terminal::class)
-        ->set('selectedBranchId', $branchB->id)
-        ->call('addProductWithOptions', $productB->id, [])
         ->assertForbidden();
 });

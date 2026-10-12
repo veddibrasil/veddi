@@ -17,6 +17,7 @@ use App\Models\Product;
 use App\Models\User;
 use App\Services\Company\UserCreationService;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 /** Mesa/comanda. Venda direta/balcão fica em {@see Terminal}. */
@@ -56,6 +57,7 @@ class TabTerminal extends Component
 
     // ── Sempre 'balcao': mesa/comanda não tem fluxo de entrega. Propriedade
     //    existe só porque HasCustomerManagement é compartilhada com o Terminal. ─
+    #[Locked]
     public string $deliveryType = 'balcao';
 
     // ── Cliente (opcional) ───────────────────────────────────────────────────
@@ -79,8 +81,10 @@ class TabTerminal extends Component
 
     public string $manualDiscountInput = '';
 
+    #[Locked]
     public float $manualDiscountAmount = 0.0;
 
+    #[Locked]
     public bool $manualDiscountAllowed = false;
 
     public bool $serviceFeeWaived = false;
@@ -91,6 +95,7 @@ class TabTerminal extends Component
     // só a impressão automática da nota (a emissão em si é sempre obrigatória).
     public bool $printFiscalNote = false;
 
+    #[Locked]
     public bool $canUseFiscalNotes = false;
 
     // ── Observação ────────────────────────────────────────────────────────────
@@ -115,6 +120,7 @@ class TabTerminal extends Component
     public ?string $createCustomerError = null;
 
     // ── Caixa (sessão PDV) ────────────────────────────────────────────────────
+    #[Locked]
     public ?int $cashSessionId = null;
 
     public string $terminalName = '';
@@ -144,9 +150,11 @@ class TabTerminal extends Component
     public ?int $viewingTabItemsOrderId = null;
 
     // ── Permissões ────────────────────────────────────────────────────────────
+    #[Locked]
     public bool $canOperate = false;
 
     // Garçom: só abre mesa/comanda e lança itens — sem caixa, pagamento, desconto ou cancelamento.
+    #[Locked]
     public bool $isWaiter = false;
 
     // ── Atalho: adicionar garçom (só pra quem gerencia usuários, com o módulo Garçom ativo) ──
@@ -211,6 +219,8 @@ class TabTerminal extends Component
 
     public function updatedSelectedBranchId(): void
     {
+        $this->assertSelectedBranchBelongsToCurrentCompany();
+
         $this->activeCategoryId = null;
         $this->search = '';
         $this->openTabOrderId = null;
@@ -349,14 +359,16 @@ class TabTerminal extends Component
     }
 
     /** Confirma o fechamento da comanda em pagamento — wrapper público pro closeTab() privado de HasOpenTabs. */
-    public function confirmCloseTab(): void
+    public function confirmCloseTab(?string $cashReceived = null): void
     {
+        $this->syncCashReceivedFromClient($cashReceived);
         $this->closeTab();
     }
 
     /** Confirma o pagamento combinado de todas as comandas da mesa — wrapper público pro closeTableTabs() privado de HasOpenTabs. */
-    public function confirmCloseTableTabs(): void
+    public function confirmCloseTableTabs(?string $cashReceived = null): void
     {
+        $this->syncCashReceivedFromClient($cashReceived);
         $this->closeTableTabs();
     }
 

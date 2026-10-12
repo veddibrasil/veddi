@@ -1,3 +1,7 @@
+// Busca do cardápio: "cafe" acha "Café", "  coxinha " acha "Coxinha".
+window.mcNorm = (text) => String(text ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+window.mcMatches = (text, query) => window.mcNorm(text).includes(window.mcNorm(query).trim());
+
 Alpine.data('chatApp', () => ({
     copied: false,
     cepLoading: false,
@@ -98,15 +102,33 @@ Alpine.data('chatApp', () => ({
         });
     },
 
+    groupSatisfied(group) {
+        if (group.fixed) return true;
+        const total = this.getGroupTotal(group.id);
+        if (group.allow_skip && total === 0) return true;
+
+        return total <= group.total_qty && total >= (group.min_qty || 0);
+    },
+
+    // Item sem preço final não entra no carrinho (o servidor recusa também): sem isso, um produto de
+    // preço 0 cujo grupo tem mínimo 0 virava um item de R$ 0,00 sem nenhuma escolha.
     canConfirm() {
         if (!this.selectingProduct) return false;
-        return this.selectingProduct.groups.every(group => {
-            if (group.fixed) return true;
-            const total = this.getGroupTotal(group.id);
-            if (group.allow_skip && total === 0) return true;
 
-            return total <= group.total_qty && total >= (group.min_qty || 0);
-        });
+        return this.selectingProduct.groups.every(group => this.groupSatisfied(group))
+            && this.getTotalWithOptions() > 0;
+    },
+
+    confirmHint() {
+        if (!this.selectingProduct || this.canConfirm()) return '';
+
+        const pending = this.selectingProduct.groups.find(group => !this.groupSatisfied(group));
+        if (pending) {
+            const min = pending.min_qty || 1;
+            return 'Escolha ' + (min > 1 ? 'pelo menos ' + min + ' opções' : 'uma opção') + ' em "' + pending.name + '".';
+        }
+
+        return 'Escolha ao menos uma opção para continuar.';
     },
 
     getTotalWithOptions() {

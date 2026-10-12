@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Cupom {{ $order->order_number }}</title>
+    @php $ifood = $order->ifoodDetails(); @endphp
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: DejaVu Sans Mono, monospace; font-size: 9px; color: #1a0025; background: #fff; padding: 10px 10px; }
@@ -48,7 +49,7 @@
         <div class="type-banner">RETIRADA NO LOCAL</div>
     @endif
 
-    @if ($order->scheduled_at)
+    @if ($order->scheduled_at && ! $ifood)
         <div class="type-banner" style="background-color: #b45309;">
             AGENDADO: {{ $order->scheduled_at->setTimezone(config('app.timezone'))->format('d/m/Y H:i') }}
         </div>
@@ -58,8 +59,14 @@
     <table class="row">
         <tr>
             <td>Pedido</td>
-            <td class="right order-number">{{ $order->order_number }}</td>
+            <td class="right order-number">{{ $ifood ? 'iFood #'.$ifood->displayId() : $order->order_number }}</td>
         </tr>
+        @if ($ifood)
+            <tr>
+                <td class="sm muted">Sistema</td>
+                <td class="right sm muted">{{ $order->order_number }}</td>
+            </tr>
+        @endif
         <tr>
             <td>Data</td>
             <td class="right">{{ $order->created_at->format('d/m/Y H:i') }}</td>
@@ -71,6 +78,13 @@
             </tr>
         @endif
     </table>
+
+    @if ($ifood)
+        <div class="divider"></div>
+        @foreach ($ifood->receiptLines('geral') as $line)
+            <div class="{{ $line['bold'] ? 'bold' : '' }}">{{ $line['text'] }}</div>
+        @endforeach
+    @endif
 
     <div class="divider"></div>
 
@@ -100,6 +114,11 @@
                     </tr>
                 @endif
             @endforeach
+            @if ($item->notes)
+                <tr>
+                    <td colspan="2" class="bold" style="padding-left: 8px; font-size: 9px;">Obs: {{ $item->notes }}</td>
+                </tr>
+            @endif
         </table>
         <div style="border-top: 1px dotted #dca8f5; margin: 3px 0;"></div>
     @endforeach
@@ -143,7 +162,7 @@
         @endif
         @if (($order->manual_discount ?? 0) > 0)
             <tr>
-                <td>Desconto operador</td>
+                <td>{{ $ifood ? 'Cupom iFood' : 'Desconto operador' }}</td>
                 <td class="right">- R$ {{ number_format($order->manual_discount, 2, ',', '.') }}</td>
             </tr>
         @endif
@@ -155,7 +174,8 @@
 
     <div class="divider"></div>
 
-    {{-- Pagamento --}}
+    {{-- Pagamento (pedido iFood: forma de pagamento, troco e cobrança ficam no bloco iFood acima) --}}
+    @unless ($ifood)
     <table class="row">
         <tr>
             <td>Pagamento</td>
@@ -203,6 +223,14 @@
             <td class="right bold">{{ $order->payment?->status === 'paid' ? 'PAGO' : 'NAO PAGO' }}</td>
         </tr>
     </table>
+    @else
+    <table class="row">
+        <tr>
+            <td class="bold">Pagamento</td>
+            <td class="right bold">{{ $ifood->pendingAmount() > 0 ? 'COBRAR R$ '.number_format($ifood->pendingAmount(), 2, ',', '.') : 'PAGO NO IFOOD' }}</td>
+        </tr>
+    </table>
+    @endunless
 
     <div class="divider"></div>
 
@@ -210,7 +238,9 @@
     @php $isGuestCustomer = $order->customer->phone === 'pdv-guest'; @endphp
     @if (!$isGuestCustomer)
         <div class="bold">{{ $order->customer->name }}</div>
-        <div class="sm muted">{{ $order->customer->phone }}</div>
+        @unless ($ifood)
+            <div class="sm muted">{{ $order->customer->phone }}</div>
+        @endunless
     @else
         <div class="muted sm">Cliente balcao</div>
     @endif
@@ -231,7 +261,7 @@
 
     @if ($order->notes)
         <div class="divider"></div>
-        <div class="sm"><span class="bold">Obs: </span>{{ $order->notes }}</div>
+        <div class="bold"><span>Obs. do pedido: </span>{{ $order->notes }}</div>
     @endif
 
     @if ($company?->canUseFiscalNotes() && $order->activeFiscalNote)

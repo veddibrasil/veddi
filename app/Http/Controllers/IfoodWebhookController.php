@@ -38,12 +38,22 @@ class IfoodWebhookController extends Controller
                     return response()->json(['error' => 'Invalid merchantIds'], 422);
                 }
 
-                $merchantIds = IfoodIntegration::withoutGlobalScopes()
-                    ->where('status', 'active')
+                // Só lojas operacionais seguem "presentes": empresa bloqueada sai do ar no iFood.
+                $integrations = IfoodIntegration::operational()
+                    ->with('company')
                     ->whereIn('merchant_id', $payload['merchantIds'])
-                    ->pluck('merchant_id')->unique()->values()->all();
+                    ->get()
+                    ->filter(fn (IfoodIntegration $integration) => $integration->isOperational());
 
-                return response()->json(['merchantIds' => $merchantIds], 202);
+                // KEEPALIVE também chega pelo webhook: conta como sinal de vida, senão loja sem
+                // pedido por 10 min virava "instável" no monitor de saúde.
+                if ($integrations->isNotEmpty()) {
+                    IfoodIntegration::withoutGlobalScopes()
+                        ->whereIn('id', $integrations->modelKeys())
+                        ->update(['last_webhook_received_at' => now(), 'webhook_status' => 'healthy']);
+                }
+
+                return response()->json(['merchantIds' => $integrations->pluck('merchant_id')->unique()->values()->all()], 202);
             }
 
             return response()->json(['status' => 'accepted'], 202);
@@ -57,10 +67,28 @@ class IfoodWebhookController extends Controller
             return response()->json(['error' => 'Missing merchantId'], 422);
         }
 
-        $integration = IfoodIntegration::withoutGlobalScopes()
+        // Pedido novo só pra loja ativa; o resto (cancelamento, negociação, conclusão) é de pedido
+        // que já está no painel e precisa chegar mesmo com a integração suspensa.
+        $eventCode = $payload['code'] ?? $payload['fullCode'] ?? null;
+        $includePaused = ! in_array($eventCode, ['PLC', 'PLACED'], true);
+
+        $matches = IfoodIntegration::operational($includePaused)
+            ->with('company')
             ->where('merchant_id', $merchantId)
-            ->where('status', 'active')
-            ->first();
+            ->get();
+
+        if ($matches->count() > 1) {
+            // Mesma loja ligada a duas integrações: entregar a qualquer uma vazaria pedido entre
+            // empresas. O índice único de merchant_id impede isso; aqui é só a última barreira.
+            Log::channel('ifood')->critical('iFood webhook: loja ligada a mais de uma integração ativa, evento recusado', [
+                'merchant_id' => $merchantId,
+                'ifood_integration_ids' => $matches->modelKeys(),
+            ]);
+
+            return response()->json(['error' => 'Ambiguous merchant'], 409);
+        }
+
+        $integration = $matches->first(fn (IfoodIntegration $candidate) => $candidate->isOperational($includePaused));
 
         if (! $integration) {
             Log::channel('ifood')->warning('iFood webhook: integração não encontrada ou inativa', ['merchant_id' => $merchantId]);

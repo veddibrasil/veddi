@@ -19,6 +19,7 @@ trait HasCustomerProfile
 
         if ($customer) {
             $this->fillCustomerData($customer);
+            $this->recordWhatsAppConsent($customer);
             Log::channel('chat')->info('Cliente identificado pelo telefone', ['customer_id' => $customer->id, 'phone' => $this->phone]);
             $this->addMessage('user', $this->phone);
 
@@ -54,6 +55,7 @@ trait HasCustomerProfile
         if ($existing) {
             $customer = $service->createFromGlobal($this->phone, $existing);
             $this->fillCustomerData($customer);
+            $this->recordWhatsAppConsent($customer);
             $this->addMessage('user', $this->phone);
 
             if (empty($this->cart)) {
@@ -135,6 +137,7 @@ trait HasCustomerProfile
         );
 
         $this->customerId = $customer->id;
+        $this->recordWhatsAppConsent($customer);
         Log::channel('chat')->info('Novo cliente cadastrado', ['customer_id' => $customer->id, 'phone' => $normalized]);
 
         $addressSummary = $this->address;
@@ -209,6 +212,17 @@ trait HasCustomerProfile
         $this->addMessage('user', $branch->name);
         $this->addMessage('bot', "Ótimo! Aqui está o cardápio da {$branch->name}. Adicione os itens que quiser!");
         $this->transitionTo('MENU_BROWSE');
+    }
+
+    /**
+     * Grava o consentimento de WhatsApp marcado na tela do telefone. Só vale se a empresa notifica
+     * por WhatsApp (o checkbox nem aparece senão) e nunca revoga: desmarcar não apaga um opt-in antigo.
+     */
+    private function recordWhatsAppConsent(Customer $customer): void
+    {
+        if ($this->whatsappOptIn && $this->whatsappAvailable()) {
+            app(CustomerService::class)->registerWhatsAppOptIn($customer);
+        }
     }
 
     private function fillCustomerData(Customer $customer): void

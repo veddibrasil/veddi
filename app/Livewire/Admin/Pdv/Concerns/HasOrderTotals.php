@@ -51,7 +51,20 @@ trait HasOrderTotals
             return max(0.0, round($this->cartTotal + $this->serviceFeeAmount + $this->couvertFeeAmount - $this->manualDiscountAmount, 2));
         }
 
-        return max(0.0, round($this->cartTotal + $this->deliveryFeeAmount + $this->serviceFeeAmount + $this->couvertFeeAmount - $this->manualDiscountAmount, 2));
+        return max(0.0, round($this->cartTotal + $this->effectiveDeliveryFee() + $this->serviceFeeAmount + $this->couvertFeeAmount - $this->manualDiscountAmount, 2));
+    }
+
+    /**
+     * Taxa de entrega só vale para pedido de entrega. `deliveryFeeAmount` sobrevive à troca do tipo
+     * de pedido no checkout (Entrega → Balcão), então nunca ler a propriedade direto nos totais.
+     */
+    private function effectiveDeliveryFee(): float
+    {
+        if (! property_exists($this, 'deliveryFeeAmount') || $this->deliveryType !== 'entrega') {
+            return 0.0;
+        }
+
+        return (float) $this->deliveryFeeAmount;
     }
 
     #[Computed]

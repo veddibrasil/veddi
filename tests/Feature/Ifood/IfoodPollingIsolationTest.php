@@ -63,7 +63,26 @@ test('polling mantém presença mesmo depois de receber webhook saudável', func
         ->withArgs(fn ($candidate) => $candidate->id === $integration->id)->andReturn([]);
 
     (new PollIfoodEventsJob)->handle(new IfoodOrderPollingService($gateway));
-    expect($integration->fresh()->last_synced_at)->not->toBeNull();
+    expect($integration->fresh()->last_polled_at)->not->toBeNull()
+        ->and($integration->fresh()->last_synced_at)->toBeNull();
+});
+
+test('polling ignora empresa bloqueada e empresa sem o módulo de integrações', function () {
+    ['integration' => $blocked, 'company' => $blockedCompany] = ifoodContext('poll-blocked');
+    ['integration' => $free, 'company' => $freeCompany] = ifoodContext('poll-free');
+    ['integration' => $active] = ifoodContext('poll-active');
+    $blockedCompany->update(['status' => 'BLOCKED']);
+    $freeCompany->update(['plan' => \App\Enums\Plan::Free]);
+
+    $gateway = Mockery::mock(IfoodGatewayContract::class);
+    $gateway->shouldReceive('pollEvents')->once()
+        ->withArgs(fn ($candidate) => $candidate->id === $active->id)->andReturn([]);
+
+    (new PollIfoodEventsJob)->handle(new IfoodOrderPollingService($gateway));
+
+    expect($blocked->fresh()->last_polled_at)->toBeNull()
+        ->and($free->fresh()->last_polled_at)->toBeNull()
+        ->and($active->fresh()->last_polled_at)->not->toBeNull();
 });
 
 test('registra acknowledgement somente após a API aceitar todos os eventos recebidos', function () {

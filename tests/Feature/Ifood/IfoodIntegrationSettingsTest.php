@@ -112,12 +112,72 @@ test('confirmar autorização com o código colado conclui a conexão', function
         ->set('authorizationCode', 'HTLM-KWVR')
         ->call('confirmAuthorization')
         ->assertSet('connectionState', 'connected')
-        ->assertSet('merchantId', 'merchant-abc');
+        ->assertSet('merchantId', 'merchant-abc')
+        ->assertSet('merchantName', 'Loja Teste')
+        ->assertSet('tab', 'cardapio')
+        ->assertSee('Publicar cardápio no iFood');
 
-    // Cardápio começa vazio no iFood — conectar precisa disparar o sync na hora
-    // em vez de esperar o batch diário.
-    Bus::assertDispatched(SyncIfoodCatalogJob::class, fn ($job) => $job->branchId === $branch->id);
+    // Loja nova: o cardápio só vai pro iFood depois que o restaurante revisa e publica
+    // (evita duplicar o cardápio de quem já vendia no iFood). A presença começa na hora.
+    Bus::assertNotDispatched(SyncIfoodCatalogJob::class);
     Bus::assertDispatched(PollIfoodEventsJob::class);
+});
+
+test('reconectar loja com cardápio já publicado volta a sincronizar na hora', function () {
+    $company = ifoodSettingsTestCompany();
+    $branch = Branch::withoutGlobalScopes()->where('company_id', $company->id)->first();
+    app()->instance('current.company', $company);
+
+    IfoodIntegration::create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'status' => 'disconnected',
+        'user_code' => 'ABCD-1234',
+        'authorization_code_verifier' => 'verifier-xyz',
+        'user_code_expires_at' => now()->addMinutes(5),
+        'catalog_id' => 'catalog-1',
+        'catalog_merchant_id' => 'merchant-abc',
+        'catalog_published_at' => now()->subDay(),
+    ]);
+
+    Http::fake([
+        '*/authentication/v1.0/oauth/token' => Http::response(['accessToken' => 'a', 'refreshToken' => 'r', 'expiresIn' => 21600]),
+        '*/merchant/v1.0/merchants' => Http::response([['id' => 'merchant-abc', 'name' => 'Loja Teste']]),
+    ]);
+    Bus::fake([SyncIfoodCatalogJob::class, PollIfoodEventsJob::class]);
+
+    Livewire::actingAs(ifoodSettingsAdmin($company))
+        ->test(IfoodIntegrationSettings::class)
+        ->set('authorizationCode', 'HTLM-KWVR')
+        ->call('confirmAuthorization')
+        ->assertSet('connectionState', 'connected');
+
+    Bus::assertDispatched(SyncIfoodCatalogJob::class, fn ($job) => $job->branchId === $branch->id);
+    expect(IfoodIntegration::first()->catalog_id)->toBe('catalog-1');
+});
+
+test('trocar a loja da filial descarta o mapeamento do cardápio da loja anterior', function () {
+    $ctx = ifoodContext('troca-loja');
+    \Illuminate\Support\Facades\DB::table('ifood_categories')->insert([
+        'company_id' => $ctx['company']->id, 'branch_id' => $ctx['branch']->id,
+        'product_category_id' => $ctx['category']->id, 'ifood_category_id' => 'cat-old',
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+    $ctx['integration']->update([
+        'merchant_id' => null, 'status' => 'disconnected', 'access_token' => 'a', 'refresh_token' => 'r',
+        'token_expires_at' => now()->addHour(), 'catalog_id' => 'catalog-old', 'catalog_merchant_id' => 'merchant-old',
+        'available_merchants' => [['id' => 'merchant-new', 'name' => 'Loja real'], ['id' => 'merchant-x', 'name' => 'Outra']],
+    ]);
+
+    app(\App\Services\Ifood\IfoodAuthService::class)->selectMerchant($ctx['integration']->fresh(), 'merchant-new');
+
+    $integration = $ctx['integration']->fresh();
+    expect($integration->merchant_id)->toBe('merchant-new')
+        ->and($integration->merchant_name)->toBe('Loja real')
+        ->and($integration->catalog_id)->toBeNull()
+        ->and($integration->catalog_published_at)->toBeNull()
+        ->and(\Illuminate\Support\Facades\DB::table('ifood_categories')->where('branch_id', $ctx['branch']->id)->count())->toBe(0)
+        ->and(\Illuminate\Support\Facades\DB::table('branch_product')->where('branch_id', $ctx['branch']->id)->value('ifood_item_id'))->toBeNull();
 });
 
 test('falha na autorização mostra a mensagem correspondente uma vez e mantém pendente', function (int $status, array $response, string $message) {
@@ -203,7 +263,7 @@ test('consulta de lojas pode ser repetida sem trocar o código novamente', funct
         ->assertSet('merchantId', 'merchant-recovered')
         ->assertDontSeeText($message);
     Http::assertSentCount(3);
-    Bus::assertDispatched(SyncIfoodCatalogJob::class);
+    Bus::assertNotDispatched(SyncIfoodCatalogJob::class);
     Bus::assertDispatched(PollIfoodEventsJob::class);
 })->with([
     'nenhuma loja autorizada' => [200, 'O iFood aceitou a autorização, mas não retornou nenhuma loja.'],
@@ -468,13 +528,15 @@ test('escolher a loja confirma o merchant e ativa a integração', function () {
 
     $integration = IfoodIntegration::where('company_id', $company->id)->where('branch_id', $branch->id)->first();
     expect($integration->merchant_id)->toBe('merchant-b')
+        ->and($integration->merchant_name)->toBe('Loja Zona Sul')
         ->and($integration->available_merchants)->toBeNull()
         ->and($integration->status)->toBe('active');
 
-    Bus::assertDispatched(SyncIfoodCatalogJob::class, fn ($job) => $job->branchId === $branch->id);
+    Bus::assertNotDispatched(SyncIfoodCatalogJob::class);
+    Bus::assertDispatched(PollIfoodEventsJob::class);
 });
 
-test('sincronizar cardápio agora dispara o job pra filial conectada', function () {
+test('sincronizar cardápio agora conclui a operação antes de indicar sucesso', function () {
     $company = ifoodSettingsTestCompany();
     $branch = Branch::withoutGlobalScopes()->where('company_id', $company->id)->first();
     app()->instance('current.company', $company);
@@ -488,15 +550,37 @@ test('sincronizar cardápio agora dispara o job pra filial conectada', function 
         'status' => 'active',
     ]);
 
-    Bus::fake([SyncIfoodCatalogJob::class, PollIfoodEventsJob::class]);
+    $this->mock(\App\Services\Ifood\IfoodCatalogSyncService::class)->shouldReceive('syncFullCatalog')->once()
+        ->andReturn(['synced' => 1, 'failed' => []]);
     $admin = ifoodSettingsAdmin($company);
 
+    // A fila de teste é síncrona: o job roda dentro da chamada.
     Livewire::actingAs($admin)
         ->test(IfoodIntegrationSettings::class)
         ->set('branchId', $branch->id)
-        ->call('syncCatalogNow');
+        ->call('syncCatalogNow')->assertSee('Publicação do cardápio iniciada')
+        ->call('refreshCatalogStatus')->assertSet('catalogSyncStatus', 'done')->assertSet('catalogPublished', true);
 
-    Bus::assertDispatched(SyncIfoodCatalogJob::class, fn ($job) => $job->branchId === $branch->id);
+    expect(IfoodIntegration::first()->catalog_published_at)->not->toBeNull();
+});
+
+test('publicação com produto problemático conclui os demais e mostra a pendência', function () {
+    $company = ifoodSettingsTestCompany();
+    $branch = Branch::withoutGlobalScopes()->where('company_id', $company->id)->first();
+    app()->instance('current.company', $company);
+    IfoodIntegration::create([
+        'company_id' => $company->id, 'branch_id' => $branch->id, 'merchant_id' => 'merchant-abc',
+        'access_token' => 'access-abc', 'refresh_token' => 'refresh-abc', 'status' => 'active',
+    ]);
+    $this->mock(\App\Services\Ifood\IfoodCatalogSyncService::class)->shouldReceive('syncFullCatalog')->once()
+        ->andReturn(['synced' => 3, 'failed' => [99 => 'Produto sem categoria.']]);
+
+    Livewire::actingAs(ifoodSettingsAdmin($company))
+        ->test(IfoodIntegrationSettings::class)
+        ->call('syncCatalogNow')
+        ->call('refreshCatalogStatus')
+        ->assertSet('catalogSyncStatus', 'partial')
+        ->assertSee('1 produto não foi enviado.');
 });
 
 test('autorização revogada exibe reconexão e não permite retomar sem autorizar', function () {

@@ -15,6 +15,7 @@ class BranchPause extends Model
         'recurring_annual',
         'starts_at',
         'ends_at',
+        'ifood_interruption_id',
     ];
 
     protected $casts = [

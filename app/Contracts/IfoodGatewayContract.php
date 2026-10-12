@@ -31,6 +31,43 @@ interface IfoodGatewayContract
 
     public function requestCancellation(IfoodIntegration $integration, string $ifoodOrderId, string $reasonCode): void;
 
+    /** Plataforma de Negociação: aceita o pedido do cliente (cancelamento/reembolso). */
+    public function acceptDispute(IfoodIntegration $integration, string $disputeId, ?string $reason = null): void;
+
+    /** Plataforma de Negociação: recusa o pedido do cliente, com justificativa. */
+    public function rejectDispute(IfoodIntegration $integration, string $disputeId, string $reason): void;
+
+    /** Plataforma de Negociação: responde com uma das alternativas oferecidas na disputa. */
+    public function proposeDisputeAlternative(IfoodIntegration $integration, string $disputeId, string $alternativeId, array $body): void;
+
+    public function listMerchants(IfoodIntegration $integration): array;
+
+    public function getMerchantDetails(IfoodIntegration $integration): array;
+
+    public function getMerchantStatus(IfoodIntegration $integration): array;
+
+    public function listInterruptions(IfoodIntegration $integration): array;
+
+    public function createInterruption(IfoodIntegration $integration, array $data): array;
+
+    public function deleteInterruption(IfoodIntegration $integration, string $id): void;
+
+    public function getOpeningHours(IfoodIntegration $integration): array;
+
+    public function setOpeningHours(IfoodIntegration $integration, array $shifts): void;
+
+    public function getCatalogItem(IfoodIntegration $integration, string $id): ?array;
+
+    public function uploadCatalogImage(IfoodIntegration $integration, string $image): string;
+
+    public function updateItemPrices(IfoodIntegration $integration, array $prices): void;
+
+    public function updateItemStatuses(IfoodIntegration $integration, array $items): void;
+
+    public function updateOptionPrice(IfoodIntegration $integration, string $id, array $price): void;
+
+    public function updateOptionStatus(IfoodIntegration $integration, string $id, string $status): void;
+
     /** Cria uma categoria no catálogo do merchant e retorna o categoryId gerado pelo iFood. */
     public function createCategory(IfoodIntegration $integration, string $name): string;
 

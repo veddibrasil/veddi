@@ -243,16 +243,19 @@
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     @endonce
 
+    <x-admin.unsaved-guard :dirty-on="['addNeighborhood', 'removeNeighborhood', 'addDistanceTier', 'removeDistanceTier', 'addZoneFromDraw', 'removeZone', 'moveZoneUp', 'moveZoneDown']" />
+
     <x-admin.page-header
-        :back-route="route('admin.branches.index')"
         :title="'Configurar Entrega — ' . $branch->name"
     />
 
-    @if (session('status'))
-        <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm dark:bg-green-900/30 dark:border-green-700 dark:text-green-400">
-            {{ session('status') }}
-        </div>
-    @endif
+    <x-admin.branch-nav :branch="$branch" current="delivery" />
+
+    <x-admin.flash-status />
+
+
+    <fieldset @disabled(! $canSave) class="min-w-0 space-y-6">
+    <legend class="sr-only">Configurações de entrega</legend>
 
     <x-admin.form-card title="Configurações gerais">
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -288,7 +291,7 @@
                 <flux:input wire:model="service_radius_km" type="number" step="0.01" min="0"
                     label="Raio de atuação (km)"
                     placeholder="Deixe em branco para sem limite" />
-                <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
+                <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
                     Distância máxima de entrega a partir desta filial.
                 </p>
                 @error('service_radius_km') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
@@ -320,10 +323,10 @@
             </div>
 
             @if (count($neighborhoods) === 0)
-                <p class="text-sm text-neutral-400 dark:text-neutral-500">Nenhum bairro cadastrado. Clique em "Adicionar bairro" para começar.</p>
+                <p class="text-sm text-neutral-500 dark:text-neutral-400">Nenhum bairro cadastrado. Clique em "Adicionar bairro" para começar.</p>
             @else
                 <div class="space-y-2">
-                    <div class="grid grid-cols-12 gap-2 text-xs font-medium text-neutral-400 uppercase px-1">
+                    <div class="grid grid-cols-12 gap-2 text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase px-1">
                         <span class="col-span-6">Bairro</span>
                         <span class="col-span-3">Taxa (R$)</span>
                         <span class="col-span-2">Ativo</span>
@@ -344,8 +347,8 @@
                                 <flux:checkbox wire:model="neighborhoods.{{ $i }}.active" />
                             </div>
                             <div class="col-span-1 flex justify-end">
-                                <button wire:click="removeNeighborhood({{ $i }})" type="button"
-                                    class="text-neutral-400 hover:text-red-500 text-lg leading-none">×</button>
+                                <button wire:click="removeNeighborhood({{ $i }})" type="button" aria-label="Remover bairro"
+                                    class="text-neutral-500 hover:text-red-500 text-lg leading-none">×</button>
                             </div>
                         </div>
                     @endforeach
@@ -393,7 +396,7 @@
                 class="rounded-xl overflow-hidden border border-blue-200 shadow-sm dark:border-blue-700">
                 <div class="flex items-center justify-between bg-blue-50 px-3 py-2 dark:bg-blue-900/30">
                     <span class="text-xs font-medium text-blue-700 dark:text-blue-300">Arraste o pin ou clique no mapa para posicionar a filial</span>
-                    <button type="button" @click="mapOpen = false; mapDestroy()" class="text-blue-400 hover:text-blue-700 text-lg leading-none">×</button>
+                    <button type="button" @click="mapOpen = false; mapDestroy()" aria-label="Fechar mapa" class="text-blue-400 hover:text-blue-700 text-lg leading-none">×</button>
                 </div>
                 <div id="branch-map-el" wire:ignore style="height:280px; width:100%;"></div>
                 <div class="flex gap-2 bg-blue-50 px-3 py-2 dark:bg-blue-900/30">
@@ -419,10 +422,10 @@
             @error('distanceTiers') <p class="text-red-500 text-xs">{{ $message }}</p> @enderror
 
             @if (count($distanceTiers) === 0)
-                <p class="text-sm text-neutral-400 dark:text-neutral-500">Nenhuma faixa cadastrada. Clique em "Adicionar faixa" para começar.</p>
+                <p class="text-sm text-neutral-500 dark:text-neutral-400">Nenhuma faixa cadastrada. Clique em "Adicionar faixa" para começar.</p>
             @else
                 <div class="space-y-2">
-                    <div class="grid grid-cols-12 gap-2 text-xs font-medium text-neutral-400 uppercase px-1">
+                    <div class="grid grid-cols-12 gap-2 text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase px-1">
                         <span class="col-span-3">De (km)</span>
                         <span class="col-span-3">Até (km)</span>
                         <span class="col-span-4">Taxa (R$)</span>
@@ -444,13 +447,13 @@
                                 @error("distanceTiers.{$i}.fee") <p class="text-red-500 text-xs mt-0.5">{{ $message }}</p> @enderror
                             </div>
                             <div class="col-span-2 flex justify-end">
-                                <button wire:click="removeDistanceTier({{ $i }})" type="button"
-                                    class="text-neutral-400 hover:text-red-500 text-lg leading-none">×</button>
+                                <button wire:click="removeDistanceTier({{ $i }})" type="button" aria-label="Remover faixa"
+                                    class="text-neutral-500 hover:text-red-500 text-lg leading-none">×</button>
                             </div>
                         </div>
                     @endforeach
 
-                    <p class="text-xs text-neutral-400 dark:text-neutral-500">Deixe "Até" em branco na última faixa para cobrir qualquer distância.</p>
+                    <p class="text-xs text-neutral-500 dark:text-neutral-400">Deixe "Até" em branco na última faixa para cobrir qualquer distância.</p>
                 </div>
             @endif
         </x-admin.form-card>
@@ -502,12 +505,12 @@
                 <div x-show="zoneDrawing" x-cloak
                     class="absolute inset-x-0 top-0 z-2000 flex items-center justify-between gap-2 bg-amber-50 border-b border-amber-200 px-3 py-2 dark:bg-amber-900/40 dark:border-amber-700">
                     <span class="text-xs font-medium text-amber-700 dark:text-amber-300">Clique no mapa para marcar os pontos. Duplo clique para fechar a área.</span>
-                    <button type="button" @click="zoneCancelDrawMode()" class="text-amber-500 hover:text-amber-800 text-lg leading-none">×</button>
+                    <button type="button" @click="zoneCancelDrawMode()" aria-label="Cancelar desenho da área" class="text-amber-500 hover:text-amber-800 text-lg leading-none">×</button>
                 </div>
                 <div x-show="zoneSettingLocation" x-cloak
                     class="absolute inset-x-0 top-0 z-2000 flex items-center justify-between gap-2 bg-blue-50 border-b border-blue-200 px-3 py-2 dark:bg-blue-900/40 dark:border-blue-700">
                     <span class="text-xs font-medium text-blue-700 dark:text-blue-300">Clique no mapa para marcar o local do restaurante.</span>
-                    <button type="button" @click="zoneSettingLocation = false" class="text-blue-500 hover:text-blue-800 text-lg leading-none">×</button>
+                    <button type="button" @click="zoneSettingLocation = false" aria-label="Cancelar definição da localização" class="text-blue-500 hover:text-blue-800 text-lg leading-none">×</button>
                 </div>
                 <div id="zone-map-el" wire:ignore style="height:380px; width:100%;"></div>
             </div>
@@ -516,10 +519,10 @@
             @error('branch_latitude') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
 
             @if (count($zones) === 0)
-                <p class="text-sm text-neutral-400 dark:text-neutral-500">Nenhuma área cadastrada. Desenhe um polígono no mapa acima para começar.</p>
+                <p class="text-sm text-neutral-500 dark:text-neutral-400">Nenhuma área cadastrada. Desenhe um polígono no mapa acima para começar.</p>
             @else
                 <div class="space-y-2">
-                    <div class="grid grid-cols-12 gap-2 text-xs font-medium text-neutral-400 uppercase px-1">
+                    <div class="grid grid-cols-12 gap-2 text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase px-1">
                         <span class="col-span-5">Nome da área</span>
                         <span class="col-span-3">Taxa (R$)</span>
                         <span class="col-span-2">Ativo</span>
@@ -541,11 +544,11 @@
                             </div>
                             <div class="col-span-2 flex justify-end gap-1">
                                 <button wire:click="moveZoneUp({{ $i }})" type="button" @if($i === 0) disabled @endif
-                                    class="text-neutral-400 hover:text-amber-600 disabled:opacity-30 text-sm leading-none px-1">↑</button>
+                                    class="text-neutral-500 hover:text-amber-600 disabled:opacity-30 text-sm leading-none px-1">↑</button>
                                 <button wire:click="moveZoneDown({{ $i }})" type="button" @if($i === count($zones) - 1) disabled @endif
-                                    class="text-neutral-400 hover:text-amber-600 disabled:opacity-30 text-sm leading-none px-1">↓</button>
+                                    class="text-neutral-500 hover:text-amber-600 disabled:opacity-30 text-sm leading-none px-1">↓</button>
                                 <button wire:click="removeZone({{ $i }})" type="button"
-                                    class="text-neutral-400 hover:text-red-500 text-lg leading-none px-1">×</button>
+                                    class="text-neutral-500 hover:text-red-500 text-lg leading-none px-1">×</button>
                             </div>
                         </div>
                     @endforeach
@@ -558,7 +561,7 @@
                 <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-lg w-full max-w-sm p-5 space-y-4">
                     <div class="flex items-center justify-between">
                         <h3 class="font-semibold text-neutral-700 dark:text-neutral-200">Área de Entrega Mapa</h3>
-                        <button type="button" @click="zoneCancelDraw()" class="text-neutral-400 hover:text-neutral-700 text-lg leading-none">×</button>
+                        <button type="button" @click="zoneCancelDraw()" aria-label="Cancelar desenho da área" class="text-neutral-500 hover:text-neutral-700 text-lg leading-none">×</button>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Nome da Área</label>
@@ -585,8 +588,13 @@
         </x-admin.form-card>
     </div>
 
+    </fieldset>
+
     <x-admin.form-actions
         save-label="Salvar configurações"
         :cancel-route="route('admin.branches.index')"
+        cancel-label="Voltar à lista"
+        :can-save="$canSave"
+        sticky
     />
 </div>

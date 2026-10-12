@@ -21,6 +21,9 @@ class Payment extends Model
         'original_amount',
         'card_fee',
         'card_fee_rate',
+        // Split gravado na criação da cobrança (PaymentSplitCalculator) — fonte da carteira.
+        'platform_fee',
+        'company_net_amount',
         'installments',
         'anticipation_days',
         'status',
@@ -40,6 +43,8 @@ class Payment extends Model
         'original_amount' => 'decimal:2',
         'card_fee' => 'decimal:2',
         'card_fee_rate' => 'float',
+        'platform_fee' => 'decimal:2',
+        'company_net_amount' => 'decimal:2',
         'vindi_transaction_id' => 'integer',
         'installments' => 'integer',
         'anticipation_days' => 'integer',

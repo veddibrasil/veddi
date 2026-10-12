@@ -12,7 +12,7 @@
                 <button
                     type="button"
                     wire:click="removeSchedulingSlot({{ $dayIndex }}, {{ $index }})"
-                    class="text-neutral-400 hover:text-red-500"
+                    class="text-neutral-500 hover:text-red-500"
                     aria-label="Remover horário"
                 >&times;</button>
             </span>
@@ -29,7 +29,7 @@
 
         <div x-show="adding" x-cloak class="inline-flex items-end gap-2">
             <flux:input wire:model="newSlotOpensAt.{{ $dayIndex }}" type="time" size="sm" class="w-28" />
-            <span class="text-neutral-400 dark:text-neutral-500 text-sm mb-2">até</span>
+            <span class="text-neutral-600 dark:text-neutral-400 text-sm mb-2">até</span>
             <flux:input wire:model="newSlotClosesAt.{{ $dayIndex }}" type="time" size="sm" class="w-28" />
             <button
                 type="button"
@@ -40,7 +40,7 @@
             <button
                 type="button"
                 x-on:click="adding = false"
-                class="text-xs text-neutral-400 mb-2"
+                class="text-xs text-neutral-600 mb-2 dark:text-neutral-400"
             >Cancelar</button>
         </div>
     </div>

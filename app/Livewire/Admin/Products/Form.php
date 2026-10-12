@@ -2,15 +2,18 @@
 
 namespace App\Livewire\Admin\Products;
 
+use App\Jobs\DisableIfoodItemJob;
+use App\Jobs\SyncIfoodCatalogJob;
 use App\Models\Branch;
 use App\Models\Company;
+use App\Models\IfoodIntegration;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\ProductOption;
 use App\Models\ProductOptionGroup;
 use App\Models\Scopes\CompanyScope;
+use App\Services\Order\MenuCache;
 use App\Services\Order\StockService;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -54,6 +57,8 @@ class Form extends Component
 
     public bool $available_in_delivery = true;
 
+    public bool $available_in_ifood = false;
+
     public int $sort_order = 0;
 
     public $image;
@@ -91,7 +96,7 @@ class Form extends Component
         return [
             'company_id' => $this->isSuperAdmin ? ['required', 'integer', 'exists:companies,id'] : ['nullable'],
             'product_category_id' => ['required', 'integer', 'exists:product_categories,id'],
-            'name' => ['required', 'string', 'max:150'],
+            'name' => ['required', 'string', $this->appliesIfoodRules() ? 'max:100' : 'max:150'],
             'description' => ['nullable', 'string', 'max:5000'],
             'price' => $this->isVariant ? ['nullable', 'numeric', 'min:0'] : ['required', 'numeric', 'min:0.01'],
             'promo_price_enabled' => $this->isVariant ? ['boolean'] : ['boolean'],
@@ -100,8 +105,9 @@ class Form extends Component
             'active' => ['boolean'],
             'available_in_pdv' => ['boolean'],
             'available_in_delivery' => ['boolean'],
+            'available_in_ifood' => ['boolean'],
             'sort_order' => ['integer', 'min:0'],
-            'image' => ['nullable', 'image', 'max:2048'],
+            'image' => ['nullable', 'image', 'max:2048', ...($this->appliesIfoodRules() ? ['mimes:jpg,jpeg,png'] : [])],
             'selectedBranches' => ['array'],
             'selectedBranches.*' => [
                 Rule::exists('branches', 'id')->where(fn ($q) => $q->where('company_id', $this->company_id)),
@@ -113,14 +119,14 @@ class Form extends Component
             'optionGroups.*.fixed' => ['boolean'],
             'optionGroups.*.allow_skip' => ['boolean'],
             'optionGroups.*.options' => ['array'],
-            'optionGroups.*.options.*.name' => ['required_with:optionGroups.*.options.*', 'string', 'max:150'],
+            'optionGroups.*.options.*.name' => ['required_with:optionGroups.*.options.*', 'string', $this->appliesIfoodRules() ? 'max:100' : 'max:150'],
             'optionGroups.*.options.*.active' => ['boolean'],
             'optionGroups.*.options.*.description' => ['nullable', 'string', 'max:2000'],
             'optionGroups.*.options.*.additional_price' => ['required_with:optionGroups.*.options.*', 'numeric', 'min:0'],
             'optionGroups.*.options.*.default_qty' => ['required_with:optionGroups.*.options.*', 'integer', 'min:0'],
             'optionGroups.*.options.*.max_qty' => ['nullable', 'integer', 'min:1'],
             'groupImages.*' => ['nullable', 'image', 'max:2048'],
-            'optionImages.*' => ['nullable', 'image', 'max:2048'],
+            'optionImages.*' => ['nullable', 'image', 'max:2048', ...($this->appliesIfoodRules() ? ['mimes:jpg,jpeg,png'] : [])],
         ];
     }
 
@@ -161,6 +167,44 @@ class Form extends Component
         return app()->bound('current.company') ? (bool) app('current.company')->pdv_module_enabled : false;
     }
 
+    /** Canal iFood só aparece (e só restringe nome/foto) para empresa com o módulo de integrações. */
+    public function getIfoodEnabledProperty(): bool
+    {
+        $company = $this->isSuperAdmin
+            ? Company::find($this->company_id)
+            : (app()->bound('current.company') ? app('current.company') : null);
+
+        return (bool) $company?->canUseIfoodIntegration();
+    }
+
+    /**
+     * Motivo do último envio que o iFood não aceitou, por filial (o sync segue item a item e
+     * grava o erro no vínculo do produto com a filial).
+     *
+     * @return array<int, array{branch: string, error: string}>
+     */
+    public function getIfoodSyncErrorsProperty(): array
+    {
+        if (! $this->isEditing || ! $this->product?->id || ! $this->ifoodEnabled) {
+            return [];
+        }
+
+        return DB::table('branch_product')
+            ->join('branches', 'branches.id', '=', 'branch_product.branch_id')
+            ->where('branch_product.product_id', $this->product->id)
+            ->where('branches.company_id', $this->product->company_id)
+            ->whereNotNull('branch_product.ifood_sync_error')
+            ->orderBy('branches.name')
+            ->get(['branches.name as branch', 'branch_product.ifood_sync_error as error'])
+            ->map(fn ($row) => ['branch' => $row->branch, 'error' => $row->error])
+            ->all();
+    }
+
+    private function appliesIfoodRules(): bool
+    {
+        return $this->available_in_ifood && $this->ifoodEnabled;
+    }
+
     public function mount(?Product $product = null): void
     {
         $user = auth()->user();
@@ -189,6 +233,7 @@ class Form extends Component
             $this->isEditing = true;
             $this->company_id = $product->company_id;
             $this->fill($product->only('product_category_id', 'name', 'active', 'available_in_pdv', 'available_in_delivery', 'sort_order'));
+            $this->available_in_ifood = (bool) ($product->available_in_ifood ?? true);
             $this->description = $product->description ?? '';
             $this->price = (string) $product->price;
             $this->isVariant = (bool) $product->is_variant;
@@ -601,6 +646,14 @@ class Form extends Component
 
                 return;
             }
+
+            // Produto com variações tem preço base 0: o preço vem do 1º grupo. Se o cliente puder pular esse
+            // grupo, o item vira R$ 0,00 (o chat e o servidor agora recusam esse item).
+            if ($this->isVariant && $gi === 0 && ($minQty < 1 || ! empty($groupData['allow_skip']))) {
+                $this->addError("optionGroups.{$gi}.min_qty", 'Em produto com variações o 1º grupo define o preço: use quantidade mínima 1 ou mais e deixe "Permitir Não quero" desmarcado.');
+
+                return;
+            }
         }
 
         $imagePath = $this->isEditing ? $this->product->image_path : null;
@@ -631,6 +684,7 @@ class Form extends Component
             'active' => $validated['active'],
             'available_in_pdv' => $this->pdvEnabled ? $validated['available_in_pdv'] : false,
             'available_in_delivery' => $validated['available_in_delivery'],
+            'available_in_ifood' => $validated['available_in_ifood'],
             'sort_order' => $validated['sort_order'],
             'image_path' => $imagePath,
         ];
@@ -686,9 +740,6 @@ class Form extends Component
                     'quantity' => $existing?->quantity ?? 0,
                 ];
 
-                Cache::forget("menu:branch:{$branchId}:company:{$this->company_id}");
-                Cache::forget("pdv:products:branch:{$branchId}");
-                Cache::forget("pdv:categories:branch:{$branchId}");
             }
         } else {
             foreach ($this->selectedBranches as $branchId) {
@@ -699,11 +750,9 @@ class Form extends Component
                     'quantity' => 0,
                 ];
 
-                Cache::forget("menu:branch:{$branchId}:company:{$this->company_id}");
-                Cache::forget("pdv:products:branch:{$branchId}");
-                Cache::forget("pdv:categories:branch:{$branchId}");
             }
         }
+        $this->disableIfoodItemsOfRemovedBranches($product, array_keys($branchSync));
         $product->branches()->sync($branchSync);
 
         // Sync option groups
@@ -808,7 +857,47 @@ class Form extends Component
             }
         }
 
+        // Depois de gravar filiais, grupos e opções: invalida o cardápio de todas as filiais da empresa
+        // (inclui filiais desmarcadas neste save), sem janela para outro request repopular com dado velho.
+        app(MenuCache::class)->forgetCompany((int) ($product->company_id ?? $this->company_id));
+
+        // O formulário grava relações depois do produto; publicar apenas o estado final.
+        $integrations = IfoodIntegration::withoutGlobalScopes()
+            ->where('company_id', $product->company_id)->where('status', 'active')
+            ->whereIn('branch_id', $product->branches()->pluck('branches.id'))->get();
+        foreach ($integrations as $integration) {
+            try {
+                SyncIfoodCatalogJob::dispatch($integration->branch_id, $product->id, true)->afterCommit();
+            } catch (\Throwable $e) {
+                report($e);
+                session()->flash('error', 'Produto salvo. A sincronização com o iFood não foi concluída; use Sincronizar cardápio agora nas configurações da integração para tentar novamente.');
+            }
+        }
+
         $this->redirect(route('admin.products.index'));
+    }
+
+    /**
+     * Desmarcar a filial apaga o pivot com o id do item no iFood: tira de venda antes,
+     * senão a loja daquela filial segue vendendo o produto.
+     *
+     * @param  array<int, int|string>  $keptBranchIds
+     */
+    private function disableIfoodItemsOfRemovedBranches(Product $product, array $keptBranchIds): void
+    {
+        $items = DB::table('branch_product')
+            ->where('product_id', $product->id)
+            ->whereNotIn('branch_id', $keptBranchIds)
+            ->whereNotNull('ifood_item_id')
+            ->whereIn('branch_id', IfoodIntegration::withoutGlobalScopes()
+                ->where('company_id', $product->company_id)
+                ->whereIn('status', ['active', 'paused'])
+                ->select('branch_id'))
+            ->get(['branch_id', 'ifood_item_id']);
+
+        foreach ($items as $item) {
+            DisableIfoodItemJob::dispatch($item->branch_id, $item->ifood_item_id)->afterCommit();
+        }
     }
 
     public function render()

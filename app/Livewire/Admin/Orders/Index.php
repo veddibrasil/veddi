@@ -4,7 +4,11 @@ namespace App\Livewire\Admin\Orders;
 
 use App\Enums\OrderChannel;
 use App\Events\OrderStatusUpdated;
+use App\Exceptions\IfoodApiException;
 use App\Models\Company;
+use App\Models\IfoodDispute;
+use App\Models\IfoodIntegration;
+use App\Models\IfoodOrderEvent;
 use App\Models\Order;
 use App\Models\Scopes\CompanyScope;
 use App\Services\Ifood\IfoodOrderActionService;
@@ -12,6 +16,7 @@ use App\Services\Order\OrderService;
 use App\Services\Payment\PaymentOrchestrator;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -30,20 +35,29 @@ class Index extends Component
     /** Filtro de canal: '' (todos), 'chat' (order_type delivery/pickup), 'pdv' (order_type pdv) ou 'delivery' (todo pedido com entrega, via ou não do PDV). */
     public string $channelFilter = '';
 
+    // Permissão e escopo calculados no mount: Locked, senão o navegador poderia mandar
+    // isSuperAdmin=true (pedidos de todas as empresas) ou userBranchId=null (todas as filiais).
+    #[Locked]
     public bool $isSuperAdmin = false;
 
+    #[Locked]
     public bool $canView = false;
 
+    #[Locked]
     public bool $canUpdate = false;
 
+    #[Locked]
     public bool $canManageClosing = false;
 
+    #[Locked]
     public int $companyId = 0;
 
     /** Estação do usuário logado ('cozinha'|'bar'|'entrega') quando o papel é restrito a uma estação, senão null. */
+    #[Locked]
     public ?string $userStation = null;
 
     /** Filial do usuário logado quando o papel é restrito a uma (cozinha/bar/entrega/garçom/caixa), senão null. */
+    #[Locked]
     public ?int $userBranchId = null;
 
     #[Url]
@@ -56,6 +70,9 @@ class Index extends Component
     public ?int $ifoodCancelOrderId = null;
 
     public string $ifoodCancelReason = '';
+
+    /** Pedido do modal já aceito: a ação vira solicitação de cancelamento (muda o texto do modal). */
+    public bool $ifoodCancelAccepted = false;
 
     public array $ifoodCancellationReasons = [];
 
@@ -124,6 +141,8 @@ class Index extends Component
             "echo-private:orders.{$this->companyId},NewOrderPlaced" => '$refresh',
             "echo-private:orders.{$this->companyId},OrderStatusUpdated" => '$refresh',
             "echo-private:orders.{$this->companyId},OrderItemsUpdated" => '$refresh',
+            "echo-private:orders.{$this->companyId},IfoodOrderUpdated" => '$refresh',
+            "echo-private:orders.{$this->companyId},IfoodOrderNotImported" => '$refresh',
         ];
 
         // "Minha fila" é a tela que cozinha/bar realmente usa no dia a dia (não tem
@@ -260,9 +279,7 @@ class Index extends Component
             return;
         }
 
-        $order = $this->isSuperAdmin
-            ? Order::withoutGlobalScope(CompanyScope::class)->findOrFail($orderId)
-            : Order::findOrFail($orderId);
+        $order = $this->findActionableOrder($orderId);
 
         if ($newStatus === 'out_for_delivery' && ! $order->isDeliveryOrder()) {
             return;
@@ -270,26 +287,12 @@ class Index extends Component
 
         $previousStatus = $order->status;
 
-        // Pedido iFood: aceitar/recusar precisa chamar a API do iFood (senão o
-        // pedido nunca é confirmado lá e acaba expirando/cancelando sozinho do
-        // lado deles, mesmo que aqui pareça "preparando"). Cancelamento de pedido
-        // iFood exige motivo fechado — passa pelo modal em vez do drag direto.
+        // Pedido iFood: toda etapa passa pela API do iFood antes de mudar aqui.
+        // Cancelamento exige motivo fechado (modal); conclusão é sempre do iFood.
         if ($order->channel === OrderChannel::Ifood->value) {
-            if ($newStatus === 'cancelled') {
-                $this->openIfoodCancelModal($order->id);
+            $this->updateIfoodOrderStatus($order, $newStatus);
 
-                return;
-            }
-
-            if ($newStatus === 'preparing' && $previousStatus !== 'preparing') {
-                try {
-                    app(IfoodOrderActionService::class)->accept($order);
-                } catch (Throwable $e) {
-                    session()->flash('error', $e->getMessage());
-                }
-
-                return;
-            }
+            return;
         }
 
         // Cancelamento exige motivo obrigatório — abre modal em vez de aplicar direto.
@@ -357,9 +360,7 @@ class Index extends Component
             return;
         }
 
-        $order = $this->isSuperAdmin
-            ? Order::withoutGlobalScope(CompanyScope::class)->findOrFail($this->cancelOrderId)
-            : Order::findOrFail($this->cancelOrderId);
+        $order = $this->findActionableOrder($this->cancelOrderId);
 
         $reason = $this->cancelReason;
         $this->closeCancelModal();
@@ -405,9 +406,7 @@ class Index extends Component
 
         $this->confirmingPaymentOrderId = null;
 
-        $order = $this->isSuperAdmin
-            ? Order::withoutGlobalScope(CompanyScope::class)->findOrFail($orderId)
-            : Order::findOrFail($orderId);
+        $order = $this->findActionableOrder($orderId);
 
         if (! $order->needsPdvPaymentConfirmation()) {
             return;
@@ -425,27 +424,64 @@ class Index extends Component
         ]);
     }
 
+    /** Botão "Aceitar" do card/alerta de pedido iFood aguardando aceite. */
+    public function acceptIfoodOrder(int $orderId): void
+    {
+        $this->updateOrderStatus($orderId, 'preparing');
+    }
+
+    private function updateIfoodOrderStatus(Order $order, string $newStatus): void
+    {
+        if ($newStatus === 'cancelled') {
+            $this->openIfoodCancelModal($order->id);
+
+            return;
+        }
+
+        $service = app(IfoodOrderActionService::class);
+        $action = match ($newStatus) {
+            'preparing' => $order->ifoodDetails()->awaitingConfirmation()
+                ? fn () => $service->accept($order, auth()->id())
+                : fn () => $service->startPreparation($order, auth()->id()),
+            'ready' => fn () => $service->markReady($order, auth()->id()),
+            'out_for_delivery' => fn () => $service->dispatch($order, auth()->id()),
+            default => null,
+        };
+
+        if ($action === null) {
+            session()->flash('error', 'No iFood essa etapa não é feita pela loja: a conclusão e o pagamento são registrados pelo próprio iFood.');
+
+            return;
+        }
+
+        try {
+            $action();
+        } catch (Throwable $e) {
+            session()->flash('error', IfoodApiException::messageFor($e));
+        }
+    }
+
     public function openIfoodCancelModal(int $orderId): void
     {
         abort_unless($this->canUpdate, 403);
 
-        $order = $this->isSuperAdmin
-            ? Order::withoutGlobalScope(CompanyScope::class)->findOrFail($orderId)
-            : Order::findOrFail($orderId);
+        $order = $this->findActionableOrder($orderId);
         try {
             $this->ifoodCancellationReasons = app(IfoodOrderActionService::class)->getCancellationReasons($order);
         } catch (Throwable $e) {
-            session()->flash('error', $e->getMessage());
+            session()->flash('error', IfoodApiException::messageFor($e));
 
             return;
         }
         $this->ifoodCancelOrderId = $orderId;
+        $this->ifoodCancelAccepted = ! $order->ifoodDetails()?->awaitingConfirmation();
         $this->ifoodCancelReason = '';
     }
 
     public function closeIfoodCancelModal(): void
     {
         $this->ifoodCancelOrderId = null;
+        $this->ifoodCancelAccepted = false;
         $this->ifoodCancelReason = '';
     }
 
@@ -462,13 +498,11 @@ class Index extends Component
             return;
         }
 
-        $order = $this->isSuperAdmin
-            ? Order::withoutGlobalScope(CompanyScope::class)->findOrFail($this->ifoodCancelOrderId)
-            : Order::findOrFail($this->ifoodCancelOrderId);
+        $order = $this->findActionableOrder($this->ifoodCancelOrderId);
 
         $orderId = $order->id;
         $reason = $this->ifoodCancelReason;
-        $wasAccepted = in_array($order->status, ['preparing', 'ready', 'out_for_delivery'], true);
+        $wasAccepted = ! $order->ifoodDetails()?->awaitingConfirmation();
 
         $this->closeIfoodCancelModal();
 
@@ -476,13 +510,14 @@ class Index extends Component
             $service = app(IfoodOrderActionService::class);
 
             if ($wasAccepted) {
-                $service->requestCancellation($order, $reason);
+                $service->requestCancellation($order, $reason, auth()->id());
                 session()->flash('status', 'Cancelamento solicitado ao iFood — aguardando confirmação.');
             } else {
-                $service->reject($order, $reason);
+                $service->reject($order, $reason, auth()->id());
+                session()->flash('status', 'Recusa enviada ao iFood — aguardando confirmação.');
             }
         } catch (Throwable $e) {
-            session()->flash('error', $e->getMessage());
+            session()->flash('error', IfoodApiException::messageFor($e));
 
             return;
         }
@@ -562,7 +597,7 @@ class Index extends Component
                 ->groupBy('status')
                 ->pluck('total', 'status');
 
-            $kanbanColumns = collect(self::KANBAN_STATUSES)
+            $kanbanColumns = collect($this->kanbanStatuses($totals))
                 ->mapWithKeys(function ($status) use ($baseQuery, $perPage, $totals) {
                     $limit = $this->kanbanPages[$status] * $perPage;
                     // payments_exists alimenta o botão "Confirmar pagamento" do card sem uma query por pedido.
@@ -578,7 +613,10 @@ class Index extends Component
                     ];
                 });
 
-            return view('livewire.admin.orders.index', compact('kanbanColumns', 'companies', 'closing'))
+            $ifoodAwaiting = $this->ifoodAwaitingOrders();
+            $ifoodNotImported = $this->ifoodNotImported();
+
+            return view('livewire.admin.orders.index', compact('kanbanColumns', 'companies', 'closing', 'ifoodAwaiting', 'ifoodNotImported'))
                 ->layout('layouts.app', ['title' => 'Pedidos']);
         }
 
@@ -607,7 +645,137 @@ class Index extends Component
             ->latest()
             ->paginate(20);
 
-        return view('livewire.admin.orders.index', compact('orders', 'companies', 'closing'))
+        $ifoodAwaiting = $this->ifoodAwaitingOrders();
+        $ifoodNotImported = $this->ifoodNotImported();
+
+        return view('livewire.admin.orders.index', compact('orders', 'companies', 'closing', 'ifoodAwaiting', 'ifoodNotImported'))
             ->layout('layouts.app', ['title' => 'Pedidos']);
+    }
+
+    /**
+     * Colunas do kanban. Com o filtro iFood, "aguardando aceite" (pending) vem primeiro e
+     * somem as colunas que pedido iFood não usa quando estão vazias — antes, três colunas
+     * vazias empurravam os pedidos novos pra fora da tela.
+     *
+     * @param  \Illuminate\Support\Collection<string, int>  $totals
+     * @return array<int, string>
+     */
+    private function kanbanStatuses(\Illuminate\Support\Collection $totals): array
+    {
+        if ($this->channelFilter !== 'ifood') {
+            return self::KANBAN_STATUSES;
+        }
+
+        return array_values(array_filter(
+            ['pending', 'paid', 'scheduled', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled'],
+            fn (string $status) => ! in_array($status, ['paid', 'scheduled'], true) || $totals->get($status, 0) > 0,
+        ));
+    }
+
+    /** Some o aviso de um pedido do iFood que não entrou no painel (já resolvido no Gestor de Pedidos). */
+    /**
+     * Pedido em que o usuário pode agir: super admin vê todas as empresas; papel restrito a uma
+     * filial só age nos pedidos dela (o id chega do navegador e pode ser de outra filial).
+     */
+    private function findActionableOrder(int $orderId): Order
+    {
+        return ($this->isSuperAdmin ? Order::withoutGlobalScope(CompanyScope::class) : Order::query())
+            ->when($this->userBranchId, fn ($q) => $q->where('branch_id', $this->userBranchId))
+            ->findOrFail($orderId);
+    }
+
+    public function dismissIfoodNotImported(int $eventId): void
+    {
+        abort_unless($this->canUpdate && $this->companyId, 403);
+
+        IfoodOrderEvent::whereKey($eventId)
+            ->where('status', 'failed')
+            ->whereIn('ifood_integration_id', IfoodIntegration::withoutGlobalScopes()->where('company_id', $this->companyId)
+                ->when($this->userBranchId, fn ($q) => $q->where('branch_id', $this->userBranchId))->select('id'))
+            ->update(['status' => 'dismissed']);
+    }
+
+    /**
+     * Pedidos do iFood das últimas horas que não viraram pedido aqui (item sem vínculo, falha
+     * repetida) e negociações de pedidos fora do painel ainda no prazo. Só existem no iFood:
+     * o restaurante resolve pelo Gestor de Pedidos, por isso o aviso fica no topo.
+     *
+     * @return \Illuminate\Support\Collection<int, array{key: string, event_id: ?int, title: string, detail: string}>
+     */
+    private function ifoodNotImported(): \Illuminate\Support\Collection
+    {
+        if ($this->userStation || ! $this->canView || ! $this->companyId) {
+            return collect();
+        }
+
+        $integrationIds = IfoodIntegration::withoutGlobalScopes()
+            ->where('company_id', $this->companyId)
+            ->when($this->userBranchId, fn ($q) => $q->where('branch_id', $this->userBranchId))
+            ->pluck('id');
+
+        if ($integrationIds->isEmpty()) {
+            return collect();
+        }
+
+        $failed = IfoodOrderEvent::whereIn('ifood_integration_id', $integrationIds)
+            ->whereIn('event_type', ['PLC', 'PLACED'])
+            ->where('status', 'failed')
+            ->where('created_at', '>=', now()->subHours(3))
+            ->latest()
+            ->limit(10)
+            ->get()
+            ->map(fn (IfoodOrderEvent $event) => [
+                'key' => 'event-'.$event->id,
+                'event_id' => $event->id,
+                'title' => 'Pedido do iFood às '.$event->created_at->timezone(config('app.timezone'))->format('H:i').' não entrou no painel',
+                'detail' => $event->error ?: 'Aceite ou cancele pelo Gestor de Pedidos do iFood.',
+            ]);
+
+        $disputes = IfoodDispute::withoutGlobalScopes()
+            ->whereIn('ifood_integration_id', $integrationIds)
+            ->whereNull('order_id')
+            ->where('status', IfoodDispute::STATUS_PENDING)
+            ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))
+            ->latest()
+            ->limit(10)
+            ->get()
+            ->map(fn (IfoodDispute $dispute) => [
+                'key' => 'dispute-'.$dispute->id,
+                'event_id' => null,
+                'title' => 'Negociação iFood em pedido fora do painel',
+                'detail' => $dispute->actionLabel().'. Responda pelo Gestor de Pedidos do iFood'
+                    .($dispute->expires_at ? ' até '.$dispute->expires_at->timezone(config('app.timezone'))->format('H:i') : '').'.',
+            ]);
+
+        return $disputes->concat($failed)->values();
+    }
+
+    /**
+     * Pedidos iFood esperando aceite, pro alerta no topo da tela (com contagem do prazo).
+     * Cozinha/bar/entrega não aceitam pedido, então não veem o alerta.
+     *
+     * @return \Illuminate\Support\Collection<int, Order>
+     */
+    private function ifoodAwaitingOrders(): \Illuminate\Support\Collection
+    {
+        if ($this->userStation || ! $this->canView) {
+            return collect();
+        }
+
+        $query = $this->isSuperAdmin
+            ? Order::withoutGlobalScope(CompanyScope::class)->when($this->companyFilter, fn ($q) => $q->where('company_id', $this->companyFilter))
+            : Order::query();
+
+        return $query
+            ->where('channel', OrderChannel::Ifood->value)
+            ->whereIn('status', ['pending', 'paid', 'scheduled'])
+            ->where('external_metadata->ifood_status', 'PLACED')
+            ->when($this->userBranchId, fn ($q) => $q->where('branch_id', $this->userBranchId))
+            ->oldest()
+            ->limit(20)
+            ->get()
+            ->reject(fn (Order $order) => $order->ifoodDetails()->confirmationExpired())
+            ->take(10)
+            ->values();
     }
 }

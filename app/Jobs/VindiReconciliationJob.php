@@ -97,7 +97,7 @@ class VindiReconciliationJob implements ShouldQueue
                         'company_id' => $withdrawal->company_id,
                         'amount' => $withdrawal->amount,
                         'vindi_transfer_id' => $withdrawal->vindi_transfer_id,
-                        'action_needed' => 'Verificar se job ProcessWithdrawal criou entradas corretamente',
+                        'action_needed' => 'Conferir o saque no portal Vindi e os lançamentos da carteira',
                     ]);
                 }
             });

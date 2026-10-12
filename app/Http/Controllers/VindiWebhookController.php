@@ -20,14 +20,19 @@ class VindiWebhookController extends Controller
             ?? $data['token_account']
             ?? '';
 
-        if (! hash_equals((string) config('payments.vindi_token_account'), $sellerToken)) {
+        $expected = (string) config('payments.vindi_token_account');
+
+        // Sem token configurado, hash_equals('', '') aceitaria qualquer POST sem token —
+        // falha fechada, igual ao webhook do Asaas.
+        if ($expected === '' || ! hash_equals($expected, (string) $sellerToken)) {
             // Nunca logar o payload completo de uma requisição ainda não autenticada —
             // só metadados, senão qualquer POST não autenticado a este endpoint público
-            // grava o corpo bruto (potencialmente forjado) no log/Nightwatch.
-            Log::channel('webhook')->warning('Vindi webhook: token_account inválido', [
+            // grava o corpo bruto (potencialmente forjado) no log/Nightwatch. Nem prefixo
+            // do token esperado: é segredo da conta.
+            Log::channel('webhook')->warning('Vindi webhook: token_account inválido ou não configurado', [
                 'ip' => $request->ip(),
-                'received_prefix' => $sellerToken !== '' ? substr($sellerToken, 0, 8).'…' : '(vazio)',
-                'expected_prefix' => substr((string) config('payments.vindi_token_account'), 0, 8).'…',
+                'token_missing' => $expected === '',
+                'received_prefix' => $sellerToken !== '' ? substr((string) $sellerToken, 0, 4).'…' : '(vazio)',
                 'content_type' => $request->header('Content-Type'),
                 'keys_recebidos' => array_keys($data),
             ]);
@@ -35,7 +40,9 @@ class VindiWebhookController extends Controller
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
-        Log::channel('webhook')->debug('Vindi webhook recebido', ['payload' => $data]);
+        // Nunca logar o payload completo mesmo já autenticado: a Vindi/Yapay pode trazer
+        // dado de cartão e do pagador no corpo. Só as chaves, pra depurar formato sem vazar valor.
+        Log::channel('webhook')->debug('Vindi webhook recebido', ['keys_recebidos' => array_keys($data)]);
 
         // Yapay sends token as transaction.transaction_token (also mirrored at root token_transaction)
         $transactionToken = $data['transaction']['transaction_token']
@@ -44,7 +51,7 @@ class VindiWebhookController extends Controller
         $status = $data['transaction']['status_name'] ?? null;
 
         if (! $transactionToken || ! $status) {
-            Log::channel('webhook')->warning('Vindi webhook: dados ausentes', ['payload' => $data]);
+            Log::channel('webhook')->warning('Vindi webhook: dados ausentes', ['keys_recebidos' => array_keys($data)]);
 
             return response()->json(['error' => 'Missing data'], 422);
         }

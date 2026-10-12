@@ -3,8 +3,10 @@
 namespace App\Livewire\Admin\Categories;
 
 use App\Models\Company;
+use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\Scopes\CompanyScope;
+use App\Services\Order\MenuCache;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -17,6 +19,8 @@ class Index extends Component
     public string $station = '';
 
     public int $sort_order = 0;
+
+    public bool $active = true;
 
     public ?int $editingId = null;
 
@@ -43,6 +47,7 @@ class Index extends Component
             'name' => ['required', 'string', 'max:100'],
             'station' => ['nullable', 'in:cozinha,bar'],
             'sort_order' => ['integer', 'min:0'],
+            'active' => ['boolean'],
         ];
     }
 
@@ -88,20 +93,25 @@ class Index extends Component
                 $data['company_id'] = $this->company_id;
             }
             $category->update($data);
+            $companyId = $category->company_id;
             session()->flash('status', 'Categoria atualizada.');
         } else {
             $this->authorize('create', ProductCategory::class);
             $data = collect($validated)->except('company_id')->toArray();
             if ($this->isSuperAdmin) {
                 $data['company_id'] = $this->company_id;
-                ProductCategory::withoutGlobalScope(CompanyScope::class)->create($data);
+                $created = ProductCategory::withoutGlobalScope(CompanyScope::class)->create($data);
             } else {
-                ProductCategory::create($data);
+                $created = ProductCategory::create($data);
             }
+            $companyId = $created->company_id;
             session()->flash('status', 'Categoria criada.');
         }
 
-        $this->reset(['name', 'station', 'sort_order', 'editingId']);
+        // Nome, ordem e ativação aparecem no cardápio do chat, que fica em cache por filial.
+        app(MenuCache::class)->forgetCompany((int) $companyId);
+
+        $this->resetForm();
     }
 
     public function edit(int $id): void
@@ -112,12 +122,13 @@ class Index extends Component
         $this->name = $category->name;
         $this->station = $category->station ?? '';
         $this->sort_order = $category->sort_order;
+        $this->active = (bool) $category->active;
         $this->company_id = $category->company_id;
     }
 
     public function cancelEdit(): void
     {
-        $this->reset(['name', 'station', 'sort_order', 'editingId']);
+        $this->resetForm();
         if (! $this->isSuperAdmin) {
             $this->company_id = auth()->user()->companies()->first()?->id;
         }
@@ -137,9 +148,32 @@ class Index extends Component
     {
         $category = ProductCategory::withoutGlobalScope(CompanyScope::class)->findOrFail($this->deletingId);
         $this->authorize('delete', $category);
+
+        // A FK products.product_category_id é cascadeOnDelete: excluir a categoria apagaria os produtos
+        // (ou estouraria a FK de order_items quando algum já foi vendido). Conta inclusive os removidos
+        // logicamente (withoutGlobalScopes tira o SoftDeletingScope) porque eles também seguram a FK.
+        $productsCount = Product::withoutGlobalScopes()->where('product_category_id', $category->id)->count();
+
+        if ($productsCount > 0) {
+            $this->deletingId = null;
+            session()->flash('error', "Não é possível excluir \"{$category->name}\": ela ainda tem {$productsCount} produto(s), inclusive os desativados por terem pedidos. Mova os produtos para outra categoria ou desative a categoria.");
+
+            return;
+        }
+
+        $companyId = $category->company_id;
         $category->delete();
+        app(MenuCache::class)->forgetCompany((int) $companyId);
+
         $this->deletingId = null;
         session()->flash('status', 'Categoria removida.');
+    }
+
+    private function resetForm(): void
+    {
+        $this->reset(['name', 'station', 'sort_order', 'editingId']);
+        $this->active = true;
+        $this->resetValidation();
     }
 
     public function render()
@@ -147,10 +181,12 @@ class Index extends Component
         $categories = $this->isSuperAdmin
             ? ProductCategory::withoutGlobalScope(CompanyScope::class)
                 ->with('company')
+                ->withCount(['products' => fn ($q) => $q->withoutGlobalScopes()])
                 ->orderBy('sort_order')
                 ->orderBy('name')
                 ->paginate(15)
-            : ProductCategory::orderBy('sort_order')->orderBy('name')->paginate(15);
+            : ProductCategory::withCount(['products' => fn ($q) => $q->withoutGlobalScopes()])
+                ->orderBy('sort_order')->orderBy('name')->paginate(15);
 
         $companies = $this->isSuperAdmin
             ? Company::withoutGlobalScope(CompanyScope::class)

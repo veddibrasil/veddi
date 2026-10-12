@@ -1,165 +1,117 @@
-<div class="w-full space-y-6">
-    <h1 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100">Integração iFood</h1>
+@php
+    $currentBranch = collect($branchOptions)->firstWhere('id', $branchId);
+    $interruptionCount = count($interruptions);
+    $tabItems = $tabs;
+    if ($interruptionCount > 0) {
+        $tabItems['pausas'] = ['label' => $tabs['pausas'], 'badge' => $interruptionCount];
+    }
+@endphp
 
-    @if(session('status'))
-        <div class="bg-green-50 border border-green-200 text-green-700 rounded-lg px-4 py-3 text-sm dark:bg-green-900/30 dark:border-green-700 dark:text-green-400">
-            {{ session('status') }}
-        </div>
-    @endif
+<div class="w-full space-y-6"
+    x-init="$watch(() => $wire.confirmingInterruptionId, id => id ? $flux.modal('confirm-remove-ifood-pause').show() : $flux.modal('confirm-remove-ifood-pause').close())">
+    <x-admin.page-header
+        :back-route="route('admin.integrations.index')"
+        back-label="Voltar para integrações"
+        title="Integração iFood"
+    >
+        @if(count($branchOptions) > 1)
+            <x-slot:actions>
+                <div class="w-full sm:w-72">
+                    <flux:select wire:model.live="branchId" aria-label="Filial">
+                        @foreach($branchOptions as $option)
+                            <option value="{{ $option['id'] }}">{{ $option['name'] }} · {{ $option['state'] }}</option>
+                        @endforeach
+                    </flux:select>
+                </div>
+            </x-slot:actions>
+        @endif
+    </x-admin.page-header>
 
-    @if(session('error'))
-        <div class="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm dark:bg-red-900/30 dark:border-red-700 dark:text-red-400">
-            {{ session('error') }}
-        </div>
-    @endif
+    <x-admin.flash-status />
+    <x-admin.flash-error />
 
     @if(empty($branchOptions))
-        <div class="bg-yellow-50 border border-yellow-200 text-yellow-700 rounded-lg px-4 py-3 text-sm dark:bg-yellow-900/30 dark:border-yellow-700 dark:text-yellow-400">
-            Nenhuma filial cadastrada — cadastre uma em <a href="{{ route('admin.branches.index') }}" class="underline">Filiais</a> antes de conectar o iFood.
-        </div>
+        <x-admin.alert variant="warning" icon="exclamation-triangle">
+            Nenhuma filial cadastrada. Cadastre uma em <a href="{{ route('admin.branches.index') }}" class="underline" wire:navigate>Filiais</a> antes de conectar o iFood.
+        </x-admin.alert>
     @else
-        <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                    @if(count($branchOptions) > 1)
-                        <flux:select wire:model.live="branchId" label="Filial">
-                            @foreach($branchOptions as $option)
-                                <option value="{{ $option['id'] }}">{{ $option['name'] }}</option>
-                            @endforeach
-                        </flux:select>
-                    @else
-                        <flux:input value="{{ $branchOptions[0]['name'] }}" label="Filial" disabled />
-                    @endif
-                </div>
-            </div>
-            @error('branchId') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+        @error('branchId') <p role="alert" class="text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
 
-            @if($connectionState === 'reauthorization_required')
-                <div class="space-y-3">
-                    <p role="alert" class="text-sm text-red-600 dark:text-red-400">
-                        A autorização do iFood expirou ou foi revogada. Reconecte esta loja para voltar a receber pedidos e validar a conexão no iFood.
-                    </p>
-                    <flux:button wire:click="connect" variant="primary">Reconectar iFood</flux:button>
-                </div>
-            @elseif($connectionState === 'not_connected')
-                <div class="space-y-3">
-                    <p class="text-sm text-neutral-500 dark:text-neutral-400">
-                        Conecte esta filial à sua conta iFood — você será direcionado pra fazer login e aprovar o acesso diretamente no site do iFood, sem precisar digitar nenhuma credencial técnica aqui.
-                    </p>
-                    <flux:button wire:click="connect" variant="primary">Conectar iFood</flux:button>
-                </div>
-            @elseif($connectionState === 'pending_authorization')
-                <div class="space-y-4">
-                    <div class="bg-neutral-50 border border-neutral-200 rounded-lg p-4 text-center space-y-2 dark:bg-zinc-900 dark:border-zinc-700">
-                        <p class="text-xs text-neutral-500 dark:text-neutral-400">Passo 1 — Código de conexão</p>
-                        <p class="text-2xl font-mono font-bold tracking-widest text-neutral-800 dark:text-neutral-100">{{ $userCode }}</p>
-                        @if($userCodeExpiresAt)
-                            <p class="text-xs text-neutral-400 dark:text-neutral-500">Expira {{ $userCodeExpiresAt }}</p>
-                        @endif
-                    </div>
-
-                    <flux:button href="{{ $verificationUrl }}" target="_blank" variant="primary">Abrir iFood e aprovar</flux:button>
-
-                    <div class="border-t pt-4 space-y-2 dark:border-zinc-700">
-                        <p class="text-sm text-neutral-500 dark:text-neutral-400">
-                            Passo 2 — Depois de aprovar, o iFood mostra um código de autorização na tela. Cole ele aqui pra concluir a conexão.
-                        </p>
-                        <flux:input wire:model="authorizationCode" label="Código de autorização" placeholder="Ex: HTLM-KWVR" />
-                        <flux:button wire:click="confirmAuthorization" variant="primary">Confirmar conexão</flux:button>
-                    </div>
-
-                    <flux:button wire:click="disconnect" variant="ghost" size="sm">Cancelar</flux:button>
-                </div>
-            @elseif($connectionState === 'pending_merchant_selection')
-                <div class="space-y-4">
-                    <p class="text-sm text-neutral-500 dark:text-neutral-400">
-                        @if(empty($availableMerchants))
-                            Autorização salva. Consulte as lojas autorizadas no iFood para concluir a conexão.
-                        @else
-                            Escolha qual loja no iFood corresponde a esta filial.
-                        @endif
-                    </p>
-
-                    <div class="space-y-2">
-                        @foreach($availableMerchants as $merchant)
-                            <label class="flex items-center gap-3 rounded-lg border border-neutral-200 dark:border-zinc-700 px-4 py-3 cursor-pointer hover:bg-neutral-50 dark:hover:bg-zinc-900">
-                                <input type="radio" wire:model="selectedMerchantId" value="{{ $merchant['id'] }}" class="shrink-0">
-                                <span>
-                                    <span class="block font-medium text-neutral-800 dark:text-neutral-100">{{ $merchant['name'] ?? $merchant['id'] }}</span>
-                                    <span class="block text-xs text-neutral-400 dark:text-neutral-500">{{ $merchant['id'] }}</span>
-                                </span>
-                            </label>
-                        @endforeach
-                    </div>
-                    @error('selectedMerchantId') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
-
-                    <div class="flex items-center gap-3">
-                        @if(! empty($availableMerchants))
-                            <flux:button wire:click="selectMerchant" variant="primary">Confirmar loja</flux:button>
-                        @endif
-                        <flux:button wire:click="confirmAuthorization" variant="primary">Consultar lojas novamente</flux:button>
-                        <flux:button wire:click="disconnect" variant="ghost" size="sm">Cancelar</flux:button>
-                    </div>
-                </div>
-            @elseif($connectionState === 'connected')
-                <div class="space-y-4">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                        <div>
-                            <p class="text-neutral-500 dark:text-neutral-400">Merchant ID</p>
-                            <p class="font-medium">{{ $merchantId }}</p>
-                        </div>
-                        <div>
-                            <p class="text-neutral-500 dark:text-neutral-400">Status</p>
-                            <p class="font-medium">
-                                @if($status === 'active')
-                                    <span class="text-green-600 dark:text-green-400">Ativo</span>
-                                @else
-                                    <span class="text-yellow-600 dark:text-yellow-400">Pausado</span>
-                                @endif
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="flex items-center gap-3">
-                        @if($status === 'active')
-                            <flux:button wire:click="pause" variant="ghost" size="sm">Pausar</flux:button>
-                        @else
-                            <flux:button wire:click="resume" variant="ghost" size="sm">Retomar</flux:button>
-                        @endif
-                        <flux:button wire:click="syncCatalogNow" wire:loading.attr="disabled" variant="ghost" size="sm">Sincronizar cardápio agora</flux:button>
-                        <flux:button wire:click="disconnect" variant="danger" size="sm">Desconectar</flux:button>
-                    </div>
-                </div>
-            @endif
-        </div>
+        @include('livewire.admin.settings.ifood.connection', ['currentBranch' => $currentBranch])
 
         @if($connectionState === 'connected')
-            <div class="bg-white border rounded-xl shadow-sm p-6 space-y-3 dark:bg-zinc-800 dark:border-zinc-700">
-                <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Saúde da conexão</h2>
+            <div class="space-y-4">
+                <x-admin.section-tabs :tabs="$tabItems" :current="$tab" label="Seções da integração iFood" />
 
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
-                    <div>
-                        <p class="text-neutral-500 dark:text-neutral-400">Webhook</p>
-                        <p class="font-medium">
-                            @if($webhookStatus === 'healthy')
-                                <span class="text-green-600 dark:text-green-400">Saudável</span>
-                            @elseif($webhookStatus === 'degraded')
-                                <span class="text-yellow-600 dark:text-yellow-400">Instável (usando polling)</span>
-                            @else
-                                <span class="text-neutral-500 dark:text-neutral-400">Aguardando primeiro evento</span>
-                            @endif
-                        </p>
-                    </div>
-                    <div>
-                        <p class="text-neutral-500 dark:text-neutral-400">Último webhook recebido</p>
-                        <p class="font-medium">{{ $lastWebhookReceivedAt ?? '—' }}</p>
-                    </div>
-                    <div>
-                        <p class="text-neutral-500 dark:text-neutral-400">Último sync de catálogo</p>
-                        <p class="font-medium">{{ $lastSyncedAt ?? '—' }}</p>
-                    </div>
+                @error('merchantOperation')
+                    <x-admin.alert variant="danger" icon="exclamation-triangle" role="alert">
+                        {{ $message }}
+                    </x-admin.alert>
+                @enderror
+
+                <div wire:loading.flex wire:target="tab, loadCurrentTab, branchId" class="items-center gap-2 text-sm text-neutral-500 dark:text-neutral-400">
+                    <flux:icon.loading class="size-4" /> Carregando dados do iFood…
+                </div>
+
+                <div role="tabpanel" id="tabpanel-{{ $tab }}" aria-labelledby="tab-{{ $tab }}" wire:key="ifood-panel-{{ $branchId }}-{{ $tab }}-{{ $panelVersion }}" wire:init="loadCurrentTab" class="space-y-4">
+                    @include('livewire.admin.settings.ifood.tab-'.match($tab) {
+                        'pausas' => 'pauses',
+                        'horarios' => 'hours',
+                        'cardapio' => 'catalog',
+                        'diagnostico' => 'diagnostics',
+                        default => 'store',
+                    })
                 </div>
             </div>
         @endif
     @endif
+
+    {{-- Modal: desconectar --}}
+    <flux:modal wire:model.self="showDisconnectModal" class="max-w-sm">
+        <div class="space-y-5">
+            <div>
+                <flux:heading size="lg">Desconectar o iFood desta filial?</flux:heading>
+                <flux:subheading class="mt-1">
+                    Os pedidos do iFood deixam de chegar ao painel e a loja fica fechada no app do iFood. Para voltar, será preciso conectar e aprovar o acesso de novo no iFood.
+                </flux:subheading>
+            </div>
+            <div class="flex justify-end gap-3">
+                <flux:button wire:click="$set('showDisconnectModal', false)" variant="ghost">Cancelar</flux:button>
+                <flux:button wire:click="disconnect" wire:target="disconnect" variant="danger">Desconectar</flux:button>
+            </div>
+        </div>
+    </flux:modal>
+
+    {{-- Modal: suspender --}}
+    <flux:modal wire:model.self="showSuspendModal" class="max-w-sm">
+        <div class="space-y-5">
+            <div>
+                <flux:heading size="lg">Suspender a integração?</flux:heading>
+                <flux:subheading class="mt-1">
+                    Enquanto estiver suspensa, a loja fica fechada no iFood e pedidos novos não chegam. Pedidos já recebidos podem ser concluídos normalmente. Para fechar só por algumas horas, prefira uma pausa na aba Pausas.
+                </flux:subheading>
+            </div>
+            <div class="flex justify-end gap-3">
+                <flux:button wire:click="$set('showSuspendModal', false)" variant="ghost">Cancelar</flux:button>
+                <flux:button wire:click="pause" wire:target="pause" variant="danger">Suspender</flux:button>
+            </div>
+        </div>
+    </flux:modal>
+
+    {{-- Modal: remover pausa do iFood --}}
+    {{-- Fechar (Esc, fora ou Cancelar) só limpa a escolha no navegador: um request a mais consumiria o aviso de sucesso. --}}
+    <flux:modal name="confirm-remove-ifood-pause" class="max-w-sm" x-on:close="if ($wire.confirmingInterruptionId) $wire.confirmingInterruptionId = null">
+        <div class="space-y-5">
+            <div>
+                <flux:heading size="lg">Remover esta pausa?</flux:heading>
+                <flux:subheading class="mt-1">A loja volta a abrir no iFood no horário de funcionamento normal.</flux:subheading>
+            </div>
+            <div class="flex justify-end gap-3">
+                <flux:button x-on:click="$flux.modal('confirm-remove-ifood-pause').close()" variant="ghost">Cancelar</flux:button>
+                @if($confirmingInterruptionId)
+                    <flux:button wire:click="removeStoreInterruption(@js($confirmingInterruptionId))" wire:target="removeStoreInterruption" variant="danger">Remover pausa</flux:button>
+                @endif
+            </div>
+        </div>
+    </flux:modal>
 </div>

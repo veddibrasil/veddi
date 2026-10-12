@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\Scopes\CompanyScope;
 use App\Models\User;
 use App\Services\Company\UserPermissionService;
+use App\Services\SuperAdmin\AuditLog;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -24,6 +25,8 @@ class Index extends Component
     public string $assignRole = 'company_admin';
 
     public int $assignBranchId = 0;
+
+    public ?int $togglingSuperAdminId = null;
 
     public function openAssign(int $userId): void
     {
@@ -60,10 +63,27 @@ class Index extends Component
         session()->flash('status', 'Usuário vinculado à empresa.');
     }
 
-    public function toggleSuperAdmin(int $userId): void
+    public function confirmToggleSuperAdmin(int $userId): void
     {
-        $user = User::findOrFail($userId);
-        $user->update(['is_super_admin' => ! $user->is_super_admin]);
+        $this->togglingSuperAdminId = $userId;
+    }
+
+    public function cancelToggleSuperAdmin(): void
+    {
+        $this->togglingSuperAdminId = null;
+    }
+
+    public function toggleSuperAdmin(): void
+    {
+        $user = User::findOrFail($this->togglingSuperAdminId);
+        $granted = ! $user->is_super_admin;
+
+        $user->update(['is_super_admin' => $granted]);
+
+        AuditLog::privilegeChanged(auth()->user(), $user, $granted);
+
+        $this->togglingSuperAdminId = null;
+        session()->flash('status', $granted ? 'Usuário promovido a super admin.' : 'Privilégio de super admin revogado.');
     }
 
     public function render()

@@ -8,6 +8,7 @@ use App\Http\Controllers\IfoodWebhookController;
 use App\Http\Controllers\RegisterCompanyController;
 use App\Http\Controllers\VindiSimulatePaymentController;
 use App\Http\Controllers\VindiWebhookController;
+use App\Http\Controllers\WhatsAppWebhookController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -53,6 +54,16 @@ Route::post('/webhooks/fiscal', FiscalWebhookController::class)
 Route::post('/webhooks/ifood', IfoodWebhookController::class)
     ->middleware('throttle:120,1')
     ->name('webhook.ifood');
+
+// --- Webhook WhatsApp Cloud API (sem auth, sem CSRF — coberto por webhooks/* em bootstrap/app.php) ---
+// GET = verificação do endpoint pela Meta; POST = eventos de todas as WABAs (assinatura X-Hub-Signature-256).
+// Throttle generoso: a Meta envia em rajadas e reenvia o que receber 429.
+Route::get('/webhooks/whatsapp', [WhatsAppWebhookController::class, 'verify'])
+    ->middleware('throttle:60,1')
+    ->name('webhook.whatsapp.verify');
+Route::post('/webhooks/whatsapp', [WhatsAppWebhookController::class, 'receive'])
+    ->middleware('throttle:1200,1')
+    ->name('webhook.whatsapp');
 
 // --- API pública ---
 Route::post('/api/validate-cpf', function (Request $request) {
@@ -121,7 +132,7 @@ Route::middleware(['auth', 'verified', 'company.active'])
         // Gestão completa: só company_admin
         Route::middleware('company.role:company_admin')->group(function () {
             Route::get('/settings', \App\Livewire\Admin\Settings\CompanySettings::class)->name('settings');
-            // Route::get('/settings/whatsapp', \App\Livewire\Admin\Settings\WhatsAppSettings::class)->name('settings.whatsapp');
+            Route::get('/settings/whatsapp', \App\Livewire\Admin\Settings\WhatsAppSettings::class)->name('settings.whatsapp');
             Route::get('/settings/ifood', \App\Livewire\Admin\Settings\IfoodIntegrationSettings::class)->name('settings.ifood');
             Route::get('/integrations', \App\Livewire\Admin\Integrations\Index::class)->name('integrations.index');
 
@@ -173,6 +184,7 @@ Route::middleware(['auth', 'verified', 'super.admin'])
         Route::get('/users', \App\Livewire\SuperAdmin\Users\Index::class)->name('users.index');
         Route::get('/users/{user}/permissions', \App\Livewire\SuperAdmin\Permissions\UserPermissions::class)->name('users.permissions');
         Route::get('/permissions', \App\Livewire\SuperAdmin\Permissions\Index::class)->name('permissions.index');
+        Route::get('/whatsapp', \App\Livewire\SuperAdmin\WhatsApp\Connections::class)->name('whatsapp.index');
 
         Route::post('/simulate/asaas-payment', AsaasSimulatePaymentController::class)->name('simulate.asaas-payment');
         Route::post('/simulate/vindi-payment', VindiSimulatePaymentController::class)->name('simulate.vindi-payment');

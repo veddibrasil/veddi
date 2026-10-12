@@ -158,16 +158,24 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
-                    @if ($this->pdvEnabled)
-                        <div class="pb-1">
+                <fieldset class="space-y-3">
+                    <legend class="text-sm font-medium text-neutral-700 dark:text-neutral-200">Onde vender</legend>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        @if ($this->pdvEnabled)
                             <flux:checkbox wire:model="available_in_pdv" label="Disponível no PDV" />
-                        </div>
-                    @endif
-                    <div class="pb-1">
+                        @endif
                         <flux:checkbox wire:model="available_in_delivery" label="Disponível no Delivery" />
+                        @if ($this->ifoodEnabled)
+                            <flux:checkbox wire:model.live="available_in_ifood" label="Disponível no iFood"
+                                description="O iFood aceita nome com até 100 caracteres e foto JPG ou PNG." />
+                        @endif
                     </div>
-                </div>
+                    @foreach ($this->ifoodSyncErrors as $syncError)
+                        <x-admin.alert variant="warning" icon="exclamation-triangle">
+                            <strong>iFood ({{ $syncError['branch'] }}):</strong> {{ $syncError['error'] }} Corrija e salve para enviar de novo.
+                        </x-admin.alert>
+                    @endforeach
+                </fieldset>
             </div>
 
             {{-- Filiais --}}
@@ -288,7 +296,7 @@
                                            wire:model="groupImages.{{ $group['key'] }}"
                                            @change="handleChange($event)" class="hidden" />
                                     <template x-if="preview || existingUrl">
-                                        <img :src="preview || existingUrl" class="w-full h-full object-cover" />
+                                        <img :src="preview || existingUrl" alt="Pré-visualização da imagem" class="w-full h-full object-cover" />
                                     </template>
                                     <template x-if="!preview && !existingUrl">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-neutral-400 dark:text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -538,7 +546,7 @@
                                                        wire:model="optionImages.{{ $optImgKey }}"
                                                        @change="handleChange($event)" class="hidden" />
                                                 <template x-if="preview || existingUrl">
-                                                    <img :src="preview || existingUrl" class="w-full h-full object-cover" />
+                                                    <img :src="preview || existingUrl" alt="Pré-visualização da imagem" class="w-full h-full object-cover" />
                                                 </template>
                                                 <template x-if="!preview && !existingUrl">
                                                     <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-neutral-400 dark:text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
