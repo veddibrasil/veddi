@@ -37,6 +37,11 @@ class StockService
     public function deductForItems(Collection $items, Order $order): void
     {
         foreach ($items as $item) {
+            // Item avulso do iFood (sem produto ligado no VEDDI): não há estoque pra baixar.
+            if ($item->product_id === null) {
+                continue;
+            }
+
             $pivot = DB::table('branch_product')
                 ->where('branch_id', $order->branch_id)
                 ->where('product_id', $item->product_id)

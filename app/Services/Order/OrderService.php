@@ -50,7 +50,11 @@ class OrderService implements OrderServiceInterface
         $channelColumn = $channel === OrderChannel::Ifood->value
             ? 'available_in_ifood'
             : ($orderType === 'pdv' ? 'available_in_pdv' : 'available_in_delivery');
-        $products = $this->resolveProducts($cart, $branchId, $channelColumn);
+        $products = $this->resolveProducts(
+            array_filter($cart, fn ($item) => ! self::isUnlinkedIfoodItem($item, $channel)),
+            $branchId,
+            $channelColumn,
+        );
 
         $customer = \App\Models\Customer::withoutGlobalScopes()->find($customerId);
 
@@ -61,6 +65,12 @@ class OrderService implements OrderServiceInterface
             // obrigatória ou sem preço. PDV (atendente) e iFood têm o próprio fluxo e ficam fora.
             $enforceSelfServiceRules = $orderType !== 'pdv' && $channel === OrderChannel::Chat->value;
             foreach ($cart as $cartKey => $item) {
+                if (self::isUnlinkedIfoodItem($item, $channel)) {
+                    $subtotal += self::unlinkedItemLine($item)['subtotal'];
+
+                    continue;
+                }
+
                 $pid = (int) ($item['product_id'] ?? explode('_', (string) $cartKey)[0]);
                 $product = $products[$pid];
                 $resolved = $optionPricing->resolve($product, is_array($item) ? $item : []);
@@ -152,6 +162,12 @@ class OrderService implements OrderServiceInterface
             }
 
             foreach ($cart as $cartKey => $item) {
+                if (self::isUnlinkedIfoodItem($item, $channel)) {
+                    OrderItem::create(['order_id' => $order->id, 'product_id' => null, ...self::unlinkedItemLine($item)]);
+
+                    continue;
+                }
+
                 $pid = (int) ($item['product_id'] ?? explode('_', (string) $cartKey)[0]);
                 $product = $products[$pid];
                 $resolved = $optionPricing->resolve($product, is_array($item) ? $item : []);
@@ -465,6 +481,32 @@ class OrderService implements OrderServiceInterface
         ]);
 
         OrderItemsUpdated::dispatch($order, $summary);
+    }
+
+    /**
+     * Item avulso do iFood (sem produto ligado no VEDDI, ver IfoodOrderMapper): nome, preço e
+     * complementos vêm do pedido que a API do iFood devolveu, já pago lá. Só o canal iFood aceita —
+     * no chat e no PDV o carrinho vem do navegador e o preço tem de sair do cadastro.
+     */
+    private static function isUnlinkedIfoodItem(mixed $item, string $channel): bool
+    {
+        return $channel === OrderChannel::Ifood->value && is_array($item) && ($item['unlinked'] ?? false) === true;
+    }
+
+    /** @return array{product_name: string, unit_price: float, quantity: int, subtotal: float, options: ?array, notes: ?string} */
+    private static function unlinkedItemLine(array $item): array
+    {
+        $name = trim((string) ($item['name'] ?? ''));
+        $notes = trim((string) ($item['notes'] ?? ''));
+
+        return [
+            'product_name' => mb_substr($name !== '' ? $name : 'Item iFood', 0, 255),
+            'unit_price' => max(0.0, round((float) ($item['unit_price'] ?? 0), 2)),
+            'quantity' => max(1, (int) ($item['qty'] ?? 1)),
+            'subtotal' => max(0.0, round((float) ($item['subtotal'] ?? 0), 2)),
+            'options' => ! empty($item['options']) ? $item['options'] : null,
+            'notes' => $notes !== '' ? mb_substr($notes, 0, 500) : null,
+        ];
     }
 
     private function resolveProducts(array $cart, int $branchId, string $channelColumn): Collection

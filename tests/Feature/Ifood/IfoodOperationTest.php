@@ -1,8 +1,10 @@
 <?php
 
 use App\Contracts\IfoodGatewayContract;
+use App\Contracts\OrderServiceInterface;
 use App\Exceptions\IfoodMerchantAlreadyLinkedException;
 use App\Jobs\DisableIfoodItemJob;
+use App\Jobs\ProcessIfoodOrderJob;
 use App\Jobs\SyncIfoodCatalogJob;
 use App\Livewire\Admin\Branches\Pauses;
 use App\Livewire\Admin\Orders\Index as OrdersIndex;
@@ -91,25 +93,28 @@ test('webhook de empresa bloqueada não vira pedido e o KEEPALIVE tira a loja da
 
 test('pedido do iFood que não entra no painel avisa no sino e na lista de pedidos', function () {
     $ctx = ifoodContext('nao-entrou');
-    fakeIfoodApi(ifoodOrderDetailsPayload('ifood-order-nao-entrou', $ctx['integration']->merchant_id, 'item-sem-vinculo'));
+    fakeIfoodApi(ifoodOrderDetailsPayload('ifood-order-nao-entrou', $ctx['integration']->merchant_id, 'ifood-item-coxinha-nao-entrou'));
+    // Última tentativa: a falha não volta pra fila e o restaurante é avisado.
     $event = IfoodOrderEvent::create([
         'event_id' => 'evt-nao-entrou', 'event_type' => 'PLC', 'source' => 'polling',
         'ifood_integration_id' => $ctx['integration']->id,
         'payload' => ['orderId' => 'ifood-order-nao-entrou', 'merchantId' => $ctx['integration']->merchant_id],
         'status' => 'pending',
+        'attempts' => ProcessIfoodOrderJob::MAX_ATTEMPTS - 1,
     ]);
+    $this->mock(OrderServiceInterface::class, fn ($mock) => $mock->shouldReceive('createOrder')->andThrow(new RuntimeException('falha')));
 
-    runIfoodOrderJob($event->id);
+    expect(fn () => runIfoodOrderJob($event->id))->toThrow(RuntimeException::class);
 
     $notification = CompanyNotification::where('company_id', $ctx['company']->id)->where('type', 'ifood_alert')->first();
     expect($notification?->title)->toBe('Pedido #1234 não entrou no painel')
         ->and($notification->subtitle)->toContain('Gestor de Pedidos do iFood')
-        ->and($event->fresh()->error)->toContain('Pedido #1234')->toContain('não está ligado a nenhum produto desta filial');
+        ->and($event->fresh()->error)->toContain('Pedido #1234')->toContain('Não conseguimos registrar o pedido');
 
     $admin = ifoodOperationAdmin($ctx);
     Livewire::actingAs($admin)->test(OrdersIndex::class)
         ->assertSee('Resolva pelo Gestor de Pedidos do iFood')
-        ->assertSee('não está ligado a nenhum produto desta filial')
+        ->assertSee('Não conseguimos registrar o pedido')
         ->call('dismissIfoodNotImported', $event->id)
         ->assertDontSee('Resolva pelo Gestor de Pedidos do iFood');
     expect($event->fresh()->status)->toBe('dismissed');

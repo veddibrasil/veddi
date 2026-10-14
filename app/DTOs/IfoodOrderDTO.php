@@ -14,7 +14,7 @@ use Carbon\Carbon;
 readonly class IfoodOrderDTO
 {
     /**
-     * @param  array<int, array{ifoodItemId: string, externalCode: ?string, name: string, quantity: int, unitPrice: float, observations: ?string, options: array<int, array{ifoodOptionId: string, externalCode: ?string, name: string, quantity: int, hasNestedOptions: bool}>}>  $items
+     * @param  array<int, array{ifoodItemId: string, externalCode: ?string, name: string, quantity: int, unitPrice: float, optionsPrice: float, totalPrice: float, observations: ?string, options: array<int, array{ifoodOptionId: string, externalCode: ?string, name: string, groupName: ?string, quantity: int, unitPrice: float, hasNestedOptions: bool, nestedOptions: array, customizations: array}>}>  $items
      * @param  array{street: string, number: string, complement: ?string, neighborhood: string, city: string, state: string, cep: string, latitude: ?float, longitude: ?float}|null  $deliveryAddress
      * @param  array<int, array{method: string, type: ?string, prepaid: bool, value: float, brand: ?string, wallet: ?string, change_for: ?float}>  $paymentMethods
      * @param  array<int, array{value: float, target: ?string, campaign: ?string, sponsors: array<int, array{name: string, value: float, description: ?string}>}>  $benefits
@@ -175,6 +175,10 @@ readonly class IfoodOrderDTO
                 'name' => (string) ($item['name'] ?? ''),
                 'quantity' => (int) ($item['quantity'] ?? 1),
                 'unitPrice' => (float) ($item['unitPrice'] ?? 0.0),
+                // totalPrice = price (unitPrice × quantity) + optionsPrice: o que o cliente pagou
+                // pela linha. É o preço do item avulso (sem produto ligado no VEDDI).
+                'optionsPrice' => (float) ($item['optionsPrice'] ?? 0.0),
+                'totalPrice' => (float) ($item['totalPrice'] ?? 0.0),
                 'observations' => self::text($item['observations'] ?? null),
                 'options' => self::mapOptions($item['options'] ?? []),
             ];
@@ -187,15 +191,18 @@ readonly class IfoodOrderDTO
             // Complemento-de-complemento (2+ níveis): o iFood pode aninhar 'options'
             // dentro de um option (ex.: combo com sub-escolha). O schema interno
             // (product_option_groups → product_options) só suporta 1 nível — ver
-            // IfoodOrderMapper::mapToCart, que falha o evento nesse caso.
-            $hasNestedOptions = ! empty($option['options']);
+            // IfoodOrderMapper::mapToCart, que manda o item como avulso nesse caso.
+            $nestedOptions = self::mapOptions($option['options'] ?? []);
 
             return [
                 'ifoodOptionId' => (string) ($option['id'] ?? ''),
                 'externalCode' => $option['externalCode'] ?? null,
                 'name' => (string) ($option['name'] ?? ''),
+                'groupName' => self::text($option['groupName'] ?? null),
                 'quantity' => (int) ($option['quantity'] ?? 1),
-                'hasNestedOptions' => $hasNestedOptions,
+                'unitPrice' => (float) ($option['unitPrice'] ?? 0.0),
+                'hasNestedOptions' => $nestedOptions !== [],
+                'nestedOptions' => $nestedOptions,
                 'customizations' => self::mapOptions($option['customizations'] ?? $option['customization'] ?? []),
             ];
         }, $rawOptions);

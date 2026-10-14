@@ -1,9 +1,15 @@
 <?php
 
+use App\Contracts\OrderServiceInterface;
+use App\Livewire\Admin\Orders\Show as OrdersShow;
+use App\Models\Customer;
 use App\Models\IfoodOrderEvent;
 use App\Models\Order;
 use App\Models\Payment;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
 
@@ -67,16 +73,33 @@ test('idempotência: evento já processado não cria pedido duplicado', function
     expect(Order::withoutGlobalScopes()->count())->toBe(1);
 });
 
-test('item não mapeado falha o evento sem criar pedido malformado', function () {
-    ['integration' => $integration] = ifoodContext('job3');
+test('item sem vínculo entra como avulso pelo preço do iFood, sem baixa de estoque; item ligado segue o cadastro', function () {
+    ['branch' => $branch, 'product' => $product, 'integration' => $integration] = ifoodContext('job3');
+    DB::table('branch_product')->where('branch_id', $branch->id)->where('product_id', $product->id)
+        ->update(['track_stock' => true, 'quantity' => 10]);
 
-    // ifoodItemId que não existe em branch_product.ifood_item_id para esta filial.
-    fakeIfoodApi(ifoodOrderDetailsPayload('ifood-order-job3', $integration->merchant_id, 'item-nao-cadastrado'));
+    // Item 1 ligado (2 × R$ 8,00 do cadastro); item 2 só existe no cardápio do iFood.
+    $payload = ifoodOrderDetailsPayload('ifood-order-job3', $integration->merchant_id, 'ifood-item-coxinha-job3', 2);
+    $payload['items'][] = [
+        'id' => 'item-nao-cadastrado',
+        'name' => 'Combo 5 Salgados',
+        'quantity' => 1,
+        'unitPrice' => 12.00,
+        'optionsPrice' => 0.0,
+        'totalPrice' => 12.00,
+        'observations' => 'Sem cebola',
+        'options' => [
+            ['id' => 'op-coxinha', 'groupName' => 'Sabores', 'name' => 'Coxinha', 'quantity' => 5, 'unitPrice' => 0],
+        ],
+    ];
+    $payload['total']['subTotal'] = 28.00;
+    $payload['total']['orderAmount'] = 33.00;
+    fakeIfoodApi($payload);
 
     $event = IfoodOrderEvent::create([
         'event_id' => 'evt-job-3',
         'event_type' => 'PLC',
-        'source' => 'webhook',
+        'source' => 'polling',
         'ifood_integration_id' => $integration->id,
         'payload' => ['orderId' => 'ifood-order-job3', 'merchantId' => $integration->merchant_id],
         'status' => 'pending',
@@ -85,10 +108,62 @@ test('item não mapeado falha o evento sem criar pedido malformado', function ()
     runIfoodOrderJob($event->id);
 
     $event->refresh();
-    expect($event->status)->toBe('failed')
-        ->and($event->order_id)->toBeNull();
+    expect($event->status)->toBe('processed')
+        ->and($event->error)->toBeNull();
 
-    expect(Order::withoutGlobalScopes()->count())->toBe(0);
+    $order = Order::withoutGlobalScopes()->find($event->order_id);
+    expect((float) $order->subtotal)->toBe(28.0)
+        ->and((float) $order->total)->toBe(33.0)
+        ->and((float) Payment::where('order_id', $order->id)->sum('amount'))->toBe(33.0);
+
+    [$linked, $unlinked] = $order->items()->orderBy('id')->get()->all();
+    expect($linked->product_id)->toBe($product->id)
+        ->and((float) $linked->subtotal)->toBe(16.0)
+        ->and($unlinked->product_id)->toBeNull()
+        ->and($unlinked->product_name)->toBe('Combo 5 Salgados')
+        ->and((float) $unlinked->unit_price)->toBe(12.0)
+        ->and((float) $unlinked->subtotal)->toBe(12.0)
+        ->and($unlinked->notes)->toBe('Sem cebola')
+        // toEqual: coluna JSON do MySQL reordena as chaves.
+        ->and($unlinked->options)->toEqual([
+            ['group_name' => 'Sabores', 'selections' => [['name' => 'Coxinha', 'qty' => 5, 'additional_price' => 0]]],
+        ]);
+
+    // Só o item ligado baixa estoque.
+    expect(DB::table('branch_product')->where('branch_id', $branch->id)->where('product_id', $product->id)->value('quantity'))->toBe(8);
+
+    // Tela do pedido e comanda mostram o item avulso com os complementos do iFood.
+    $admin = User::factory()->create(['is_super_admin' => true]);
+    Livewire::actingAs($admin)->test(OrdersShow::class, ['order' => $order])
+        ->assertSee('Combo 5 Salgados')
+        ->assertSee('Sabores:')
+        ->assertSee('5× Coxinha');
+    $receipt = view('livewire.admin.orders.receipt', [
+        'order' => $order->fresh(['items', 'customer', 'branch', 'payment', 'coupon']),
+        'company' => $order->company,
+    ])->render();
+    expect($receipt)->toContain('Combo 5 Salgados')->toContain('5x Coxinha');
+});
+
+test('marcador de item avulso só vale no canal iFood: no chat o preço continua vindo do cadastro', function () {
+    ['company' => $company, 'branch' => $branch, 'product' => $product] = ifoodContext('job-avulso-chat');
+    $customer = Customer::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Cliente Chat',
+        'phone' => '11999990000',
+    ]);
+    $service = app(OrderServiceInterface::class);
+
+    $order = $service->createOrder($customer->id, $branch->id, [
+        (string) $product->id => ['product_id' => $product->id, 'unlinked' => true, 'qty' => 1, 'name' => 'Coxinha', 'unit_price' => 0.01, 'subtotal' => 0.01],
+    ], '', 'pix', 'pickup');
+
+    expect((float) $order->subtotal)->toBe(8.0)
+        ->and((float) $order->items->first()->unit_price)->toBe(8.0);
+
+    expect(fn () => $service->createOrder($customer->id, $branch->id, [
+        'x' => ['product_id' => null, 'unlinked' => true, 'qty' => 1, 'name' => 'Grátis', 'unit_price' => 0.01, 'subtotal' => 0.01],
+    ], '', 'pix', 'pickup'))->toThrow(RuntimeException::class);
 });
 
 test('evento CAN cancela pedido existente e dispara OrderStatusUpdated', function () {

@@ -8,7 +8,6 @@ use App\DTOs\IfoodOrderDTO;
 use App\Enums\OrderChannel;
 use App\Events\IfoodOrderNotImported;
 use App\Events\NewOrderPlaced;
-use App\Exceptions\IfoodMappingException;
 use App\Models\CompanyNotification;
 use App\Models\Customer;
 use App\Models\IfoodOrderEvent;
@@ -142,18 +141,6 @@ class ProcessIfoodOrderJob implements ShouldBeUnique, ShouldQueue
                 'order_id' => $order->id,
                 'ifood_order_id' => $dto->ifoodOrderId,
             ]);
-        } catch (IfoodMappingException $e) {
-            // Erro de mapeamento (item/opção não cadastrado) não é transitório — não
-            // adianta tentar de novo, e não deve criar pedido malformado. Marca failed
-            // e não relança (não queremos retry automático de algo que vai falhar sempre).
-            $event->update(['status' => 'failed']);
-
-            Log::channel('ifood')->error('iFood: falha ao mapear pedido — item/opção não cadastrado', [
-                'event_id' => $event->event_id,
-                'error' => $e->getMessage(),
-            ]);
-
-            $this->notifyNotImported($event, $e->userMessage(), $dto ?? null);
         } catch (Throwable $e) {
             $retryable = $event->attempts < self::MAX_ATTEMPTS;
             $event->update(['status' => $retryable ? 'pending' : 'failed']);
