@@ -259,6 +259,24 @@ trait HasPaymentFlow
         $this->isLoading = false;
     }
 
+    /**
+     * Pedido do chat, só se for do cliente identificado e da empresa do chat. Os ids são
+     * #[Locked], mas cancelar, cobrar e gerar PIX passam por aqui: sem a checagem de dono,
+     * um orderId trocado alcançaria (e cancelaria/estornaria) o pedido de outro cliente.
+     */
+    private function findOwnOrder(): ?Order
+    {
+        if (! $this->orderId || ! $this->customerId || ! $this->companyId) {
+            return null;
+        }
+
+        return Order::withoutGlobalScopes()
+            ->where('id', $this->orderId)
+            ->where('customer_id', $this->customerId)
+            ->where('company_id', $this->companyId)
+            ->first();
+    }
+
     public function checkPaymentStatus(): void
     {
         if (! $this->orderId) {
@@ -284,7 +302,7 @@ trait HasPaymentFlow
         }
         RateLimiter::hit($rateLimitKey, 60);
 
-        $order = Order::find($this->orderId);
+        $order = $this->findOwnOrder();
         if (! $order) {
             Log::channel('chat')->warning('checkPaymentStatus: pedido não encontrado', [
                 'order_id' => $this->orderId,
@@ -360,7 +378,7 @@ trait HasPaymentFlow
             return;
         }
 
-        $order = Order::find($this->orderId);
+        $order = $this->findOwnOrder();
         if (! $order) {
             Log::channel('chat')->warning('handlePaymentExpired: pedido não encontrado', [
                 'order_id' => $this->orderId,
@@ -448,7 +466,7 @@ trait HasPaymentFlow
 
         $this->submitting = true;
 
-        $order = Order::find($this->orderId);
+        $order = $this->findOwnOrder();
         $customer = Customer::findOrFail($this->customerId);
         $company = $this->currentCompany();
 
@@ -551,14 +569,19 @@ trait HasPaymentFlow
 
     public function simulatePayment(): void
     {
-        app(PaymentService::class)->simulatePayment($this->orderId);
+        $order = $this->findOwnOrder();
+        if (! $order) {
+            return;
+        }
+
+        app(PaymentService::class)->simulatePayment($order->id);
         $this->addMessage('bot', 'Pagamento simulado! Pedido confirmado.');
         $this->transitionTo('ORDER_CONFIRMED');
     }
 
     public function requestCancelOrder(): void
     {
-        $order = Order::find($this->orderId);
+        $order = $this->findOwnOrder();
         if (! $order) {
             $this->addMessage('bot', 'Não é possível cancelar o pedido no momento. Entre em contato com a loja.');
 
@@ -584,7 +607,7 @@ trait HasPaymentFlow
 
     public function confirmCancelOrder(): void
     {
-        $order = Order::find($this->orderId);
+        $order = $this->findOwnOrder();
         if (! $order) {
             $this->showCancelConfirm = false;
             $this->addMessage('bot', 'Não foi possível cancelar o pedido. Entre em contato com a loja.');
@@ -607,6 +630,9 @@ trait HasPaymentFlow
             return;
         }
 
+        // Painel (tempo real), WhatsApp e demais listeners acompanham o cancelamento feito pelo cliente.
+        OrderStatusUpdated::dispatch($order->fresh());
+
         $this->showCancelConfirm = false;
         $this->lastNotifiedStatus = 'cancelled';
         $this->addMessage('bot', "❌ Pedido {$order->order_number} cancelado. Se precisar de ajuda, entre em contato com a loja.");
@@ -621,7 +647,7 @@ trait HasPaymentFlow
     public function changePaymentMethod(): void
     {
         if ($this->orderId) {
-            $order = Order::find($this->orderId);
+            $order = $this->findOwnOrder();
             if ($order && $order->status === 'pending') {
                 $order->update(['status' => 'cancelled']);
                 app(StockService::class)->restoreForOrder($order);
@@ -629,6 +655,9 @@ trait HasPaymentFlow
                     'order_id' => $order->id,
                     'customer_id' => $this->customerId,
                 ]);
+
+                // Como nos demais cancelamentos: painel em tempo real e listeners (WhatsApp) acompanham.
+                OrderStatusUpdated::dispatch($order->fresh());
             }
         }
 

@@ -30,6 +30,9 @@ class OrderChat extends Component
     public string $step = 'IDENTIFY_PHONE';
 
     // --- Customer data ---
+    // Ids que decidem dono e empresa: só o servidor atribui (o client não pode trocar de cliente,
+    // pedido ou empresa via payload). Ver HasPaymentFlow::findOwnOrder().
+    #[Locked]
     public ?int $customerId = null;
 
     public string $phone = '';
@@ -70,6 +73,7 @@ class OrderChat extends Component
 
     public string $taxId = '';
 
+    #[Locked]
     public ?int $orderId = null;
 
     public ?string $scheduledAt = null;
@@ -92,6 +96,8 @@ class OrderChat extends Component
     public bool $freeDelivery = false;
 
     // --- Company ---
+    // boot() rebinda current.company a partir dele: adulterado, abriria o chat de outra empresa.
+    #[Locked]
     public ?int $companyId = null;
 
     // --- Session recovery ---

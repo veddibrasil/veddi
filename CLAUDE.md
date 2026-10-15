@@ -206,9 +206,9 @@ Regras que nao podem quebrar:
 Comandos e operacao:
 
 - `php artisan whatsapp:send-test {telefone} [--company=]`: envia um template de teste (ignora opt-in);
-- `php artisan whatsapp:sync-templates [--company=]`: recria/sincroniza templates e atualiza qualidade/limite;
-- `php artisan whatsapp:check-connections`: monitoramento diario (agendado as 09:00 em `routes/console.php`); avisa os `company_admin` por sino do painel e e-mail quando a coexistencia fica sem uso do app por 12+ dias, a conexao entra em erro ou a qualidade do numero fica vermelha;
-- `composer dev` nao consome as filas `whatsapp` e `critical`; em producao os workers estao no `cloud.yaml`.
+- `php artisan whatsapp:sync-templates [--company=] [--platform] [--pending]`: recria/sincroniza templates e atualiza qualidade/limite (`--platform` inscreve o app e cria os templates na WABA do numero da plataforma; `--pending` so conexoes aguardando templates, agendado a cada 30 min para recuperar webhook perdido);
+- `php artisan whatsapp:check-connections`: monitoramento diario (agendado as 09:00 em `routes/console.php`; antes atualiza qualidade/limite dos numeros ativos na Graph API); avisa os `company_admin` por sino do painel e e-mail quando a coexistencia fica sem uso do app por 12+ dias, a conexao entra em erro ou a qualidade do numero fica vermelha;
+- localmente `composer dev` e o Horizon (ambiente `local`) consomem `critical,default,whatsapp,low`; em producao os workers estao no `cloud.yaml`.
 
 Pendencia conhecida: o evento `awaiting_payment` (codigo PIX por WhatsApp) ainda nao tem template nem gatilho; o toggle aparece desabilitado como "em breve".
 

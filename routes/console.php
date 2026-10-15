@@ -33,6 +33,14 @@ Schedule::command('whatsapp:check-connections')
     ->withoutOverlapping()
     ->onOneServer();
 
+// Conexões presas aguardando templates: relê o status na Meta. Cobre webhook de aprovação perdido
+// (ou chegado no meio do provisionamento) e templates que falharam ao ser criados.
+Schedule::command('whatsapp:sync-templates --pending')
+    ->name('whatsapp-sync-pending-templates')
+    ->everyThirtyMinutes()
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // Não é necessário para o saldo: BalanceService já trata como liberada a transação
 // confirmed cuja release_date chegou.
 // Schedule::job(new \App\Jobs\ReleaseCompanyTransactionsJob)

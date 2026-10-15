@@ -3,6 +3,7 @@
 use App\Livewire\Admin\Settings\WhatsAppSettings;
 use App\Models\Company;
 use App\Models\User;
+use App\Models\WhatsAppConnection;
 use App\Models\WhatsAppSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -66,6 +67,7 @@ test('novos toggles começam ligados e os padrões antigos são mantidos', funct
 
 test('salvar persiste os toggles novos separando "Pronto" de "Saiu para entrega"', function () {
     [$company, $admin] = whatsappSettingsCompany();
+    WhatsAppConnection::factory()->forCompany($company)->create();
 
     Livewire::actingAs($admin)
         ->test(WhatsAppSettings::class)
@@ -102,7 +104,8 @@ test('a tela carrega as configurações já salvas da empresa', function () {
 });
 
 test('salvar só altera as configurações da própria empresa', function () {
-    [, $admin] = whatsappSettingsCompany();
+    [$company, $admin] = whatsappSettingsCompany();
+    WhatsAppConnection::factory()->forCompany($company)->create();
 
     $outra = Company::create([
         'name' => 'Outra', 'slug' => 'outra-'.uniqid(), 'order_prefix' => 'OUT', 'active' => true,
@@ -115,4 +118,56 @@ test('salvar só altera as configurações da própria empresa', function () {
         ->call('save');
 
     expect($settingsOutra->fresh()->enabled)->toBeFalse();
+});
+
+test('salvar é restrito a quem pode configurar a empresa', function () {
+    [$company, $manager] = whatsappSettingsCompany('branch_manager');
+    WhatsAppConnection::factory()->forCompany($company)->create();
+
+    Livewire::actingAs($manager)
+        ->test(WhatsAppSettings::class)
+        ->set('enabled', true)
+        ->call('save')
+        ->assertForbidden();
+
+    expect(WhatsAppSetting::where('company_id', $company->id)->exists())->toBeFalse();
+});
+
+test('salvar não grava nada sem conexão ativa nem fallback (mesmo critério dos toggles da tela)', function (?string $status) {
+    [$company, $admin] = whatsappSettingsCompany();
+    config(['services.whatsapp.fallback_to_platform' => false]);
+
+    if ($status !== null) {
+        WhatsAppConnection::factory()->forCompany($company)->status($status)->create();
+    }
+
+    Livewire::actingAs($admin)
+        ->test(WhatsAppSettings::class)
+        ->set('enabled', true)
+        ->call('save')
+        ->assertNoRedirect();
+
+    expect(WhatsAppSetting::where('company_id', $company->id)->exists())->toBeFalse();
+})->with([
+    'sem conexão' => [null],
+    'aguardando templates' => [WhatsAppConnection::STATUS_TEMPLATES_PENDING],
+    'com erro' => [WhatsAppConnection::STATUS_ERROR],
+    'desconectada' => [WhatsAppConnection::STATUS_DISCONNECTED],
+]);
+
+test('salvar funciona sem conexão quando o fallback da plataforma está ligado', function () {
+    [$company, $admin] = whatsappSettingsCompany();
+    config([
+        'services.whatsapp.fallback_to_platform' => true,
+        'services.whatsapp.platform.phone_number_id' => '999000111',
+        'services.whatsapp.platform.token' => 'token-da-plataforma',
+    ]);
+
+    Livewire::actingAs($admin)
+        ->test(WhatsAppSettings::class)
+        ->set('enabled', true)
+        ->call('save')
+        ->assertRedirect(route('admin.settings.whatsapp'));
+
+    expect(WhatsAppSetting::where('company_id', $company->id)->value('enabled'))->toBeTrue();
 });

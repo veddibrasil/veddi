@@ -28,7 +28,12 @@ class WhatsAppService
             return '55'.$digits;
         }
 
-        // Telefone fixo (10 dígitos) não tem WhatsApp
+        // 10 dígitos (DDD + 8): o chat aceita. Celular antigo sem o 9º dígito (começa com 6-9)
+        // ganha o 9; fixo (2-5) não tem WhatsApp. Mesma grafia que phoneCandidates() cobre no opt-out.
+        if (strlen($digits) === 10 && in_array($digits[2], ['6', '7', '8', '9'], true)) {
+            return '55'.substr($digits, 0, 2).'9'.substr($digits, 2);
+        }
+
         return null;
     }
 

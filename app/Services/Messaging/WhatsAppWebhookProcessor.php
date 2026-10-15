@@ -31,6 +31,9 @@ class WhatsAppWebhookProcessor
 
     public const REMOVED_NUMBER_MESSAGE = 'O número foi removido da conta do WhatsApp Business. Conecte novamente.';
 
+    /** last_error de ACCOUNT_OFFBOARDED; o ACCOUNT_RECONNECTED só reverte este erro. */
+    public const OFFBOARDED_MESSAGE = 'O número foi registrado em outro aparelho e a Meta suspendeu a integração. Abra o app WhatsApp Business no celular do número; se não voltar sozinho, reconecte.';
+
     /** Respostas do cliente que encerram as notificações (comparadas sem acento, caixa ou pontuação). */
     private const OPT_OUT_KEYWORDS = ['PARAR', 'SAIR', 'STOP', 'CANCELAR'];
 
@@ -88,6 +91,7 @@ class WhatsAppWebhookProcessor
             'account_alerts' => $this->handleAccountAlert($target, $value),
             'account_update' => $this->handleAccountUpdate($target, $value),
             'smb_message_echoes' => $this->handleEchoes($target, $value),
+            'template_category_update' => $this->handleCategoryUpdate($target, $value),
             // history e smb_app_state_sync (sincronização da coexistência) ficam para uma próxima
             // entrega: por ora só registram que chegaram, assim como qualquer campo desconhecido.
             default => $this->logOnly($target, $field),
@@ -117,15 +121,19 @@ class WhatsAppWebhookProcessor
             return $connection ? ['platform' => false, 'connections' => collect([$connection])] : null;
         }
 
-        if ($entryId === '') {
+        // Eventos de parceiro (PARTNER_REMOVED, PARTNER_APP_UNINSTALLED...) chegam com o id do
+        // business no entry.id; a WABA afetada vem em waba_info.waba_id.
+        $wabaId = (string) data_get($value, 'waba_info.waba_id', '') ?: $entryId;
+
+        if ($wabaId === '') {
             return null;
         }
 
-        if (filled($platform['waba_id'] ?? null) && $entryId === (string) $platform['waba_id']) {
+        if (filled($platform['waba_id'] ?? null) && $wabaId === (string) $platform['waba_id']) {
             return ['platform' => true, 'connections' => collect()];
         }
 
-        $connections = WhatsAppConnection::withoutGlobalScopes()->where('waba_id', $entryId)->get();
+        $connections = WhatsAppConnection::withoutGlobalScopes()->where('waba_id', $wabaId)->get();
 
         return $connections->isEmpty() ? null : ['platform' => false, 'connections' => $connections];
     }
@@ -321,7 +329,8 @@ class WhatsAppWebhookProcessor
     {
         $event = strtoupper((string) ($value['event'] ?? ''));
         $name = (string) ($value['message_template_name'] ?? '');
-        $language = (string) ($value['message_template_language'] ?? config('whatsapp_templates.language'));
+        $language = $this->normalizeLanguage((string) ($value['message_template_language'] ?? ''));
+        $metaTemplateId = isset($value['message_template_id']) ? (string) $value['message_template_id'] : null;
         $status = WhatsAppTemplate::mapMetaStatus($event);
 
         if ($name === '' || $status === null) {
@@ -332,18 +341,23 @@ class WhatsAppWebhookProcessor
 
         $reason = strtoupper((string) ($value['reason'] ?? 'NONE'));
 
+        $this->warnIfNotUtility($target, $name, (string) ($value['message_template_category'] ?? ''));
+
         foreach ($target['connections'] as $connection) {
-            $template = WhatsAppTemplate::where('whatsapp_connection_id', $connection->id)
-                ->where('name', $name)
-                ->where('language', $language)
-                ->first();
+            $template = ($metaTemplateId !== null
+                ? WhatsAppTemplate::where('whatsapp_connection_id', $connection->id)->where('meta_template_id', $metaTemplateId)->first()
+                : null)
+                ?? WhatsAppTemplate::where('whatsapp_connection_id', $connection->id)
+                    ->where('name', $name)
+                    ->where('language', $language)
+                    ->first();
 
             // O webhook pode chegar antes de o provisionamento gravar a linha: cria só se o
-            // nome for de um template nosso (config), nunca de template alheio da WABA.
+            // nome for de um template nosso (config) no nosso idioma, nunca de template alheio da WABA.
             if (! $template) {
                 $templateEvent = $this->templateEventForName($name);
 
-                if ($templateEvent === null) {
+                if ($templateEvent === null || $language !== config('whatsapp_templates.language')) {
                     continue;
                 }
 
@@ -357,12 +371,62 @@ class WhatsAppWebhookProcessor
 
             $template->fill([
                 'status' => $status,
-                'meta_template_id' => isset($value['message_template_id']) ? (string) $value['message_template_id'] : $template->meta_template_id,
+                'meta_template_id' => $metaTemplateId ?? $template->meta_template_id,
                 'rejection_reason' => $reason !== 'NONE' && $reason !== '' && $status !== WhatsAppTemplate::STATUS_APPROVED ? $reason : null,
             ])->save();
 
             $this->activateIfReady($connection);
         }
+    }
+
+    /**
+     * A Meta manda o idioma do template como "pt-BR" (ou só "pt" em alguns eventos); o nosso
+     * padrão (o mesmo da criação) é "pt_BR".
+     */
+    private function normalizeLanguage(string $language): string
+    {
+        $configured = (string) config('whatsapp_templates.language');
+        $language = str_replace('-', '_', trim($language));
+
+        if ($language === '' || strcasecmp($language, $configured) === 0 || str_starts_with(strtolower($configured), strtolower($language).'_')) {
+            return $configured;
+        }
+
+        return $language;
+    }
+
+    /**
+     * Desde abril/2025 a Meta aprova como MARKETING (em vez de rejeitar) um template enviado como
+     * UTILITY que ela julgue promocional: a mensagem passa a custar mais e a ter limite de
+     * frequência. Não bloqueia o uso, mas o suporte precisa saber.
+     *
+     * @param  array{platform: bool, connections: Collection<int, WhatsAppConnection>}  $target
+     */
+    private function warnIfNotUtility(array $target, string $name, string $category): void
+    {
+        if ($category === '' || strtoupper($category) === strtoupper((string) config('whatsapp_templates.category'))) {
+            return;
+        }
+
+        Log::channel('whatsapp')->warning('Webhook WhatsApp: template com categoria diferente da enviada', [
+            'template' => $name,
+            'category' => strtoupper($category),
+            'platform' => $target['platform'],
+            'connection_ids' => $target['connections']->pluck('id')->all(),
+        ]);
+    }
+
+    /**
+     * @param  array{platform: bool, connections: Collection<int, WhatsAppConnection>}  $target
+     * @param  array<string, mixed>  $value
+     */
+    private function handleCategoryUpdate(array $target, array $value): void
+    {
+        $this->warnIfNotUtility(
+            $target,
+            (string) ($value['message_template_name'] ?? ''),
+            (string) ($value['new_category'] ?? $value['correct_category'] ?? ''),
+        );
     }
 
     private function templateEventForName(string $name): ?string
@@ -411,8 +475,11 @@ class WhatsAppWebhookProcessor
         foreach ($target['connections'] as $connection) {
             $attributes = [];
 
-            if (filled($value['current_limit'] ?? null)) {
-                $attributes['messaging_limit_tier'] = (string) $value['current_limit'];
+            // current_limit sai em fev/2026; o substituto é max_daily_conversations_per_business.
+            $limit = $value['max_daily_conversations_per_business'] ?? $value['current_limit'] ?? null;
+
+            if (is_scalar($limit) && filled($limit)) {
+                $attributes['messaging_limit_tier'] = (string) $limit;
             }
 
             $quality = strtoupper((string) ($value['quality_rating'] ?? ''));
@@ -440,15 +507,16 @@ class WhatsAppWebhookProcessor
      */
     private function handleAccountAlert(array $target, array $value): void
     {
+        // Os dados do alerta vêm em alert_info; o payload não traz qualidade nem limite.
         Log::channel('whatsapp')->warning('Webhook WhatsApp: alerta de conta', [
-            'severity' => $value['alert_severity'] ?? null,
-            'status' => $value['alert_status'] ?? null,
-            'type' => $value['alert_type'] ?? null,
+            'severity' => data_get($value, 'alert_info.alert_severity'),
+            'status' => data_get($value, 'alert_info.alert_status'),
+            'type' => data_get($value, 'alert_info.alert_type'),
+            'entity_type' => $value['entity_type'] ?? null,
+            'entity_id' => $value['entity_id'] ?? null,
             'platform' => $target['platform'],
             'connection_ids' => $target['connections']->pluck('id')->all(),
         ]);
-
-        $this->handleQualityUpdate($target, $value, 'account_alerts');
     }
 
     /**
@@ -465,13 +533,15 @@ class WhatsAppWebhookProcessor
             return;
         }
 
-        $level = in_array($event, ['DISABLED_UPDATE', 'ACCOUNT_DELETED', 'PARTNER_REMOVED', 'PHONE_NUMBER_REMOVED', 'ACCOUNT_VIOLATION'], true)
+        $level = in_array($event, ['DISABLED_UPDATE', 'ACCOUNT_DELETED', 'PARTNER_REMOVED', 'PARTNER_APP_UNINSTALLED', 'PHONE_NUMBER_REMOVED', 'ACCOUNT_VIOLATION', 'ACCOUNT_OFFBOARDED'], true)
             ? 'error'
             : 'info';
 
         Log::channel('whatsapp')->{$level}('Webhook WhatsApp: atualização de conta', [
             'event' => $event,
             'ban_state' => data_get($value, 'ban_info.waba_ban_state'),
+            // PRIMARY_INACTIVITY = app WhatsApp Business sem uso por ~14 dias (coexistência).
+            'disconnection_reason' => data_get($value, 'disconnection_info.reason'),
             'platform' => $target['platform'],
             'connection_ids' => $target['connections']->pluck('id')->all(),
         ]);
@@ -485,8 +555,10 @@ class WhatsAppWebhookProcessor
             match ($event) {
                 'DISABLED_UPDATE' => $this->handleBanState($connection, strtoupper((string) data_get($value, 'ban_info.waba_ban_state', ''))),
                 'ACCOUNT_DELETED' => $this->markDisconnected($connection, self::DELETED_ACCOUNT_MESSAGE),
-                'PARTNER_REMOVED' => $this->markDisconnected($connection, self::REMOVED_PARTNER_MESSAGE),
+                'PARTNER_REMOVED', 'PARTNER_APP_UNINSTALLED' => $this->markDisconnected($connection, self::REMOVED_PARTNER_MESSAGE),
                 'PHONE_NUMBER_REMOVED' => $this->handleNumberRemoved($connection, (string) ($value['phone_number'] ?? '')),
+                'ACCOUNT_OFFBOARDED' => $this->markOffboarded($connection),
+                'ACCOUNT_RECONNECTED' => $this->restoreFromError($connection, self::OFFBOARDED_MESSAGE),
                 default => null,
             };
         }
@@ -510,15 +582,41 @@ class WhatsAppWebhookProcessor
             return;
         }
 
-        // Reverte só o erro que este webhook marcou; um erro de token (por exemplo) continua.
-        if ($state === 'REINSTATE' && $connection->status === WhatsAppConnection::STATUS_ERROR && $connection->last_error === self::BAN_MESSAGE) {
-            $connection->update([
-                'status' => $connection->hasAllTemplatesApproved()
-                    ? WhatsAppConnection::STATUS_ACTIVE
-                    : WhatsAppConnection::STATUS_TEMPLATES_PENDING,
-                'last_error' => null,
-            ]);
+        if ($state === 'REINSTATE') {
+            $this->restoreFromError($connection, self::BAN_MESSAGE);
         }
+    }
+
+    /**
+     * Número registrado em outro aparelho (ou re-registrado): a Meta suspende a integração até o
+     * ACCOUNT_RECONNECTED. Fica em erro (e não desconectada) para voltar sozinha e para o monitor
+     * avisar o restaurante.
+     */
+    private function markOffboarded(WhatsAppConnection $connection): void
+    {
+        if (! in_array($connection->status, [WhatsAppConnection::STATUS_ACTIVE, WhatsAppConnection::STATUS_TEMPLATES_PENDING], true)) {
+            return;
+        }
+
+        $connection->update([
+            'status' => WhatsAppConnection::STATUS_ERROR,
+            'last_error' => self::OFFBOARDED_MESSAGE,
+        ]);
+    }
+
+    /** Reverte só o erro que um webhook marcou; um erro de token (por exemplo) continua. */
+    private function restoreFromError(WhatsAppConnection $connection, string $markedError): void
+    {
+        if ($connection->status !== WhatsAppConnection::STATUS_ERROR || $connection->last_error !== $markedError) {
+            return;
+        }
+
+        $connection->update([
+            'status' => $connection->hasAllTemplatesApproved()
+                ? WhatsAppConnection::STATUS_ACTIVE
+                : WhatsAppConnection::STATUS_TEMPLATES_PENDING,
+            'last_error' => null,
+        ]);
     }
 
     private function handleNumberRemoved(WhatsAppConnection $connection, string $removedNumber): void

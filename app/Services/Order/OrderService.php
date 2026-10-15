@@ -552,6 +552,16 @@ class OrderService implements OrderServiceInterface
      */
     public function cancelOrder(Order $order, int $customerId, ?string $reason = null): void
     {
+        // Cliente só cancela o próprio pedido (o chat público é a origem; admin usa cancelOrderAsAdmin).
+        if ((int) $order->customer_id !== $customerId) {
+            Log::channel('orders')->warning('Cancelamento pelo cliente recusado: pedido de outro cliente', [
+                'order_id' => $order->id,
+                'customer_id' => $customerId,
+            ]);
+
+            throw new RuntimeException('Pedido não pertence ao cliente.');
+        }
+
         $policy = app(OrderCancellationPolicy::class);
         $policy->authorizeCustomerCancel($order);
 

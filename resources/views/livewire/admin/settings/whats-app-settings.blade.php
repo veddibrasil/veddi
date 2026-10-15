@@ -2,9 +2,11 @@
     $connection = $this->connection;
     $status = $connection?->status;
     $canConfigure = $this->canConfigure;
+    // Pending que não avança (o job não rodou): para de esperar e deixa conectar de novo.
+    $stale = $this->stalePending;
 
     // A tela acompanha sozinha a montagem da conexão: rápido enquanto conecta, devagar enquanto a Meta aprova os modelos.
-    $poll = match ($status) {
+    $poll = $stale ? null : match ($status) {
         \App\Models\WhatsAppConnection::STATUS_PENDING, \App\Models\WhatsAppConnection::STATUS_PROVISIONING => '5s',
         \App\Models\WhatsAppConnection::STATUS_TEMPLATES_PENDING => '30s',
         default => null,
@@ -12,11 +14,12 @@
 
     $qualityLabels = ['GREEN' => 'Alta', 'YELLOW' => 'Média', 'RED' => 'Baixa'];
     $qualityColors = ['GREEN' => 'green', 'YELLOW' => 'amber', 'RED' => 'red'];
-    $tierLabels = ['TIER_50' => '50', 'TIER_250' => '250', 'TIER_1K' => '1.000', 'TIER_10K' => '10.000', 'TIER_100K' => '100.000', 'TIER_UNLIMITED' => 'Ilimitados'];
+    $tierLabels = ['TIER_50' => '50', 'TIER_250' => '250', 'TIER_1K' => '1.000', 'TIER_2K' => '2.000', 'TIER_10K' => '10.000', 'TIER_100K' => '100.000', 'TIER_UNLIMITED' => 'Ilimitados'];
     $templateColors = ['APPROVED' => 'green', 'PENDING' => 'amber', 'REJECTED' => 'red', 'PAUSED' => 'red', 'DISABLED' => 'zinc'];
 
     $signupConfigured = $meta['appId'] !== '' && $meta['configId'] !== '';
-    $showConnect = $connection === null || in_array($status, [\App\Models\WhatsAppConnection::STATUS_DISCONNECTED, \App\Models\WhatsAppConnection::STATUS_ERROR], true);
+    $hasProblem = $status === \App\Models\WhatsAppConnection::STATUS_ERROR || $stale;
+    $showConnect = $connection === null || $hasProblem || $status === \App\Models\WhatsAppConnection::STATUS_DISCONNECTED;
     $isReconnect = $connection !== null && $showConnect;
 @endphp
 
@@ -43,10 +46,10 @@
 
             @if($status === \App\Models\WhatsAppConnection::STATUS_ACTIVE)
                 <flux:badge color="green" class="shrink-0">Conectado</flux:badge>
+            @elseif($hasProblem)
+                <flux:badge color="red" class="shrink-0">Com problema</flux:badge>
             @elseif(in_array($status, [\App\Models\WhatsAppConnection::STATUS_PENDING, \App\Models\WhatsAppConnection::STATUS_PROVISIONING, \App\Models\WhatsAppConnection::STATUS_TEMPLATES_PENDING], true))
                 <flux:badge color="amber" class="shrink-0">Conectando</flux:badge>
-            @elseif($status === \App\Models\WhatsAppConnection::STATUS_ERROR)
-                <flux:badge color="red" class="shrink-0">Com problema</flux:badge>
             @else
                 <flux:badge color="zinc" class="shrink-0">Não conectado</flux:badge>
             @endif
@@ -162,10 +165,14 @@
                 @endif
             </div>
 
-        {{-- ── Não conectado / com erro / desconectado ── --}}
+        {{-- ── Não conectado / com erro / travado / desconectado ── --}}
         @else
             <div class="space-y-4">
-                @if($status === \App\Models\WhatsAppConnection::STATUS_ERROR)
+                @if($stale)
+                    <div class="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm dark:bg-red-900/30 dark:border-red-700 dark:text-red-400">
+                        A conexão não foi concluída. Tente conectar de novo.
+                    </div>
+                @elseif($status === \App\Models\WhatsAppConnection::STATUS_ERROR)
                     <div class="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm dark:bg-red-900/30 dark:border-red-700 dark:text-red-400">
                         {{ $connection->last_error ?: 'Não foi possível concluir a conexão do WhatsApp. Tente conectar novamente.' }}
                     </div>
@@ -200,6 +207,13 @@
 
                     @if($signupError)
                         <p class="text-sm text-red-600 dark:text-red-400">{{ $signupError }}</p>
+                    @endif
+
+                    {{-- Com erro ou travada: dá para encerrar a conexão sem reconectar. --}}
+                    @if($hasProblem)
+                        <button type="button" wire:click="confirmDisconnect" class="text-xs text-neutral-500 underline hover:text-red-600 dark:text-neutral-400">
+                            {{ $connection->connected_at ? 'Desconectar' : 'Cancelar conexão' }}
+                        </button>
                     @endif
                 @else
                     <p class="text-sm text-neutral-500 dark:text-neutral-400">Somente o administrador da empresa pode conectar o WhatsApp.</p>
@@ -236,7 +250,7 @@
         <div class="space-y-3">
             @foreach([
                 ['model' => 'notifyOnNewOrder',        'title' => 'Pedido recebido',             'desc' => 'Ao confirmar o pedido no chat'],
-                ['model' => 'notifyOnAwaitingPayment', 'title' => 'Aguardando pagamento',        'desc' => 'Envio do código PIX por WhatsApp — em breve', 'disabled' => true],
+                ['model' => 'notifyOnAwaitingPayment', 'title' => 'Aguardando pagamento',        'desc' => 'Envio do código PIX por WhatsApp', 'soon' => true],
                 ['model' => 'notifyOnPaid',            'title' => 'Pagamento confirmado',        'desc' => 'Ao confirmar o recebimento do pagamento online'],
                 ['model' => 'notifyOnScheduled',       'title' => 'Pedido agendado',             'desc' => 'Ao confirmar um pedido agendado'],
                 ['model' => 'notifyOnPreparing',       'title' => 'Em preparo',                  'desc' => 'Ao marcar o pedido como "Preparando"'],
@@ -244,14 +258,24 @@
                 ['model' => 'notifyOnOutForDelivery',  'title' => 'Saiu para entrega',           'desc' => 'Ao marcar o pedido como "A caminho"'],
                 ['model' => 'notifyOnDelivered',       'title' => 'Entregue',                    'desc' => 'Ao marcar o pedido como "Entregue"'],
                 ['model' => 'notifyOnCancelled',       'title' => 'Cancelado / Reembolsado',     'desc' => 'Ao cancelar ou reembolsar o pedido'],
-                ['model' => 'notifyOnAdminMessage',    'title' => 'Mensagem do atendente',       'desc' => 'Quando o atendente envia mensagem no chat do pedido'],
+                ['model' => 'notifyOnAdminMessage',    'title' => 'Mensagem do atendente',       'desc' => 'Quando o atendente envia mensagem no chat do pedido', 'soon' => true],
             ] as $item)
-                <div class="flex items-center justify-between py-2 {{ !$loop->last ? 'border-b border-neutral-100 dark:border-zinc-700' : '' }}">
+                <div class="flex items-center justify-between gap-4 py-2 {{ !$loop->last ? 'border-b border-neutral-100 dark:border-zinc-700' : '' }}">
                     <div>
-                        <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">{{ $item['title'] }}</p>
+                        <div class="flex items-center gap-2">
+                            <p class="text-sm font-medium text-neutral-700 dark:text-neutral-300">{{ $item['title'] }}</p>
+                            @if($item['soon'] ?? false)
+                                <flux:badge size="sm" color="zinc">Em breve</flux:badge>
+                            @endif
+                        </div>
                         <p class="text-xs text-neutral-600 dark:text-neutral-400">{{ $item['desc'] }}</p>
                     </div>
-                    <flux:switch wire:model="{{ $item['model'] }}" :disabled="($item['disabled'] ?? false) || ! $canConfigure" />
+                    {{-- Evento ainda sem template nem gatilho: o toggle aparece desligado, sem efeito. --}}
+                    @if($item['soon'] ?? false)
+                        <flux:switch :checked="false" disabled />
+                    @else
+                        <flux:switch wire:model="{{ $item['model'] }}" :disabled="! $canConfigure" />
+                    @endif
                 </div>
             @endforeach
         </div>
@@ -264,8 +288,8 @@
         </flux:button>
     </div>
 
-    {{-- Modal: desconectar (conexão ativa ou em andamento) --}}
-    @if($canManage && ($status === \App\Models\WhatsAppConnection::STATUS_ACTIVE || $poll))
+    {{-- Modal: desconectar (conexão ativa, em andamento, com erro ou travada) --}}
+    @if($canManage && ($status === \App\Models\WhatsAppConnection::STATUS_ACTIVE || $poll || $hasProblem))
     <flux:modal wire:model.self="showDisconnectModal" class="max-w-sm">
         <div class="space-y-5">
             <div>

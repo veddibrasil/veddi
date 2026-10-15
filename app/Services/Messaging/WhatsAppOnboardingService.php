@@ -12,6 +12,8 @@ use App\Jobs\ProvisionWhatsAppTemplates;
 use App\Models\Company;
 use App\Models\WhatsAppConnection;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -38,6 +40,8 @@ class WhatsAppOnboardingService
     public const MSG_NO_NUMBER = 'Não encontramos nenhum número na conta do WhatsApp Business. Adicione um número e refaça a conexão.';
 
     public const MSG_MULTIPLE_NUMBERS = 'A conta do WhatsApp Business tem mais de um número e não foi possível identificar qual conectar. Refaça a conexão selecionando o número.';
+
+    public const MSG_NUMBER_MISMATCH = 'O número informado não pertence à conta do WhatsApp Business autorizada. Refaça a conexão.';
 
     public const MSG_ALREADY_LINKED = 'Este número (ou conta do WhatsApp Business) já está conectado a outra empresa na Veddi. Desconecte-o lá antes de conectar aqui ou fale com o suporte.';
 
@@ -114,6 +118,8 @@ class WhatsAppOnboardingService
             throw new WhatsAppOnboardingException(self::MSG_ALREADY_LINKED);
         }
 
+        Cache::put(self::attemptKey($connection->id), self::attemptHash($code), now()->addHour());
+
         Log::channel('whatsapp')->info('Onboarding WhatsApp iniciado', [
             'company_id' => $company->id,
             'connection_id' => $connection->id,
@@ -130,6 +136,8 @@ class WhatsAppOnboardingService
     /**
      * Conclui o onboarding (roda no job). Erros definitivos viram status=error com mensagem
      * amigável; só falha temporária depois da troca do code é relançada (o job retenta e retoma).
+     * "Cancelar conexão" pode acontecer com o job rodando: as gravações que importam (token,
+     * status final e erro) são condicionais e nunca sobrescrevem a conexão cancelada ou refeita.
      *
      * @throws WhatsAppRetryableException
      */
@@ -147,8 +155,25 @@ class WhatsAppOnboardingService
             return;
         }
 
+        // Job de uma tentativa anterior (ex.: retry em espera e o restaurante reconectou): o code dele
+        // já não vale e o token salvo pode ser o da tentativa nova.
+        if (! $this->isCurrentAttempt($connection->id, $code)) {
+            Log::channel('whatsapp')->info('Onboarding WhatsApp ignorado: tentativa substituída por uma nova conexão', [
+                'connection_id' => $connection->id,
+            ]);
+
+            return;
+        }
+
         try {
             $token = $this->obtainToken($connection, $code);
+
+            if ($token === null) {
+                $this->logCancelled($connection);
+
+                return;
+            }
+
             $wabaId = $this->resolveWaba($connection, $token);
             $phoneNumberId = $this->resolvePhoneNumber($connection, $wabaId, $token);
 
@@ -158,13 +183,22 @@ class WhatsAppOnboardingService
 
             // Coexistência: o número já vive no app WhatsApp Business; registrar tiraria o número do app.
             if ($connection->onboarding_type === WhatsAppConnection::TYPE_CLOUD_API) {
+                $this->detectBusinessApp($connection, $phoneNumberId, $token);
+            }
+
+            if ($connection->onboarding_type === WhatsAppConnection::TYPE_CLOUD_API) {
                 $this->registerNumber($connection, $phoneNumberId, $token);
             }
 
             // Cloud API: dados do número recém-registrado. Coexistência: só confirma que o número existe.
             $this->refreshPhoneInfo($connection);
 
-            $connection->update(['status' => WhatsAppConnection::STATUS_PROVISIONING, 'last_error' => null]);
+            if (! $this->updateCurrentAttempt($connection, ['status' => WhatsAppConnection::STATUS_PROVISIONING, 'last_error' => null])) {
+                $this->abandonSubscription($connection, $wabaId, $token);
+                $this->logCancelled($connection);
+
+                return;
+            }
         } catch (WhatsAppOnboardingException $e) {
             $this->fail($connection, $e->getMessage());
 
@@ -193,6 +227,27 @@ class WhatsAppOnboardingService
             'connection_id' => $connection->id,
             'type' => $connection->onboarding_type,
         ]);
+    }
+
+    /**
+     * O code pertence ao signup mais recente desta conexão. Sem registro (cache limpo ou expirado)
+     * aceita: o status pending já protege o caso comum.
+     */
+    public function isCurrentAttempt(int $connectionId, #[\SensitiveParameter] string $code): bool
+    {
+        $current = Cache::get(self::attemptKey($connectionId));
+
+        return ! is_string($current) || hash_equals($current, self::attemptHash($code));
+    }
+
+    public static function attemptHash(#[\SensitiveParameter] string $code): string
+    {
+        return hash('sha256', trim($code));
+    }
+
+    private static function attemptKey(int $connectionId): string
+    {
+        return "whatsapp:onboarding-attempt:{$connectionId}";
     }
 
     /**
@@ -236,12 +291,16 @@ class WhatsAppOnboardingService
     {
         $info = $this->meta->getPhoneNumber((string) $connection->phone_number_id, (string) $connection->access_token);
 
-        $connection->update(array_filter($info, fn ($value) => filled($value)));
+        $connection->update(array_filter(
+            Arr::only($info, ['verified_name', 'display_phone_number', 'quality_rating', 'messaging_limit_tier']),
+            fn ($value) => filled($value),
+        ));
     }
 
     // ── etapas do complete() ──────────────────────────────────────────────────
 
-    private function obtainToken(WhatsAppConnection $connection, string $code): string
+    /** Token do restaurante, ou null se a conexão foi cancelada enquanto o code era trocado. */
+    private function obtainToken(WhatsAppConnection $connection, string $code): ?string
     {
         // Retomada: o token já foi obtido numa tentativa anterior e o code não vale mais.
         if (filled($connection->access_token)) {
@@ -261,7 +320,10 @@ class WhatsAppOnboardingService
             throw new WhatsAppOnboardingException(self::MSG_CODE_EXCHANGE);
         }
 
-        $connection->update(['access_token' => $token]);
+        // Cancelada durante a troca: o token não é guardado (o code já foi consumido de qualquer jeito).
+        if (! $this->updateCurrentAttempt($connection, ['access_token' => $token])) {
+            return null;
+        }
 
         return $token;
     }
@@ -275,6 +337,15 @@ class WhatsAppOnboardingService
 
         if (! $info['is_valid'] || ($info['app_id'] !== null && $ownApp !== '' && $info['app_id'] !== $ownApp)) {
             throw new WhatsAppOnboardingException(self::MSG_TOKEN_INVALID);
+        }
+
+        // Token de usuário do sistema (Business Integration) não expira (expires_at = 0). Se expira, a
+        // configuração do Embedded Signup está gerando o tipo errado: segue, mas o suporte precisa saber.
+        if (($info['expires_at'] ?? 0) > 0) {
+            Log::channel('whatsapp')->warning('Onboarding WhatsApp: o token recebido da Meta expira (confira a configuração do Embedded Signup)', [
+                'connection_id' => $connection->id,
+                'expires_at' => $info['expires_at'],
+            ]);
         }
 
         $authorized = $info['waba_ids'];
@@ -302,20 +373,35 @@ class WhatsAppOnboardingService
         return $wabaId;
     }
 
-    /** Número informado pelo front, ou descoberto na WABA (fluxo de coexistência não informa). */
+    /**
+     * Número informado pelo front (conferido na WABA autorizada: o id vem do navegador e não pode
+     * apontar para o número de outro restaurante), ou descoberto na WABA (a coexistência pode não
+     * informar).
+     */
     private function resolvePhoneNumber(WhatsAppConnection $connection, string $wabaId, string $token): string
     {
+        $numbers = $this->meta->listPhoneNumbers($wabaId, $token);
+
         if (filled($connection->phone_number_id)) {
+            if (! in_array((string) $connection->phone_number_id, array_column($numbers, 'id'), true)) {
+                throw new WhatsAppOnboardingException(self::MSG_NUMBER_MISMATCH);
+            }
+
             return (string) $connection->phone_number_id;
         }
-
-        $numbers = $this->meta->listPhoneNumbers($wabaId, $token);
 
         if ($numbers === []) {
             throw new WhatsAppOnboardingException(self::MSG_NO_NUMBER);
         }
 
         if (count($numbers) > 1) {
+            // Coexistência numa WABA com vários números: o conectado é o único que vive no app.
+            $onBusinessApp = array_values(array_filter($numbers, fn (array $number) => ($number['is_on_biz_app'] ?? null) === true));
+
+            if ($connection->onboarding_type === WhatsAppConnection::TYPE_COEXISTENCE && count($onBusinessApp) === 1) {
+                return $onBusinessApp[0]['id'];
+            }
+
             throw new WhatsAppOnboardingException(self::MSG_MULTIPLE_NUMBERS);
         }
 
@@ -337,8 +423,10 @@ class WhatsAppOnboardingService
     }
 
     /**
-     * Ids (WABA/número) em uso por OUTRA empresa: ativo/pendente/com erro bloqueia; já desconectado
-     * é vínculo velho e é liberado (quem conecta agora provou a posse do número à Meta no signup).
+     * Ids (WABA/número) em uso por OUTRA empresa: ativo/em andamento/com erro depois de ter
+     * conectado bloqueia. Já desconectado é vínculo velho, e erro sem nunca ter conectado são ids
+     * não comprovados (vieram do navegador): ambos são liberados (quem conecta agora prova a posse
+     * do número à Meta no complete).
      */
     private function releaseOrRejectLinks(int $companyId, ?string $wabaId, ?string $phoneNumberId): void
     {
@@ -360,7 +448,10 @@ class WhatsAppOnboardingService
             ->get();
 
         foreach ($others as $other) {
-            if ($other->status !== WhatsAppConnection::STATUS_DISCONNECTED) {
+            $releasable = $other->status === WhatsAppConnection::STATUS_DISCONNECTED
+                || ($other->status === WhatsAppConnection::STATUS_ERROR && $other->connected_at === null);
+
+            if (! $releasable) {
                 Log::channel('whatsapp')->warning('Onboarding WhatsApp: WABA/número já vinculados a outra empresa', [
                     'company_id' => $companyId,
                     'other_company_id' => $other->company_id,
@@ -375,6 +466,25 @@ class WhatsAppOnboardingService
                 'phone_number_id' => $other->phone_number_id === $phoneNumberId ? null : $other->phone_number_id,
             ]);
         }
+    }
+
+    /**
+     * O tipo vem do evento do postMessage (front). Antes de registrar, confere na Meta se o número
+     * está no app WhatsApp Business: se estiver, é coexistência e o registro o tiraria do app.
+     */
+    private function detectBusinessApp(WhatsAppConnection $connection, string $phoneNumberId, string $token): void
+    {
+        $info = $this->meta->getPhoneNumber($phoneNumberId, $token);
+
+        if (($info['is_on_biz_app'] ?? null) !== true) {
+            return;
+        }
+
+        $connection->update(['onboarding_type' => WhatsAppConnection::TYPE_COEXISTENCE]);
+
+        Log::channel('whatsapp')->warning('Onboarding WhatsApp: número está no app WhatsApp Business, tratado como coexistência', [
+            'connection_id' => $connection->id,
+        ]);
     }
 
     /**
@@ -405,9 +515,82 @@ class WhatsAppOnboardingService
         }
     }
 
+    // ── cancelamento durante o job ────────────────────────────────────────────
+
+    /**
+     * Compare-and-set: grava só se a linha ainda é desta tentativa — pending e com o mesmo token
+     * (cifrado) que o job tem em memória. "Cancelar conexão" (disconnected) ou um signup novo (o
+     * start zera o token) fazem a gravação não acontecer. O model em memória fica igual ao banco.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    private function updateCurrentAttempt(WhatsAppConnection $connection, array $attributes): bool
+    {
+        // Aplica os casts do model (token cifrado, json): o UPDATE condicional não passa pelo save().
+        $values = $connection->newInstance()->forceFill($attributes)->getAttributes();
+        $token = $connection->getRawOriginal('access_token');
+
+        $updated = WhatsAppConnection::withoutGlobalScopes()
+            ->whereKey($connection->getKey())
+            ->where('status', WhatsAppConnection::STATUS_PENDING)
+            ->when(
+                $token === null,
+                fn ($query) => $query->whereNull('access_token'),
+                fn ($query) => $query->where('access_token', $token),
+            )
+            ->update($values);
+
+        if ($updated === 0) {
+            return false;
+        }
+
+        $connection->setRawAttributes(array_merge($connection->getAttributes(), $values));
+        $connection->syncOriginalAttributes(array_keys($values));
+
+        return true;
+    }
+
+    /**
+     * A conexão foi cancelada com o app já inscrito na WABA: remove a inscrição (melhor esforço),
+     * a menos que a WABA esteja em uso por uma conexão viva (o signup novo desta mesma empresa, por
+     * exemplo). A consulta cruza empresas de propósito, só para saber se a WABA está em uso.
+     */
+    private function abandonSubscription(WhatsAppConnection $connection, string $wabaId, #[\SensitiveParameter] string $token): void
+    {
+        $inUse = WhatsAppConnection::withoutGlobalScopes()
+            ->where(fn ($query) => $query->where('waba_id', $wabaId)->orWhere('id', $connection->id))
+            ->whereNotIn('status', [WhatsAppConnection::STATUS_DISCONNECTED, WhatsAppConnection::STATUS_ERROR])
+            ->exists();
+
+        if ($inUse) {
+            return;
+        }
+
+        try {
+            $this->meta->unsubscribeApp($wabaId, $token);
+        } catch (WhatsAppApiException $e) {
+            Log::channel('whatsapp')->warning('Onboarding WhatsApp cancelado: não foi possível remover a inscrição do app (seguindo)', [
+                'connection_id' => $connection->id,
+                'code' => $e->getCode(),
+            ]);
+        }
+    }
+
+    private function logCancelled(WhatsAppConnection $connection): void
+    {
+        Log::channel('whatsapp')->info('Onboarding WhatsApp interrompido: a conexão foi cancelada ou refeita enquanto o job rodava', [
+            'connection_id' => $connection->id,
+        ]);
+    }
+
     // ── erros ─────────────────────────────────────────────────────────────────
 
-    /** Falha definitiva: status=error, mensagem amigável e token descartado (o retry recomeça do start). */
+    /**
+     * Falha definitiva: status=error, mensagem amigável e token descartado (o retry recomeça do start).
+     * Só vale para a tentativa em andamento: conexão cancelada (ou refeita) no meio do caminho fica
+     * como está. Se nunca conectou, os ids também saem: vieram do navegador (ou de uma tentativa que
+     * não terminou) e não podem ficar presos aos índices únicos, bloqueando o número para o dono.
+     */
     public function fail(WhatsAppConnection $connection, string $message, ?WhatsAppApiException $cause = null): void
     {
         Log::channel('whatsapp')->error('Onboarding WhatsApp falhou', array_filter([
@@ -418,12 +601,20 @@ class WhatsAppOnboardingService
             'meta_message' => $cause?->getMessage(),
         ], fn ($value) => $value !== null));
 
-        $connection->update([
+        $attributes = [
             'status' => WhatsAppConnection::STATUS_ERROR,
             'last_error' => $message,
             'access_token' => null,
             'token_scopes' => null,
-        ]);
+        ];
+
+        if ($connection->connected_at === null) {
+            $attributes += ['waba_id' => null, 'phone_number_id' => null];
+        }
+
+        if (! $this->updateCurrentAttempt($connection, $attributes)) {
+            $this->logCancelled($connection);
+        }
     }
 
     private function messageFor(WhatsAppApiException $e): string

@@ -14,12 +14,18 @@ class WhatsAppSyncTemplates extends Command
     use FindsCompanyByOption;
 
     protected $signature = 'whatsapp:sync-templates
-        {--company= : ID ou slug da empresa. Sem isso, sincroniza as conexões em provisionamento, aguardando templates ou ativas}';
+        {--company= : ID ou slug da empresa. Sem isso, sincroniza as conexões em provisionamento, aguardando templates ou ativas}
+        {--platform : Cria/sincroniza os templates na WABA do número da plataforma (homologação e fallback)}
+        {--pending : Só as conexões em provisionamento ou aguardando templates (agendado: recupera webhook perdido)}';
 
     protected $description = 'Reexecuta o provisionamento dos templates de WhatsApp e sincroniza o status com a Meta (suporte).';
 
     public function handle(WhatsAppTemplateProvisioner $provisioner, WhatsAppOnboardingService $onboarding): int
     {
+        if ($this->option('platform')) {
+            return $this->syncPlatform($provisioner);
+        }
+
         $query = WhatsAppConnection::withoutGlobalScopes()
             ->whereNotNull('access_token')
             ->whereNotNull('waba_id');
@@ -34,6 +40,11 @@ class WhatsAppSyncTemplates extends Command
             }
 
             $query->where('company_id', $company->id);
+        } elseif ($this->option('pending')) {
+            $query->whereIn('status', [
+                WhatsAppConnection::STATUS_PROVISIONING,
+                WhatsAppConnection::STATUS_TEMPLATES_PENDING,
+            ]);
         } else {
             $query->whereIn('status', [
                 WhatsAppConnection::STATUS_PROVISIONING,
@@ -45,6 +56,12 @@ class WhatsAppSyncTemplates extends Command
         $connections = $query->orderBy('id')->get();
 
         if ($connections->isEmpty()) {
+            if ($this->option('pending')) {
+                $this->info('Nenhuma conexão aguardando templates.');
+
+                return self::SUCCESS;
+            }
+
             $this->warn('Nenhuma conexão de WhatsApp com token para sincronizar.');
 
             return filled($this->option('company')) ? self::FAILURE : self::SUCCESS;
@@ -85,5 +102,34 @@ class WhatsAppSyncTemplates extends Command
         }
 
         return $exitCode;
+    }
+
+    private function syncPlatform(WhatsAppTemplateProvisioner $provisioner): int
+    {
+        try {
+            $result = $provisioner->provisionPlatform();
+        } catch (WhatsAppApiException $e) {
+            $this->error('Falha na Meta ('.class_basename($e).', código '.$e->getCode().'). Confira o WHATSAPP_PLATFORM_TOKEN (token permanente de usuário do sistema).');
+
+            return self::FAILURE;
+        }
+
+        if ($result === null) {
+            $this->error('Número da plataforma não configurado (WHATSAPP_PLATFORM_WABA_ID / WHATSAPP_PLATFORM_TOKEN).');
+
+            return self::FAILURE;
+        }
+
+        $this->info("Plataforma: {$result['created']} template(s) criado(s).");
+
+        foreach ($result['templates'] as $name => $status) {
+            $this->line("  · {$name}: {$status}");
+        }
+
+        foreach ($result['failed'] as $name => $message) {
+            $this->warn("  · {$name}: {$message}");
+        }
+
+        return $result['failed'] === [] ? self::SUCCESS : self::FAILURE;
     }
 }

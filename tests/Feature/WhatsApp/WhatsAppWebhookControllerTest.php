@@ -71,6 +71,31 @@ test('POST com assinatura válida responde 200 e enfileira o processamento', fun
     Queue::assertPushedOn('whatsapp', ProcessWhatsAppWebhook::class, fn (ProcessWhatsAppWebhook $job) => $job->payload === $payload);
 });
 
+test('history e smb_app_state_sync não entram na fila; o resto do payload segue', function () {
+    Queue::fake();
+
+    $status = whatsappStatusChange('999', 'wamid.X', 'delivered');
+    $payload = whatsappWebhookPayload('111', [
+        ['field' => 'history', 'value' => ['history' => [['threads' => [['messages' => [['text' => ['body' => 'conversa do cliente']]]]]]]]],
+        $status,
+        ['field' => 'smb_app_state_sync', 'value' => ['state_sync' => [['contact' => ['phone_number' => '5511999990001']]]]],
+    ]);
+
+    whatsappSignedPost($this, $payload)->assertOk();
+
+    Queue::assertPushed(ProcessWhatsAppWebhook::class, fn (ProcessWhatsAppWebhook $job) => $job->payload['entry'][0]['changes'] === [$status]);
+});
+
+test('payload só com sincronização da coexistência responde 200 sem enfileirar', function () {
+    Queue::fake();
+
+    whatsappSignedPost($this, whatsappWebhookPayload('111', [
+        ['field' => 'history', 'value' => ['history' => []]],
+    ]))->assertOk();
+
+    Queue::assertNothingPushed();
+});
+
 test('POST com assinatura inválida devolve 401 e não enfileira', function () {
     Queue::fake();
 

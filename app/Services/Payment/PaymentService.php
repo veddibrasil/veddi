@@ -55,7 +55,10 @@ class PaymentService
         }
 
         $payment->update(['status' => 'paid', 'paid_at' => now()]);
-        $payment->order->update(['status' => 'paid']);
+
+        // Simula o webhook: pedido agendado para o futuro continua 'scheduled'.
+        $order = $payment->order;
+        $order->update(['status' => ($order->scheduled_at && $order->scheduled_at->isFuture()) ? 'scheduled' : 'paid']);
         OrderStatusUpdated::dispatch($payment->order->fresh());
 
         Log::channel('payments')->warning('Pagamento simulado (debug)', [

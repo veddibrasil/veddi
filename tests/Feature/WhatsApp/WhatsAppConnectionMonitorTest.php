@@ -391,12 +391,35 @@ test('novo alerta de outro tipo avisa mesmo com um alerta recente já registrado
 
 // ── Comando e agendamento ─────────────────────────────────────────────────────
 
-test('o comando roda o monitoramento e resume o resultado', function () {
-    whatsappMonitorSetup(['quality_rating' => 'RED']);
-    whatsappMonitorSetup([], name: 'Loja Saudável');
+test('o comando atualiza a qualidade na Meta, roda o monitoramento e resume o resultado', function () {
+    // A Meta informa qualidade vermelha para o primeiro número e verde para o segundo, ao
+    // contrário do que estava gravado: o alerta segue o valor atual.
+    whatsappFakeMeta([
+        'GET phone' => ['quality_rating' => 'RED', 'messaging_limit_tier' => 'TIER_250'],
+        'GET /v25.0/2000000000002' => ['quality_rating' => 'GREEN', 'messaging_limit_tier' => 'TIER_1K'],
+    ]);
+
+    ['connection' => $red] = whatsappMonitorSetup(['phone_number_id' => '2000000000001', 'quality_rating' => 'GREEN']);
+    ['connection' => $green] = whatsappMonitorSetup(['phone_number_id' => '2000000000002', 'quality_rating' => 'RED'], name: 'Loja Saudável');
 
     $this->artisan('whatsapp:check-connections')
         ->expectsOutput('2 conexão(ões) verificada(s), 1 restaurante(s) avisado(s), 1 alerta(s) enviado(s).')
+        ->assertSuccessful();
+
+    expect($red->fresh()->quality_rating)->toBe('RED')
+        ->and($green->fresh()->quality_rating)->toBe('GREEN')
+        ->and($green->fresh()->messaging_limit_tier)->toBe('TIER_1K');
+});
+
+test('falha da Meta ao atualizar a qualidade não impede o monitoramento', function () {
+    whatsappFakeMeta([
+        'GET phone' => \Illuminate\Support\Facades\Http::response(['error' => ['message' => 'falha', 'code' => 2]], 500),
+    ]);
+
+    whatsappMonitorSetup(['phone_number_id' => '2000000000001', 'quality_rating' => 'RED']);
+
+    $this->artisan('whatsapp:check-connections')
+        ->expectsOutput('1 conexão(ões) verificada(s), 1 restaurante(s) avisado(s), 1 alerta(s) enviado(s).')
         ->assertSuccessful();
 });
 

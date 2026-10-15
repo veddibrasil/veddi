@@ -23,10 +23,17 @@ class CompleteWhatsAppOnboarding implements ShouldBeEncrypted, ShouldBeUnique, S
 
     public int $tries = 3;
 
+    /**
+     * Abaixo do retry_after do Redis (90 s): sem isso vale o timeout do worker (3600 s na fila
+     * critical) e um job lento (várias chamadas à Graph API de até 15 s) seria pego de novo por
+     * outro worker enquanto ainda roda. Estourando, o retry retoma do token já salvo.
+     */
+    public int $timeout = 80;
+
     /** @var array<int, int> */
     public array $backoff = [10, 60];
 
-    /** Evita dois onboardings simultâneos da mesma conexão (duplo clique). */
+    /** Evita dois jobs do mesmo signup (duplo clique); um signup novo da mesma conexão não fica preso no lock. */
     public int $uniqueFor = 300;
 
     public function __construct(
@@ -40,7 +47,7 @@ class CompleteWhatsAppOnboarding implements ShouldBeEncrypted, ShouldBeUnique, S
 
     public function uniqueId(): string
     {
-        return (string) $this->connectionId;
+        return $this->connectionId.':'.substr(WhatsAppOnboardingService::attemptHash($this->code), 0, 16);
     }
 
     public function handle(WhatsAppOnboardingService $onboarding): void
@@ -59,8 +66,10 @@ class CompleteWhatsAppOnboarding implements ShouldBeEncrypted, ShouldBeUnique, S
     {
         $connection = WhatsAppConnection::withoutGlobalScopes()->find($this->connectionId);
 
-        if ($connection?->status === WhatsAppConnection::STATUS_PENDING) {
-            app(WhatsAppOnboardingService::class)->fail($connection, WhatsAppOnboardingService::MSG_TEMPORARY);
+        $onboarding = app(WhatsAppOnboardingService::class);
+
+        if ($connection?->status === WhatsAppConnection::STATUS_PENDING && $onboarding->isCurrentAttempt($connection->id, $this->code)) {
+            $onboarding->fail($connection, WhatsAppOnboardingService::MSG_TEMPORARY);
         }
     }
 }

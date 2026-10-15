@@ -16,7 +16,10 @@ class ProcessOrder implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
-    public array $backoff = [30, 120, 600];
+    /** Status em que o pedido ainda espera a cobrança (criação ou renovação do PIX). */
+    private const PAYABLE_STATUSES = ['pending', 'awaiting_payment'];
+
+    public array $backoff = [15, 60, 180];
 
     public int $uniqueFor = 3600;
 
@@ -25,9 +28,13 @@ class ProcessOrder implements ShouldBeUnique, ShouldQueue
         return (string) $this->order->id;
     }
 
+    /**
+     * O cliente está no checkout esperando o QR/aprovação: depois de alguns minutos de falha da
+     * gateway a cobrança não serve mais. O failed() cancela e o chat mostra a falha.
+     */
     public function retryUntil(): \DateTimeInterface
     {
-        return now()->addHours(24);
+        return now()->addMinutes(10);
     }
 
     public function __construct(
@@ -43,6 +50,18 @@ class ProcessOrder implements ShouldBeUnique, ShouldQueue
 
     public function handle(PaymentOrchestrator $orchestrator): void
     {
+        // Retentativa de um pedido que já saiu do fluxo de cobrança (cliente trocou a forma de
+        // pagamento, PIX expirou, admin cancelou, já foi pago): não gera cobrança nem reabre o pedido.
+        if (! in_array($this->order->status, self::PAYABLE_STATUSES, true)) {
+            Log::channel('orders')->info('ProcessOrder: pedido fora do fluxo de cobrança, ignorado', [
+                'order_id' => $this->order->id,
+                'status' => $this->order->status,
+                'attempt' => $this->attempts(),
+            ]);
+
+            return;
+        }
+
         Log::channel('orders')->info('Processando pedido', [
             'order_id' => $this->order->id,
             'order_number' => $this->order->order_number,
@@ -71,7 +90,9 @@ class ProcessOrder implements ShouldBeUnique, ShouldQueue
 
             OrderStatusUpdated::dispatch($this->order->fresh());
         } catch (\Throwable $e) {
-            Log::channel('discord')->error('Falha ao processar pedido — cancelado', [
+            // Não cancela aqui: a fila retenta, e cancelar a cada falha fazia o cliente receber
+            // "cancelado" e depois "aguardando pagamento" no mesmo pedido. Quem cancela é o failed().
+            Log::channel('discord')->error('Falha ao processar pedido — nova tentativa agendada', [
                 'channel' => 'orders',
                 'order_id' => $this->order->id,
                 'attempt' => $this->attempts(),
@@ -84,8 +105,6 @@ class ProcessOrder implements ShouldBeUnique, ShouldQueue
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
-            $this->order->update(['status' => 'cancelled']);
-            OrderStatusUpdated::dispatch($this->order->fresh());
             throw $e;
         }
     }
@@ -99,5 +118,15 @@ class ProcessOrder implements ShouldBeUnique, ShouldQueue
             'payment_method' => $this->paymentMethod,
             'error' => $e->getMessage(),
         ]);
+
+        // Só cancela se o pedido ainda espera cobrança: o cliente pode ter trocado a forma de
+        // pagamento (ou o pedido ter sido pago/cancelado) enquanto as tentativas corriam.
+        // O chat (poll/Echo) leva o cliente para ORDER_FAILED ao ver o 'cancelled'.
+        $order = $this->order->fresh();
+
+        if ($order && in_array($order->status, self::PAYABLE_STATUSES, true)) {
+            $order->update(['status' => 'cancelled']);
+            OrderStatusUpdated::dispatch($order->fresh());
+        }
     }
 }

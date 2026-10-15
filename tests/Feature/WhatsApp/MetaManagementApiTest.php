@@ -123,6 +123,8 @@ test('listPhoneNumbers lista os números da WABA com appsecret_proof', function 
         'display_phone_number' => '+55 11 99999-0001',
         'verified_name' => 'Restaurante Teste',
         'quality_rating' => 'GREEN',
+        'is_on_biz_app' => null,
+        'platform_type' => null,
     ]]);
 
     $proof = hash_hmac('sha256', 'tok', 'app-secret-teste');
@@ -130,6 +132,24 @@ test('listPhoneNumbers lista os números da WABA com appsecret_proof', function 
     Http::assertSent(fn (Request $request) => str_contains($request->url(), '/1000000000001/phone_numbers')
         && str_contains($request->url(), 'appsecret_proof='.$proof)
         && $request->hasHeader('Authorization', 'Bearer tok'));
+});
+
+test('listPhoneNumbers pede e devolve is_on_biz_app e platform_type (coexistência)', function () {
+    whatsappFakeMeta(['GET phone_numbers' => ['data' => [
+        ['id' => '2000000000001', 'display_phone_number' => '+55 11 99999-0001', 'is_on_biz_app' => true, 'platform_type' => 'CLOUD_API'],
+        ['id' => '2000000000002', 'is_on_biz_app' => false, 'platform_type' => 'NOT_APPLICABLE'],
+    ]]]);
+
+    $numbers = whatsappManagement()->listPhoneNumbers('1000000000001', 'tok');
+
+    expect($numbers[0]['is_on_biz_app'])->toBeTrue()
+        ->and($numbers[0]['platform_type'])->toBe('CLOUD_API')
+        ->and($numbers[1]['is_on_biz_app'])->toBeFalse()
+        ->and($numbers[1]['platform_type'])->toBe('NOT_APPLICABLE')
+        ->and($numbers[1]['verified_name'])->toBeNull();
+
+    Http::assertSent(fn (Request $request) => str_contains($request->url(), '/1000000000001/phone_numbers')
+        && str_contains(urldecode($request->url()), 'is_on_biz_app,platform_type'));
 });
 
 test('getPhoneNumber devolve nome verificado, número, qualidade e limite', function () {
@@ -140,10 +160,12 @@ test('getPhoneNumber devolve nome verificado, número, qualidade e limite', func
         'display_phone_number' => '+55 11 99999-0001',
         'quality_rating' => 'GREEN',
         'messaging_limit_tier' => 'TIER_250',
+        'is_on_biz_app' => null,
     ]);
 
     Http::assertSent(fn (Request $request) => str_contains($request->url(), '/2000000000001?')
-        && str_contains($request->url(), 'fields=verified_name'));
+        && str_contains($request->url(), 'fields=verified_name')
+        && str_contains(urldecode($request->url()), 'is_on_biz_app'));
 });
 
 test('registerPhone envia messaging_product e o PIN no corpo', function () {

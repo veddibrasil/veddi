@@ -35,6 +35,8 @@ class WhatsAppTemplate extends Model
         'PENDING_DELETION' => self::STATUS_DISABLED,
         'DELETED' => self::STATUS_DISABLED,
         'ARCHIVED' => self::STATUS_DISABLED,
+        // Template arquivado por falta de uso e restaurado: volta a ser usável.
+        'UNARCHIVED' => self::STATUS_APPROVED,
     ];
 
     /** Evento do template (chave de config/whatsapp_templates.php) → rótulo para o restaurante. */

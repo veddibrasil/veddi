@@ -398,7 +398,9 @@ class PaymentOrchestrator
                 ]);
 
                 if ($approved) {
-                    $order->update(['status' => 'paid']);
+                    // Mesma regra dos webhooks Vindi/Asaas: pedido agendado para o futuro fica
+                    // 'scheduled' (sem preparo/nota fiscal/aviso de "pago" antes da hora).
+                    $order->update(['status' => ($order->scheduled_at && $order->scheduled_at->isFuture()) ? 'scheduled' : 'paid']);
                     $fresh = $order->fresh();
                     app(WalletServiceInterface::class)->creditForOrder($fresh, $payment);
                     app(TransactionServiceInterface::class)->createForPayment($fresh, $payment);

@@ -208,12 +208,11 @@
                                 </flux:sidebar.item>
                             @endif
                             {{-- A rota é só de company_admin (route middleware): quem tem company.settings por papel customizado levaria 403. --}}
-                            {{-- Comenta enquanto a integração não estiver pronta --}}
-                            {{-- @if($user?->isCompanyAdmin($company))
+                            @if($user?->isCompanyAdmin($company))
                                 <flux:sidebar.item icon="chat-bubble-left-ellipsis" :href="route('admin.settings.whatsapp')" :current="request()->routeIs('admin.settings.whatsapp')" wire:navigate>
                                     WhatsApp
                                 </flux:sidebar.item>
-                            @endif --}}
+                            @endif
                         </flux:sidebar.group>
                     @endif
 

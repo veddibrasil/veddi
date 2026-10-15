@@ -221,8 +221,11 @@ return [
             ],
         ],
 
+        // Em produção as filas são os workers do cloud.yaml; localmente o Horizon consome todas
+        // (sem 'whatsapp' e 'critical' as notificações e o onboarding do WhatsApp nunca rodam).
         'local' => [
             'supervisor-1' => [
+                'queue' => ['critical', 'default', 'whatsapp', 'low'],
                 'maxProcesses' => 3,
             ],
         ],

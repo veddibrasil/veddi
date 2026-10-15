@@ -29,7 +29,9 @@ interface WhatsAppManagementInterface
     public function debugToken(#[\SensitiveParameter] string $token): array;
 
     /**
-     * @return array<int, array{id: string, display_phone_number: ?string, verified_name: ?string, quality_rating: ?string}>
+     * is_on_biz_app = true para o número que vive no app WhatsApp Business (coexistência).
+     *
+     * @return array<int, array{id: string, display_phone_number: ?string, verified_name: ?string, quality_rating: ?string, is_on_biz_app: ?bool, platform_type: ?string}>
      *
      * @throws WhatsAppApiException
      */
@@ -45,7 +47,9 @@ interface WhatsAppManagementInterface
     public function registerPhone(string $phoneNumberId, #[\SensitiveParameter] string $token, #[\SensitiveParameter] string $pin): void;
 
     /**
-     * @return array{verified_name: ?string, display_phone_number: ?string, quality_rating: ?string, messaging_limit_tier: ?string}
+     * is_on_biz_app = true quando o número vive no app WhatsApp Business (coexistência).
+     *
+     * @return array{verified_name: ?string, display_phone_number: ?string, quality_rating: ?string, messaging_limit_tier: ?string, is_on_biz_app: ?bool}
      *
      * @throws WhatsAppApiException
      */

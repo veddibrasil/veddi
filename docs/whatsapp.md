@@ -6,7 +6,7 @@ Cada restaurante conecta o **próprio número** (Embedded Signup da Meta, com su
 
 1. **Conectar** (`/admin/settings/whatsapp`, só `company_admin`): o Alpine `whatsappSignup` (`resources/js/admin/whatsapp-signup.js`) abre o `FB.login` e junta o `code` (callback) com `waba_id`/`phone_number_id` (postMessage `WA_EMBEDDED_SIGNUP`). O componente `WhatsAppSettings::completeSignup()` chama `WhatsAppOnboardingService::start()`, que grava a conexão como `pending` e despacha `CompleteWhatsAppOnboarding` (fila `critical`, payload criptografado).
 2. **Onboarding** (`WhatsAppOnboardingService::complete()`): troca o `code` por token (uso único, nunca retentado) → confere token/WABA (`debug_token`) → inscreve o app na WABA → registra o número na Cloud API (só `cloud_api`; na coexistência **não** registra) → busca dados do número → `provisioning`.
-3. **Templates** (`ProvisionWhatsAppTemplates`, fila `whatsapp`): cria na WABA os templates de `config/whatsapp_templates.php` que faltam e sincroniza o status. A conexão vira `templates_pending` e só fica `active` quando **todos** estão aprovados (webhook `message_template_status_update`).
+3. **Templates** (`ProvisionWhatsAppTemplates`, fila `whatsapp`): cria na WABA os templates de `config/whatsapp_templates.php` que faltam e sincroniza o status. A conexão vira `templates_pending` e só fica `active` quando **todos** estão aprovados (webhook `message_template_status_update`; se o webhook se perder, o `whatsapp:sync-templates --pending` agendado relê o status a cada 30 minutos).
 4. **Envio**: eventos de pedido → listeners `SendWhatsAppOrderNotification` / `SendWhatsAppStatusNotification` → `WhatsAppService::shouldNotify()` → `SendWhatsAppOrderNotificationJob` (fila `whatsapp`). Idempotente por `order_id + event` (`whatsapp_messages`).
 5. **Webhook** (`POST /webhooks/whatsapp` → `ProcessWhatsAppWebhook` → `WhatsAppWebhookProcessor`): status de entrega das mensagens, aprovação de templates, qualidade/limite, alertas e mudanças da conta, opt-out (PARAR/SAIR/STOP/CANCELAR) e ecos do app (coexistência).
 
@@ -19,7 +19,7 @@ Status da conexão (`whatsapp_connections.status`): `pending` → `provisioning`
 - Pedido em dinheiro agendado recebe o template `scheduled` no lugar de `new_order`; `paid` em dinheiro não notifica (pagamento na entrega).
 - `awaiting_payment` (código PIX por WhatsApp) **não tem template** — pendência (o toggle fica desabilitado "em breve").
 - Sem conexão ativa, só envia pelo número da plataforma se `WHATSAPP_FALLBACK_TO_PLATFORM=true` (homologação).
-- WABA e número são exclusivos por empresa; vínculo de outra empresa bloqueia, exceto se ela estiver `disconnected`.
+- WABA e número são exclusivos por empresa; vínculo de outra empresa bloqueia, exceto se ela estiver `disconnected` ou em `error` sem nunca ter conectado (`connected_at` nulo; o `fail()` dessa tentativa já limpa os ids). O `phone_number_id` informado pelo navegador só é aceito se pertencer à WABA autorizada no token.
 
 ## Configuração do app Meta
 
@@ -39,17 +39,19 @@ No painel do app (developers.facebook.com):
 1. **Webhooks → WhatsApp Business Account**
    - URL de callback: `https://app.veddi.com.br/webhooks/whatsapp`
    - Token de verificação: o mesmo valor de `WHATSAPP_WEBHOOK_VERIFY_TOKEN`
-   - Campos assinados: `messages`, `message_template_status_update`, `phone_number_quality_update`, `account_update`, `account_alerts`, `smb_message_echoes`
-2. **Embedded Signup**: criar a configuração (Login do Facebook para Empresas) com as permissões `whatsapp_business_management` e `whatsapp_business_messaging`; o ID gerado vai em `WHATSAPP_ES_CONFIG_ID`.
-3. **Login do Facebook → Configurações**: ligar "Login com o SDK do JavaScript" e incluir `app.veddi.com.br` em "Domínios permitidos para o SDK do JavaScript". Sem isso o popup do `FB.login` falha.
+   - Campos assinados: `messages`, `message_template_status_update`, `template_category_update`, `phone_number_quality_update`, `account_update`, `account_alerts`, `smb_message_echoes`, `history`, `smb_app_state_sync` (os três últimos são exigidos pela Meta para coexistência; `history` e `smb_app_state_sync` são descartados no controller, só registrando que chegaram — trazem conversas e contatos do restaurante)
+2. **Embedded Signup v4**: em Login do Facebook para Empresas → Configurações → Criar configuração: variação de login **"Cadastro incorporado do WhatsApp"** (não "Geral" — a variação não muda depois de criada), produto **WhatsApp Cloud API** selecionado (selecionar o produto já coloca a configuração no v4), token de acesso de usuário do sistema com validade **Nunca**, ativo "Contas do WhatsApp" e as permissões `whatsapp_business_management` e `whatsapp_business_messaging`; o ID gerado vai em `WHATSAPP_ES_CONFIG_ID`. Sintoma de configuração errada (variação "Geral"): o popup é só um login comum e a tela mostra "A Meta não confirmou a conta e o número conectados" (o `code` chega, o evento `WA_EMBEDDED_SIGNUP` não). Configuração antiga (v2, sem produto selecionado) para de funcionar em 15/10/2026. O front manda `extras: {setup: {}, featureType: 'whatsapp_business_app_onboarding'}` — a versão do Embedded Signup vem da configuração, não do `extras`, e o v4 sempre manda o evento de sessão (o `sessionInfoVersion` era do v2/v3). Pelo modelo, a configuração certa é "Configuração do cadastro incorporado do WhatsApp com token de expiração em 60 dias" (o modelo "Parceiro de mensuração do WhatsApp" é só leitura e só v2). Confira no Embedded Signup Builder que aparece a opção de conectar um número do app WhatsApp Business (coexistência).
+3. **Login do Facebook para Empresas → Configurações → Configurações de OAuth do cliente**: deixar como **Sim** "Login no OAuth do cliente", "Login do OAuth na Web", "Forçar HTTPS" e "Entrar com o SDK do JavaScript", e incluir em "Domínios permitidos para o SDK do JavaScript" `app.veddi.com.br` e, para teste local, o host https do ngrok. Em **Configurações → Básico → Domínios do app**, incluir os mesmos domínios. Sem isso o popup do `FB.login` falha; o erro "A opção JSSDK não está ativada" significa que "Entrar com o SDK do JavaScript" está desligado.
 4. O app precisa estar em modo **Ativo** e com acesso avançado às permissões acima (verificação da empresa/Tech Provider) para atender restaurantes de terceiros.
 
 > O front do Embedded Signup e as origens da CSP (`app/Http/Middleware/SecurityHeaders.php`: `frame-src`/`child-src` de `www.facebook.com`, `web.facebook.com`, `staticxx.facebook.com`) só foram validados em teste de servidor. No primeiro teste real, abra o console do navegador e confira se há bloqueio de CSP.
 
 ## Filas e agendamento
 
-- Filas (ver `cloud.yaml`): `critical` (onboarding, o `code` expira em segundos), `whatsapp` (envio e templates, `timeout: 120`). `composer dev` **não** consome essas filas; suba um worker à parte (`php artisan queue:work --queue=critical,whatsapp,default`).
+- Filas (ver `cloud.yaml`): `critical` (onboarding, o `code` expira em ~30 segundos), `whatsapp` (envio, webhook e templates, `timeout: 120`). Localmente, `composer dev` e o Horizon (`config/horizon.php`, ambiente `local`) consomem `critical,default,whatsapp,low`; depois de mudar o config, reinicie o Horizon (`php artisan horizon:terminate`).
 - `whatsapp:check-connections` roda todo dia às 09:00 (`routes/console.php`, precisa do scheduler ligado).
+- `whatsapp:sync-templates --pending` roda a cada 30 minutos: relê na Meta os templates das conexões em `provisioning`/`templates_pending` (webhook de aprovação perdido ou chegado no meio do provisionamento, template que falhou ao ser criado).
+- Localmente o `php artisan dev:start` sobe um `queue:work` com `critical,default,whatsapp,low` além do Horizon.
 
 ## Comandos
 
@@ -57,6 +59,8 @@ No painel do app (developers.facebook.com):
 |---------|----------------|
 | `whatsapp:send-test {telefone} [--company=]` | Envia o template `pedido_em_preparo` com dados fictícios (homologação); ignora opt-in |
 | `whatsapp:sync-templates [--company=]` | Recria/sincroniza os templates e atualiza qualidade/limite (suporte) |
+| `whatsapp:sync-templates --pending` | Só as conexões aguardando templates (agendado a cada 30 minutos) |
+| `whatsapp:sync-templates --platform` | Inscreve o app (webhook) e cria/sincroniza os templates na WABA do número da plataforma (necessário antes de `whatsapp:send-test` sem `--company` e do fallback). Exige `WHATSAPP_PLATFORM_TOKEN` permanente (usuário do sistema) |
 | `whatsapp:check-connections` | Roda o monitoramento diário na hora |
 
 Super admin: `/superadmin/whatsapp` lista todas as conexões (status, qualidade, tipo, último erro) e enfileira "Sincronizar templates".

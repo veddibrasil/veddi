@@ -113,7 +113,8 @@ class ResolveExpiredVindiPaymentsJob implements ShouldQueue
                     'idempotency_key' => $idempotencyKey,
                 ]);
 
-                $order->update(['status' => 'paid']);
+                // Mesma regra do webhook: agendado para o futuro continua 'scheduled'.
+                $order->update(['status' => ($order->scheduled_at && $order->scheduled_at->isFuture()) ? 'scheduled' : 'paid']);
 
                 app(WalletServiceInterface::class)->creditForOrder($order, $payment);
                 app(TransactionServiceInterface::class)->createForPayment($order, $payment);
@@ -144,8 +145,10 @@ class ResolveExpiredVindiPaymentsJob implements ShouldQueue
 
             $payment->update(['status' => 'expired']);
 
+            // PIX do chat já está 'awaiting_payment' quando expira (ProcessOrder muda o status
+            // assim que a cobrança é criada); só 'pending' deixava esses pedidos abertos para sempre.
             $order = Order::find($payment->order_id);
-            if ($order && $order->status === 'pending') {
+            if ($order && in_array($order->status, ['pending', 'awaiting_payment'], true)) {
                 $order->update(['status' => 'cancelled']);
                 OrderStatusUpdated::dispatch($order->fresh());
             }
