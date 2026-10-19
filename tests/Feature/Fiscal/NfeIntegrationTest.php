@@ -68,18 +68,30 @@ test('CPF e documento ausente selecionam NFC-e', function (?string $document) {
     Http::assertSent(fn ($request) => str_contains($request->url(), '/v2/nfce?'));
 })->with(['52998224725', null]);
 
-test('CNPJ incompleto ou NF-e desabilitada nunca faz fallback para NFC-e', function (string $scenario) {
-    ['order' => $order, 'config' => $config] = nfeContext();
-    if ($scenario === 'incomplete') {
-        $order->update(['fiscal_recipient' => ['document' => '11222333000181']]);
-    } else {
-        $config->update(['nfe_enabled' => false]);
-    }
+test('CNPJ incompleto nunca faz fallback para NFC-e', function () {
+    ['order' => $order] = nfeContext();
+    $order->update(['fiscal_recipient' => ['document' => '11222333000181']]);
     Http::fake();
     expect(fn () => app(FiscalNoteService::class)->issue($order))->toThrow(RuntimeException::class);
     Http::assertNothingSent();
     expect(FiscalNote::count())->toBe(0);
-})->with(['incomplete', 'disabled']);
+});
+
+test('CNPJ sempre emite NF-e, mesmo em configuração antiga gravada com NF-e desligada', function () {
+    ['order' => $order, 'config' => $config] = nfeContext();
+    $config->forceFill(['nfe_enabled' => false])->saveQuietly();
+    Http::fake(['*' => Http::response(['status' => 'autorizado', 'chave_nfe' => str_repeat('1', 44)], 201)]);
+    $note = app(FiscalNoteService::class)->issue($order);
+    expect($note->model)->toBe('55');
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/v2/nfe?'));
+});
+
+test('configuração fiscal nova nasce com NF-e habilitada', function () {
+    ['config' => $config] = nfeContext();
+    $config->delete();
+    $fresh = CompanyFiscalConfig::create(['company_id' => $config->company_id, 'branch_id' => $config->branch_id, 'enabled' => true]);
+    expect($fresh->fresh()->nfe_enabled)->toBeTrue();
+});
 
 test('dados fiscais do pedido não mudam quando cadastro do cliente muda', function () {
     ['order' => $order, 'customer' => $customer] = nfeContext();

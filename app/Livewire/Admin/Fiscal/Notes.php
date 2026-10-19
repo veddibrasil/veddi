@@ -287,7 +287,7 @@ class Notes extends Component
         return view('livewire.admin.fiscal.notes', [
             'notes' => $query->paginate(15),
             'fiscalEvents' => \App\Models\FiscalNoteEvent::latest()->limit(20)->get(),
-            'emitterConfigs' => \App\Models\CompanyFiscalConfig::where('company_id', app('current.company')->id)->where('nfe_enabled', true)->with('branch')->get(),
+            'emitterConfigs' => \App\Models\CompanyFiscalConfig::where('company_id', app('current.company')->id)->with('branch')->get(),
             'errorNote' => $this->errorNoteId ? FiscalNote::find($this->errorNoteId) : null,
             'reissueNote' => $this->showReissueModal && $this->reissueNoteId ? $this->findReissuableNote($this->reissueNoteId) : null,
         ])->layout('layouts.app', ['title' => 'Notas Fiscais']);

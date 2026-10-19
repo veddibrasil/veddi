@@ -238,9 +238,6 @@ class FiscalNoteService
         } catch (\Illuminate\Validation\ValidationException $e) {
             throw new \RuntimeException('Dados fiscais pendentes: '.implode(' ', $e->validator->errors()->all()));
         }
-        if ($model === '55' && ! $companyConfig->nfe_enabled) {
-            throw new \RuntimeException('NF-e não habilitada para o emitente. Habilite NF-e na configuração fiscal.');
-        }
         if ($model === '55' && (blank($branch?->state) || blank($branch?->cnpj ?: $company->owner_cpf_cnpj))) {
             throw new \RuntimeException('Complete o CNPJ e a UF do emitente antes de emitir NF-e.');
         }

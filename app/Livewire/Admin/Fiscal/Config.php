@@ -35,8 +35,6 @@ class Config extends Component
 
     public string $nfceSerie = '1';
 
-    public bool $nfeEnabled = false;
-
     public string $nfeSerie = '1';
 
     public $certificateFile = null;
@@ -181,7 +179,6 @@ class Config extends Component
         $this->provider = $config?->provider ?? 'focus_nfe';
         $this->environment = $config?->environment ?? 'homologacao';
         $this->nfceSerie = (string) ($config?->nfce_serie ?? '1');
-        $this->nfeEnabled = $config?->nfe_enabled ?? false;
         $this->nfeSerie = (string) ($config?->nfe_serie ?? '1');
         $this->hasProviderToken = filled($config?->provider_token);
         $this->hasCertificate = filled($config?->certificate_path);
@@ -220,7 +217,6 @@ class Config extends Component
             'environment' => ['required', 'in:homologacao,producao'],
             'nfceSerie' => ['required', 'integer', 'min:1', 'max:999'],
             'nfeSerie' => ['required', 'integer', 'min:1', 'max:999'],
-            'nfeEnabled' => ['boolean'],
             'inscricaoEstadual' => ['nullable', 'string', 'max:50'],
             'inscricaoMunicipal' => ['nullable', 'string', 'max:50'],
             'branchCnpj' => ['nullable', 'string'],
@@ -303,7 +299,8 @@ class Config extends Component
         $config->provider = $this->provider;
         $config->environment = $this->environment;
         $config->nfce_serie = (int) $this->nfceSerie;
-        $config->nfe_enabled = $this->nfeEnabled;
+        // NF-e sempre habilitada: CNPJ no destinatário sempre emite NF-e.
+        $config->nfe_enabled = true;
         $config->nfe_serie = (int) $this->nfeSerie;
         $config->id_token_nfce_producao = $this->idTokenNfceProducao ?: null;
 
@@ -422,7 +419,7 @@ class Config extends Component
             'uf' => $branch?->state,
             'cep' => preg_replace('/\D/', '', $branch?->cep ?? '') ?: null,
             'habilita_nfce' => true,
-            'habilita_nfe' => $this->nfeEnabled,
+            'habilita_nfe' => true,
             // A Focus numera a nota pela série do cadastro da empresa e ignora o 'serie' do
             // payload de emissão (só vale junto com 'numero'). Sem isso a série da tela não
             // tem efeito e a empresa emite sempre na série 1 — recadastrada (contador zerado),

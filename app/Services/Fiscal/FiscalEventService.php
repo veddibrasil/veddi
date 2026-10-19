@@ -44,8 +44,8 @@ class FiscalEventService
             'numero_final' => 'required|integer|gte:numero_inicial|max:999999999',
             'justificativa' => 'required|string|min:15|max:255',
         ])->validate();
-        if (! $config->enabled || ! $config->nfe_enabled) {
-            throw new \RuntimeException('NF-e não habilitada para o emitente.');
+        if (! $config->enabled) {
+            throw new \RuntimeException('Configuração fiscal não habilitada para o emitente.');
         }
         $branch = $config->branch;
         $data['cnpj'] = preg_replace('/\D/', '', $branch?->cnpj ?? '');

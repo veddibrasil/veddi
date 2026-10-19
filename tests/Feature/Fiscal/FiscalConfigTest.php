@@ -228,6 +228,32 @@ test('salvar novamente com empresa já registrada dispara PUT em vez de POST', f
     expect($config->token_producao)->toBe('tok-prod-2');
 });
 
+test('tela não oferece mais desligar NF-e: config antiga com NF-e desligada é salva ligada', function () {
+    $company = fiscalConfigTestCompany();
+    app()->instance('current.company', $company);
+
+    $config = CompanyFiscalConfig::create([
+        'company_id' => $company->id,
+        'branch_id' => fiscalConfigTestBranch($company)->id,
+        'is_default' => true,
+        'enabled' => false,
+    ]);
+    $config->forceFill(['nfe_enabled' => false])->saveQuietly();
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+    grantFiscalSettingsPermission($admin, $company);
+
+    Livewire::actingAs($admin)
+        ->test(Config::class)
+        ->assertDontSee('Habilitar NF-e')
+        ->assertSee('Série NF-e')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect($config->fresh()->nfe_enabled)->toBeTrue();
+});
+
 test('série da tela vai pro cadastro da empresa na Focus, que é de onde ela numera a nota', function () {
     $company = fiscalConfigTestCompany();
     app()->instance('current.company', $company);
@@ -255,7 +281,10 @@ test('série da tela vai pro cadastro da empresa na Focus, que é de onde ela nu
         ->call('save')
         ->assertHasNoErrors();
 
+    expect(CompanyFiscalConfig::where('company_id', $company->id)->first()->nfe_enabled)->toBeTrue();
+
     Http::assertSent(fn (\Illuminate\Http\Client\Request $request) => $request->method() === 'PUT'
+        && ($request['habilita_nfe'] ?? null) === true
         && ($request['serie_nfce_producao'] ?? null) === 2
         && ($request['serie_nfce_homologacao'] ?? null) === 2
         && ($request['serie_nfe_producao'] ?? null) === 3

@@ -33,6 +33,11 @@ class CompanyFiscalConfig extends Model
         'certificate_password',
     ];
 
+    /** NF-e sempre habilitada: CNPJ no destinatário sempre emite NF-e. */
+    protected $attributes = [
+        'nfe_enabled' => true,
+    ];
+
     protected $casts = [
         'enabled' => 'boolean',
         'is_default' => 'boolean',
