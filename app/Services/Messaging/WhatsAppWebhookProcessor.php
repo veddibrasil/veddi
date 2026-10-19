@@ -313,6 +313,11 @@ class WhatsAppWebhookProcessor
             ->whereNull('whatsapp_opt_out_at')
             ->update(['whatsapp_opt_out_at' => Date::now()]);
 
+        \App\Models\Order::withoutGlobalScopes()
+            ->whereIn('company_id', $companyIds)
+            ->whereIn('buyer_data->phone', $phones)
+            ->update(['buyer_data->whatsapp_opt_in' => false]);
+
         Log::channel('whatsapp')->info('Webhook WhatsApp: opt-out registrado', [
             'company_ids' => $companyIds->values()->all(),
             'customers_updated' => $updated,

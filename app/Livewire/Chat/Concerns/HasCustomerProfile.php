@@ -13,11 +13,9 @@ trait HasCustomerProfile
     public function submitPhone(): void
     {
         $this->phone = preg_replace('/\D/', '', $this->phone);
-        $this->validate($this->rules(), $this->messages());
+        $this->validate($this->rulesFor('IDENTIFY_PHONE'), $this->messages());
 
-        // O telefone é a única identificação do cliente no chat (sem OTP): sem limite,
-        // dava para chutar telefones em sequência e colher cadastros. Por IP + empresa; folga para
-        // Wi-Fi da loja (vários clientes pedindo pelo QR da mesa no mesmo IP).
+        // Limita abuso de entrada no checkout; consultar telefone nunca carrega um perfil.
         $rateLimitKey = "chat-phone-lookup:{$this->companyId}:".request()->ip();
 
         if (RateLimiter::tooManyAttempts($rateLimitKey, 30)) {
@@ -29,94 +27,108 @@ trait HasCustomerProfile
 
         RateLimiter::hit($rateLimitKey, 600);
 
-        $service = app(CustomerService::class);
-        $customer = $service->findByPhone($this->phone);
-
-        if ($customer) {
-            $this->fillCustomerData($customer);
-            $this->recordWhatsAppConsent($customer);
-            Log::channel('chat')->info('Cliente identificado pelo telefone', ['customer_id' => $customer->id]);
-            $this->addMessage('user', $this->phone);
-
-            if (empty($this->cart)) {
-                $recoverableOrder = $this->findRecoverableOrder($customer->id, $this->companyId);
-                if ($recoverableOrder) {
-                    $this->pendingOrderSummary = [
-                        'id' => $recoverableOrder->id,
-                        'order_number' => $recoverableOrder->order_number,
-                        'total' => (float) $recoverableOrder->total,
-                        'status' => $recoverableOrder->status,
-                        'payment_method' => strtoupper($recoverableOrder->payment_method),
-                        'items_count' => $recoverableOrder->items()->count(),
-                    ];
-                    $statusLabel = $recoverableOrder->status === 'awaiting_payment' ? 'aguardando pagamento' : 'pendente';
-                    $total = 'R$ '.number_format($recoverableOrder->total, 2, ',', '.');
-                    $this->addMessage('bot', "Olá, {$customer->name}! Encontrei um pedido em aberto #{$recoverableOrder->order_number} ({$statusLabel}) — {$total}. Deseja continuar?");
-                    $this->transitionTo('RECOVER_ORDER');
-
-                    return;
-                }
-            }
-
-            $nextStep = ! empty($this->cart) ? 'CHECKOUT_COUPON' : 'MENU_BROWSE';
-            $this->addMessage('bot', "Que bom te ver de volta, {$customer->name}! Continuando com seu pedido...");
-            $this->transitionTo($nextStep);
-
-            return;
-        }
-
-        $existing = $service->findFromGlobal($this->phone);
-
-        if ($existing) {
-            $customer = $service->createFromGlobal($this->phone, $existing);
-            $this->fillCustomerData($customer);
-            $this->recordWhatsAppConsent($customer);
-            $this->addMessage('user', $this->phone);
-
-            if (empty($this->cart)) {
-                $recoverableOrder = $this->findRecoverableOrder($customer->id, $this->companyId);
-                if ($recoverableOrder) {
-                    $this->pendingOrderSummary = [
-                        'id' => $recoverableOrder->id,
-                        'order_number' => $recoverableOrder->order_number,
-                        'total' => (float) $recoverableOrder->total,
-                        'status' => $recoverableOrder->status,
-                        'payment_method' => strtoupper($recoverableOrder->payment_method),
-                        'items_count' => $recoverableOrder->items()->count(),
-                    ];
-                    $statusLabel = $recoverableOrder->status === 'awaiting_payment' ? 'aguardando pagamento' : 'pendente';
-                    $total = 'R$ '.number_format($recoverableOrder->total, 2, ',', '.');
-                    $this->addMessage('bot', "Olá, {$customer->name}! Encontrei um pedido em aberto #{$recoverableOrder->order_number} ({$statusLabel}) — {$total}. Deseja continuar?");
-                    $this->transitionTo('RECOVER_ORDER');
-
-                    return;
-                }
-            }
-
-            $nextStep = ! empty($this->cart) ? 'CHECKOUT_COUPON' : 'MENU_BROWSE';
-            $this->addMessage('bot', "Que bom te ver de novo, {$customer->name}! Continuando com seu pedido...");
-            $this->transitionTo($nextStep);
-
-            return;
-        }
-
-        Log::channel('chat')->info('Telefone não encontrado — iniciando cadastro', ['company_id' => $this->companyId]);
+        $this->clearCheckoutIdentity();
         $this->addMessage('user', $this->phone);
-        $this->addMessage('bot', 'Não encontrei seu cadastro. Vamos criar um rapidinho! Qual é o seu nome completo?');
+        $this->addMessage('bot', 'Você pode preencher os dados desta compra ou confirmar seu telefone para usar dados salvos.');
+        $this->transitionTo('CUSTOMER_OPTIONS');
+    }
+
+    private function clearCheckoutIdentity(): void
+    {
+        $this->customerId = null;
+        $this->reset('name', 'email', 'address', 'number', 'complement', 'neighborhood', 'city', 'cep', 'taxId', 'customer_latitude', 'customer_longitude', 'customerCards', 'selectedCardId', 'orderHistory', 'pendingOrderSummary', 'verificationCode', 'challengeId');
+        $this->checkoutReady = false;
+        $this->useSavedProfile = false;
+    }
+
+    public function continueAsGuest(): void
+    {
+        $this->clearCheckoutIdentity();
+        $this->addMessage('bot', 'Qual é o seu nome completo?');
         $this->transitionTo('REGISTER_NAME');
+    }
+
+    public function useSavedData(): void
+    {
+        $customer = $this->verifiedCustomer();
+        if ($customer && $customer->phone === $this->phone) {
+            $this->useSavedProfile = true;
+            $this->fillCustomerData($customer);
+            $this->checkoutReady = true;
+            $this->transitionTo(empty($this->cart) ? 'MENU_BROWSE' : 'CHECKOUT_COUPON');
+
+            return;
+        }
+        $this->requestVerificationCode();
+    }
+
+    public function requestVerificationCode(): void
+    {
+        $this->validate(['phone' => ['required', 'regex:/^\d{10,11}$/']]);
+        try {
+            $this->challengeId = app(\App\Services\Chat\PhoneVerification::class)->send($this->companyId, $this->phone);
+            $this->verificationCode = '';
+            $this->transitionTo('VERIFY_PHONE');
+        } catch (\RuntimeException $e) {
+            $this->addError('verificationCode', $e->getMessage());
+        }
+    }
+
+    public function submitVerificationCode(): void
+    {
+        $this->validate(['verificationCode' => ['required', 'regex:/^\d{6}$/']]);
+        if (! $this->challengeId || ! app(\App\Services\Chat\PhoneVerification::class)->consume($this->challengeId, $this->companyId, $this->phone, $this->verificationCode)) {
+            $this->addError('verificationCode', 'Código inválido ou expirado. Solicite outro ou preencha seus dados.');
+
+            return;
+        }
+        $this->reset('verificationCode', 'challengeId');
+        $customer = app(\App\Services\Chat\ChatAccess::class)->verify($this->companyId, $this->phone);
+        if (! $customer) {
+            $this->continueAsGuest();
+
+            return;
+        }
+        $this->useSavedProfile = true;
+        $this->fillCustomerData($customer);
+        $this->checkoutReady = true;
+        if ($this->rememberDevice) {
+            app(\App\Services\Chat\RememberedDevice::class)->remember($customer);
+        }
+        $this->addMessage('bot', 'Telefone confirmado. Confira os dados para esta compra.');
+        $recoverable = $this->findRecoverableOrder($customer->id, $this->companyId);
+        if (empty($this->cart) && $recoverable) {
+            $this->pendingOrderSummary = [
+                'id' => $recoverable->id, 'order_number' => $recoverable->order_number,
+                'total' => (float) $recoverable->total, 'status' => $recoverable->status,
+                'payment_method' => strtoupper($recoverable->payment_method), 'items_count' => $recoverable->items()->count(),
+            ];
+            $this->transitionTo('RECOVER_ORDER');
+
+            return;
+        }
+        $this->transitionTo(empty($this->cart) ? 'MENU_BROWSE' : 'CHECKOUT_COUPON');
+    }
+
+    public function forgetDevice(): void
+    {
+        app(\App\Services\Chat\RememberedDevice::class)->forget($this->companyId);
+        $this->resetState();
+        $this->initialize();
     }
 
     public function submitName(): void
     {
-        $this->validate($this->rules(), $this->messages());
+        $this->validate($this->rulesFor('REGISTER_NAME'), $this->messages());
         $this->addMessage('user', $this->name);
-        $this->addMessage('bot', "Prazer, {$this->name}! Qual é o seu e-mail?");
-        $this->transitionTo('REGISTER_EMAIL');
+        $this->checkoutReady = true;
+        $this->addMessage('bot', 'Dados desta compra preenchidos. Continuando com seu pedido...');
+        $this->transitionTo(empty($this->cart) ? 'MENU_BROWSE' : 'CHECKOUT_COUPON');
     }
 
     public function submitEmail(): void
     {
-        $this->validate($this->rules(), $this->messages());
+        $this->validate($this->rulesFor('REGISTER_EMAIL'), $this->messages());
         if ($this->email) {
             $this->addMessage('user', $this->email);
         }
@@ -133,27 +145,7 @@ trait HasCustomerProfile
 
     public function submitAddress(): void
     {
-        $this->validate($this->rules(), $this->messages());
-
-        $normalized = preg_replace('/\D/', '', $this->phone);
-
-        $customer = Customer::updateOrCreate(
-            ['company_id' => $this->companyId, 'phone' => $normalized],
-            [
-                'name' => $this->name,
-                'email' => $this->email !== '' ? $this->email : null,
-                'address' => $this->address,
-                'complement' => $this->complement,
-                'neighborhood' => $this->neighborhood,
-                'city' => $this->city,
-                'number' => $this->number,
-                'cep' => preg_replace('/\D/', '', $this->cep),
-            ]
-        );
-
-        $this->customerId = $customer->id;
-        $this->recordWhatsAppConsent($customer);
-        Log::channel('chat')->info('Novo cliente cadastrado', ['customer_id' => $customer->id]);
+        $this->validate($this->rulesFor('REGISTER_ADDRESS'), $this->messages());
 
         $addressSummary = $this->address;
         if ($this->complement) {
@@ -162,21 +154,29 @@ trait HasCustomerProfile
         $addressSummary .= " — {$this->neighborhood}, {$this->number}, {$this->city} — CEP {$this->cep}";
         $this->addMessage('user', $addressSummary);
         $nextStep = ! empty($this->cart) ? 'CHECKOUT_COUPON' : 'MENU_BROWSE';
-        $this->addMessage('bot', 'Cadastro criado com sucesso! Continuando com seu pedido...');
+        $this->addMessage('bot', 'Dados desta compra preenchidos! Continuando com seu pedido...');
         $this->transitionTo($nextStep);
     }
 
     public function openEditProfile(): void
     {
+        if (! $this->verifiedCustomer()) {
+            return;
+        }
+
         $this->previousStep = $this->step;
         $this->transitionTo('EDIT_PROFILE');
     }
 
     public function submitEditProfile(): void
     {
-        $this->validate($this->rules(), $this->messages());
+        if (! $this->verifiedCustomer()) {
+            return;
+        }
 
-        app(CustomerService::class)->updateProfile($this->customerId, [
+        $this->validate($this->rulesFor('EDIT_PROFILE'), $this->messages());
+
+        app(CustomerService::class)->updateProfile($this->verifiedCustomer()->id, [
             'name' => $this->name,
             'address' => $this->address,
             'complement' => $this->complement,
@@ -227,17 +227,6 @@ trait HasCustomerProfile
         $this->addMessage('user', $branch->name);
         $this->addMessage('bot', "Ótimo! Aqui está o cardápio da {$branch->name}. Adicione os itens que quiser!");
         $this->transitionTo('MENU_BROWSE');
-    }
-
-    /**
-     * Grava o consentimento de WhatsApp marcado na tela do telefone. Só vale se a empresa notifica
-     * por WhatsApp (o checkbox nem aparece senão) e nunca revoga: desmarcar não apaga um opt-in antigo.
-     */
-    private function recordWhatsAppConsent(Customer $customer): void
-    {
-        if ($this->whatsappOptIn && $this->whatsappAvailable()) {
-            app(CustomerService::class)->registerWhatsAppOptIn($customer);
-        }
     }
 
     private function fillCustomerData(Customer $customer): void

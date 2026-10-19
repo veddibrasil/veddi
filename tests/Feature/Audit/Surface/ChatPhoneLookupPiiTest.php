@@ -108,7 +108,7 @@ test('visitante anônimo não obtém CPF/e-mail de cliente da própria loja só 
 
     expect($data['taxId'] ?? '')->not->toBe('11144477735')
         ->and($data['email'] ?? '')->not->toBe('joao@example.com');
-})->skip('Depende de verificar a posse do telefone (OTP) — decisão de negócio pendente. Paliativo aplicado: rate limit em submitPhone e cópia só do nome entre empresas.');
+});
 
 test('enumeração por telefone não tem limite de tentativas', function () {
     $store = piiLookupCompany('Loja Enumerada');
@@ -195,4 +195,4 @@ test('visitante anônimo não altera o cadastro (nome/endereço) de cliente exis
 
     expect($victim->name)->toBe('Ana Original')
         ->and($victim->address)->toBe('Rua Verdadeira');
-})->skip('Depende de verificar a posse do telefone (OTP) — decisão de negócio pendente.');
+});

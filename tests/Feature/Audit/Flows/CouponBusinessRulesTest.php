@@ -50,6 +50,7 @@ test('cliente que troca a forma de pagamento no chat consegue refazer o pedido c
     $chat = new OrderChat;
     $chat->companyId = $ctx['company']->id;
     $chat->customerId = $ctx['customer']->id;
+    verifiedChatFixture($chat, $ctx['customer']);
     $chat->selectedBranchId = $ctx['branch']->id;
     $chat->orderType = 'pickup';
     $chat->taxId = '52998224725';

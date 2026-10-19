@@ -589,6 +589,7 @@ class Index extends Component
                 ->when($this->userBranchId, fn ($q) => $q->where('branch_id', $this->userBranchId))
                 ->when($this->search, fn ($q) => $q->where(fn ($s) => $s
                     ->where('order_number', 'like', "%{$this->search}%")
+                    ->orWhere('buyer_data->name', 'like', "%{$this->search}%")
                     ->orWhereHas('customer', fn ($cq) => $cq->where('name', 'like', "%{$this->search}%"))
                 ))
                 ->when($this->isSuperAdmin && $this->companyFilter, fn ($q) => $q->where('company_id', $this->companyFilter));
@@ -644,6 +645,7 @@ class Index extends Component
             // Agrupado: o orWhereHas solto ignorava filial, estação, status e canal.
             ->when($this->search, fn ($q) => $q->where(fn ($s) => $s
                 ->where('order_number', 'like', "%{$this->search}%")
+                ->orWhere('buyer_data->name', 'like', "%{$this->search}%")
                 ->orWhereHas('customer', fn ($cq) => $cq->where('name', 'like', "%{$this->search}%"))
             ))
             ->when($this->isSuperAdmin && $this->companyFilter, fn ($q) => $q->where('company_id', $this->companyFilter));

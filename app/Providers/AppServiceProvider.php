@@ -66,6 +66,8 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(\App\Services\Payment\AsaasCircuitBreaker::class);
 
+        $this->app->bind(\App\Contracts\ChatCodeSender::class, \App\Services\Chat\WhatsAppCodeSender::class);
+
         $this->app->bind(AsaasServiceInterface::class, AsaasService::class);
         $this->app->bind(OrderServiceInterface::class, OrderService::class);
         $this->app->bind(FiscalNoteProviderInterface::class, function () {
@@ -124,6 +126,12 @@ class AppServiceProvider extends ServiceProvider
      */
     protected function configureNightwatch(): void
     {
+        Nightwatch::redactRequests(function (\Laravel\Nightwatch\Records\Request $request) {
+            if (str_ends_with($request->routeName, 'livewire.update') || $request->headers->has('X-Livewire')) {
+                $request->payload->replace(['livewire' => '[redacted]']);
+            }
+        });
+
         Nightwatch::redactOutgoingRequests(function (OutgoingRequest $request) {
             $request->url = (string) preg_replace(
                 '/([?&](?:client_secret|code|access_token|input_token|appsecret_proof|fb_exchange_token|token|pin)=)[^&#]*/i',

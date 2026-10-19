@@ -76,6 +76,7 @@ function chatAs(Company $company, Customer $customer, ?Order $order): OrderChat
     $chat = new OrderChat;
     $chat->companyId = $company->id;
     $chat->customerId = $customer->id;
+    verifiedChatFixture($chat, $customer);
     $chat->orderId = $order?->id;
 
     return $chat;
@@ -124,7 +125,7 @@ test('update de propriedade comum do chat continua aceito (controle do teste aci
     tamperChatProperty($this, $company, 'notes', 'sem cebola')->assertOk();
 });
 
-test('o servidor continua atribuindo os ids do chat (sessão restaurada)', function () {
+test('sessão antiga sem verificação não restaura identidade nem pedido', function () {
     ['company' => $company, 'owner' => $owner, 'order' => $order] = chatOwnershipContext('awaiting_payment');
 
     $html = $this->withSession(['chat_state' => [
@@ -137,8 +138,8 @@ test('o servidor continua atribuindo os ids do chat (sessão restaurada)', funct
     $data = Utils::extractAttributeDataFromHtml($html, 'wire:snapshot')['data'];
 
     expect($data['companyId'])->toBe($company->id)
-        ->and($data['customerId'])->toBe($owner->id)
-        ->and($data['orderId'])->toBe($order->id);
+        ->and($data['customerId'])->toBeNull()
+        ->and($data['orderId'])->toBeNull();
 });
 
 // ── Cancelamento ──────────────────────────────────────────────────────────────
@@ -258,7 +259,7 @@ test('trocar forma de pagamento não cancela pedido de outro cliente', function 
     $chat->changePaymentMethod();
 
     expect($order->fresh()->status)->toBe('pending')
-        ->and($chat->orderId)->toBeNull();
+        ->and($chat->step)->not->toBe('CHECKOUT_PAYMENT_METHOD');
     Event::assertNotDispatched(OrderStatusUpdated::class);
 });
 

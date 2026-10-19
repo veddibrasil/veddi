@@ -6,7 +6,6 @@ use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\User;
-use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -182,19 +181,17 @@ test('canal wallet.{companyId} autoriza company_admin e super admin, mas nega pa
     ])->assertForbidden();
 });
 
-test('OrderStatusUpdated publica tanto no canal privado quanto num canal público mínimo, pro chat convidado', function () {
+test('OrderStatusUpdated publica somente em canais privados, sem permitir acompanhamento por id público', function () {
     $order = new Order;
     $order->id = 42;
     $order->company_id = 7;
 
     $channels = (new OrderStatusUpdated($order))->broadcastOn();
 
-    expect($channels)->toHaveCount(3);
+    expect($channels)->toHaveCount(2);
     expect($channels[0])->toBeInstanceOf(PrivateChannel::class);
     expect($channels[0]->name)->toBe('private-order.42');
     expect($channels[1])->toBeInstanceOf(PrivateChannel::class);
     expect($channels[1]->name)->toBe('private-orders.7');
-    expect($channels[2])->toBeInstanceOf(Channel::class)
-        ->not->toBeInstanceOf(PrivateChannel::class);
-    expect($channels[2]->name)->toBe('order.42');
+
 });

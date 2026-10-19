@@ -32,6 +32,7 @@ function flowAuditDeliveryChat(array $ctx, float $tamperedPrice): OrderChat
     $chat = new OrderChat;
     $chat->companyId = $ctx['company']->id;
     $chat->customerId = $ctx['customer']->id;
+    verifiedChatFixture($chat, $ctx['customer']);
     $chat->selectedBranchId = $ctx['branch']->id;
     $chat->orderType = 'delivery';
     $chat->paymentMethod = 'CASH';

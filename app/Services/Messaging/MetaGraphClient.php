@@ -52,6 +52,7 @@ class MetaGraphClient
         ?string $token = null,
         int $timeout = 15,
         bool $signed = true,
+        bool $sensitiveResponse = false,
     ): array {
         $method = strtolower($method);
         $url = $this->url($endpoint);
@@ -92,6 +93,9 @@ class MetaGraphClient
         }
 
         if ($response->failed()) {
+            if ($sensitiveResponse) {
+                throw new WhatsAppPermanentException('Envio de autenticação recusado.');
+            }
             throw $this->exceptionFor($method, $endpoint, $response);
         }
 

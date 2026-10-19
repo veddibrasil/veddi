@@ -15,7 +15,7 @@ class Handler extends ExceptionHandler
             $context['url'] = $request->fullUrl();
             $context['method'] = $request->method();
             $context['ip'] = $request->ip();
-            $context['input'] = $request->except(['password', 'password_confirmation', 'token']);
+            $context['input'] = ($request->hasHeader('X-Livewire') || $request->routeIs('*livewire.update')) ? ['livewire' => '[redacted]'] : $request->except(['password', 'password_confirmation', 'token', 'verificationCode']);
         }
 
         try {

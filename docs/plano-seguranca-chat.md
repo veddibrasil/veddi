@@ -1,7 +1,7 @@
 # Plano de segurança do chat e compra sem verificação obrigatória
 
 Data: 19/10/2026  
-Status: proposta de implementação; nenhuma alteração funcional realizada por este documento.
+Status: implementação local das proteções, compra visitante, recuperação por código e dispositivo lembrado; habilitação do WhatsApp e homologação pendentes. Ver [registro de implementação](seguranca-chat-implementacao.md).
 
 ## 1. Objetivo
 

@@ -41,17 +41,23 @@ class ProcessOrder implements ShouldBeUnique, ShouldQueue
 
     public function __construct(
         public Order $order,
-        public Customer $customer,
+        public ?Customer $customer,
         public ?Company $company,
         public string $paymentMethod = 'pix',
         public int $installments = 1,
         public array $cardData = [],
     ) {
+        // Guest contacts are reconstructed from the persisted order, never serialized as models.
+        if ($order->buyer_data !== null) {
+            $this->customer = null;
+        }
         $this->onQueue('critical');
     }
 
     public function handle(PaymentOrchestrator $orchestrator): void
     {
+        $this->customer = $this->order->buyer_data !== null ? $this->order->customer : $this->customer;
+
         // Retentativa de um pedido que já saiu do fluxo de cobrança (cliente trocou a forma de
         // pagamento, PIX expirou, admin cancelou, já foi pago): não gera cobrança nem reabre o pedido.
         if (! in_array($this->order->status, self::PAYABLE_STATUSES, true)) {

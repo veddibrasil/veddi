@@ -264,6 +264,9 @@ class PaymentOrchestrator
 
         $savedCard = null;
         if (! empty($cardData['saved_card_id'])) {
+            if (! $customer->exists || ($order->buyer_data !== null && ($order->customer_id !== $customer->id || app(\App\Services\Chat\ChatAccess::class)->customer($order->company_id, true)?->id !== $customer->id))) {
+                throw new \RuntimeException('Cartão salvo exige identidade verificada.');
+            }
             $savedCard = $customer->cards()->find($cardData['saved_card_id']);
 
             if (! $savedCard) {

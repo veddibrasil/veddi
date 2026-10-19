@@ -28,7 +28,7 @@
 
     {{-- Body --}}
     <div style="padding: 32px 40px;">
-        <h2 style="font-size: 20px; margin-top: 0; color: #111;">Obrigado pelo seu pedido, {{ $customer->name }}! 🎉</h2>
+        <h2 style="font-size: 20px; margin-top: 0; color: #111;">Obrigado pelo seu pedido, {{ $buyer->name }}! 🎉</h2>
         <p style="font-size: 15px; line-height: 1.6; color: #555;">
             Recebemos o seu pedido com sucesso. Assim que o pagamento for confirmado, começaremos a preparar tudo para você.
         </p>

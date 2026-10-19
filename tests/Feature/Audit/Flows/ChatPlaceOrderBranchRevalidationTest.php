@@ -39,6 +39,7 @@ function flowAuditCashChat(Company $company, int $customerId, int $branchId, int
     $chat = new OrderChat;
     $chat->companyId = $company->id;
     $chat->customerId = $customerId;
+    verifiedChatFixture($chat, \App\Models\Customer::withoutGlobalScopes()->findOrFail($customerId));
     $chat->selectedBranchId = $branchId;
     $chat->orderType = 'pickup';
     $chat->paymentMethod = 'CASH';

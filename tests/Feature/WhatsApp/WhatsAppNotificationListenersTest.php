@@ -461,6 +461,7 @@ test('cancelamento feito pelo cliente no chat dispara o aviso de cancelado', fun
     $chat->companyId = $company->id;
     $chat->orderId = $order->id;
     $chat->customerId = $customer->id;
+    verifiedChatFixture($chat, $customer);
 
     $chat->confirmCancelOrder();
 

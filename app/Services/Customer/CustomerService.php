@@ -17,40 +17,8 @@ class CustomerService
     }
 
     /**
-     * Localiza o cliente pelo telefone em qualquer empresa (sem escopo global).
-     * Usado só para reaproveitar o NOME de quem já comprou em outra empresa
-     * (ver createFromGlobal).
-     */
-    public function findFromGlobal(string $phone): ?Customer
-    {
-        return Customer::findByPhoneGlobally($phone);
-    }
-
-    /**
-     * Cria um novo cliente para a empresa atual a partir de um cadastro de OUTRA
-     * empresa, copiando só o nome. O chat identifica o cliente só pelo telefone
-     * (sem verificação), então copiar CPF, e-mail e endereço entregava esses dados
-     * a quem digitasse o telefone na loja de qualquer empresa — e os gravava nela.
-     * Endereço e CPF são pedidos de novo no checkout desta empresa.
-     */
-    public function createFromGlobal(string $phone, Customer $source): Customer
-    {
-        $customer = Customer::create([
-            'phone' => preg_replace('/\D/', '', $phone),
-            'name' => $source->name,
-        ]);
-
-        Log::channel('chat')->info('Cliente importado de outra empresa (só o nome)', [
-            'customer_id' => $customer->id,
-            'source_company_id' => $source->company_id,
-        ]);
-
-        return $customer;
-    }
-
-    /**
      * Registra o consentimento para notificações por WhatsApp (Meta + LGPD). O consentimento é
-     * por empresa: createFromGlobal não o herda. Quem já consentiu mantém a data original; quem
+     * por empresa. Quem já consentiu mantém a data original; quem
      * tinha pedido para parar (opt-out) volta a receber ao consentir de novo. Desmarcar o
      * checkbox no chat nunca chega aqui — só o opt-out pelo WhatsApp revoga.
      */
@@ -75,7 +43,9 @@ class CustomerService
      */
     public function updateProfile(int $customerId, array $data): Customer
     {
-        $customer = Customer::findOrFail($customerId);
+        $companyId = app('current.company')->id;
+        $customer = app(\App\Services\Chat\ChatAccess::class)->customer($companyId);
+        abort_unless($customer && $customer->id === $customerId, 403);
 
         $fillable = array_intersect_key($data, array_flip([
             'name', 'email', 'address', 'complement',

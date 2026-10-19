@@ -78,6 +78,7 @@ test('pedido agendado pago no cartão pelo chat recebe o aviso de agendado, não
     $chat = new OrderChat;
     $chat->companyId = $company->id;
     $chat->customerId = $customer->id;
+    verifiedChatFixture($chat, $customer);
     $chat->orderId = $order->id;
     $chat->paymentMethod = 'CARD';
     $chat->useNewCard = true;

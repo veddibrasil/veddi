@@ -9,6 +9,10 @@ trait HasOrderRecovery
 {
     protected function findRecoverableOrder(int $customerId, int $companyId): ?Order
     {
+        if ($this->verifiedCustomer()?->id !== $customerId) {
+            return null;
+        }
+
         return Order::withoutGlobalScopes()
             ->where('customer_id', $customerId)
             ->where('company_id', $companyId)
@@ -20,6 +24,12 @@ trait HasOrderRecovery
 
     public function resumePendingOrder(): void
     {
+        if (! $this->verifiedCustomer()) {
+            $this->pendingOrderSummary = null;
+
+            return;
+        }
+
         $orderId = $this->pendingOrderSummary['id'] ?? null;
 
         // $pendingOrderSummary é propriedade pública Livewire (adulterável pelo
@@ -27,7 +37,7 @@ trait HasOrderRecovery
         $order = Order::withoutGlobalScopes()
             ->with(['items', 'payment', 'coupon'])
             ->where('id', $orderId)
-            ->where('customer_id', $this->customerId)
+            ->where('customer_id', $this->verifiedCustomer()->id)
             ->where('company_id', $this->companyId)
             ->first();
 

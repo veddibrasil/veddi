@@ -28,7 +28,7 @@ class OrderService implements OrderServiceInterface
      * @param  array<int, array{qty: int, name: string, price: float}>  $cart
      */
     public function createOrder(
-        int $customerId,
+        ?int $customerId,
         int $branchId,
         array $cart,
         string $notes,
@@ -44,6 +44,8 @@ class OrderService implements OrderServiceInterface
         string $channel = 'chat',
         ?string $externalOrderId = null,
         ?array $externalMetadata = null,
+        ?array $buyerData = null,
+        ?string $checkoutKey = null,
     ): Order {
         $currentCompany = app()->bound('current.company') ? app('current.company') : null;
 
@@ -63,7 +65,7 @@ class OrderService implements OrderServiceInterface
         // endereço) de outra.
         $branchCompanyId = \App\Models\Branch::withoutGlobalScopes()->whereKey($branchId)->value('company_id');
 
-        if (! $customer || $branchCompanyId === null || (int) $customer->company_id !== (int) $branchCompanyId) {
+        if ($branchCompanyId === null || ($customerId !== null && (! $customer || (int) $customer->company_id !== (int) $branchCompanyId)) || ($customerId === null && ! $buyerData)) {
             Log::channel('orders')->warning('Cliente fora da empresa da filial ao criar pedido', [
                 'customer_id' => $customerId,
                 'branch_id' => $branchId,
@@ -72,7 +74,7 @@ class OrderService implements OrderServiceInterface
             throw new RuntimeException('Cliente não encontrado nesta empresa.');
         }
 
-        $order = $this->transactionRetryingOnOrderNumberCollision(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer, $extraDiscount, $serviceFee, $couvertFee, $channel, $externalOrderId, $externalMetadata) {
+        $order = $this->transactionRetryingOnOrderNumberCollision(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer, $extraDiscount, $serviceFee, $couvertFee, $channel, $externalOrderId, $externalMetadata, $buyerData, $checkoutKey) {
             $subtotal = 0.0;
             $optionPricing = app(CartOptionPricing::class);
             // Pedido do cliente no chat público: o servidor não confia que a UI travou item sem escolha
@@ -148,6 +150,8 @@ class OrderService implements OrderServiceInterface
 
             $order = Order::create([
                 'customer_id' => $customerId,
+                'buyer_data' => $buyerData,
+                'checkout_key' => $checkoutKey,
                 'branch_id' => $branchId,
                 'subtotal' => $subtotal,
                 'delivery_fee' => $deliveryFee,
@@ -169,6 +173,10 @@ class OrderService implements OrderServiceInterface
                 'external_metadata' => $externalMetadata,
                 'attendant_id' => $orderType === 'pdv' ? auth()->id() : null,
             ]);
+
+            if ($buyerData) {
+                $customer = $order->customer;
+            }
 
             if ($orderType === 'delivery' && $customer) {
                 $order->delivery_address = $customer->address;
@@ -578,10 +586,10 @@ class OrderService implements OrderServiceInterface
     /**
      * Cancela um pedido pelo cliente.
      */
-    public function cancelOrder(Order $order, int $customerId, ?string $reason = null): void
+    public function cancelOrder(Order $order, ?int $customerId, ?string $reason = null): void
     {
         // Cliente só cancela o próprio pedido (o chat público é a origem; admin usa cancelOrderAsAdmin).
-        if ((int) $order->customer_id !== $customerId) {
+        if ($customerId === null ? ! app(\App\Services\Chat\ChatAccess::class)->canAccessOrder($order, true) : (int) $order->customer_id !== $customerId) {
             Log::channel('orders')->warning('Cancelamento pelo cliente recusado: pedido de outro cliente', [
                 'order_id' => $order->id,
                 'customer_id' => $customerId,

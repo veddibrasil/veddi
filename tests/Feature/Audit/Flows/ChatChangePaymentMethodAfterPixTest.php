@@ -37,6 +37,7 @@ test('trocar a forma de pagamento na tela do PIX cancela o pedido anterior (não
     $chat = new OrderChat;
     $chat->companyId = $ctx['company']->id;
     $chat->customerId = $ctx['customer']->id;
+    verifiedChatFixture($chat, $ctx['customer']);
     $chat->selectedBranchId = $ctx['branch']->id;
     $chat->orderType = 'pickup';
     $chat->taxId = '52998224725';

@@ -6,7 +6,6 @@ use App\Exceptions\CouponException;
 use App\Exceptions\DeliveryException;
 use App\Models\Branch;
 use App\Models\Coupon;
-use App\Models\Customer;
 use App\Models\Order;
 use App\Services\Order\CouponService;
 use App\Services\Order\DeliveryService;
@@ -26,18 +25,11 @@ trait HasOrderFlow
             return;
         }
 
-        if (! $this->customerId) {
-            $this->addMessage('bot', 'Ótimo pedido! Para continuar, preciso do seu número de telefone com DDD.');
-            $this->transitionTo('IDENTIFY_PHONE');
-
-            return;
-        }
-
         $this->couponInput = '';
         $this->appliedCoupon = null;
         $this->couponDiscount = 0.0;
         $this->couponError = null;
-        $this->transitionTo('CHECKOUT_COUPON');
+        $this->transitionTo('CHECKOUT_ORDER_TYPE');
     }
 
     // --- Coupon ---
@@ -58,7 +50,7 @@ trait HasOrderFlow
 
             $coupon = $couponService->validate(
                 $code,
-                $this->customerId,
+                $this->useSavedProfile ? $this->verifiedCustomer()?->id : null,
                 $this->cart,
                 $this->cartTotal
             );
@@ -98,7 +90,7 @@ trait HasOrderFlow
 
             $this->addMessage('user', "Cupom: {$coupon->code}");
             $this->addMessage('bot', "✅ {$discountLabel}{$paymentNote} Escolha o tipo de entrega:");
-            $this->transitionTo('CHECKOUT_ORDER_TYPE');
+            $this->proceedAfterCoupon();
 
             Log::channel('chat')->info('Cupom aplicado', [
                 'customer_id' => $this->customerId,
@@ -123,6 +115,16 @@ trait HasOrderFlow
         $this->couponDiscount = 0.0;
         $this->couponError = null;
         $this->couponInput = '';
+        $this->proceedAfterCoupon();
+    }
+
+    private function proceedAfterCoupon(): void
+    {
+        if ($this->orderTypeChosen) {
+            $this->selectOrderType($this->orderType);
+
+            return;
+        }
         $this->transitionTo('CHECKOUT_ORDER_TYPE');
     }
 
@@ -138,7 +140,15 @@ trait HasOrderFlow
 
     public function selectOrderType(string $type): void
     {
+        abort_unless(in_array($type, ['delivery', 'pickup'], true), 422);
         $this->orderType = $type;
+        $this->orderTypeChosen = true;
+        if (! $this->checkoutReady) {
+            $this->addMessage('bot', 'Informe seu telefone com DDD para continuar.');
+            $this->transitionTo('IDENTIFY_PHONE');
+
+            return;
+        }
         $label = $type === 'pickup' ? 'Retirada no local' : 'Entrega';
         $this->addMessage('user', $label);
 
@@ -166,66 +176,39 @@ trait HasOrderFlow
 
     public function confirmDeliveryAddress(): void
     {
-        $this->validate($this->rules(), $this->messages());
+        $this->validate($this->rulesFor('CHECKOUT_DELIVERY_ADDRESS'), $this->messages());
 
-        if ($this->customerId) {
-            $customer = Customer::findOrFail($this->customerId);
-
-            // Load saved coordinates before updating, so returning customers
-            // don't need to pick location again when address is unchanged.
-            if ($this->customer_latitude === '' && $customer->latitude) {
-                $this->customer_latitude = (string) $customer->latitude;
-                $this->customer_longitude = (string) $customer->longitude;
-            }
-
-            $geocodedNow = false;
-            if ($this->customer_latitude === '' || $this->customer_longitude === '') {
-                $coords = app(GeocodingService::class)->geocode([
-                    'address' => $this->address,
-                    'number' => $this->number,
-                    'neighborhood' => $this->neighborhood,
-                    'city' => $this->city,
-                    'cep' => preg_replace('/\D/', '', $this->cep),
-                ]);
-
-                if ($coords !== null) {
-                    $this->customer_latitude = (string) $coords['latitude'];
-                    $this->customer_longitude = (string) $coords['longitude'];
-                    $geocodedNow = true;
-                } else {
-                    Log::channel('chat')->info('Geocoding não encontrou coordenadas', [
-                        'customer_id' => $this->customerId,
-                        'cep' => preg_replace('/\D/', '', $this->cep),
-                        'city' => $this->city,
-                    ]);
-                }
-            }
-
-            if ($geocodedNow) {
-                $this->dispatch('chat-geocoded',
-                    lat: (float) $this->customer_latitude,
-                    lng: (float) $this->customer_longitude,
-                );
-                $this->addMessage('bot', 'Encontramos seu endereço no mapa 📍 Confira se o pin está no lugar certo. Arraste para ajustar se necessário, confirme no mapa e clique em "Confirmar endereço" novamente.');
-
-                return;
-            }
-
-            $updateData = [
+        $geocodedNow = false;
+        if ($this->customer_latitude === '' || $this->customer_longitude === '') {
+            $coords = app(GeocodingService::class)->geocode([
                 'address' => $this->address,
-                'complement' => $this->complement,
-                'neighborhood' => $this->neighborhood,
                 'number' => $this->number,
+                'neighborhood' => $this->neighborhood,
                 'city' => $this->city,
                 'cep' => preg_replace('/\D/', '', $this->cep),
-            ];
+            ]);
 
-            if ($this->customer_latitude !== '' && $this->customer_longitude !== '') {
-                $updateData['latitude'] = (float) $this->customer_latitude;
-                $updateData['longitude'] = (float) $this->customer_longitude;
+            if ($coords !== null) {
+                $this->customer_latitude = (string) $coords['latitude'];
+                $this->customer_longitude = (string) $coords['longitude'];
+                $geocodedNow = true;
+            } else {
+                Log::channel('chat')->info('Geocoding não encontrou coordenadas', [
+                    'customer_id' => $this->customerId,
+                    'cep' => preg_replace('/\D/', '', $this->cep),
+                    'city' => $this->city,
+                ]);
             }
+        }
 
-            $customer->update($updateData);
+        if ($geocodedNow) {
+            $this->dispatch('chat-geocoded',
+                lat: (float) $this->customer_latitude,
+                lng: (float) $this->customer_longitude,
+            );
+            $this->addMessage('bot', 'Encontramos seu endereço no mapa 📍 Confira se o pin está no lugar certo. Arraste para ajustar se necessário, confirme no mapa e clique em "Confirmar endereço" novamente.');
+
+            return;
         }
 
         $addressSummary = $this->address;
@@ -332,7 +315,7 @@ trait HasOrderFlow
 
     public function proceedFromNotes(): void
     {
-        $this->validate($this->rules(), $this->messages());
+        $this->validate($this->rulesFor('CHECKOUT_NOTES'), $this->messages());
         $this->addMessage('user', $this->notes ?: '(sem observações)');
         $this->addMessage('bot', 'Escolha a forma de pagamento:');
         $this->transitionTo('CHECKOUT_PAYMENT_METHOD');
@@ -340,7 +323,7 @@ trait HasOrderFlow
 
     public function submitCpf(): void
     {
-        $this->validate($this->rules(), $this->messages());
+        $this->validate($this->rulesFor('CHECKOUT_CPF'), $this->messages());
         $this->addMessage('user', $this->taxId);
         $this->transitionTo('CHECKOUT_CONFIRM');
     }
@@ -349,14 +332,16 @@ trait HasOrderFlow
 
     public function goToOrderHistory(): void
     {
-        if (! $this->customerId) {
+        if (! $this->verifiedCustomer()) {
+            $this->orderHistory = [];
+
             return;
         }
 
         $this->orderHistoryPreviousStep = $this->step;
 
         $this->orderHistory = Order::withoutGlobalScopes()
-            ->where('customer_id', $this->customerId)
+            ->where('customer_id', $this->verifiedCustomer()->id)
             ->where('company_id', $this->companyId)
             ->with('items')
             ->latest()

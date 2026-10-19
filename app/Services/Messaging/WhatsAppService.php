@@ -170,6 +170,12 @@ class WhatsAppService
             return $this->skip($order, $event, 'cliente sem opt-in ou com opt-out');
         }
 
+        if ($order->buyer_data !== null && \App\Models\Customer::withoutGlobalScopes()
+            ->where('company_id', $order->company_id)->where('phone', $customer->phone)
+            ->whereNotNull('whatsapp_opt_out_at')->exists()) {
+            return $this->skip($order, $event, 'preferência permanente de não receber avisos');
+        }
+
         $phone = $this->normalizePhone((string) $customer->phone);
         if ($phone === null) {
             return $this->skip($order, $event, 'telefone sem WhatsApp');

@@ -26,6 +26,7 @@ trait HasPaymentFlow
 {
     public function selectPaymentMethod(string $method): void
     {
+        abort_unless(in_array($method, ['PIX', 'CARD', 'CASH'], true), 422);
         $restrictedMethod = $this->appliedCoupon['payment_method'] ?? null;
         if ($restrictedMethod !== null && $method !== $restrictedMethod) {
             return;
@@ -55,6 +56,29 @@ trait HasPaymentFlow
     }
 
     public function confirmOrder(): void
+    {
+        if (! $this->checkoutKey) {
+            $this->checkoutKey = \Illuminate\Support\Str::random(64);
+        }
+        \Illuminate\Support\Facades\Cache::lock('chat-checkout:'.$this->checkoutKey, 30)->block(5, function () {
+            $existing = Order::withoutGlobalScopes()->where('company_id', $this->companyId)->where('checkout_key', $this->checkoutKey)->first();
+            if ($existing) {
+                if (app(\App\Services\Chat\ChatAccess::class)->canAccessOrder($existing)) {
+                    $this->orderId = $existing->id;
+                    $this->transitionTo(match (true) {
+                        in_array($existing->status, ['cancelled', 'refunded']) => 'ORDER_FAILED',
+                        in_array($existing->status, ['pending', 'awaiting_payment']) => strtoupper($existing->payment_method) === 'CARD' ? 'PAYMENT_CARD_FORM' : 'PAYMENT_PIX',
+                        default => 'ORDER_CONFIRMED',
+                    });
+                }
+
+                return;
+            }
+            $this->placeConfirmedOrder();
+        });
+    }
+
+    private function placeConfirmedOrder(): void
     {
         if ($this->paymentMethod === 'CASH') {
             $status = $this->scheduledAt ? 'scheduled' : 'paid';
@@ -243,9 +267,31 @@ trait HasPaymentFlow
 
     private function placeOrder(string $initialStatus): void
     {
-        if ($this->submitting) {
+        if ($this->submitting || $this->orderId || ! $this->checkoutReady) {
             return;
         }
+        $this->validate([
+            'phone' => ['required', 'regex:/^\d{10,11}$/'],
+            'name' => ['required', 'string', 'min:3', 'max:100'],
+            'email' => ['nullable', 'email', 'max:200'],
+            'paymentMethod' => ['required', 'in:PIX,CARD,CASH'],
+            'orderType' => ['required', 'in:delivery,pickup'],
+            'cart' => ['required', 'array', 'min:1'],
+            'notes' => ['nullable', 'string', 'max:500'],
+            'complement' => ['nullable', 'string', 'max:100'],
+            'customer_latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'customer_longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'taxId' => [in_array($this->paymentMethod, ['PIX', 'CARD']) ? 'required' : 'nullable', 'regex:/^\d{3}\.?\d{3}\.?\d{3}-?\d{2}$/'],
+            ...($this->orderType === 'delivery' ? [
+                'address' => ['required', 'string', 'min:5', 'max:255'],
+                'number' => ['required', 'string', 'max:20'],
+                'neighborhood' => ['required', 'string', 'max:100'],
+                'city' => ['required', 'string', 'max:100'],
+                'cep' => ['required', 'regex:/^\d{5}-?\d{3}$/'],
+            ] : []),
+        ]);
+        $identity = $this->verifiedCustomer();
+        $this->customerId = $this->useSavedProfile && $identity?->phone === $this->phone ? $identity?->id : null;
 
         $scheduledAt = $this->scheduledAt ? Carbon::parse($this->scheduledAt) : null;
 
@@ -255,9 +301,10 @@ trait HasPaymentFlow
 
         // Sem limite aqui, um cliente conseguia gerar pedidos `pending`/`awaiting_payment`
         // em sequência sem nunca pagar (spam) — o único freio antes era o debounce de clique.
-        $rateLimitKey = "place-order:{$this->customerId}";
+        $rateLimitKey = "place-order:{$this->companyId}:session:".hash('sha256', session()->getId());
+        $ipLimitKey = "place-order:{$this->companyId}:ip:".hash('sha256', (string) request()->ip());
 
-        if (RateLimiter::tooManyAttempts($rateLimitKey, 8)) {
+        if (RateLimiter::tooManyAttempts($rateLimitKey, 8) || RateLimiter::tooManyAttempts($ipLimitKey, 60)) {
             Log::channel('chat')->warning('placeOrder rate limitado', ['customer_id' => $this->customerId]);
             $this->addMessage('bot', 'Muitas tentativas de pedido em pouco tempo. Aguarde alguns minutos e tente novamente.');
 
@@ -265,6 +312,7 @@ trait HasPaymentFlow
         }
 
         RateLimiter::hit($rateLimitKey, 300);
+        RateLimiter::hit($ipLimitKey, 300);
 
         $this->submitting = true;
         $this->isLoading = true;
@@ -290,6 +338,8 @@ trait HasPaymentFlow
                 $this->deliveryFee,
                 $coupon,
                 $scheduledAt,
+                buyerData: $this->checkoutBuyerData(),
+                checkoutKey: $this->checkoutKey,
             );
 
             Log::channel('orders')->info('Pedido criado no chat', [
@@ -329,13 +379,10 @@ trait HasPaymentFlow
 
         $this->orderId = $order->id;
 
-        $customer = Customer::findOrFail($this->customerId);
+        app(\App\Services\Chat\ChatAccess::class)->grantOrder($order);
+        $this->trackingLink = app(\App\Services\Chat\ChatAccess::class)->orderLink($order);
+        $customer = $order->customer;
         $company = $this->currentCompany();
-
-        if ($this->taxId && ! $customer->tax_id) {
-            $customer->update(['tax_id' => preg_replace('/\D/', '', $this->taxId)]);
-            $customer->refresh();
-        }
 
         \App\Events\NewOrderPlaced::dispatch($order->load('customer'));
 
@@ -374,22 +421,31 @@ trait HasPaymentFlow
         $this->isLoading = false;
     }
 
-    /**
-     * Pedido do chat, só se for do cliente identificado e da empresa do chat. Os ids são
-     * #[Locked], mas cancelar, cobrar e gerar PIX passam por aqui: sem a checagem de dono,
-     * um orderId trocado alcançaria (e cancelaria/estornaria) o pedido de outro cliente.
-     */
-    private function findOwnOrder(): ?Order
+    /** Access comes from the server identity or an explicit order grant, never component ids. */
+    private function findOwnOrder(bool $manage = false): ?Order
     {
-        if (! $this->orderId || ! $this->customerId || ! $this->companyId) {
+        if (! $this->orderId || ! $this->companyId) {
             return null;
         }
+        $order = Order::withoutGlobalScopes()->where('company_id', $this->companyId)->find($this->orderId);
 
-        return Order::withoutGlobalScopes()
-            ->where('id', $this->orderId)
-            ->where('customer_id', $this->customerId)
-            ->where('company_id', $this->companyId)
-            ->first();
+        return $order && app(\App\Services\Chat\ChatAccess::class)->canAccessOrder($order, $manage) ? $order : null;
+    }
+
+    private function checkoutBuyerData(): array
+    {
+        return [
+            'name' => $this->name, 'phone' => $this->phone, 'email' => $this->email ?: null,
+            'tax_id' => preg_replace('/\D/', '', $this->taxId),
+            'phone_verified' => app(\App\Services\Chat\ChatAccess::class)->phoneVerified($this->companyId, $this->phone),
+            'whatsapp_opt_in' => $this->whatsappOptIn && app(\App\Services\Chat\ChatAccess::class)->phoneVerified($this->companyId, $this->phone) && $this->whatsappAvailable(),
+            'address' => $this->orderType === 'delivery' ? $this->address : null,
+            'number' => $this->number, 'complement' => $this->complement,
+            'neighborhood' => $this->neighborhood, 'city' => $this->city,
+            'cep' => preg_replace('/\D/', '', $this->cep),
+            'latitude' => $this->customer_latitude !== '' ? (float) $this->customer_latitude : null,
+            'longitude' => $this->customer_longitude !== '' ? (float) $this->customer_longitude : null,
+        ];
     }
 
     public function checkPaymentStatus(): void
@@ -428,8 +484,16 @@ trait HasPaymentFlow
         }
 
         $status = $order->status;
+        if ($this->trackingOnly || ! $this->findOwnOrder(true)) {
+            $this->trackingSummary = [
+                'order_number' => $order->order_number, 'status' => $status,
+                'status_label' => $order->status_label, 'order_type' => $order->order_type,
+            ];
 
-        if ($status === 'awaiting_payment' && ! $this->pixCopyPaste) {
+            return;
+        }
+
+        if ($status === 'awaiting_payment' && ! $this->pixCopyPaste && $this->findOwnOrder(true)) {
             $payment = $order->payment;
             if ($payment) {
                 $sessionKey = 'payment_token_'.$this->orderId;
@@ -493,7 +557,7 @@ trait HasPaymentFlow
             return;
         }
 
-        $order = $this->findOwnOrder();
+        $order = $this->findOwnOrder(true);
         if (! $order) {
             Log::channel('chat')->warning('handlePaymentExpired: pedido não encontrado', [
                 'order_id' => $this->orderId,
@@ -508,7 +572,7 @@ trait HasPaymentFlow
         $this->expiresAt = null;
         $this->paymentId = null;
 
-        $customer = Customer::findOrFail($this->customerId);
+        $customer = $order?->customer;
         $company = $this->currentCompany();
 
         app(PaymentService::class)->expireAndRenew($order, $customer, $company, $this->paymentMethod);
@@ -521,6 +585,14 @@ trait HasPaymentFlow
      */
     private function loadCustomerCards(Customer $customer): void
     {
+        $customer = $this->verifiedCustomer(true);
+        if (! $customer || ! $this->useSavedProfile || $this->findOwnOrder(true)?->customer_id !== $customer->id) {
+            $this->customerCards = [];
+            $this->selectedCardId = null;
+            $this->useNewCard = true;
+
+            return;
+        }
         $this->customerCards = $customer->cards()
             ->get(['id', 'brand', 'last_four'])
             ->map(fn ($card) => ['id' => $card->id, 'label' => $card->label()])
@@ -532,6 +604,10 @@ trait HasPaymentFlow
 
     public function selectSavedCard(int $cardId): void
     {
+        $customer = $this->verifiedCustomer(true);
+        if (! $customer || ! $customer->cards()->whereKey($cardId)->exists()) {
+            return;
+        }
         $this->selectedCardId = $cardId;
         $this->useNewCard = false;
         $this->cardCvv = '';
@@ -553,6 +629,12 @@ trait HasPaymentFlow
         $this->cardError = null;
 
         $usingSavedCard = ! $this->useNewCard && $this->selectedCardId;
+
+        if ($usingSavedCard && ! $this->verifiedCustomer(true)) {
+            $this->cardError = 'Confirme seu telefone novamente para usar cartão salvo.';
+
+            return;
+        }
 
         if ($usingSavedCard) {
             $this->validate([
@@ -581,8 +663,8 @@ trait HasPaymentFlow
 
         $this->submitting = true;
 
-        $order = $this->findOwnOrder();
-        $customer = Customer::findOrFail($this->customerId);
+        $order = $this->findOwnOrder(true);
+        $customer = $order?->customer;
         $company = $this->currentCompany();
 
         if (! $order) {
@@ -631,7 +713,7 @@ trait HasPaymentFlow
 
         try {
             $result = app(PaymentOrchestrator::class)->processCreditCard(
-                $order, $customer, $company, $cardData, 1
+                $order, $usingSavedCard ? $this->verifiedCustomer(true) : $customer, $company, $cardData, 1
             );
 
             Log::channel('orders')->info('Resultado do cartão recebido no chat', [
@@ -718,7 +800,7 @@ trait HasPaymentFlow
 
     public function simulatePayment(): void
     {
-        $order = $this->findOwnOrder();
+        $order = $this->findOwnOrder(true);
         if (! $order) {
             return;
         }
@@ -730,7 +812,7 @@ trait HasPaymentFlow
 
     public function requestCancelOrder(): void
     {
-        $order = $this->findOwnOrder();
+        $order = $this->findOwnOrder(true);
         if (! $order) {
             $this->addMessage('bot', 'Não é possível cancelar o pedido no momento. Entre em contato com a loja.');
 
@@ -756,7 +838,7 @@ trait HasPaymentFlow
 
     public function confirmCancelOrder(): void
     {
-        $order = $this->findOwnOrder();
+        $order = $this->findOwnOrder(true);
         if (! $order) {
             $this->showCancelConfirm = false;
             $this->addMessage('bot', 'Não foi possível cancelar o pedido. Entre em contato com a loja.');
@@ -796,7 +878,10 @@ trait HasPaymentFlow
     public function changePaymentMethod(): void
     {
         if ($this->orderId) {
-            $order = $this->findOwnOrder();
+            $order = $this->findOwnOrder(true);
+            if (! $order) {
+                return;
+            }
 
             // Na tela do PIX o pedido já está 'awaiting_payment' (QR válido): cancelar só 'pending'
             // deixava o pedido antigo vivo ao lado do novo (estoque e cupom em dobro, PIX pagável).
@@ -818,6 +903,7 @@ trait HasPaymentFlow
             }
         }
 
+        $this->checkoutKey = \Illuminate\Support\Str::random(64);
         $this->orderId = null;
         $this->paymentId = null;
         $this->pixQrCode = null;
@@ -849,6 +935,7 @@ trait HasPaymentFlow
             ]);
         }
 
+        $this->checkoutKey = \Illuminate\Support\Str::random(64);
         $this->cart = [];
         $this->orderId = null;
         $this->pixQrCode = null;

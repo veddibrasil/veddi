@@ -7,6 +7,11 @@
     "
     x-data="{ ...chatApp(), snakeOpen: false, productSidebarOpen: false, productSidebarSide: 'right', selectingProduct: null, pendingSelections: {}, productSearch: '' }"
     x-init="
+        if (window.chatTrackingToken) {
+            const token = window.chatTrackingToken;
+            delete window.chatTrackingToken;
+            $wire.redeemTrackingLink(token);
+        }
         $nextTick(() => { if ($wire.step === 'MENU_BROWSE') productSidebarOpen = true; });
         $watch('$wire.step', v => { if (v === 'MENU_BROWSE') productSidebarOpen = true; });
     "
@@ -64,6 +69,9 @@
                         </a>
                     @endif
 
+                    @if ($customerId)
+                        <button wire:click="forgetDevice" class="text-xs text-white p-2">Sair e esquecer este aparelho</button>
+                    @endif
                     {{-- Order history --}}
                     @if ($customerId && !in_array($step, ['IDENTIFY_PHONE', 'CLOSED', 'EDIT_PROFILE', 'ORDER_HISTORY']))
                         <button
@@ -145,7 +153,7 @@
                 $step === 'BRANCH_SELECT'                                            => 0,
                 $step === 'MENU_BROWSE'                                              => 1,
                 $step === 'CART_REVIEW'                                              => 2,
-                in_array($step, ['IDENTIFY_PHONE','RECOVER_ORDER',
+                in_array($step, ['IDENTIFY_PHONE','CUSTOMER_OPTIONS','VERIFY_PHONE','RECOVER_ORDER',
                     'REGISTER_NAME','REGISTER_EMAIL','REGISTER_ADDRESS',
                     'CHECKOUT_COUPON','CHECKOUT_ORDER_TYPE',
                     'CHECKOUT_DELIVERY_ADDRESS','CHECKOUT_DELIVERY_FEE',
@@ -213,8 +221,24 @@
     {{-- ════════════════════════════ INPUT AREA ══════════════════════════════ --}}
     <div class="border-t border-gray-100 bg-white px-4 py-3 shrink-0 overflow-y-auto max-h-[60vh] mc-scrollbar">
 
+        @if ($trackingLink)
+            <div class="mb-3 space-y-2">
+                <label for="chat-tracking-link" class="block text-xs text-gray-500">Guarde este link para acompanhar o pedido por 7 dias</label>
+                <input id="chat-tracking-link" type="text" readonly value="{{ $trackingLink }}" class="mc-input" x-on:click="$event.target.select()" />
+            </div>
+        @endif
+
         {{-- ── IDENTIFY_PHONE ── --}}
-        @if ($step === 'IDENTIFY_PHONE')
+        @if ($step === 'TRACKING_LINK')
+            <p class="text-sm text-gray-600">Abra o link exclusivo que você guardou ao concluir a compra para acompanhar seu pedido.</p>
+            @error('trackingLink') <p role="alert" class="text-sm text-red-600">{{ $message }}</p> @enderror
+        @elseif ($step === 'ORDER_TRACKING')
+            <div wire:poll.15s="checkPaymentStatus" class="space-y-3 text-center">
+                <p class="font-bold">Acompanhar pedido {{ $trackingSummary['order_number'] ?? '' }}</p>
+                <p role="status" class="text-sm">{{ $trackingSummary['status_label'] ?? 'Consultando pedido…' }}</p>
+                <a href="{{ route('chat.company', ['company' => $currentCompany->slug]) }}" class="mc-btn-primary">Fazer uma nova compra</a>
+            </div>
+        @elseif ($step === 'IDENTIFY_PHONE')
             <div wire:key="step-identify-phone" class="space-y-2.5">
                 <p class="text-xs text-center text-gray-500 pb-1">Informe seu telefone para continuar com o pedido</p>
                 <div>
@@ -244,6 +268,25 @@
                     <span wire:loading.remove wire:target="submitPhone">Continuar →</span>
                     <span wire:loading wire:target="submitPhone">Verificando...</span>
                 </button>
+            </div>
+
+        @elseif ($step === 'CUSTOMER_OPTIONS' || $step === 'VERIFY_PHONE')
+            <div wire:key="step-customer-access" class="space-y-3">
+                @if ($step === 'CUSTOMER_OPTIONS')
+                    <p class="text-sm text-gray-600">Como deseja continuar esta compra?</p>
+                    <button wire:click="continueAsGuest" class="mc-btn-primary">Preencher meus dados</button>
+                    <button wire:click="useSavedData" wire:loading.attr="disabled" class="mc-btn-secondary w-full">Usar meus dados salvos</button>
+                    <p class="text-xs text-gray-500">Enviaremos um código pelo WhatsApp para {{ $phone }}. Você pode comprar sem código escolhendo preencher seus dados.</p>
+                @else
+                    <label for="chat-verification-code" class="block text-sm font-semibold">Código enviado pelo WhatsApp para {{ $phone }}</label>
+                    <input id="chat-verification-code" wire:model="verificationCode" wire:keydown.enter="submitVerificationCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" class="mc-input" />
+                    <label class="flex gap-2 text-sm"><input type="checkbox" wire:model="rememberDevice" /> Lembrar neste aparelho por até 30 dias</label>
+                    <button wire:click="submitVerificationCode" wire:loading.attr="disabled" class="mc-btn-primary">Confirmar código</button>
+                    <button wire:click="requestVerificationCode" wire:loading.attr="disabled" class="mc-btn-outline">Reenviar código</button>
+                    <button wire:click="continueAsGuest" class="mc-btn-secondary w-full">Continuar preenchendo meus dados</button>
+                @endif
+                @error('verificationCode') <p role="alert" class="text-sm text-red-600">{{ $message }}</p> @enderror
+                <button wire:click="backToIdentifyPhone" class="mc-btn-outline">Alterar telefone</button>
             </div>
 
         {{-- ── RECOVER_ORDER ── --}}
@@ -1372,9 +1415,14 @@
                 </button>
             </div>
 
+        @elseif ($step === 'PAYMENT_CARD_AWAITING')
+            <div wire:poll.5s="checkPaymentStatus" class="space-y-3 text-center">
+                <p role="status" class="text-sm text-gray-600">Pagamento em análise. Aguarde a confirmação.</p>
+            </div>
+
         {{-- ── ORDER_CONFIRMED ── --}}
         @elseif ($step === 'ORDER_CONFIRMED')
-            {{-- Polling de fallback caso o evento Echo não chegue --}}
+        {{-- Polling autorizado para acompanhar o pedido --}}
             @if ($orderId && !in_array($lastNotifiedStatus, ['delivered', 'cancelled']))
                 <div wire:poll.15s="checkPaymentStatus" class="hidden"></div>
             @endif
@@ -1390,8 +1438,8 @@
 
                 {{-- Confirmação de cancelamento --}}
                 @php
-                    $currentOrder = $orderId ? \App\Models\Order::find($orderId) : null;
-                    $canCancel = $currentOrder && in_array($currentOrder->status, ['pending', 'awaiting_payment', 'scheduled', 'paid', 'preparing']);
+                    $currentOrder = $orderId ? \App\Models\Order::where('company_id', $companyId)->find($orderId) : null;
+                    $canCancel = $currentOrder && app(\App\Services\Chat\ChatAccess::class)->canAccessOrder($currentOrder, true) && in_array($currentOrder->status, ['pending', 'awaiting_payment', 'scheduled', 'paid', 'preparing']);
                 @endphp
 
                 {{-- Confirmação de cancelamento --}}
