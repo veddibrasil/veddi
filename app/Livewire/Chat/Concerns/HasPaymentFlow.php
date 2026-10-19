@@ -9,9 +9,11 @@ use App\Models\CompanyNotification;
 use App\Models\Coupon;
 use App\Models\Customer;
 use App\Models\Order;
+use App\Models\Product;
+use App\Services\Order\CartOptionPricing;
 use App\Services\Order\DeliveryService;
 use App\Services\Order\OrderCancellationPolicy;
-use App\Services\Order\StockService;
+use App\Services\Order\OrderService;
 use App\Services\Payment\PaymentCalculatorService;
 use App\Services\Payment\PaymentOrchestrator;
 use App\Services\Payment\PaymentService;
@@ -119,10 +121,12 @@ trait HasPaymentFlow
             return;
         }
 
+        // Pedido mínimo e "frete grátis acima de R$ X" decididos com o subtotal do banco: o
+        // cartTotal soma `cart.*.price`, que vem do navegador e serve só para exibir.
         $result = app(DeliveryService::class)->validate(
             $settings,
             $this->neighborhood,
-            $this->cartTotal,
+            $this->serverCartSubtotal(),
             $this->customer_latitude !== '' ? (float) $this->customer_latitude : null,
             $this->customer_longitude !== '' ? (float) $this->customer_longitude : null
         );
@@ -130,9 +134,122 @@ trait HasPaymentFlow
         $this->deliveryFee = $result['fee'];
     }
 
+    /**
+     * Subtotal do carrinho com preço e adicionais vindos do banco — mesmo cálculo de
+     * OrderService::createOrder (effective_price + CartOptionPricing). Produto que não é da
+     * empresa fica fora da conta (o createOrder recusa o pedido de qualquer forma).
+     */
+    private function serverCartSubtotal(): float
+    {
+        $productId = fn ($item, $cartKey): int => (int) ((is_array($item) ? ($item['product_id'] ?? null) : null) ?? explode('_', (string) $cartKey)[0]);
+
+        $products = Product::withoutGlobalScopes()
+            ->where('company_id', $this->companyId)
+            ->whereIn('id', collect($this->cart)->map($productId)->unique()->values())
+            ->with('optionGroups')
+            ->get()
+            ->keyBy('id');
+
+        $optionPricing = app(CartOptionPricing::class);
+        $subtotal = 0.0;
+
+        foreach ($this->cart as $cartKey => $item) {
+            $product = $products->get($productId($item, $cartKey));
+
+            if (! $product) {
+                continue;
+            }
+
+            $extra = (float) $optionPricing->resolve($product, is_array($item) ? $item : [])['extra'];
+            $subtotal += ((float) $product->effective_price + $extra) * max(0, (int) ($item['qty'] ?? 0));
+        }
+
+        return $subtotal;
+    }
+
+    /**
+     * Empresa e filial conferidas de novo na hora do pedido: o estado do chat sobrevive na sessão
+     * (carrinho montado com a loja aberta e confirmado depois do fechamento, empresa bloqueada no
+     * meio da conversa) e horário/pausa só eram checados em selectBranch(). Recusa com mensagem
+     * ao cliente, sem o aviso de "falha ao criar pedido" para a loja.
+     */
+    private function orderPlacementAllowed(?Carbon $scheduledAt): bool
+    {
+        if (! $this->companyAcceptsOrders(\App\Models\Company::find($this->companyId))) {
+            Log::channel('chat')->warning('placeOrder recusado: empresa sem permissão de venda', [
+                'company_id' => $this->companyId,
+                'customer_id' => $this->customerId,
+            ]);
+
+            $this->addMessage('bot', 'No momento esta loja não está aceitando pedidos.');
+            $this->transitionTo('UNAVAILABLE');
+
+            return false;
+        }
+
+        $branch = Branch::withoutGlobalScopes()
+            ->where('id', $this->selectedBranchId)
+            ->where('company_id', $this->companyId)
+            ->where('active', true)
+            ->first();
+
+        $refusal = match (true) {
+            $branch === null => 'A filial escolhida não está disponível no momento.',
+            // Agendado: o horário escolhido já foi validado contra a grade da filial.
+            $scheduledAt !== null => null,
+            $branch->isPaused() => "A filial {$branch->name} está temporariamente fechada. Tente mais tarde.",
+            ! $this->branchOpenNow($branch) => "A filial {$branch->name} está fechada no momento. Tente mais tarde.",
+            default => null,
+        };
+
+        if ($refusal === null) {
+            return true;
+        }
+
+        Log::channel('chat')->info('placeOrder recusado: filial indisponível', [
+            'customer_id' => $this->customerId,
+            'branch_id' => $this->selectedBranchId,
+        ]);
+
+        $this->addMessage('bot', $refusal);
+
+        return false;
+    }
+
+    /**
+     * Branch::isOpen() não cobre a janela que vira a noite (ex.: 18:00–02:00); o initialize()
+     * do chat cobre, então a mesma tolerância vale aqui para não travar loja noturna.
+     */
+    private function branchOpenNow(Branch $branch): bool
+    {
+        if ($branch->isOpen()) {
+            return true;
+        }
+
+        $now = now(config('app.timezone'));
+        $day = (int) $now->format('w');
+
+        if ($branch->available_days !== null && ! in_array($day, $branch->available_days)) {
+            return false;
+        }
+
+        $hours = $branch->hoursForDay($day);
+        $time = $now->format('H:i:s');
+
+        return $hours['opens_at'] && $hours['closes_at']
+            && $hours['opens_at'] > $hours['closes_at']
+            && ($time >= $hours['opens_at'] || $time <= $hours['closes_at']);
+    }
+
     private function placeOrder(string $initialStatus): void
     {
         if ($this->submitting) {
+            return;
+        }
+
+        $scheduledAt = $this->scheduledAt ? Carbon::parse($this->scheduledAt) : null;
+
+        if (! $this->orderPlacementAllowed($scheduledAt)) {
             return;
         }
 
@@ -158,8 +275,6 @@ trait HasPaymentFlow
         if ($this->appliedCoupon) {
             $coupon = Coupon::find($this->appliedCoupon['id']);
         }
-
-        $scheduledAt = $this->scheduledAt ? Carbon::parse($this->scheduledAt) : null;
 
         try {
             $this->reauthorizeDeliveryFee();
@@ -482,6 +597,14 @@ trait HasPaymentFlow
             return;
         }
 
+        // Pedido cancelado (pelo admin, por expiração) ou já pago enquanto o cliente preenchia o
+        // cartão: não cobra (o PaymentOrchestrator também recusa) e leva o chat ao estado real.
+        if (! in_array($order->status, ['pending', 'awaiting_payment'], true)) {
+            $this->leaveCardFormForClosedOrder($order);
+
+            return;
+        }
+
         if ($usingSavedCard) {
             $cardData = [
                 'saved_card_id' => $this->selectedCardId,
@@ -533,6 +656,9 @@ trait HasPaymentFlow
                 OrderStatusUpdated::dispatch($order->fresh());
                 $this->addMessage('bot', 'Pagamento aprovado! Seu pedido está confirmado.');
                 $this->transitionTo('ORDER_CONFIRMED');
+            } elseif (($result['declined'] ?? false) && ! in_array($order->fresh()->status, ['pending', 'awaiting_payment'], true)) {
+                // Pedido cancelado durante a cobrança (o valor, se capturado, é estornado).
+                $this->leaveCardFormForClosedOrder($order->fresh());
             } elseif ($result['declined'] ?? false) {
                 // Recusa definitiva da Vindi (não análise assíncrona) — mostra o motivo
                 // real e deixa o cliente corrigir/tentar outro cartão. O cartão nunca é
@@ -565,6 +691,29 @@ trait HasPaymentFlow
             $this->cardError = 'Não foi possível processar o pagamento. Tente novamente.';
             $this->submitting = false;
         }
+    }
+
+    private function leaveCardFormForClosedOrder(Order $order): void
+    {
+        Log::channel('chat')->info('submitCardPayment: pedido fora do fluxo de pagamento', [
+            'order_id' => $order->id,
+            'customer_id' => $this->customerId,
+            'status' => $order->status,
+        ]);
+
+        $this->cardCvv = '';
+        $this->submitting = false;
+        $this->lastNotifiedStatus = $order->status;
+
+        if (in_array($order->status, ['cancelled', 'refunded'], true)) {
+            $this->addMessage('bot', "❌ Seu pedido {$order->order_number} foi cancelado e não pode mais ser pago. Entre em contato se precisar de ajuda.");
+            $this->transitionTo('ORDER_FAILED');
+
+            return;
+        }
+
+        $this->addMessage('bot', "✅ O pagamento do pedido {$order->order_number} já foi confirmado.");
+        $this->transitionTo('ORDER_CONFIRMED');
     }
 
     public function simulatePayment(): void
@@ -648,16 +797,24 @@ trait HasPaymentFlow
     {
         if ($this->orderId) {
             $order = $this->findOwnOrder();
-            if ($order && $order->status === 'pending') {
-                $order->update(['status' => 'cancelled']);
-                app(StockService::class)->restoreForOrder($order);
+
+            // Na tela do PIX o pedido já está 'awaiting_payment' (QR válido): cancelar só 'pending'
+            // deixava o pedido antigo vivo ao lado do novo (estoque e cupom em dobro, PIX pagável).
+            // cancelBySystem cancela os dois status, devolve estoque/cupom e avisa painel/WhatsApp;
+            // se o PIX for pago mesmo assim, o webhook estorna.
+            if ($order && app(OrderService::class)->cancelBySystem($order, 'Cliente trocou a forma de pagamento', 'chat_change_payment_method')) {
                 Log::channel('orders')->info('Pedido cancelado para trocar forma de pagamento', [
                     'order_id' => $order->id,
                     'customer_id' => $this->customerId,
                 ]);
+            } elseif ($order && ! in_array($status = $order->fresh()->status, ['cancelled', 'refunded'], true)) {
+                // Pago (ou já em andamento na loja) enquanto o cliente estava na tela: não abre um
+                // segundo pedido ao lado deste.
+                $this->lastNotifiedStatus = $status;
+                $this->addMessage('bot', "Seu pedido {$order->order_number} já foi confirmado e não pode mais trocar a forma de pagamento.");
+                $this->transitionTo('ORDER_CONFIRMED');
 
-                // Como nos demais cancelamentos: painel em tempo real e listeners (WhatsApp) acompanham.
-                OrderStatusUpdated::dispatch($order->fresh());
+                return;
             }
         }
 

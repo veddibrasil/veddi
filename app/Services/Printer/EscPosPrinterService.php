@@ -323,6 +323,12 @@ class EscPosPrinterService implements PrinterServiceInterface
             $printer->text('Dinheiro: R$ '.number_format((float) $channel['payments']['cash'], 2, ',', '.')."\n");
             $printer->text('PIX: R$ '.number_format((float) $channel['payments']['pix'], 2, ',', '.')."\n");
             $printer->text('Cartao: R$ '.number_format((float) $channel['payments']['card'], 2, ',', '.')."\n");
+            if (($channel['payments']['split'] ?? 0) > 0) {
+                $printer->text('Dividido: R$ '.number_format((float) $channel['payments']['split'], 2, ',', '.')."\n");
+            }
+            if (($channel['payments']['other'] ?? 0) > 0) {
+                $printer->text('Outros: R$ '.number_format((float) $channel['payments']['other'], 2, ',', '.')."\n");
+            }
 
             $printer->setEmphasis(true);
             $printer->text("TOTAL {$label}: R$ ".number_format((float) $channel['revenue'], 2, ',', '.')."\n");

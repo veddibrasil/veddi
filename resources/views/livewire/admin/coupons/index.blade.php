@@ -37,8 +37,8 @@
     </div>
 
     {{-- List --}}
-    <div class="bg-white border rounded-xl shadow-sm overflow-hidden dark:bg-zinc-800 dark:border-zinc-700">
-        <div class="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] items-center px-4 py-2 border-b bg-neutral-50 dark:bg-zinc-700/50 dark:border-zinc-700 gap-6">
+    <div class="bg-white border rounded-xl shadow-sm overflow-x-auto dark:bg-zinc-800 dark:border-zinc-700">
+        <div class="grid min-w-[720px] grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] items-center px-4 py-2 border-b bg-neutral-50 dark:bg-zinc-700/50 dark:border-zinc-700 gap-6">
             <span class="text-xs font-medium text-neutral-400 uppercase tracking-wide">Cupom</span>
             <span class="text-xs font-medium text-neutral-400 uppercase tracking-wide">Desconto</span>
             <span class="text-xs font-medium text-neutral-400 uppercase tracking-wide text-center">Usos</span>
@@ -49,7 +49,7 @@
 
         <div class="divide-y dark:divide-zinc-700">
             @forelse ($coupons as $coupon)
-                <div class="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] items-center px-4 py-3.5 gap-6">
+                <div class="grid min-w-[720px] grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] items-center px-4 py-3.5 gap-6">
                     {{-- Código + Nome --}}
                     <div>
                         <div class="flex items-center gap-2 flex-wrap">

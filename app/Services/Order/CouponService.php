@@ -208,7 +208,10 @@ class CouponService
             return 0.0;
         }
 
-        $product = Product::withoutGlobalScope(CompanyScope::class)->find($coupon->free_product_id);
+        // Sem o escopo da empresa (roda também fora do request): o brinde precisa ser da empresa do cupom.
+        $product = Product::withoutGlobalScope(CompanyScope::class)
+            ->where('company_id', $coupon->company_id)
+            ->find($coupon->free_product_id);
 
         return $product ? (float) $product->effective_price : 0.0;
     }

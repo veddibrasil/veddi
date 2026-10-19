@@ -99,6 +99,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Middlewares de rota não rodam em /livewire/update por padrão: sem isto, uma aba aberta
+        // seguia agindo depois de o usuário perder o papel, a empresa ser bloqueada ou o super
+        // admin ser rebaixado (e current.branch não era bindado nos updates).
+        \Livewire\Livewire::addPersistentMiddleware([
+            \App\Http\Middleware\CheckCompanyRole::class,
+            \App\Http\Middleware\RequireSuperAdmin::class,
+            \App\Http\Middleware\EnsureCompanyIsActive::class,
+        ]);
+
         $this->configureDefaults();
         $this->registerPolicies();
         $this->configureNotifications();
@@ -160,10 +169,12 @@ class AppServiceProvider extends ServiceProvider
     protected function configureNotifications(): void
     {
         ResetPassword::toMailUsing(function ($notifiable, string $token) {
-            $url = url(route('password.reset', [
+            // Host fixo do APP_URL: montar pelo host da request deixava o link com o token
+            // apontar para um domínio injetado no cabeçalho.
+            $url = rtrim(config('app.url'), '/').route('password.reset', [
                 'token' => $token,
                 'email' => $notifiable->getEmailForPasswordReset(),
-            ], false));
+            ], false);
 
             $expire = config('auth.passwords.'.config('auth.defaults.passwords').'.expire');
 

@@ -10,6 +10,7 @@ use App\Models\Order;
 use App\Models\Payment;
 use App\Models\PaymentRefund;
 use App\Services\Finance\BalanceService;
+use App\Services\Order\OrderService;
 use App\Services\Payment\VindiService;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -133,7 +134,8 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
                     return;
                 }
 
-                $order = Order::find($payment->order_id);
+                // Lock no pedido: concorre com cancelBySystem (PIX expirado/troca de pagamento).
+                $order = Order::whereKey($payment->order_id)->lockForUpdate()->first();
 
                 if (! $order) {
                     Log::channel('webhook')->warning('Vindi webhook: pedido não encontrado', [
@@ -186,11 +188,18 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
                     'idempotency_key' => $idempotencyKey,
                 ]);
 
+                // Pedido cancelado/estornado (ex.: cliente cancelou e pagou o PIX copiado antes) não
+                // reabre: o pagamento é registrado como recebido e estornado logo abaixo.
+                $closed = in_array($order->status, ['cancelled', 'refunded'], true);
+
                 // Pedido agendado: pagamento confirma normalmente (carteira/transação abaixo), mas o
                 // status do pedido só vira 'paid' se a hora agendada já passou — senão fica 'scheduled'
                 // pra não disparar preparo/nota fiscal antes da hora (mesma regra do webhook Asaas).
-                $newStatus = ($order->scheduled_at && $order->scheduled_at->isFuture()) ? 'scheduled' : 'paid';
-                $order->update(['status' => $newStatus]);
+                // Pedido que já avançou (ex.: loja pôs em preparo antes do pagamento) mantém a etapa.
+                if (in_array($order->status, ['pending', 'awaiting_payment'], true)) {
+                    $newStatus = ($order->scheduled_at && $order->scheduled_at->isFuture()) ? 'scheduled' : 'paid';
+                    $order->update(['status' => $newStatus]);
+                }
 
                 Log::channel('payments')->info('Pagamento Vindi confirmado', [
                     'order_id' => $order->id,
@@ -201,6 +210,12 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
 
                 app(WalletServiceInterface::class)->creditForOrder($order, $payment);
                 app(TransactionServiceInterface::class)->createForPayment($order, $payment);
+
+                if ($closed) {
+                    app(OrderService::class)->refundPaymentForClosedOrder($order, $payment, 'vindi_webhook');
+
+                    return;
+                }
 
                 OrderStatusUpdated::dispatch($order->fresh());
             });
@@ -213,32 +228,55 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
 
     private function handlePaymentFailed(): void
     {
-        $payment = Payment::where('vindi_transaction_token', $this->transactionToken)->first();
+        DB::transaction(function () {
+            $payment = Payment::where('vindi_transaction_token', $this->transactionToken)
+                ->lockForUpdate()
+                ->first();
 
-        if (! $payment) {
-            Log::channel('webhook')->warning('Vindi webhook: Payment não encontrado para falha', [
+            if (! $payment) {
+                Log::channel('webhook')->warning('Vindi webhook: Payment não encontrado para falha', [
+                    'transaction_token' => $this->transactionToken,
+                ]);
+
+                return;
+            }
+
+            if ($payment->status !== 'pending') {
+                return;
+            }
+
+            $payment->update(['status' => 'failed']);
+
+            Log::channel('payments')->info('Pagamento Vindi falhou/cancelado', [
                 'transaction_token' => $this->transactionToken,
+                'status' => $this->status,
             ]);
 
-            return;
-        }
+            $order = Order::find($payment->order_id);
+            if (! $order) {
+                return;
+            }
 
-        if ($payment->status !== 'pending') {
-            return;
-        }
+            // A falha é desta tentativa, não do pedido: o cliente pode ter tentado outro cartão no
+            // mesmo pedido (recusa síncrona deixa o Payment 'pending' até este webhook). Com outra
+            // tentativa ainda em aberto, o pedido segue; pedido já pago nunca é cancelado aqui
+            // (cancelBySystem só cancela pending/awaiting_payment sem pagamento confirmado).
+            $otherAttemptOpen = $order->payments()
+                ->whereKeyNot($payment->id)
+                ->where('status', 'pending')
+                ->exists();
 
-        $payment->update(['status' => 'failed']);
+            if ($otherAttemptOpen) {
+                Log::channel('payments')->info('Vindi webhook: falha de tentativa anterior, pedido mantido', [
+                    'order_id' => $order->id,
+                    'payment_id' => $payment->id,
+                ]);
 
-        $order = Order::find($payment->order_id);
-        if ($order) {
-            $order->update(['status' => 'cancelled']);
-            OrderStatusUpdated::dispatch($order->fresh());
-        }
+                return;
+            }
 
-        Log::channel('payments')->info('Pagamento Vindi falhou/cancelado', [
-            'transaction_token' => $this->transactionToken,
-            'status' => $this->status,
-        ]);
+            app(OrderService::class)->cancelBySystem($order, 'Pagamento não aprovado pela operadora', 'vindi_payment_failed');
+        });
     }
 
     private function handleRefundConfirmed(): void

@@ -6,6 +6,7 @@ use App\Models\Branch;
 use App\Models\Customer;
 use App\Services\Customer\CustomerService;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 
 trait HasCustomerProfile
 {
@@ -14,13 +15,27 @@ trait HasCustomerProfile
         $this->phone = preg_replace('/\D/', '', $this->phone);
         $this->validate($this->rules(), $this->messages());
 
+        // O telefone é a única identificação do cliente no chat (sem OTP): sem limite,
+        // dava para chutar telefones em sequência e colher cadastros. Por IP + empresa; folga para
+        // Wi-Fi da loja (vários clientes pedindo pelo QR da mesa no mesmo IP).
+        $rateLimitKey = "chat-phone-lookup:{$this->companyId}:".request()->ip();
+
+        if (RateLimiter::tooManyAttempts($rateLimitKey, 30)) {
+            Log::channel('chat')->warning('submitPhone rate limitado', ['company_id' => $this->companyId]);
+            $this->addMessage('bot', 'Recebemos muitas consultas em pouco tempo. Aguarde alguns minutos e tente novamente.');
+
+            return;
+        }
+
+        RateLimiter::hit($rateLimitKey, 600);
+
         $service = app(CustomerService::class);
         $customer = $service->findByPhone($this->phone);
 
         if ($customer) {
             $this->fillCustomerData($customer);
             $this->recordWhatsAppConsent($customer);
-            Log::channel('chat')->info('Cliente identificado pelo telefone', ['customer_id' => $customer->id, 'phone' => $this->phone]);
+            Log::channel('chat')->info('Cliente identificado pelo telefone', ['customer_id' => $customer->id]);
             $this->addMessage('user', $this->phone);
 
             if (empty($this->cart)) {
@@ -85,7 +100,7 @@ trait HasCustomerProfile
             return;
         }
 
-        Log::channel('chat')->info('Telefone não encontrado — iniciando cadastro', ['phone' => $this->phone]);
+        Log::channel('chat')->info('Telefone não encontrado — iniciando cadastro', ['company_id' => $this->companyId]);
         $this->addMessage('user', $this->phone);
         $this->addMessage('bot', 'Não encontrei seu cadastro. Vamos criar um rapidinho! Qual é o seu nome completo?');
         $this->transitionTo('REGISTER_NAME');
@@ -138,7 +153,7 @@ trait HasCustomerProfile
 
         $this->customerId = $customer->id;
         $this->recordWhatsAppConsent($customer);
-        Log::channel('chat')->info('Novo cliente cadastrado', ['customer_id' => $customer->id, 'phone' => $normalized]);
+        Log::channel('chat')->info('Novo cliente cadastrado', ['customer_id' => $customer->id]);
 
         $addressSummary = $this->address;
         if ($this->complement) {

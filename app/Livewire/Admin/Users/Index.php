@@ -12,6 +12,7 @@ use App\Services\Company\UserDeletionService;
 use App\Services\Company\UserPermissionService;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -58,8 +59,10 @@ class Index extends Component
     // Exclusão (desvincular)
     public ?int $removingUserId = null;
 
+    #[Locked]
     public bool $canView = false;
 
+    #[Locked]
     public bool $canManage = false;
 
     public function mount(): void
@@ -106,6 +109,7 @@ class Index extends Component
             'newEmail' => 'required|email|unique:users,email',
             'newRole' => ['required', 'string', Rule::in($this->availableRoleSlugs($company))],
             'newPassword' => 'required|string|min:8',
+            'newBranchId' => $this->branchRule($company),
         ], [
             'newName.required' => 'Informe o nome.',
             'newEmail.required' => 'Informe o e-mail.',
@@ -129,16 +133,28 @@ class Index extends Component
         $company = app('current.company');
 
         $this->validate([
-            'linkEmail' => 'required|email|exists:users,email',
+            'linkEmail' => 'required|email',
             'linkRole' => ['required', 'string', Rule::in($this->availableRoleSlugs($company))],
+            'linkBranchId' => $this->branchRule($company),
         ], [
             'linkEmail.required' => 'Informe o e-mail.',
-            'linkEmail.exists' => 'Usuário não encontrado.',
             'linkRole.required' => 'Selecione o tipo de usuário.',
             'linkRole.in' => self::WAITER_MODULE_MESSAGE,
         ]);
 
-        $user = User::where('email', $this->linkEmail)->firstOrFail();
+        // Sem seletor de empresa, o login cai sempre na empresa de menor id do usuário: vincular
+        // alguém de outra empresa (ou o super admin) trocava o painel dele sem consentimento.
+        // Mensagem única para não revelar quais e-mails existem na plataforma.
+        $user = User::where('email', $this->linkEmail)
+            ->where('is_super_admin', false)
+            ->whereDoesntHave('companies', fn ($q) => $q->where('companies.id', '!=', $company->id))
+            ->first();
+
+        if (! $user) {
+            $this->addError('linkEmail', 'Não é possível vincular este e-mail. Use "Novo usuário" para criar o acesso.');
+
+            return;
+        }
 
         $user->companies()->syncWithoutDetaching([
             $company->id => [
@@ -167,6 +183,12 @@ class Index extends Component
         $this->editBranchId = $pivot?->branch_id ?? 0;
     }
 
+    /** 0 = sem filial; qualquer outro id precisa ser filial desta empresa. */
+    private function branchRule(Company $company): array
+    {
+        return ['integer', Rule::in([0, ...Branch::where('company_id', $company->id)->pluck('id')->all()])];
+    }
+
     public function saveEditRole(): void
     {
         abort_unless($this->canManage, 403);
@@ -175,6 +197,7 @@ class Index extends Component
 
         $this->validate([
             'editRole' => ['required', 'string', Rule::in($this->availableRoleSlugs($company))],
+            'editBranchId' => $this->branchRule($company),
         ], [
             'editRole.required' => 'Selecione o tipo de usuário.',
             'editRole.in' => self::WAITER_MODULE_MESSAGE,
@@ -244,9 +267,10 @@ class Index extends Component
         $company = app('current.company');
 
         $users = User::whereHas('companies', fn ($q) => $q->where('companies.id', $company->id))
-            ->when($this->search, fn ($q) => $q->where('name', 'like', "%{$this->search}%")
+            // Agrupado: um orWhere solto escapava do whereHas da empresa (User não tem escopo global).
+            ->when($this->search, fn ($q) => $q->where(fn ($s) => $s->where('name', 'like', "%{$this->search}%")
                 ->orWhere('email', 'like', "%{$this->search}%")
-            )
+            ))
             ->with(['companies' => fn ($q) => $q->where('companies.id', $company->id)])
             ->orderBy('name')
             ->paginate(20);

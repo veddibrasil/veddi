@@ -13,12 +13,33 @@ use App\Models\Subscription;
 use App\Rules\ReservedSlug;
 use App\Services\Company\CompanyService;
 use App\Services\Company\OnboardingService;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 class RegisterForm extends Component
 {
+    /**
+     * Empresa criada por este navegador em submit(), aguardando o cartão.
+     * submitCard() só aceita o id que estiver aqui e na sessão.
+     */
+    private const SESSION_PENDING_COMPANY = 'onboarding.pending_company_id';
+
+    // O throttle:5,1 da rota POST /cadastro não vale para /livewire/update,
+    // que é por onde esta tela cria a conta e cobra o cartão.
+    private const SUBMIT_MAX_ATTEMPTS = 3;
+
+    private const SUBMIT_DECAY_SECONDS = 3600;
+
+    private const CARD_MAX_ATTEMPTS = 5;
+
+    private const CARD_DECAY_SECONDS = 600;
+
     public int $currentStep = 1;
 
     // Step 1: Company
@@ -42,18 +63,9 @@ class RegisterForm extends Component
 
     public string $userEmail = '';
 
+    // Sem wire:model.live: o medidor de força é calculado no navegador
+    // (Alpine lendo $wire.userPassword), a senha não vai ao servidor a cada tecla.
     public string $userPassword = '';
-
-    // Password strength: 0 = empty, 1 = fraca, 2 = média, 3 = forte
-    public int $passwordStrength = 0;
-
-    public bool $passwordHasMin = false;
-
-    public bool $passwordHasLetter = false;
-
-    public bool $passwordHasNumber = false;
-
-    public bool $passwordHasSpecial = false;
 
     // Step 4: Plan
     public string $plan = 'free';
@@ -71,14 +83,14 @@ class RegisterForm extends Component
     public ?string $errorMessage = null;
 
     // Credit card modal
+    // Locked: sem isso, um visitante anônimo trocava o id e cobrava/reativava
+    // empresa de terceiro (inclusive BLOCKED) pelo submitCard().
+    #[Locked]
     public ?int $pendingCompanyId = null;
 
-    public string $cardNumber = '';
-
-    public string $cardExpiry = '';
-
-    public string $cardCvv = '';
-
+    // Número, validade e CVV não são propriedades: chegam só como parâmetro
+    // de submitCard() (o modal guarda no Alpine), para não trafegarem no
+    // snapshot do Livewire a cada request.
     public string $cardHolderName = '';
 
     public string $cardCpfCnpj = '';
@@ -224,28 +236,6 @@ class RegisterForm extends Component
         // More than 14 digits
         $this->asaasCpfCnpjValid = false;
         $this->asaasCpfCnpjError = 'Número de dígitos inválido.';
-    }
-
-    public function updatedUserPassword(string $value): void
-    {
-        $this->passwordHasMin = strlen($value) >= 8;
-        $this->passwordHasLetter = (bool) preg_match('/[a-zA-Z]/', $value);
-        $this->passwordHasNumber = (bool) preg_match('/[0-9]/', $value);
-        $this->passwordHasSpecial = (bool) preg_match('/[\W_]/', $value);
-
-        $score = array_sum([
-            $this->passwordHasMin,
-            $this->passwordHasLetter,
-            $this->passwordHasNumber,
-            $this->passwordHasSpecial,
-        ]);
-
-        $this->passwordStrength = match (true) {
-            strlen($value) === 0 => 0,
-            $score <= 2 => 1,
-            $score === 3 => 2,
-            default => 3,
-        };
     }
 
     private function formatPhone(string $digits): string
@@ -396,24 +386,28 @@ class RegisterForm extends Component
 
     public function submit(): void
     {
-        $this->validate(
-            $this->rulesForStep(4),
-            $this->messagesForStep(4),
-        );
+        // submit() é chamável direto por /livewire/update, sem passar pelos
+        // nextStep(): revalida todos os passos (inclusive slug, e-mail e senha)
+        // antes de chamar o Asaas e volta a tela para o passo com erro.
+        foreach ([1, 2, 3, 4] as $step) {
+            try {
+                $this->validate($this->rulesForStep($step), $this->messagesForStep($step));
+            } catch (ValidationException $e) {
+                $this->currentStep = $step;
 
-        // Revalida slug antes de chamar o Asaas (evita criar customer desnecessário)
-        $slugValid = \Illuminate\Support\Facades\Validator::make(
-            ['slug' => $this->slug],
-            ['slug' => ['required', new ReservedSlug, 'unique:companies,slug']],
-            ['slug.unique' => 'Este endereço já está em uso. Volte ao passo 1 e escolha outro.'],
-        );
+                throw $e;
+            }
+        }
 
-        if ($slugValid->fails()) {
-            $this->currentStep = 1;
-            $this->errorMessage = $slugValid->errors()->first('slug');
+        $rateLimitKey = 'onboarding-submit:'.request()->ip();
+
+        if (RateLimiter::tooManyAttempts($rateLimitKey, self::SUBMIT_MAX_ATTEMPTS)) {
+            $this->errorMessage = 'Muitas tentativas de cadastro em pouco tempo. Aguarde e tente novamente mais tarde.';
 
             return;
         }
+
+        RateLimiter::hit($rateLimitKey, self::SUBMIT_DECAY_SECONDS);
 
         $this->submitting = true;
         $this->errorMessage = null;
@@ -445,6 +439,7 @@ class RegisterForm extends Component
             // Paid plans: wait for setup fee payment
             if ($this->paymentMethod === 'CREDIT_CARD') {
                 $this->pendingCompanyId = $company->id;
+                session()->put(self::SESSION_PENDING_COMPANY, $company->id);
                 $this->cardCpfCnpj = $this->asaasCpfCnpj;
                 $this->submitting = false;
                 $this->dispatch('open-card-modal');
@@ -456,14 +451,51 @@ class RegisterForm extends Component
         } catch (\Throwable $e) {
             $this->submitting = false;
             $this->errorMessage = 'Ocorreu um erro ao criar sua conta. Por favor, tente novamente.';
-            \Illuminate\Support\Facades\Log::error('Onboarding falhou', ['error' => $e->getMessage()]);
+            Log::error('Onboarding falhou', ['error' => $e->getMessage()]);
         }
     }
 
-    public function submitCard(): void
+    /**
+     * @param  array{number?: string, expiry?: string, cvv?: string}  $card
+     */
+    public function submitCard(array $card = []): void
     {
-        $this->validate([
-            'cardNumber' => ['required', 'string', 'min:13'],
+        $company = $this->pendingCompany();
+
+        if (! $company) {
+            $this->cardError = 'Não foi possível continuar o pagamento. Recarregue a página e faça o cadastro novamente.';
+
+            return;
+        }
+
+        // Por IP e por empresa: sem isso o modal virava oráculo de teste de cartão.
+        $rateLimitKeys = [
+            'onboarding-card:ip:'.request()->ip(),
+            'onboarding-card:company:'.$company->id,
+        ];
+
+        foreach ($rateLimitKeys as $key) {
+            if (RateLimiter::tooManyAttempts($key, self::CARD_MAX_ATTEMPTS)) {
+                $this->cardError = 'Muitas tentativas de pagamento em pouco tempo. Aguarde alguns minutos e tente novamente.';
+
+                return;
+            }
+        }
+
+        $cardNumber = preg_replace('/\D/', '', (string) ($card['number'] ?? ''));
+        $cardExpiry = trim((string) ($card['expiry'] ?? ''));
+        $cardCvv = trim((string) ($card['cvv'] ?? ''));
+
+        Validator::make([
+            'cardNumber' => $cardNumber,
+            'cardExpiry' => $cardExpiry,
+            'cardCvv' => $cardCvv,
+            'cardHolderName' => $this->cardHolderName,
+            'cardCpfCnpj' => $this->cardCpfCnpj,
+            'cardPostalCode' => $this->cardPostalCode,
+            'cardAddressNumber' => $this->cardAddressNumber,
+        ], [
+            'cardNumber' => ['required', 'digits_between:13,19'],
             'cardExpiry' => ['required', 'regex:/^\d{2}\/\d{2}$/', function ($attr, $value, $fail) {
                 [$month, $year] = explode('/', $value);
                 $month = (int) $month;
@@ -489,7 +521,7 @@ class RegisterForm extends Component
             'cardAddressNumber' => ['required', 'string'],
         ], [
             'cardNumber.required' => 'Informe o número do cartão.',
-            'cardNumber.min' => 'Número do cartão inválido.',
+            'cardNumber.digits_between' => 'Número do cartão inválido.',
             'cardExpiry.required' => 'Informe a validade.',
             'cardExpiry.regex' => 'Use o formato MM/AA.',
             'cardCvv.required' => 'Informe o CVV.',
@@ -499,13 +531,16 @@ class RegisterForm extends Component
             'cardPostalCode.required' => 'Informe o CEP de cobrança.',
             'cardPostalCode.min' => 'CEP inválido.',
             'cardAddressNumber.required' => 'Informe o número do endereço.',
-        ]);
+        ])->validate();
+
+        foreach ($rateLimitKeys as $key) {
+            RateLimiter::hit($key, self::CARD_DECAY_SECONDS);
+        }
 
         $this->cardProcessing = true;
         $this->cardError = null;
 
         try {
-            $company = Company::findOrFail($this->pendingCompanyId);
             $admin = $company->users()->first();
             $phone = preg_replace('/\D/', '', $this->branchPhone ?: ($company->branches()->withoutGlobalScopes()->value('phone') ?? ''));
 
@@ -517,14 +552,14 @@ class RegisterForm extends Component
                 ? "Ativação + 1º mês ({$plan?->label()}) — {$company->name}"
                 : "Taxa de ativação — {$plan?->label()} — {$company->name}";
 
-            [$month, $year] = explode('/', $this->cardExpiry);
+            [$month, $year] = explode('/', $cardExpiry);
 
             $creditCard = new CreditCardDTO(
                 holderName: $this->cardHolderName,
-                number: $this->cardNumber,
+                number: $cardNumber,
                 expiryMonth: $month,
                 expiryYear: '20'.$year,
-                ccv: $this->cardCvv,
+                ccv: $cardCvv,
             );
 
             $holderInfo = new CreditCardHolderDTO(
@@ -549,11 +584,14 @@ class RegisterForm extends Component
             );
 
             if (($charge['status'] ?? '') !== 'CONFIRMED') {
-                $reason = $charge['creditCard']['declineReason']
-                    ?? $charge['failReason']
-                    ?? 'verifique os dados e tente novamente';
+                // Motivo da recusa só no log: devolvê-lo na tela ajudava a testar cartões.
+                Log::channel('payments')->warning('Onboarding: cartão da taxa de ativação recusado', [
+                    'company_id' => $company->id,
+                    'charge_status' => $charge['status'] ?? null,
+                    'decline_reason' => $charge['creditCard']['declineReason'] ?? $charge['failReason'] ?? null,
+                ]);
 
-                $this->cardError = "Pagamento recusado: {$reason}.";
+                $this->cardError = 'Pagamento não aprovado. Confira os dados do cartão ou use outro cartão.';
                 $this->cardProcessing = false;
 
                 return;
@@ -596,14 +634,42 @@ class RegisterForm extends Component
 
             app(CompanyService::class)->activate($company);
 
+            session()->forget(self::SESSION_PENDING_COMPANY);
+
             $this->cardSuccess = true;
             $this->cardProcessing = false;
 
             $this->redirectRoute('login');
         } catch (\Throwable $e) {
+            Log::channel('payments')->warning('Onboarding: falha ao processar cartão da taxa de ativação', [
+                'company_id' => $company->id,
+                'exception' => $e::class,
+            ]);
+
             $this->cardError = 'Erro ao processar pagamento. Por favor, tente novamente.';
             $this->cardProcessing = false;
         }
+    }
+
+    /**
+     * Empresa que este navegador acabou de criar e que ainda espera a taxa de
+     * ativação. O id precisa bater com o da sessão (gravado em submit()) e a
+     * empresa precisa seguir PENDING_PAYMENT sem taxa paga: nunca reativa nem
+     * troca a assinatura de empresa BLOCKED/ACTIVE.
+     */
+    private function pendingCompany(): ?Company
+    {
+        $companyId = $this->pendingCompanyId;
+
+        if (! $companyId || (int) session(self::SESSION_PENDING_COMPANY) !== $companyId) {
+            return null;
+        }
+
+        return Company::query()
+            ->whereKey($companyId)
+            ->where('status', 'PENDING_PAYMENT')
+            ->whereNull('setup_fee_paid_at')
+            ->first();
     }
 
     public function render()

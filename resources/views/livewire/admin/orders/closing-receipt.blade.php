@@ -54,6 +54,12 @@
                 <td>Cancelados/reembolsados</td>
                 <td class="right">{{ $channel['cancelled_count'] }}</td>
             </tr>
+            @if ($channel['pending_count'] > 0)
+                <tr>
+                    <td>Aguardando pagamento</td>
+                    <td class="right">{{ $channel['pending_count'] }}</td>
+                </tr>
+            @endif
             <tr>
                 <td>Descontos</td>
                 <td class="right">R$ {{ number_format($channel['discounts'], 2, ',', '.') }}</td>
@@ -70,6 +76,18 @@
                 <td>Cartão</td>
                 <td class="right">R$ {{ number_format($channel['payments']['card'], 2, ',', '.') }}</td>
             </tr>
+            @if ($channel['payments']['split'] > 0)
+                <tr>
+                    <td>Dividido</td>
+                    <td class="right">R$ {{ number_format($channel['payments']['split'], 2, ',', '.') }}</td>
+                </tr>
+            @endif
+            @if ($channel['payments']['other'] > 0)
+                <tr>
+                    <td>Outros</td>
+                    <td class="right">R$ {{ number_format($channel['payments']['other'], 2, ',', '.') }}</td>
+                </tr>
+            @endif
             <tr style="border-top: 1px solid #dca8f5;">
                 <td class="total-label">TOTAL {{ $label }}</td>
                 <td class="total-value">R$ {{ number_format($channel['revenue'], 2, ',', '.') }}</td>

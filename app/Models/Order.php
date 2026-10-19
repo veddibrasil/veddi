@@ -311,6 +311,15 @@ class Order extends Model
             && in_array($this->status, ['pending', 'awaiting_payment', 'paid', 'preparing', 'ready', 'scheduled']);
     }
 
+    /** Pedidos com pagamento confirmado (ou a receber já aceito): os únicos que contam como faturamento. */
+    public const CONFIRMED_STATUSES = ['paid', 'scheduled', 'preparing', 'ready', 'out_for_delivery', 'delivered'];
+
+    /** Cancelado/estornado: nenhuma mudança manual de status pode reabrir o pedido. */
+    public function isClosed(): bool
+    {
+        return in_array($this->status, ['cancelled', 'refunded'], true);
+    }
+
     public function getStatusLabelAttribute(): string
     {
         if ($ifood = $this->ifoodDetails()) {

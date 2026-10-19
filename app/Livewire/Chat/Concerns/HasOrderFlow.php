@@ -63,7 +63,8 @@ trait HasOrderFlow
                 $this->cartTotal
             );
 
-            $discount = $couponService->calculateDiscount(
+            // Produto grátis não abate valor: o brinde entra no pedido a R$ 0,00 (OrderService).
+            $discount = $coupon->type === 'free_product' ? 0.0 : $couponService->calculateDiscount(
                 $coupon,
                 $this->cart,
                 $this->cartTotal,
@@ -85,9 +86,11 @@ trait HasOrderFlow
                 $this->paymentMethod = $coupon->payment_method;
             }
 
-            $discountLabel = $coupon->type === 'free_delivery'
-                ? 'Frete grátis aplicado!'
-                : 'Desconto de R$ '.number_format($discount, 2, ',', '.').' aplicado!';
+            $discountLabel = match ($coupon->type) {
+                'free_delivery' => 'Frete grátis aplicado!',
+                'free_product' => 'Brinde incluído no pedido'.($coupon->freeProduct ? ": {$coupon->freeProduct->name}" : '').'!',
+                default => 'Desconto de R$ '.number_format($discount, 2, ',', '.').' aplicado!',
+            };
 
             $paymentNote = $coupon->payment_method !== null
                 ? ' Válido somente para pagamento via '.$coupon->payment_method.'.'

@@ -17,10 +17,14 @@ class ReportPdfController extends Controller
     {
         $user = auth()->user();
 
+        $lockedBranchId = null;
+
         if ($user->isSuperAdmin()) {
             $canView = true;
         } elseif (app()->bound('current.company')) {
-            $canView = $user->hasPermission('orders.view', app('current.company'));
+            // Mesma permissão da tela de relatório (orders.view deixava cozinha/caixa baixarem tudo).
+            $canView = $user->hasPermission('orders.report', app('current.company'));
+            $lockedBranchId = $user->lockedBranchId(app('current.company'));
         } else {
             $canView = false;
         }
@@ -54,6 +58,7 @@ class ReportPdfController extends Controller
             ->whereDate('created_at', '>=', $validated['date_start'])
             ->whereDate('created_at', '<=', $validated['date_end'])
             ->when($request->status, fn ($q) => $q->where('status', $request->status))
+            ->when($lockedBranchId, fn ($q) => $q->where('branch_id', $lockedBranchId))
             ->when($request->branch_id, fn ($q) => $q->where('branch_id', $request->branch_id))
             ->when($request->payment_method, fn ($q) => $q->where('payment_method', $request->payment_method))
             ->when($request->order_type, fn ($q) => $q->where('order_type', $request->order_type))

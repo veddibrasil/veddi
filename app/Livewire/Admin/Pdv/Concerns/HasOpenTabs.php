@@ -11,6 +11,7 @@ use App\Models\Product;
 use App\Models\RestaurantTable;
 use App\Services\Order\OrderService;
 use App\Services\Payment\PaymentOrchestrator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -39,12 +40,25 @@ trait HasOpenTabs
 
     public function selectOpenTab(int $orderId): void
     {
+        if (! $this->findOpenTab($orderId)) {
+            $this->addError('order', 'Comanda não encontrada ou já fechada.');
+            unset($this->openTabs);
+
+            return;
+        }
+
         $this->openTabOrderId = $orderId;
     }
 
     public function toggleTabItems(int $orderId): void
     {
-        $this->viewingTabItemsOrderId = $this->viewingTabItemsOrderId === $orderId ? null : $orderId;
+        if ($this->viewingTabItemsOrderId === $orderId) {
+            $this->viewingTabItemsOrderId = null;
+
+            return;
+        }
+
+        $this->viewingTabItemsOrderId = $this->findOpenTab($orderId)?->id;
     }
 
     public function deselectOpenTab(): void
@@ -111,9 +125,7 @@ trait HasOpenTabs
 
         try {
             if ($this->openTabOrderId) {
-                $order = Order::withoutGlobalScopes()
-                    ->where('is_open_tab', true)
-                    ->find($this->openTabOrderId);
+                $order = $this->findOpenTab($this->openTabOrderId);
 
                 if (! $order) {
                     $this->addError('order', 'Comanda não encontrada ou já fechada.');
@@ -195,9 +207,7 @@ trait HasOpenTabs
             return;
         }
 
-        $order = Order::withoutGlobalScopes()
-            ->where('is_open_tab', true)
-            ->find($this->openTabOrderId);
+        $order = $this->findOpenTab($this->openTabOrderId);
 
         if (! $order) {
             $this->addError('order', 'Comanda não encontrada ou já fechada.');
@@ -254,13 +264,7 @@ trait HasOpenTabs
     /** Remove um item já lançado da comanda ativa. Disponível para garçom e caixa. */
     public function removeTabItem(int $orderItemId): void
     {
-        if (! $this->openTabOrderId) {
-            return;
-        }
-
-        $order = Order::withoutGlobalScopes()
-            ->where('is_open_tab', true)
-            ->find($this->openTabOrderId);
+        $order = $this->findOpenTab($this->openTabOrderId);
 
         if (! $order) {
             $this->addError('order', 'Comanda não encontrada ou já fechada.');
@@ -293,13 +297,7 @@ trait HasOpenTabs
     /** Ajusta a quantidade de um item já lançado na comanda ativa. Disponível para garçom e caixa. */
     public function updateTabItemQuantity(int $orderItemId, int $quantity): void
     {
-        if (! $this->openTabOrderId) {
-            return;
-        }
-
-        $order = Order::withoutGlobalScopes()
-            ->where('is_open_tab', true)
-            ->find($this->openTabOrderId);
+        $order = $this->findOpenTab($this->openTabOrderId);
 
         if (! $order) {
             $this->addError('order', 'Comanda não encontrada ou já fechada.');
@@ -327,6 +325,13 @@ trait HasOpenTabs
     public function proceedToCloseTab(int $orderId): void
     {
         abort_unless(! $this->isWaiter, 403);
+
+        if (! $this->findOpenTab($orderId)) {
+            $this->addError('order', 'Comanda não encontrada ou já fechada.');
+            unset($this->openTabs);
+
+            return;
+        }
 
         $this->closingTabOrderId = $orderId;
         $this->step = 'payment';
@@ -367,10 +372,7 @@ trait HasOpenTabs
     {
         abort_unless(! $this->isWaiter, 403);
 
-        $order = Order::withoutGlobalScopes()
-            ->where('branch_id', $this->selectedBranchId)
-            ->where('is_open_tab', true)
-            ->find($this->closingTabOrderId);
+        $order = $this->findOpenTab($this->closingTabOrderId);
 
         if (! $order) {
             $this->addError('order', 'Comanda não encontrada ou já fechada.');
@@ -394,9 +396,10 @@ trait HasOpenTabs
         }
 
         $isPaidOnCreate = $this->isSplitPayment || in_array($this->paymentMethod, ['cash', 'credit_card', 'pix']);
+        $customerId = $this->companyCustomerId();
 
         try {
-            DB::transaction(function () use ($order, $isPaidOnCreate) {
+            DB::transaction(function () use ($order, $isPaidOnCreate, $customerId) {
                 app(OrderService::class)->applyManualDiscountToOrder(
                     $order,
                     $this->manualDiscountAmount,
@@ -416,7 +419,7 @@ trait HasOpenTabs
                     // Comanda geralmente abre sem cliente vinculado (guest); se o mesário identificar
                     // o cliente só agora no fechamento, precisa gravar — senão a busca/seleção feita
                     // na tela de pagamento é descartada e o pedido fica com "Cliente Balcão".
-                    ...($this->customerId ? ['customer_id' => $this->customerId] : []),
+                    ...($customerId ? ['customer_id' => $customerId] : []),
                 ]);
 
                 if ($isPaidOnCreate) {
@@ -529,9 +532,10 @@ trait HasOpenTabs
 
         $closedOrders = [];
         $totalChangeCents = 0;
+        $customerId = $this->companyCustomerId();
 
         try {
-            DB::transaction(function () use (&$closedOrders, &$totalChangeCents, &$pool, $orders, $tableServiceFee, $tableCouvertFee) {
+            DB::transaction(function () use (&$closedOrders, &$totalChangeCents, &$pool, $orders, $tableServiceFee, $tableCouvertFee, $customerId) {
                 $lastMethod = $pool[0]['method'];
 
                 foreach ($orders as $orderIndex => $order) {
@@ -593,7 +597,7 @@ trait HasOpenTabs
                         'status' => 'paid',
                         'is_open_tab' => false,
                         'pdv_cash_session_id' => $this->cashSessionId,
-                        ...($this->customerId ? ['customer_id' => $this->customerId] : []),
+                        ...($customerId ? ['customer_id' => $customerId] : []),
                     ]);
 
                     app(PaymentOrchestrator::class)->processSplit($order, $orderParts);
@@ -654,32 +658,50 @@ trait HasOpenTabs
         return $openCount > 0 ? "Mesa {$table->number} (".($openCount + 1).')' : "Mesa {$table->number}";
     }
 
+    /**
+     * Comandas abertas da empresa atual na filial selecionada. Ids de comanda/mesa chegam do
+     * cliente (wire:click) e Order aqui é lido sem global scope, então toda busca passa por
+     * esta query: só por id, um id forjado alcançava comanda de outra empresa ou filial.
+     */
+    private function openTabsQuery(): Builder
+    {
+        $company = app()->bound('current.company') ? app('current.company') : null;
+
+        return Order::withoutGlobalScopes()
+            ->where('company_id', $company?->id)
+            ->where('branch_id', $this->selectedBranchId)
+            ->where('is_open_tab', true);
+    }
+
+    private function findOpenTab(?int $orderId): ?Order
+    {
+        if (! $orderId || ! $this->selectedBranchId) {
+            return null;
+        }
+
+        return $this->openTabsQuery()->find($orderId);
+    }
+
     // ── Computed ──────────────────────────────────────────────────────────────
 
     /** Memoiza a comanda em fechamento — evita 3 finds() repetidos (cartTotal, service fee, couvert). */
     #[Computed]
     public function closingTabOrder(): ?Order
     {
-        if (! $this->closingTabOrderId) {
-            return null;
-        }
-
-        return Order::withoutGlobalScopes()->find($this->closingTabOrderId);
+        return $this->findOpenTab($this->closingTabOrderId);
     }
 
     /** Todas as comandas abertas da mesa em fechamento em grupo — memoizado (usado nos totais e no closeTableTabs()). */
     #[Computed]
     public function closingTableOrders(): Collection
     {
-        if (! $this->closingTableId) {
+        if (! $this->closingTableId || ! $this->selectedBranchId) {
             return collect();
         }
 
-        return Order::withoutGlobalScopes()
+        return $this->openTabsQuery()
             ->with('items')
-            ->where('branch_id', $this->selectedBranchId)
             ->where('restaurant_table_id', $this->closingTableId)
-            ->where('is_open_tab', true)
             ->orderBy('id')
             ->get();
     }
@@ -693,9 +715,7 @@ trait HasOpenTabs
 
         // Escopo por filial (não por sessão de caixa): comandas abertas precisam ficar visíveis
         // pra qualquer operador da filial — garçom sem sessão abre, caixa de outra sessão fecha.
-        return Order::withoutGlobalScopes()
-            ->where('branch_id', $this->selectedBranchId)
-            ->where('is_open_tab', true)
+        return $this->openTabsQuery()
             ->latest()
             ->get(['id', 'order_number', 'table_label', 'subtotal', 'service_fee', 'couvert_fee', 'manual_discount', 'total', 'restaurant_table_id']);
     }
@@ -703,22 +723,18 @@ trait HasOpenTabs
     #[Computed]
     public function viewingTabItems(): Collection
     {
-        if (! $this->viewingTabItemsOrderId) {
-            return collect();
-        }
+        $order = $this->findOpenTab($this->viewingTabItemsOrderId);
 
-        return OrderItem::where('order_id', $this->viewingTabItemsOrderId)->get();
+        return $order ? OrderItem::where('order_id', $order->id)->get() : collect();
     }
 
     /** Itens da comanda atualmente selecionada — exibidos sem precisar de clique extra. */
     #[Computed]
     public function activeTabItems(): Collection
     {
-        if (! $this->openTabOrderId) {
-            return collect();
-        }
+        $order = $this->findOpenTab($this->openTabOrderId);
 
-        return OrderItem::where('order_id', $this->openTabOrderId)->get();
+        return $order ? OrderItem::where('order_id', $order->id)->get() : collect();
     }
 
     /** product_id => quantidade total já lançada na comanda ativa, pra marcar no grid do catálogo. */
@@ -734,11 +750,9 @@ trait HasOpenTabs
     #[Computed]
     public function closingTabItems(): Collection
     {
-        if (! $this->closingTabOrderId) {
-            return collect();
-        }
+        $order = $this->closingTabOrder;
 
-        return OrderItem::where('order_id', $this->closingTabOrderId)->get();
+        return $order ? OrderItem::where('order_id', $order->id)->get() : collect();
     }
 
     /**

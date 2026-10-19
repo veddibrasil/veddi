@@ -29,7 +29,7 @@
     </div>
 
     {{-- Table --}}
-    <div class="bg-white border rounded-xl shadow-sm overflow-hidden dark:bg-zinc-800 dark:border-zinc-700">
+    <div class="bg-white border rounded-xl shadow-sm overflow-x-auto dark:bg-zinc-800 dark:border-zinc-700">
         <table class="min-w-full divide-y divide-neutral-200 dark:divide-zinc-700">
             <thead class="bg-neutral-50 dark:bg-zinc-900">
                 <tr>
@@ -73,8 +73,8 @@
                                 {{ $statusLabels[$note->status] ?? $note->status }}
                             </span>
                         </td>
-                        <td class="px-4 py-3 text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate max-w-xs">
-                            {{ $note->access_key ?? '—' }}
+                        <td class="px-4 py-3 text-xs text-neutral-500 dark:text-neutral-400 font-mono">
+                            <span class="block max-w-48 truncate" title="{{ $note->access_key }}">{{ $note->access_key ?? '—' }}</span>
                         </td>
                         <td class="px-4 py-3 text-sm text-neutral-500 dark:text-neutral-400">
                             {{ $note->created_at->format('d/m/Y H:i') }}

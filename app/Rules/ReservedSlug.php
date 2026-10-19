@@ -18,6 +18,19 @@ class ReservedSlug implements ValidationRule
         'webhooks',
         'api',
         'payment',
+        // GET de um segmento registrados antes de /{company} (ver routes/web.php): o slug igual
+        // abriria a rota fixa no lugar do chat da empresa.
+        'health',
+        'up',
+        'termos-de-uso',
+        'politica-de-privacidade',
+        // Pastas e prefixos servidos fora do chat (public/, Livewire, storage:link)
+        'build',
+        'images',
+        'js',
+        'favicon',
+        'storage',
+        'livewire',
         // Painéis
         'admin',
         'superadmin',

@@ -260,7 +260,7 @@ class Company extends Model
             fn () => $this->orders()
                 ->whereMonth('created_at', $reference->month)
                 ->whereYear('created_at', $reference->year)
-                ->whereIn('status', ['paid', 'scheduled', 'preparing', 'ready', 'out_for_delivery', 'delivered'])
+                ->whereIn('status', Order::CONFIRMED_STATUSES)
                 ->count()
         );
 

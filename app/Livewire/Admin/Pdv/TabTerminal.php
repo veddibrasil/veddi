@@ -65,6 +65,8 @@ class TabTerminal extends Component
 
     public string $customerName = '';
 
+    // Só muda por selectCustomer()/lookupCustomer()/createCustomer(), que filtram pela empresa.
+    #[Locked]
     public ?int $customerId = null;
 
     public bool $customerFound = false;
@@ -139,14 +141,20 @@ class TabTerminal extends Component
     // escolha em vez de ir direto pro catálogo.
     public bool $openingNewTabForTable = false;
 
+    // Ids de comanda/mesa abertas: só mudam pelos métodos de HasOpenTabs, que validam empresa e
+    // filial (findOpenTab). Abertos, o payload apontava pra comanda de qualquer empresa.
+    #[Locked]
     public ?int $openTabOrderId = null;
 
+    #[Locked]
     public ?int $closingTabOrderId = null;
 
     // Fechamento em grupo: paga todas as comandas abertas de uma mesa de uma vez, num
     // único modal — mutuamente exclusivo com $closingTabOrderId (só um dos dois setado).
+    #[Locked]
     public ?int $closingTableId = null;
 
+    #[Locked]
     public ?int $viewingTabItemsOrderId = null;
 
     // ── Permissões ────────────────────────────────────────────────────────────

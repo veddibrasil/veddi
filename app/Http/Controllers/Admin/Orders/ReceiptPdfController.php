@@ -16,8 +16,9 @@ class ReceiptPdfController extends Controller
             $canView = true;
         } elseif (app()->bound('current.company')) {
             $company = app('current.company');
-            $canView = $user->hasPermission('orders.view', $company)
-                || $user->hasPermission('pdv.operate', $company);
+            $canView = ($user->hasPermission('orders.view', $company)
+                || $user->hasPermission('pdv.operate', $company))
+                && $user->canAccessBranch($company, $order->branch_id);
         } else {
             $canView = false;
         }

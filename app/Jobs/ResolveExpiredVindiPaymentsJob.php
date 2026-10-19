@@ -7,6 +7,7 @@ use App\Contracts\WalletServiceInterface;
 use App\Events\OrderStatusUpdated;
 use App\Models\Order;
 use App\Models\Payment;
+use App\Services\Order\OrderService;
 use App\Services\Payment\VindiService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -102,7 +103,8 @@ class ResolveExpiredVindiPaymentsJob implements ShouldQueue
                     return;
                 }
 
-                $order = Order::find($payment->order_id);
+                // Lock no pedido: concorre com cancelBySystem.
+                $order = Order::whereKey($payment->order_id)->lockForUpdate()->first();
                 if (! $order) {
                     return;
                 }
@@ -113,11 +115,23 @@ class ResolveExpiredVindiPaymentsJob implements ShouldQueue
                     'idempotency_key' => $idempotencyKey,
                 ]);
 
-                // Mesma regra do webhook: agendado para o futuro continua 'scheduled'.
-                $order->update(['status' => ($order->scheduled_at && $order->scheduled_at->isFuture()) ? 'scheduled' : 'paid']);
+                // Mesmas regras do webhook (ProcessVindiWebhook::handlePaymentApproved): pedido
+                // cancelado não reabre (estorna); pedido que já avançou mantém a etapa; agendado
+                // para o futuro continua 'scheduled'.
+                $closed = in_array($order->status, ['cancelled', 'refunded'], true);
+
+                if (in_array($order->status, ['pending', 'awaiting_payment'], true)) {
+                    $order->update(['status' => ($order->scheduled_at && $order->scheduled_at->isFuture()) ? 'scheduled' : 'paid']);
+                }
 
                 app(WalletServiceInterface::class)->creditForOrder($order, $payment);
                 app(TransactionServiceInterface::class)->createForPayment($order, $payment);
+
+                if ($closed) {
+                    app(OrderService::class)->refundPaymentForClosedOrder($order, $payment, 'vindi_polling');
+
+                    return;
+                }
 
                 OrderStatusUpdated::dispatch($order->fresh());
 
@@ -146,11 +160,11 @@ class ResolveExpiredVindiPaymentsJob implements ShouldQueue
             $payment->update(['status' => 'expired']);
 
             // PIX do chat já está 'awaiting_payment' quando expira (ProcessOrder muda o status
-            // assim que a cobrança é criada); só 'pending' deixava esses pedidos abertos para sempre.
+            // assim que a cobrança é criada). cancelBySystem só cancela pending/awaiting_payment e
+            // devolve o estoque baixado na criação do pedido.
             $order = Order::find($payment->order_id);
-            if ($order && in_array($order->status, ['pending', 'awaiting_payment'], true)) {
-                $order->update(['status' => 'cancelled']);
-                OrderStatusUpdated::dispatch($order->fresh());
+            if ($order) {
+                app(OrderService::class)->cancelBySystem($order, 'Pagamento não confirmado dentro do prazo', 'payment_expired');
             }
 
             Log::channel('payments')->info('ResolveExpiredVindiPayments: pagamento expirado resolvido', [

@@ -63,6 +63,9 @@ class OrderChat extends Component
     public string $customer_longitude = '';
 
     // --- Branch ---
+    // Só o servidor escolhe (selectBranch/initialize/retomada de pedido); o placeOrder ainda
+    // reconfere empresa, horário e pausa da filial na hora do pedido.
+    #[Locked]
     public ?int $selectedBranchId = null;
 
     // --- Cart: [product_id => ['qty', 'name', 'price']] ---
@@ -76,6 +79,9 @@ class OrderChat extends Component
     #[Locked]
     public ?int $orderId = null;
 
+    // Gravado só por submitScheduleTime() depois de validar grade/pausa da filial; pedido agendado
+    // pula a checagem de "aberta agora" no placeOrder, então o client não pode escrevê-lo.
+    #[Locked]
     public ?string $scheduledAt = null;
 
     public string $scheduleInput = '';
@@ -209,7 +215,7 @@ class OrderChat extends Component
 
         $currentCompanyId = $company->id;
 
-        if (empty($company->email)) {
+        if (empty($company->email) || ! $this->companyAcceptsOrders($company)) {
             $this->companyId = $currentCompanyId;
             $this->step = 'UNAVAILABLE';
 
@@ -224,7 +230,8 @@ class OrderChat extends Component
                 }
             }
 
-            if ($this->step === 'CLOSED') {
+            // UNAVAILABLE também é reavaliado: a loja pode ter voltado a aceitar pedidos.
+            if (in_array($this->step, ['CLOSED', 'UNAVAILABLE'], true)) {
                 $this->initialize();
             }
 
@@ -595,6 +602,15 @@ class OrderChat extends Component
     protected function currentCompany(): ?\App\Models\Company
     {
         return app()->bound('current.company') ? app('current.company') : null;
+    }
+
+    /**
+     * Mesma régua do painel (EnsureCompanyIsActive): só ACTIVE ou OVERDUE vendem. Empresa
+     * bloqueada, com ativação pendente ou desativada pelo super admin não recebe pedido pelo chat.
+     */
+    protected function companyAcceptsOrders(?\App\Models\Company $company): bool
+    {
+        return $company !== null && $company->active && ($company->isActive() || $company->isOverdue());
     }
 
     private function transitionTo(string $step): void

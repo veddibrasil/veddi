@@ -109,13 +109,21 @@ class StockService
 
     /**
      * Restaura estoque ao cancelar pedido.
+     *
+     * Devolve só o saldo líquido por filial/produto: baixas do pedido (negativas) somadas às
+     * devoluções já gravadas (positivas, ex.: item tirado ou quantidade reduzida na comanda).
+     * Somar só as baixas devolvia em dobro o que já tinha voltado; com o saldo, chamar de novo
+     * não devolve nada.
      */
     public function restoreForOrder(Order $order): void
     {
         $movements = StockMovement::withoutGlobalScopes()
             ->where('order_id', $order->id)
-            ->where('type', StockMovement::TYPE_ORDER_DEDUCTION)
-            ->get();
+            ->whereIn('type', [StockMovement::TYPE_ORDER_DEDUCTION, StockMovement::TYPE_ORDER_RESTORE])
+            ->selectRaw('branch_id, product_id, SUM(quantity) as net_quantity')
+            ->groupBy('branch_id', 'product_id')
+            ->get()
+            ->filter(fn (StockMovement $movement) => (int) $movement->net_quantity < 0);
 
         if ($movements->isEmpty()) {
             return;
@@ -133,7 +141,7 @@ class StockService
                     continue;
                 }
 
-                $deducted = abs($movement->quantity);
+                $deducted = abs((int) $movement->net_quantity);
                 $newQty = $pivot->quantity + $deducted;
 
                 DB::table('branch_product')

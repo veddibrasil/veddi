@@ -18,7 +18,8 @@ class CustomerService
 
     /**
      * Localiza o cliente pelo telefone em qualquer empresa (sem escopo global).
-     * Útil para importar dados de um cliente que já existe em outra filial/empresa.
+     * Usado só para reaproveitar o NOME de quem já comprou em outra empresa
+     * (ver createFromGlobal).
      */
     public function findFromGlobal(string $phone): ?Customer
     {
@@ -26,28 +27,22 @@ class CustomerService
     }
 
     /**
-     * Cria um novo cliente para a empresa atual copiando os dados de outro registro
-     * encontrado globalmente.
+     * Cria um novo cliente para a empresa atual a partir de um cadastro de OUTRA
+     * empresa, copiando só o nome. O chat identifica o cliente só pelo telefone
+     * (sem verificação), então copiar CPF, e-mail e endereço entregava esses dados
+     * a quem digitasse o telefone na loja de qualquer empresa — e os gravava nela.
+     * Endereço e CPF são pedidos de novo no checkout desta empresa.
      */
     public function createFromGlobal(string $phone, Customer $source): Customer
     {
         $customer = Customer::create([
             'phone' => preg_replace('/\D/', '', $phone),
             'name' => $source->name,
-            'email' => $source->email,
-            'address' => $source->address,
-            'complement' => $source->complement,
-            'neighborhood' => $source->neighborhood,
-            'number' => $source->number,
-            'city' => $source->city,
-            'cep' => $source->cep,
-            'tax_id' => $source->tax_id,
         ]);
 
-        Log::channel('chat')->info('Cliente importado de outra empresa', [
+        Log::channel('chat')->info('Cliente importado de outra empresa (só o nome)', [
             'customer_id' => $customer->id,
             'source_company_id' => $source->company_id,
-            'phone' => $phone,
         ]);
 
         return $customer;

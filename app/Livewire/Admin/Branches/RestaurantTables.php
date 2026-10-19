@@ -4,12 +4,14 @@ namespace App\Livewire\Admin\Branches;
 
 use App\Models\Branch;
 use App\Models\RestaurantTable;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 class RestaurantTables extends Component
 {
     public Branch $branch;
 
+    #[Locked]
     public bool $canSave = false;
 
     public string $newCount = '';
@@ -34,7 +36,7 @@ class RestaurantTables extends Component
 
     public function generate(): void
     {
-        abort_unless($this->canSave, 403);
+        $this->authorizeSave();
 
         $this->validate([
             'newCount' => ['required', 'integer', 'min:1', 'max:200'],
@@ -62,10 +64,34 @@ class RestaurantTables extends Component
 
     public function toggleActive(int $tableId): void
     {
-        abort_unless($this->canSave, 403);
+        $this->authorizeSave();
 
         $table = $this->branch->restaurantTables()->findOrFail($tableId);
         $table->update(['active' => ! $table->active]);
+    }
+
+    /**
+     * canSave vem do mount e só desenha a tela; quem grava é reconferido aqui (permissão do
+     * papel e filial do gerente), sem confiar no estado que volta do navegador.
+     */
+    private function authorizeSave(): void
+    {
+        $user = auth()->user();
+
+        if ($user->isSuperAdmin()) {
+            return;
+        }
+
+        $company = app()->bound('current.company') ? app('current.company') : null;
+
+        abort_unless(
+            $this->canSave
+                && $company
+                && (int) $this->branch->company_id === (int) $company->id
+                && $user->hasPermission('branches.update', $company)
+                && $user->canAccessBranch($company, $this->branch->id),
+            403
+        );
     }
 
     public function getTablesProperty()

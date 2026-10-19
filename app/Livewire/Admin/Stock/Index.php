@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Models\Scopes\CompanyScope;
 use App\Services\Order\StockService;
 use Illuminate\Support\Facades\DB;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -37,10 +38,14 @@ class Index extends Component
 
     public int $currentQuantity = 0;
 
+    // Travados: o navegador reescrevia isSuperAdmin=true e pulava as checagens de empresa.
+    #[Locked]
     public bool $isSuperAdmin = false;
 
+    #[Locked]
     public bool $canAdjust = false;
 
+    #[Locked]
     public bool $canToggle = false;
 
     protected function rules(): array
@@ -74,9 +79,9 @@ class Index extends Component
             $this->canToggle = $user->hasPermission('stock.toggle', $company);
         }
 
-        if (app()->bound('current.branch')) {
-            // Branch manager: filtra fixo para a filial vinculada
-            $this->branchFilter = app('current.branch')->id;
+        if ($fixedBranchId = $this->scopedBranchId()) {
+            // Papel preso à filial: filtra fixo para a filial vinculada
+            $this->branchFilter = $fixedBranchId;
         } else {
             $branches = Branch::where('active', true)->get();
             if ($branches->count() === 1) {
@@ -85,9 +90,17 @@ class Index extends Component
         }
     }
 
+    /** Filial fixa de papéis presos a uma filial (não depende do middleware, que não roda nos updates). */
+    private function scopedBranchId(): ?int
+    {
+        return app()->bound('current.company')
+            ? auth()->user()->lockedBranchId(app('current.company'))
+            : null;
+    }
+
     private function currentCompanyId(): ?int
     {
-        if ($this->isSuperAdmin) {
+        if (auth()->user()->isSuperAdmin()) {
             return null;
         }
 
@@ -113,7 +126,7 @@ class Index extends Component
 
     private function checkPermission(string $permission): void
     {
-        if ($this->isSuperAdmin) {
+        if (auth()->user()->isSuperAdmin()) {
             return;
         }
 
@@ -133,7 +146,7 @@ class Index extends Component
      */
     private function assertBelongsToCurrentCompany(?int $productId = null, ?int $branchId = null): void
     {
-        if ($this->isSuperAdmin) {
+        if (auth()->user()->isSuperAdmin()) {
             return;
         }
 
@@ -150,6 +163,10 @@ class Index extends Component
 
         if ($branchId && Branch::withoutGlobalScope(CompanyScope::class)
             ->where('id', $branchId)->where('company_id', $companyId)->doesntExist()) {
+            throw new \Illuminate\Auth\Access\AuthorizationException;
+        }
+
+        if ($branchId && ($fixed = $this->scopedBranchId()) && $fixed !== $branchId) {
             throw new \Illuminate\Auth\Access\AuthorizationException;
         }
     }
@@ -217,8 +234,13 @@ class Index extends Component
     {
         // Filiais da empresa (CompanyScope aplicado automaticamente)
         // Branch manager: restringe à filial vinculada
-        $branches = app()->bound('current.branch')
-            ? Branch::where('id', app('current.branch')->id)->where('active', true)->get()
+        $fixedBranchId = $this->scopedBranchId();
+        if ($fixedBranchId) {
+            $this->branchFilter = $fixedBranchId;
+        }
+
+        $branches = $fixedBranchId
+            ? Branch::where('id', $fixedBranchId)->where('active', true)->get()
             : Branch::where('active', true)->orderBy('name')->get();
         $branchIds = $branches->pluck('id');
 

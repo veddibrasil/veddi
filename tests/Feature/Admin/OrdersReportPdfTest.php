@@ -9,6 +9,9 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
+// O PDF exige orders.report (mesma permissão da tela de relatório), que vem do PermissionSeeder.
+beforeEach(fn () => $this->seed(\Database\Seeders\PermissionSeeder::class));
+
 function reportPdfContext(): array
 {
     $company = Company::create([
@@ -84,4 +87,14 @@ test('exportar PDF de pedidos funciona normalmente com intervalo válido', funct
         ]))
         ->assertStatus(200)
         ->assertHeader('content-type', 'application/pdf');
+});
+
+test('exportar PDF de pedidos exige permissão de relatório', function () {
+    ['company' => $company] = reportPdfContext();
+    $cook = User::factory()->create();
+    $cook->companies()->attach($company->id, ['role' => 'cozinha']);
+
+    $this->actingAs($cook)
+        ->get(route('admin.orders.report.pdf', ['date_start' => now()->subDay()->toDateString(), 'date_end' => now()->toDateString()]))
+        ->assertForbidden();
 });

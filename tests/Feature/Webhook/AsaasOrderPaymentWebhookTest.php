@@ -153,3 +153,25 @@ test('asaas: pedido inexistente não lança exceção', function () {
         ],
     ]))->not->toThrow(\Throwable::class);
 });
+
+test('asaas: pagamento confirmado para pedido cancelado não reabre e inicia estorno', function () {
+    ['order' => $order, 'payment' => $payment] = asaasWebhookContext();
+    $order->update(['status' => 'cancelled']);
+
+    $this->mock(\App\Contracts\RefundServiceInterface::class)
+        ->shouldReceive('initiateRefund')->once();
+
+    dispatchAsaas('PAYMENT_CONFIRMED', asaasConfirmedPayload($payment->asaas_payment_id, $order->id));
+
+    expect($payment->fresh()->status)->toBe('paid');
+    expect($order->fresh()->status)->toBe('cancelled');
+});
+
+test('asaas: pagamento confirmado não faz pedido em preparo voltar para pago', function () {
+    ['order' => $order, 'payment' => $payment] = asaasWebhookContext();
+    $order->update(['status' => 'preparing']);
+
+    dispatchAsaas('PAYMENT_CONFIRMED', asaasConfirmedPayload($payment->asaas_payment_id, $order->id));
+
+    expect($order->fresh()->status)->toBe('preparing');
+});

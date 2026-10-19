@@ -5,12 +5,14 @@ namespace App\Livewire\Admin\Branches;
 use App\Models\Branch;
 use App\Models\BranchServiceCharge;
 use Illuminate\Support\Facades\Cache;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 class ServiceCharges extends Component
 {
     public Branch $branch;
 
+    #[Locked]
     public bool $canSave = false;
 
     public bool $service_fee_enabled = false;
@@ -78,7 +80,7 @@ class ServiceCharges extends Component
 
     public function save(): void
     {
-        abort_unless($this->canSave, 403);
+        $this->authorizeSave();
 
         if ($this->service_fee_type === 'percent' && (float) $this->service_fee_value > 100) {
             $this->addError('service_fee_value', 'Percentual não pode exceder 100%.');
@@ -111,6 +113,30 @@ class ServiceCharges extends Component
 
         session()->flash('status', 'Taxa de serviço e couvert salvos.');
         $this->redirect(route('admin.branches.service-charges', $this->branch));
+    }
+
+    /**
+     * canSave vem do mount e só desenha a tela; quem grava é reconferido aqui (permissão do
+     * papel e filial do gerente), sem confiar no estado que volta do navegador.
+     */
+    private function authorizeSave(): void
+    {
+        $user = auth()->user();
+
+        if ($user->isSuperAdmin()) {
+            return;
+        }
+
+        $company = app()->bound('current.company') ? app('current.company') : null;
+
+        abort_unless(
+            $this->canSave
+                && $company
+                && (int) $this->branch->company_id === (int) $company->id
+                && $user->hasPermission('branches.update', $company)
+                && $user->canAccessBranch($company, $this->branch->id),
+            403
+        );
     }
 
     public function render()

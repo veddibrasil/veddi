@@ -6,6 +6,7 @@ use App\Models\Branch;
 use App\Models\Company;
 use App\Models\Scopes\CompanyScope;
 use Illuminate\Support\Facades\Cache;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 class Form extends Component
@@ -22,6 +23,7 @@ class Form extends Component
 
     public ?Branch $branch = null;
 
+    #[Locked]
     public bool $isEditing = false;
 
     public string $name = '';
@@ -62,10 +64,14 @@ class Form extends Component
 
     public array $newSlotClosesAt = [0 => '', 1 => '', 2 => '', 3 => '', 4 => '', 5 => '', 6 => ''];
 
+    #[Locked]
     public bool $needsCompanySelect = false;
 
+    #[Locked]
     public bool $canSave = false;
 
+    // Sem #[Locked]: o select de empresa do super admin grava aqui. Para os demais papéis o
+    // valor é ignorado ao gravar (a filial fica sempre no tenant atual).
     public ?int $company_id = null;
 
     protected function rules(): array
@@ -134,7 +140,7 @@ class Form extends Component
 
     public function save(): void
     {
-        abort_unless($this->canSave, 403);
+        abort_unless($this->canSave && $this->userCanSave(), 403);
 
         $validated = $this->validate($this->rules(), $this->messages());
         $validated['available_days'] = array_map('intval', $validated['available_days']);
@@ -223,6 +229,34 @@ class Form extends Component
             $this->canSave = false;
             session()->flash('error', 'Limite de filiais do plano atual atingido. Faça upgrade de plano para criar mais filiais.');
         }
+    }
+
+    /**
+     * Refaz no servidor a checagem do mount: permissão do papel e, na criação, o limite de
+     * filiais do plano (conta também filiais criadas depois de a tela abrir).
+     */
+    private function userCanSave(): bool
+    {
+        $user = auth()->user();
+
+        if ($user->isSuperAdmin()) {
+            return true;
+        }
+
+        $company = app()->bound('current.company') ? app('current.company') : $user->companies()->first();
+
+        if (! $company) {
+            return false;
+        }
+
+        if ($this->isEditing) {
+            return $user->hasPermission('branches.update', $company)
+                && (int) $this->branch?->company_id === (int) $company->id
+                && $user->canAccessBranch($company, $this->branch->id);
+        }
+
+        return $user->hasPermission('branches.create', $company)
+            && $company->branches()->count() < $company->maxBranches();
     }
 
     private function fillFromBranch(Branch $branch): void
@@ -335,7 +369,7 @@ class Form extends Component
     {
         $data = collect($validated)->except('company_id')->toArray();
 
-        if ($this->needsCompanySelect && $this->company_id) {
+        if (auth()->user()->isSuperAdmin() && $this->company_id) {
             $data['company_id'] = $this->company_id;
         }
 
@@ -349,7 +383,7 @@ class Form extends Component
     {
         $data = collect($validated)->except('company_id')->toArray();
 
-        if ($this->needsCompanySelect) {
+        if (auth()->user()->isSuperAdmin()) {
             $data['company_id'] = $this->company_id;
 
             return Branch::withoutGlobalScope(CompanyScope::class)->create($data);

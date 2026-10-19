@@ -103,6 +103,27 @@ class User extends Authenticatable
     }
 
     /**
+     * Papel preso a uma filial só enxerga registros dela — mesma regra do filtro de
+     * Orders/Index (sem filial vinculada no pivot, não restringe).
+     */
+    public function canAccessBranch(Company $company, ?int $branchId): bool
+    {
+        $ownBranchId = $this->lockedBranchId($company);
+
+        return $ownBranchId === null || $ownBranchId === $branchId;
+    }
+
+    /** Filial fixa do papel preso a uma filial; null quando o usuário vê todas. */
+    public function lockedBranchId(Company $company): ?int
+    {
+        if ($this->isSuperAdmin() || ! $this->isBranchScoped($company)) {
+            return null;
+        }
+
+        return $this->branchIdForCompany($company);
+    }
+
+    /**
      * Nome da rota pra onde o usuário deve ser levado após login/acesso à raiz.
      * Papéis operacionais sem dashboard (garcom, entrega, cozinha, bar) vão direto
      * pra própria tela de trabalho; os demais caem no dashboard.

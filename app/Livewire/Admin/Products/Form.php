@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -27,14 +28,20 @@ class Form extends Component
 
     public ?Product $product = null;
 
+    #[Locked]
     public bool $isEditing = false;
 
+    #[Locked]
     public bool $isSuperAdmin = false;
 
+    #[Locked]
     public bool $canSave = false;
 
+    // Sem #[Locked]: o select de empresa do super admin grava aqui. Para os demais papéis o
+    // valor é ignorado; o escopo vem de targetCompanyId().
     public ?int $company_id = null;
 
+    #[Locked]
     public ?int $branchManagerBranchId = null; // null = não é branch_manager
 
     public int $product_category_id = 0;
@@ -95,7 +102,7 @@ class Form extends Component
     {
         return [
             'company_id' => $this->isSuperAdmin ? ['required', 'integer', 'exists:companies,id'] : ['nullable'],
-            'product_category_id' => ['required', 'integer', 'exists:product_categories,id'],
+            'product_category_id' => ['required', 'integer', Rule::exists('product_categories', 'id')->where('company_id', $this->targetCompanyId())],
             'name' => ['required', 'string', $this->appliesIfoodRules() ? 'max:100' : 'max:150'],
             'description' => ['nullable', 'string', 'max:5000'],
             'price' => $this->isVariant ? ['nullable', 'numeric', 'min:0'] : ['required', 'numeric', 'min:0.01'],
@@ -110,7 +117,7 @@ class Form extends Component
             'image' => ['nullable', 'image', 'max:2048', ...($this->appliesIfoodRules() ? ['mimes:jpg,jpeg,png'] : [])],
             'selectedBranches' => ['array'],
             'selectedBranches.*' => [
-                Rule::exists('branches', 'id')->where(fn ($q) => $q->where('company_id', $this->company_id)),
+                Rule::exists('branches', 'id')->where('company_id', $this->targetCompanyId()),
             ],
             'optionGroups' => ['array'],
             'optionGroups.*.name' => ['required_with:optionGroups.*', 'string', 'max:150'],
@@ -200,6 +207,19 @@ class Form extends Component
             ->all();
     }
 
+    /**
+     * Empresa dona do cadastro. Só o super admin escolhe (select em company_id); para os demais
+     * vale o tenant da requisição, porque company_id é prop pública e o navegador a reescreve.
+     */
+    private function targetCompanyId(): ?int
+    {
+        if (auth()->user()->isSuperAdmin()) {
+            return $this->company_id;
+        }
+
+        return app()->bound('current.company') ? app('current.company')->id : null;
+    }
+
     private function appliesIfoodRules(): bool
     {
         return $this->available_in_ifood && $this->ifoodEnabled;
@@ -221,7 +241,7 @@ class Form extends Component
         }
 
         if (! $this->isSuperAdmin) {
-            $this->company_id = $user->companies()->first()?->id;
+            $this->company_id = $this->targetCompanyId();
         }
 
         if (app()->bound('current.branch')) {
@@ -329,10 +349,8 @@ class Form extends Component
 
         $data = ['name' => $this->newCategoryName, 'active' => true];
 
-        if ($this->isSuperAdmin && $this->company_id) {
-            $data['company_id'] = $this->company_id;
-        } elseif (! $this->isSuperAdmin) {
-            $data['company_id'] = $this->company_id;
+        if ($companyId = $this->targetCompanyId()) {
+            $data['company_id'] = $companyId;
         }
 
         $category = ProductCategory::withoutGlobalScope(CompanyScope::class)->create($data);
@@ -369,7 +387,8 @@ class Form extends Component
             return;
         }
 
-        $group = ProductOptionGroup::with('options')->find($groupId);
+        // Grupo não tem CompanyScope: sem o filtro, o id digitado anexava grupo de outra empresa.
+        $group = ProductOptionGroup::with('options')->where('company_id', $this->targetCompanyId())->find($groupId);
         if (! $group) {
             return;
         }
@@ -427,7 +446,7 @@ class Form extends Component
             return;
         }
 
-        $query = $this->isSuperAdmin
+        $query = auth()->user()->isSuperAdmin()
             ? Product::withoutGlobalScope(CompanyScope::class)->where('company_id', $this->company_id)
             : Product::query();
 
@@ -671,6 +690,7 @@ class Form extends Component
         }
 
         $isVariantProduct = $this->isVariant;
+        $branchIds = $this->branchIdsToSync();
 
         $data = [
             'product_category_id' => $validated['product_category_id'],
@@ -703,8 +723,10 @@ class Form extends Component
             }
         }
 
+        $isSuperAdmin = auth()->user()->isSuperAdmin();
+
         if ($this->isEditing) {
-            if ($this->isSuperAdmin && $this->company_id) {
+            if ($isSuperAdmin && $this->company_id) {
                 $data['company_id'] = $this->company_id;
             }
             Product::withoutGlobalScope(CompanyScope::class)
@@ -714,7 +736,7 @@ class Form extends Component
 
             session()->flash('status', 'Produto atualizado.');
         } else {
-            if ($this->isSuperAdmin) {
+            if ($isSuperAdmin) {
                 $data['company_id'] = $this->company_id;
                 $product = Product::withoutGlobalScope(CompanyScope::class)->create($data);
             } else {
@@ -731,7 +753,7 @@ class Form extends Component
                 ->get()
                 ->keyBy('branch_id');
 
-            foreach ($this->selectedBranches as $branchId) {
+            foreach ($branchIds as $branchId) {
                 $existing = $existingPivots->get($branchId);
                 $branchSync[$branchId] = [
                     'available' => $existing?->available ?? true,
@@ -742,7 +764,7 @@ class Form extends Component
 
             }
         } else {
-            foreach ($this->selectedBranches as $branchId) {
+            foreach ($branchIds as $branchId) {
                 $branchSync[$branchId] = [
                     'available' => true,
                     'track_stock' => $this->trackStock,
@@ -768,7 +790,9 @@ class Form extends Component
 
         foreach ($this->optionGroups as $i => $groupData) {
             if ($groupData['group_id']) {
-                $group = ProductOptionGroup::find($groupData['group_id']);
+                // group_id vem do navegador e o modelo não tem CompanyScope: sem o filtro, o
+                // formulário editava (e limpava as opções de) grupo de outra empresa.
+                $group = ProductOptionGroup::where('company_id', $companyId)->find($groupData['group_id']);
                 if (! $group) {
                     continue;
                 }
@@ -777,10 +801,13 @@ class Form extends Component
             }
 
             $groupKey = $groupData['key'];
-            $groupImagePath = $groupData['image_path'] ?? null;
+            $storedGroupImage = $group->exists ? $group->image_path : null;
+            // O navegador só mantém ou limpa a imagem gravada; caminho mandado por ele nunca chega
+            // ao S3 (apagaria logo/foto de qualquer empresa).
+            $groupImagePath = filled($groupData['image_path'] ?? null) ? $storedGroupImage : null;
             if (! empty($this->groupImages[$groupKey])) {
-                if ($groupImagePath) {
-                    Storage::disk('s3')->delete($groupImagePath);
+                if ($this->ownsUploadedImage($storedGroupImage, 'product-option-groups/')) {
+                    Storage::disk('s3')->delete($storedGroupImage);
                 }
                 $stored = $this->groupImages[$groupKey]->store('product-option-groups', 's3');
                 if ($stored !== false) {
@@ -814,18 +841,21 @@ class Form extends Component
                 ->delete();
 
             foreach ($groupData['options'] as $optData) {
-                $option = $optData['id']
-                    ? (ProductOption::find($optData['id']) ?? new ProductOption(['product_option_group_id' => $group->id]))
-                    : new ProductOption(['product_option_group_id' => $group->id]);
+                // Só opção do próprio grupo (já validado acima); id de outro grupo vira opção nova.
+                $option = ($optData['id'] ? ProductOption::where('product_option_group_id', $group->id)->find($optData['id']) : null)
+                    ?? new ProductOption(['product_option_group_id' => $group->id]);
 
                 $groupFixed = (bool) ($groupData['fixed'] ?? false);
                 $isVariantPriceGroup = $this->isVariant && $i === 0;
 
                 $optImageKey = $groupKey.'_'.$optData['key'];
-                $optImagePath = $optData['image_path'] ?? null;
+                $storedOptImage = $option->exists ? $option->image_path : null;
+                $optImagePath = filled($optData['image_path'] ?? null)
+                    ? ($option->exists ? $storedOptImage : $this->importedProductImage($optData, $companyId))
+                    : null;
                 if (! empty($this->optionImages[$optImageKey])) {
-                    if ($optImagePath) {
-                        Storage::disk('s3')->delete($optImagePath);
+                    if ($this->ownsUploadedImage($storedOptImage, 'product-option-images/')) {
+                        Storage::disk('s3')->delete($storedOptImage);
                     }
                     $stored = $this->optionImages[$optImageKey]->store('product-option-images', 's3');
                     if ($stored !== false) {
@@ -849,7 +879,7 @@ class Form extends Component
         // Define estoque inicial para produtos novos
         if (! $this->isEditing && $this->trackStock && (int) $this->initialQuantity > 0) {
             $service = app(StockService::class);
-            foreach ($this->selectedBranches as $branchId) {
+            foreach ($branchIds as $branchId) {
                 $branch = Branch::withoutGlobalScope(CompanyScope::class)->find($branchId);
                 if ($branch) {
                     $service->setQuantity($branch, $product, (int) $this->initialQuantity, 'Estoque inicial', auth()->user());
@@ -875,6 +905,58 @@ class Form extends Component
         }
 
         $this->redirect(route('admin.products.index'));
+    }
+
+    /**
+     * Filiais a gravar. Papel preso à filial (gerente) só marca/desmarca a própria: as demais
+     * ficam como já estavam no produto, qualquer que seja a lista mandada pelo navegador.
+     *
+     * @return array<int, int>
+     */
+    private function branchIdsToSync(): array
+    {
+        $selected = collect($this->selectedBranches)->map(fn ($id) => (int) $id);
+        $user = auth()->user();
+
+        if ($user->isSuperAdmin() || ! app()->bound('current.company')) {
+            return $selected->unique()->values()->all();
+        }
+
+        $company = app('current.company');
+        $current = $this->isEditing
+            ? $this->product->branches()->pluck('branches.id')->map(fn ($id) => (int) $id)
+            : collect();
+
+        return $selected->filter(fn ($id) => $user->canAccessBranch($company, $id))
+            ->merge($current->reject(fn ($id) => $user->canAccessBranch($company, $id)))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Opção nova importada de um produto herda a foto dele (mesma empresa). Qualquer outro
+     * caminho vindo do navegador é descartado.
+     */
+    private function importedProductImage(array $optData, ?int $companyId): ?string
+    {
+        $path = $optData['image_path'] ?? null;
+
+        // Aceita só a foto de um produto da própria empresa (inclusive depois de desvincular a
+        // opção do produto de origem); qualquer outro caminho vindo do navegador é descartado.
+        return $path && Product::withoutGlobalScope(CompanyScope::class)
+            ->where('company_id', $companyId)
+            ->where('image_path', $path)
+            ->exists() ? $path : null;
+    }
+
+    /**
+     * Só apaga do S3 arquivo que este formulário enviou: opção importada aponta para a foto do
+     * produto de origem, que continua em uso.
+     */
+    private function ownsUploadedImage(?string $path, string $prefix): bool
+    {
+        return $path !== null && str_starts_with($path, $prefix);
     }
 
     /**
@@ -935,7 +1017,7 @@ class Form extends Component
             $companies = collect();
 
             $availableGroups = ProductOptionGroup::withoutGlobalScope(CompanyScope::class)
-                ->where('company_id', $this->company_id)
+                ->where('company_id', $this->targetCompanyId())
                 ->withCount('options')
                 ->orderBy('name')
                 ->get();

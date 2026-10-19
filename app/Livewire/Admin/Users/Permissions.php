@@ -20,8 +20,18 @@ class Permissions extends Component
 
     public function mount(User $user): void
     {
+        // O binding de {user} não tem escopo de empresa: sem esta checagem, qualquer admin
+        // abria (e gravava overrides para) usuários de outras empresas e o super admin.
+        abort_unless($user->companies()->whereKey(app('current.company')->id)->exists(), 404);
+        $this->authorizeManage();
+
         $this->user = $user;
         $this->loadOverrides();
+    }
+
+    private function authorizeManage(): void
+    {
+        abort_unless(auth()->user()->hasPermission('users.manage', app('current.company')), 403);
     }
 
     private function loadOverrides(): void
@@ -41,6 +51,7 @@ class Permissions extends Component
 
     public function save(): void
     {
+        $this->authorizeManage();
         $company = app('current.company');
 
         foreach ($this->overrides as $permKey => $value) {

@@ -2,6 +2,7 @@
 
 namespace App\Livewire\SuperAdmin\Users;
 
+use App\Livewire\SuperAdmin\Concerns\RequiresSuperAdmin;
 use App\Models\Company;
 use App\Models\Scopes\CompanyScope;
 use App\Models\User;
@@ -12,6 +13,7 @@ use Livewire\WithPagination;
 
 class Index extends Component
 {
+    use RequiresSuperAdmin;
     use WithPagination;
 
     public string $search = '';

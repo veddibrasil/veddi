@@ -2,6 +2,7 @@
 
 namespace App\Livewire\SuperAdmin\Companies;
 
+use App\Livewire\SuperAdmin\Concerns\RequiresSuperAdmin;
 use App\Models\Company;
 use App\Models\Scopes\CompanyScope;
 use App\Services\SuperAdmin\AuditLog;
@@ -10,6 +11,7 @@ use Livewire\WithPagination;
 
 class Index extends Component
 {
+    use RequiresSuperAdmin;
     use WithPagination;
 
     public string $search = '';

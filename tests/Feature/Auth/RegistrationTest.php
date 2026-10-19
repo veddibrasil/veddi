@@ -1,23 +1,31 @@
 <?php
 
+use App\Models\User;
+use Illuminate\Support\Facades\Route;
+
 uses(\Illuminate\Foundation\Testing\RefreshDatabase::class);
 
-test('registration screen can be rendered', function () {
-    $response = $this->get(route('register'));
+// O auto-cadastro do Fortify (/admin/register) foi desligado: criava conta sem empresa.
+// O cadastro oficial é /cadastro (Onboarding\RegisterForm), coberto em tests/Feature/Onboarding.
 
-    $response->assertOk();
+test('auto-cadastro do Fortify não está registrado', function () {
+    expect(Route::has('register'))->toBeFalse();
+
+    $this->get('/admin/register')->assertNotFound();
 });
 
-test('new users can register', function () {
-    $response = $this->post(route('register.store'), [
+test('POST /admin/register não cria usuário', function () {
+    $this->post('/admin/register', [
         'name' => 'John Doe',
         'email' => 'test@example.com',
         'password' => 'password',
         'password_confirmation' => 'password',
     ]);
 
-    $response->assertSessionHasNoErrors()
-        ->assertRedirect(route('admin.dashboard', absolute: false));
+    expect(User::where('email', 'test@example.com')->exists())->toBeFalse();
+    $this->assertGuest();
+});
 
-    $this->assertAuthenticated();
+test('tela de cadastro oficial (/cadastro) pode ser renderizada', function () {
+    $this->get(route('register.create'))->assertOk();
 });

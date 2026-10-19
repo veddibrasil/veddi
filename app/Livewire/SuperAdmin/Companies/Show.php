@@ -2,6 +2,7 @@
 
 namespace App\Livewire\SuperAdmin\Companies;
 
+use App\Livewire\SuperAdmin\Concerns\RequiresSuperAdmin;
 use App\Models\Company;
 use App\Models\Order;
 use App\Services\Finance\BalanceService;
@@ -11,6 +12,8 @@ use Livewire\Component;
 
 class Show extends Component
 {
+    use RequiresSuperAdmin;
+
     public Company $company;
 
     public function mount(Company $company): void

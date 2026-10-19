@@ -6,11 +6,14 @@ use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
+use Laravel\Fortify\Contracts\FailedPasswordResetLinkRequestResponse;
 use Laravel\Fortify\Contracts\LoginResponse;
 use Laravel\Fortify\Contracts\LogoutResponse;
+use Laravel\Fortify\Contracts\SuccessfulPasswordResetLinkRequestResponse;
 use Laravel\Fortify\Fortify;
 
 class FortifyServiceProvider extends ServiceProvider
@@ -38,6 +41,18 @@ class FortifyServiceProvider extends ServiceProvider
             public function toResponse($request)
             {
                 return redirect('/admin/login');
+            }
+        });
+
+        // "Esqueci a senha" responde igual para e-mail com ou sem conta (e para o
+        // throttle do broker, que só acontece com conta existente): a mensagem de
+        // erro do Fortify revelava quais e-mails estão cadastrados.
+        $this->app->bind(FailedPasswordResetLinkRequestResponse::class, fn () => new class implements FailedPasswordResetLinkRequestResponse
+        {
+            public function toResponse($request)
+            {
+                return app(SuccessfulPasswordResetLinkRequestResponse::class, ['status' => Password::RESET_LINK_SENT])
+                    ->toResponse($request);
             }
         });
     }
@@ -88,6 +103,17 @@ class FortifyServiceProvider extends ServiceProvider
             $throttleKey = Str::transliterate(Str::lower($request->input(Fortify::username())).'|'.$request->ip());
 
             return Limit::perMinute(5)->by($throttleKey);
+        });
+
+        // Aplicado a todas as rotas do Fortify (config/fortify.php 'middleware'), mas só
+        // limita o pedido de link de redefinição: sem isso dava para disparar e-mails
+        // e sondar contas sem limite.
+        RateLimiter::for('fortify-routes', function (Request $request) {
+            if ($request->isMethod('post') && $request->routeIs('password.email')) {
+                return Limit::perMinute(6)->by('password-email|'.$request->ip());
+            }
+
+            return Limit::none();
         });
     }
 }

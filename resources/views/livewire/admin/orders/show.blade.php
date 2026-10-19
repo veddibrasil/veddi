@@ -579,8 +579,8 @@
 
             {{-- Swap item modal --}}
             @if ($swappingItem)
-                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                    <div class="bg-white dark:bg-zinc-800 border dark:border-zinc-700 rounded-2xl shadow-xl w-full max-w-2xl mx-4 overflow-hidden">
+                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 py-4">
+                    <div class="bg-white dark:bg-zinc-800 border dark:border-zinc-700 rounded-2xl shadow-xl w-full max-w-2xl mx-4 max-h-full overflow-y-auto">
                         <div class="flex items-center justify-between px-5 py-4 border-b dark:border-zinc-700">
                             <div>
                                 <p class="font-semibold text-neutral-800 dark:text-neutral-100">Trocar item/opções</p>

@@ -3,14 +3,25 @@
 namespace App\Services\Html;
 
 use DOMAttr;
-use DOMComment;
+use DOMCdataSection;
 use DOMDocument;
 use DOMElement;
 use DOMNode;
+use DOMText;
 
 class DescriptionSanitizer
 {
     private const ALLOWED_TAGS = ['b', 'strong', 'i', 'em', 'u', 'br', 'p', 'ul', 'ol', 'li', 'span', 'small', 'a'];
+
+    /**
+     * Tags descartadas junto com o conteúdo: o texto delas é código ou
+     * markup bruto (o navegador não o trata como texto comum), então
+     * promovê-lo ao desembrulhar só exibiria lixo ou reabriria o vetor.
+     */
+    private const DROPPED_WITH_CONTENT_TAGS = [
+        'script', 'style', 'template', 'noscript', 'iframe', 'object', 'embed',
+        'textarea', 'title', 'xmp', 'noembed', 'noframes', 'plaintext', 'head',
+    ];
 
     private const ALLOWED_ATTRIBUTES = [
         'a' => ['href'],
@@ -56,32 +67,42 @@ class DescriptionSanitizer
 
     private static function sanitizeChildren(DOMNode $node): void
     {
-        foreach (iterator_to_array($node->childNodes) as $child) {
-            if ($child instanceof DOMComment) {
-                $node->removeChild($child);
+        // Percorre a lista viva de filhos (firstChild/nextSibling) em vez de
+        // um snapshot: ao desembrulhar uma tag não permitida, os filhos
+        // promovidos passam a ser os próximos visitados e também são
+        // sanitizados. Com o snapshot, `<font><img onerror=...></font>`
+        // promovia o <img> sem nunca passar pela allowlist.
+        $child = $node->firstChild;
 
-                continue;
-            }
+        while ($child !== null) {
+            $next = $child->nextSibling;
 
-            if (! $child instanceof DOMElement) {
-                continue;
-            }
+            if ($child instanceof DOMElement) {
+                $tag = strtolower($child->tagName);
 
-            $tag = strtolower($child->tagName);
+                if (in_array($tag, self::DROPPED_WITH_CONTENT_TAGS, true)) {
+                    $node->removeChild($child);
+                } elseif (! in_array($tag, self::ALLOWED_TAGS, true)) {
+                    // Remove a tag mas preserva o conteúdo (mesmo comportamento
+                    // do strip_tags original); o laço continua pelo primeiro
+                    // filho promovido.
+                    $next = $child->firstChild ?? $next;
 
-            if (! in_array($tag, self::ALLOWED_TAGS, true)) {
-                // Remove a tag mas preserva o conteúdo (mesmo comportamento do
-                // strip_tags original), depois ainda sanitiza o que sobrou.
-                while ($child->firstChild) {
-                    $node->insertBefore($child->firstChild, $child);
+                    while ($child->firstChild) {
+                        $node->insertBefore($child->firstChild, $child);
+                    }
+                    $node->removeChild($child);
+                } else {
+                    self::sanitizeAttributes($child, $tag);
+                    self::sanitizeChildren($child);
                 }
+            } elseif (! $child instanceof DOMText || $child instanceof DOMCdataSection) {
+                // Comentário, CDATA, processing instruction etc.: o
+                // serializador devolve esses nós sem escape.
                 $node->removeChild($child);
-
-                continue;
             }
 
-            self::sanitizeAttributes($child, $tag);
-            self::sanitizeChildren($child);
+            $child = $next;
         }
     }
 

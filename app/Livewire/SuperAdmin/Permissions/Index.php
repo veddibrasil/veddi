@@ -2,6 +2,7 @@
 
 namespace App\Livewire\SuperAdmin\Permissions;
 
+use App\Livewire\SuperAdmin\Concerns\RequiresSuperAdmin;
 use App\Models\Permission;
 use App\Models\Role;
 use Livewire\Attributes\Layout;
@@ -10,6 +11,8 @@ use Livewire\Component;
 #[Layout('layouts.app')]
 class Index extends Component
 {
+    use RequiresSuperAdmin;
+
     public array $rolePermissions = [];
 
     public function mount(): void

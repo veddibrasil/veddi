@@ -50,8 +50,8 @@
     </div>
 
     {{-- Tabela --}}
-    <div class="bg-white border rounded-xl shadow-sm overflow-hidden dark:bg-zinc-800 dark:border-zinc-700">
-        <div class="grid grid-cols-12 px-4 py-2 border-b bg-neutral-50 dark:bg-zinc-700/50 dark:border-zinc-700 text-xs font-medium text-neutral-400 uppercase tracking-wide">
+    <div class="bg-white border rounded-xl shadow-sm overflow-x-auto dark:bg-zinc-800 dark:border-zinc-700">
+        <div class="grid min-w-[640px] grid-cols-12 px-4 py-2 border-b bg-neutral-50 dark:bg-zinc-700/50 dark:border-zinc-700 text-xs font-medium text-neutral-400 uppercase tracking-wide">
             <div class="col-span-4">Produto</div>
             <div class="col-span-2 text-center">Rastrear</div>
             <div class="col-span-2 text-center">Quantidade</div>
@@ -66,13 +66,13 @@
                     $isLow = $item->track_stock && $item->quantity <= $item->min_quantity && $item->quantity > 0;
                     $isEmpty = $item->track_stock && $item->quantity === 0;
                 @endphp
-                <div class="grid grid-cols-12 items-center px-4 py-3 @if($isLow) bg-amber-50 dark:bg-amber-900/10 @elseif($isEmpty) bg-red-50 dark:bg-red-900/10 @endif">
+                <div class="grid min-w-[640px] grid-cols-12 items-center px-4 py-3 @if($isLow) bg-amber-50 dark:bg-amber-900/10 @elseif($isEmpty) bg-red-50 dark:bg-red-900/10 @endif">
                     {{-- Produto --}}
                     <div class="col-span-4">
                         <p class="font-semibold text-sm text-neutral-800 dark:text-neutral-100">{{ $item->product_name }}</p>
                         <p class="text-xs text-neutral-400 dark:text-neutral-500">{{ $item->category_name }}</p>
                         @if (! $branchFilter)
-                            <p class="text-xs text-amber-600 dark:text-amber-400">Filial #{{ $item->branch_id }}</p>
+                            <p class="text-xs text-amber-600 dark:text-amber-400">{{ $branches->firstWhere('id', $item->branch_id)?->name ?? 'Filial #'.$item->branch_id }}</p>
                         @endif
                     </div>
 

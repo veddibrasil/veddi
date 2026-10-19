@@ -161,8 +161,15 @@ class ProcessAsaasWebhook implements ShouldBeUnique, ShouldQueue
                     'idempotency_key' => $idempotencyKey,
                 ]);
 
-                $newStatus = ($order->scheduled_at && $order->scheduled_at->isFuture()) ? 'scheduled' : 'paid';
-                $order->update(['status' => $newStatus]);
+                // Mesma regra do webhook Vindi: pedido cancelado/estornado não reabre (o valor é
+                // registrado e estornado abaixo) e pedido que já avançou mantém a etapa.
+                $order = Order::whereKey($orderId)->lockForUpdate()->first();
+                $closed = in_array($order->status, ['cancelled', 'refunded'], true);
+
+                if (in_array($order->status, ['pending', 'awaiting_payment'], true)) {
+                    $newStatus = ($order->scheduled_at && $order->scheduled_at->isFuture()) ? 'scheduled' : 'paid';
+                    $order->update(['status' => $newStatus]);
+                }
 
                 Log::channel('payments')->info('Pagamento de pedido confirmado via Asaas', [
                     'order_id' => $orderId,
@@ -172,6 +179,10 @@ class ProcessAsaasWebhook implements ShouldBeUnique, ShouldQueue
 
                 app(WalletServiceInterface::class)->creditForOrder($order, $payment);
                 app(TransactionServiceInterface::class)->createForPayment($order, $payment);
+
+                if ($closed) {
+                    app(\App\Services\Order\OrderService::class)->refundPaymentForClosedOrder($order, $payment, 'asaas_webhook');
+                }
             });
         } catch (\Illuminate\Database\UniqueConstraintViolationException) {
             Log::channel('webhook')->info('Asaas webhook: duplicado ignorado via idempotency_key', [

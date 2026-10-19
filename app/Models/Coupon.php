@@ -6,6 +6,7 @@ use App\Models\Concerns\BelongsToCompany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Query\Builder;
 
 class Coupon extends Model
 {
@@ -38,6 +39,21 @@ class Coupon extends Model
         return $this->hasMany(CouponUsage::class);
     }
 
+    /**
+     * Usos que contam para os limites (max_uses / max_uses_per_customer). Pedido cancelado ou
+     * estornado devolve o uso: o registro fica para histórico, mas sem isto o cliente que troca a
+     * forma de pagamento no chat (ou tem o pedido cancelado) perdia o cupom. Vale para todo
+     * caminho de cancelamento (chat, admin, PDV, iFood, sistema) sem cada um ter de apagar o uso.
+     */
+    public function countedUsages(): HasMany
+    {
+        return $this->usages()->whereNotExists(fn (Builder $orders) => $orders
+            ->selectRaw('1')
+            ->from('orders')
+            ->whereColumn('orders.id', 'coupon_usages.order_id')
+            ->whereIn('orders.status', ['cancelled', 'refunded']));
+    }
+
     public function isExpired(): bool
     {
         if ($this->starts_at && now()->lt($this->starts_at)) {
@@ -53,7 +69,7 @@ class Coupon extends Model
             return false;
         }
 
-        return $this->usages()->count() >= $this->max_uses;
+        return $this->countedUsages()->count() >= $this->max_uses;
     }
 
     public function hasReachedMaxUsesForCustomer(int $customerId): bool
@@ -62,7 +78,7 @@ class Coupon extends Model
             return false;
         }
 
-        return $this->usages()->where('customer_id', $customerId)->count() >= $this->max_uses_per_customer;
+        return $this->countedUsages()->where('customer_id', $customerId)->count() >= $this->max_uses_per_customer;
     }
 
     public function allowsPaymentMethod(string $paymentMethod): bool

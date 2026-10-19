@@ -6,6 +6,7 @@ use App\Models\Branch;
 use App\Models\Order;
 use App\Models\PdvCashSession;
 use Illuminate\Support\Facades\DB;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -20,8 +21,10 @@ class Report extends Component
     public string $branchFilter = '';
 
     /** Caixa só vê a própria filial e não vê os totais financeiros (PDV, dinheiro, PIX, cartão, descontos). */
+    #[Locked]
     public bool $isCaixa = false;
 
+    #[Locked]
     public ?int $ownBranchId = null;
 
     public function mount(): void
