@@ -72,27 +72,38 @@ class FiscalWebhookController extends Controller
         };
 
         if ($status) {
-            $configuredEnvironment = $config?->environment ?: config('fiscal.environment');
-            $effectiveEnvironment = FiscalNoteService::resolveEffectiveEnvironment($configuredEnvironment);
-            $baseUrl = FiscalNoteService::resolveBaseUrl($effectiveEnvironment);
+            \Illuminate\Support\Facades\DB::transaction(function () use ($note, $data, $status, $config) {
+                $note = FiscalNote::withoutGlobalScopes()->lockForUpdate()->findOrFail($note->id);
+                if ($note->status === 'cancelled' || ($note->status === 'authorized' && $status !== 'cancelled')) {
+                    return;
+                }
+                $configuredEnvironment = $note->environment ?: $config?->environment ?: config('fiscal.environment');
+                $effectiveEnvironment = FiscalNoteService::resolveEffectiveEnvironment($configuredEnvironment);
+                $baseUrl = FiscalNoteService::resolveBaseUrl($effectiveEnvironment);
 
-            $existing = $note->data ?? [];
-            $existing['danfe_url'] = FocusNfeService::absoluteUrl($data['caminho_danfe'] ?? null, $baseUrl) ?? $existing['danfe_url'] ?? null;
-            $existing['xml_url'] = FocusNfeService::absoluteUrl($data['caminho_xml_nota_fiscal'] ?? null, $baseUrl) ?? $existing['xml_url'] ?? null;
-            $existing['error_message'] = $data['mensagem_sefaz'] ?? $existing['error_message'] ?? null;
-            $existing['raw_response'] = $data;
+                $existing = $note->data ?? [];
+                $existing['danfe_url'] = FocusNfeService::absoluteUrl($data['caminho_danfe'] ?? null, $baseUrl) ?? $existing['danfe_url'] ?? null;
+                $existing['xml_url'] = FocusNfeService::absoluteUrl($data['caminho_xml_nota_fiscal'] ?? null, $baseUrl) ?? $existing['xml_url'] ?? null;
+                $existing['error_message'] = $data['mensagem_sefaz'] ?? $existing['error_message'] ?? null;
+                $existing['raw_response'] = $data;
 
-            $note->update([
-                'status' => $status,
-                'access_key' => $data['chave_nfe'] ?? $note->access_key,
-                'data' => $existing,
-            ]);
+                $note->update([
+                    'status' => $status,
+                    'access_key' => $data['chave_nfe'] ?? $note->access_key,
+                    'number' => $data['numero'] ?? $note->number,
+                    'protocol' => $data['protocolo'] ?? $note->protocol,
+                    'data' => $existing,
+                ]);
 
-            Log::channel('fiscal')->info('Focus NFe webhook: status da nota atualizado', [
-                'fiscal_note_id' => $note->id,
-                'order_id' => $note->order_id,
-                'status' => $status,
-            ]);
+                \App\Models\Order::withoutGlobalScopes()->where('company_id', $note->company_id)->whereKey($note->order_id)
+                    ->update(['fiscal_error' => $status === 'rejected' ? ($data['mensagem_sefaz'] ?? 'Nota rejeitada pela SEFAZ.') : null]);
+
+                Log::channel('fiscal')->info('Focus NFe webhook: status da nota atualizado', [
+                    'fiscal_note_id' => $note->id,
+                    'order_id' => $note->order_id,
+                    'status' => $status,
+                ]);
+            });
         } else {
             Log::channel('fiscal')->warning('Focus NFe webhook: status não mapeado', [
                 'fiscal_note_id' => $note->id,

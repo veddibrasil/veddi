@@ -140,3 +140,5 @@ Schedule::call(function () {
         \Illuminate\Support\Facades\DB::table($table)->where('expires_at', '<', now()->subDay())->delete();
     }
 })->name('chat-security-prune')->daily()->withoutOverlapping()->onOneServer();
+
+Schedule::job(new \App\Jobs\ArchiveFiscalDocuments)->hourly()->withoutOverlapping()->onOneServer();

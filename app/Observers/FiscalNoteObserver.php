@@ -3,6 +3,7 @@
 namespace App\Observers;
 
 use App\Events\FiscalNoteAuthorized;
+use App\Events\FiscalNoteFailed;
 use App\Models\FiscalNote;
 
 class FiscalNoteObserver
@@ -14,8 +15,18 @@ class FiscalNoteObserver
      */
     public function updated(FiscalNote $note): void
     {
-        if ($note->wasChanged('status') && $note->status === 'authorized') {
+        if (! $note->wasChanged('status')) {
+            return;
+        }
+
+        if ($note->status === 'authorized') {
             FiscalNoteAuthorized::dispatch($note);
+        }
+
+        // Rejeição/erro devolvido pela Focus (síncrono ou via webhook) — o job não falha
+        // nesse caso, então é aqui que o PDV fica sabendo que não vai ter o que imprimir.
+        if (in_array($note->status, ['rejected', 'error'], true) && $note->order_id) {
+            FiscalNoteFailed::dispatch($note->order_id, $note->error_message);
         }
     }
 }

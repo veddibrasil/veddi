@@ -1082,6 +1082,10 @@
                         <p class="sub-title">O que é</p>
                         <p class="text-sm text-zinc-600">Emissão de Nota Fiscal de Consumidor Eletrônica (NFC-e) para os pedidos, integrada com a Focus NFe. Quem visualiza precisa da permissão <code class="text-purple-700 font-normal">fiscal.view</code>; quem emite ou cancela precisa de <code class="text-purple-700 font-normal">fiscal.issue</code>; quem configura precisa de <code class="text-purple-700 font-normal">fiscal.settings</code>.</p>
                     </div>
+                    <div class="info-box">
+                        <p class="sub-title">Quando a nota é emitida</p>
+                        <p class="text-sm text-zinc-600">A nota não é emitida automaticamente. No PDV, marque <strong>Emitir e imprimir nota fiscal</strong> antes de confirmar o pagamento: a nota é emitida e impressa assim que autorizada. Logo abaixo informe o <strong>CPF/CNPJ na nota</strong> (opcional); com CNPJ, razão social e endereço da empresa são buscados automaticamente para você conferir. Os demais pedidos pagos (sem a marcação, chat, iFood, agendados) ficam em <span class="font-mono text-purple-700 text-xs">/admin/fiscal/controle</span> (Controle de notas), onde você filtra, seleciona quantos quiser e emite em lote. A nota emitida depois sai com a data da emissão.</p>
+                    </div>
                     <div class="grid sm:grid-cols-2 gap-3">
                         <div class="info-box">
                             <p class="sub-title">Status da nota</p>

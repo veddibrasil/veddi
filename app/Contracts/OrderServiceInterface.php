@@ -27,6 +27,7 @@ interface OrderServiceInterface
         ?array $externalMetadata = null,
         ?array $buyerData = null,
         ?string $checkoutKey = null,
+        ?array $fiscalRecipient = null,
     ): Order;
 
     public function cancelOrder(Order $order, int $customerId): void;

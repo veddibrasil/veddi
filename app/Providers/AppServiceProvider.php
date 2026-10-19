@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Contracts\AsaasServiceInterface;
+use App\Contracts\CnpjLookupInterface;
 use App\Contracts\FiscalNoteProviderInterface;
 use App\Contracts\IfoodGatewayContract;
 use App\Contracts\OrderServiceInterface;
@@ -70,6 +71,7 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->bind(AsaasServiceInterface::class, AsaasService::class);
         $this->app->bind(OrderServiceInterface::class, OrderService::class);
+        $this->app->bind(CnpjLookupInterface::class, \App\Services\Fiscal\BrasilApiCnpjLookup::class);
         $this->app->bind(FiscalNoteProviderInterface::class, function () {
             // Só bate na API de produção da Focus NFe quando o app roda em produção —
             // qualquer outro APP_ENV (local, testing, staging) sempre usa homologação,

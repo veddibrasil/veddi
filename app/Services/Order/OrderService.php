@@ -46,6 +46,7 @@ class OrderService implements OrderServiceInterface
         ?array $externalMetadata = null,
         ?array $buyerData = null,
         ?string $checkoutKey = null,
+        ?array $fiscalRecipient = null,
     ): Order {
         $currentCompany = app()->bound('current.company') ? app('current.company') : null;
 
@@ -74,7 +75,7 @@ class OrderService implements OrderServiceInterface
             throw new RuntimeException('Cliente não encontrado nesta empresa.');
         }
 
-        $order = $this->transactionRetryingOnOrderNumberCollision(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer, $extraDiscount, $serviceFee, $couvertFee, $channel, $externalOrderId, $externalMetadata, $buyerData, $checkoutKey) {
+        $order = $this->transactionRetryingOnOrderNumberCollision(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer, $extraDiscount, $serviceFee, $couvertFee, $channel, $externalOrderId, $externalMetadata, $buyerData, $checkoutKey, $fiscalRecipient) {
             $subtotal = 0.0;
             $optionPricing = app(CartOptionPricing::class);
             // Pedido do cliente no chat público: o servidor não confia que a UI travou item sem escolha
@@ -149,6 +150,7 @@ class OrderService implements OrderServiceInterface
             }
 
             $order = Order::create([
+                'fiscal_recipient' => $fiscalRecipient,
                 'customer_id' => $customerId,
                 'buyer_data' => $buyerData,
                 'checkout_key' => $checkoutKey,

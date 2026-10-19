@@ -76,6 +76,7 @@ trait HasCustomerManagement
             $this->customerName = $customer->name ?? '';
             $this->customerFound = true;
             $this->fillDeliveryAddressFromCustomer($customer);
+            $this->prefillFiscalDocumentFromCustomer();
 
             return;
         }
@@ -104,6 +105,7 @@ trait HasCustomerManagement
         $this->customerResults = [];
         $this->customerQuery = $customer->name ?? '';
         $this->fillDeliveryAddressFromCustomer($customer);
+        $this->prefillFiscalDocumentFromCustomer();
     }
 
     /** Preenche os campos de entrega com o endereço cadastrado do cliente, quando houver. */

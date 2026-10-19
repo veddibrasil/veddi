@@ -12,6 +12,7 @@ class Customer extends Model
     use BelongsToCompany;
 
     protected $fillable = [
+        'fiscal_recipient',
         'company_id',
         'name',
         'phone',
@@ -36,6 +37,7 @@ class Customer extends Model
     protected function casts(): array
     {
         return [
+            'fiscal_recipient' => 'array',
             'whatsapp_opt_in_at' => 'datetime',
             'whatsapp_opt_out_at' => 'datetime',
         ];

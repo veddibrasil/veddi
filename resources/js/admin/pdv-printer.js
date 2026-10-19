@@ -245,22 +245,61 @@ export function printClosingReport(query, fallbackUrl) {
     return printOrFallback(`/admin/pdv/print/closing${query}`, fallbackUrl);
 }
 
-// Assina o canal do pedido so ate a nota autorizar (ou por no maximo 15min,
-// pra nao acumular inscricoes indefinidamente num turno longo de caixa).
-export function listenForFiscalNoteAuthorization(orderId, onError) {
+// Assina o canal do pedido so ate a nota autorizar ou falhar (ou por no maximo
+// 15min, pra nao acumular inscricoes indefinidamente num turno longo de caixa).
+// Logo depois de assinar, consulta o status uma vez: a emissao roda na fila e
+// pode terminar antes da inscricao no canal ficar pronta — sem essa consulta o
+// evento se perde e a nota nunca imprime (nem o caixa fica sabendo da falha).
+// NF-e (modelo 55) nao sai na termica: so avisa que o DANFE esta no pedido.
+export function listenForFiscalNoteAuthorization(orderId, { onPrintError, onFailed, onNfeAuthorized } = {}) {
     if (!window.Echo) {
         return;
     }
 
     const channelName = 'order.' + orderId;
     const channel = window.Echo.private(channelName);
+    let settled = false;
+    let timeout = null;
 
-    const stopListening = () => window.Echo.leave(channelName);
-    const timeout = setTimeout(stopListening, 15 * 60 * 1000);
-
-    channel.listen('.FiscalNoteAuthorized', (event) => {
+    const finish = () => {
+        settled = true;
         clearTimeout(timeout);
-        autoPrintFiscalNote(event.order_id, onError);
-        stopListening();
+        window.Echo.leave(channelName);
+    };
+
+    timeout = setTimeout(finish, 15 * 60 * 1000);
+
+    const handleAuthorized = (model) => {
+        if (settled) return;
+        finish();
+
+        if (model === '55') {
+            onNfeAuthorized?.();
+            return;
+        }
+
+        autoPrintFiscalNote(orderId, onPrintError);
+    };
+
+    const handleFailed = (reason) => {
+        if (settled) return;
+        finish();
+        onFailed?.(reason);
+    };
+
+    channel.listen('.FiscalNoteAuthorized', (event) => handleAuthorized(event.model));
+    channel.listen('.FiscalNoteFailed', (event) => handleFailed(event.reason));
+
+    channel.subscribed?.(() => {
+        fetch(`/admin/pdv/fiscal-note-status/${orderId}`, { headers: { Accept: 'application/json' } })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+                if (data?.status === 'authorized') {
+                    handleAuthorized(data.model);
+                } else if (data?.status === 'rejected' || data?.status === 'error') {
+                    handleFailed(data.reason);
+                }
+            })
+            .catch((err) => console.warn('[pdv-printer] falha ao consultar status da nota fiscal', err));
     });
 }

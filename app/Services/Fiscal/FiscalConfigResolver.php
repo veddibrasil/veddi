@@ -33,6 +33,10 @@ class FiscalConfigResolver
 
     public function forNote(FiscalNote $note): ?CompanyFiscalConfig
     {
+        if ($note->fiscal_config_id) {
+            return CompanyFiscalConfig::where('company_id', $note->company_id)->find($note->fiscal_config_id);
+        }
+
         return $this->forBranch($note->company, $note->branch_id);
     }
 }

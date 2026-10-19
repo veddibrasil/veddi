@@ -325,11 +325,15 @@ test('pagamento dividido com duas partes em dinheiro bloqueia e não cria pedido
     expect(Order::withoutGlobalScopes()->count())->toBe(0);
 });
 
-test('pedido PDV pago em dinheiro dispara emissão automática de nota fiscal', function () {
-    ['admin' => $admin, 'product' => $product, 'company' => $company, 'branch' => $branch] = pdvContext();
-
+function enableFiscalForPdv(Company $company, Branch $branch, bool $configEnabled = true): void
+{
     $company->update(['fiscal_notes_enabled' => true]);
-    CompanyFiscalConfig::create(['company_id' => $company->id, 'branch_id' => $branch->id, 'is_default' => true, 'enabled' => true]);
+    CompanyFiscalConfig::create(['company_id' => $company->id, 'branch_id' => $branch->id, 'is_default' => true, 'enabled' => $configEnabled]);
+}
+
+test('pedido PDV pago sem marcar "Emitir e imprimir nota fiscal" não emite nota', function () {
+    ['admin' => $admin, 'product' => $product, 'company' => $company, 'branch' => $branch] = pdvContext();
+    enableFiscalForPdv($company, $branch);
 
     Bus::fake();
     $this->actingAs($admin);
@@ -340,28 +344,18 @@ test('pedido PDV pago em dinheiro dispara emissão automática de nota fiscal', 
         ->set('paymentMethod', 'cash')
         ->set('cashReceivedInput', '10.00')
         ->call('processOrder')
-        ->assertSet('step', 'catalog');
+        ->assertSet('step', 'catalog')
+        ->assertNotDispatched('order-paid');
 
-    $order = Order::withoutGlobalScopes()->first();
-
-    Bus::assertDispatched(IssueFiscalNote::class, fn ($job) => $job->orderId === $order->id);
+    expect(Order::withoutGlobalScopes()->first()->status)->toBe('paid');
+    Bus::assertNotDispatched(IssueFiscalNote::class);
 });
 
-test('checkbox de imprimir nota fiscal só aparece com o módulo fiscal habilitado na empresa', function () {
-    ['admin' => $admin] = pdvContext();
+test('pedido PDV pago com "Emitir e imprimir nota fiscal" marcado emite a nota e manda o JS imprimir', function () {
+    ['admin' => $admin, 'product' => $product, 'company' => $company, 'branch' => $branch] = pdvContext();
+    enableFiscalForPdv($company, $branch);
 
-    $this->actingAs($admin);
-
-    Livewire::test(Terminal::class)
-        ->assertSet('canUseFiscalNotes', false)
-        ->assertSet('printFiscalNote', false);
-});
-
-test('pagamento com checkbox de nota fiscal marcado dispara order-paid com printFiscalNote, mesmo sem impressora de auto-print', function () {
-    ['admin' => $admin, 'product' => $product, 'company' => $company] = pdvContext();
-
-    $company->update(['fiscal_notes_enabled' => true]);
-
+    Bus::fake();
     $this->actingAs($admin);
 
     Livewire::test(Terminal::class)
@@ -370,10 +364,97 @@ test('pagamento com checkbox de nota fiscal marcado dispara order-paid com print
         ->call('proceedToPayment')
         ->set('paymentMethod', 'cash')
         ->set('cashReceivedInput', '10.00')
-        ->set('printFiscalNote', true)
+        ->set('issueFiscalNote', true)
         ->call('processOrder')
         ->assertSet('step', 'catalog')
+        ->assertSet('issueFiscalNote', false)
         ->assertDispatched('order-paid', printFiscalNote: true);
+
+    $order = Order::withoutGlobalScopes()->first();
+
+    Bus::assertDispatched(IssueFiscalNote::class, fn ($job) => $job->orderId === $order->id && $job->requestedBy === $admin->id);
+});
+
+test('checkbox de emitir nota fiscal só aparece com o módulo fiscal habilitado na empresa', function () {
+    ['admin' => $admin] = pdvContext();
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->assertSet('canUseFiscalNotes', false)
+        ->assertSet('issueFiscalNote', false);
+});
+
+test('checkbox marcado sem módulo fiscal na empresa não emite nota', function () {
+    ['admin' => $admin, 'product' => $product] = pdvContext();
+
+    Bus::fake();
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'cash')
+        ->set('cashReceivedInput', '10.00')
+        ->set('issueFiscalNote', true)
+        ->call('processOrder')
+        ->assertSet('step', 'catalog');
+
+    Bus::assertNotDispatched(IssueFiscalNote::class);
+});
+
+test('checkbox marcado com configuração fiscal desabilitada na filial conclui a venda, não emite e avisa o caixa', function () {
+    ['admin' => $admin, 'product' => $product, 'company' => $company, 'branch' => $branch] = pdvContext();
+    enableFiscalForPdv($company, $branch, configEnabled: false);
+
+    Bus::fake();
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->set('paymentMethod', 'cash')
+        ->set('cashReceivedInput', '10.00')
+        ->set('issueFiscalNote', true)
+        ->call('processOrder')
+        ->assertHasNoErrors()
+        ->assertSet('step', 'catalog')
+        ->assertDispatched('pdv-toast')
+        ->assertNotDispatched('order-paid');
+
+    expect(Order::withoutGlobalScopes()->first()->status)->toBe('paid');
+    Bus::assertNotDispatched(IssueFiscalNote::class);
+});
+
+test('pedido agendado não emite nota mesmo com o checkbox marcado — vai pro Controle de notas', function () {
+    ['admin' => $admin, 'company' => $company, 'branch' => $branch, 'product' => $product] = pdvContext();
+    enableFiscalForPdv($company, $branch);
+    $company->update(['schedule_min_advance_minutes' => 30]);
+
+    $customer = Customer::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Cliente Agendado',
+        'phone' => '11999990009',
+    ]);
+
+    Bus::fake();
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('addProduct', $product->id)
+        ->call('proceedToPayment')
+        ->call('selectCustomer', $customer->id)
+        ->set('issueFiscalNote', true)
+        ->set('isScheduled', true)
+        ->assertSee('emita pelo Controle de notas')
+        ->set('scheduleDate', now()->addDay()->format('Y-m-d'))
+        ->set('scheduleTime', '12:00')
+        ->set('paymentMethod', 'cash')
+        ->call('processOrder')
+        ->assertHasNoErrors();
+
+    expect(Order::withoutGlobalScopes()->first()->status)->toBe('scheduled');
+    Bus::assertNotDispatched(IssueFiscalNote::class);
 });
 
 test('pagamento sem marcar o checkbox e sem impressora de auto-print não dispara order-paid', function () {

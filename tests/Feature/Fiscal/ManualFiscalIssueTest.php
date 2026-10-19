@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Bus;
 
 uses(RefreshDatabase::class);
 
-function autoIssueTestContext(bool $planEnabled = true, bool $configEnabled = true, string $orderStatus = 'paid'): array
+function manualIssueTestContext(bool $planEnabled = true, bool $configEnabled = true, string $orderStatus = 'paid', string $orderType = 'delivery', string $channel = 'chat'): array
 {
     $company = Company::create([
         'name' => 'Empresa Fiscal Auto',
@@ -69,67 +69,31 @@ function autoIssueTestContext(bool $planEnabled = true, bool $configEnabled = tr
         'net_value' => 30.00,
         'status' => $orderStatus,
         'payment_method' => 'PIX',
-        'order_type' => 'delivery',
+        'order_type' => $orderType,
+        'channel' => $channel,
     ]);
 
     return compact('company', 'order');
 }
 
-test('pedido pago com plano e config habilitados dispara emissão automática', function () {
+test('pedido que vira pago não emite nota sozinho, em nenhum canal', function (string $orderType, string $channel) {
     Bus::fake();
-    ['order' => $order] = autoIssueTestContext();
-
-    event(new OrderStatusUpdated($order->fresh()));
-
-    Bus::assertDispatched(IssueFiscalNote::class, fn ($job) => $job->orderId === $order->id);
-});
-
-test('pedido pago sem módulo fiscal no plano não dispara emissão', function () {
-    Bus::fake();
-    ['order' => $order] = autoIssueTestContext(planEnabled: false);
+    ['order' => $order] = manualIssueTestContext(orderType: $orderType, channel: $channel);
 
     event(new OrderStatusUpdated($order->fresh()));
 
     Bus::assertNotDispatched(IssueFiscalNote::class);
-});
-
-test('pedido pago com config fiscal desabilitada não dispara emissão', function () {
-    Bus::fake();
-    ['order' => $order] = autoIssueTestContext(configEnabled: false);
-
-    event(new OrderStatusUpdated($order->fresh()));
-
-    Bus::assertNotDispatched(IssueFiscalNote::class);
-});
-
-test('pedido que já possui nota fiscal não dispara emissão duplicada', function () {
-    Bus::fake();
-    ['order' => $order, 'company' => $company] = autoIssueTestContext();
-
-    FiscalNote::create([
-        'company_id' => $company->id,
-        'order_id' => $order->id,
-        'status' => 'authorized',
-    ]);
-
-    event(new OrderStatusUpdated($order->fresh()));
-
-    Bus::assertNotDispatched(IssueFiscalNote::class);
-});
-
-test('mudança de status diferente de paid não dispara emissão', function () {
-    Bus::fake();
-    ['order' => $order] = autoIssueTestContext(orderStatus: 'preparing');
-
-    event(new OrderStatusUpdated($order->fresh()));
-
-    Bus::assertNotDispatched(IssueFiscalNote::class);
-});
+    expect(FiscalNote::where('order_id', $order->id)->exists())->toBeFalse();
+})->with([
+    'chat' => ['delivery', 'chat'],
+    'pdv' => ['pdv', 'chat'],
+    'ifood' => ['delivery', 'ifood'],
+]);
 
 test('rodar o job de emissão duas vezes para o mesmo pedido (corrida real) só cria uma nota fiscal', function () {
     // Sem Bus::fake(): executa o job de verdade duas vezes, simulando dois disparos
     // concorrentes (evento de pagamento duplicado, retry) chegando quase juntos.
-    ['order' => $order, 'company' => $company] = autoIssueTestContext();
+    ['order' => $order, 'company' => $company] = manualIssueTestContext();
     $company->update(['owner_cpf_cnpj' => '12345678000100']);
 
     app()->bind(FiscalNoteProviderInterface::class, function () {

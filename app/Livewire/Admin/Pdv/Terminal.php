@@ -92,9 +92,9 @@ class Terminal extends Component
 
     public bool $couvertFeeWaived = false;
 
-    // Só aparece se company.canUseFiscalNotes() — desmarcado por padrão, controla
-    // só a impressão automática da nota (a emissão em si é sempre obrigatória).
-    public bool $printFiscalNote = false;
+    // Só aparece se company.canUseFiscalNotes() — desmarcado por padrão. Marcado, emite a nota
+    // e imprime quando autorizar; desmarcado, o pedido vai pro Controle de notas fiscais.
+    public bool $issueFiscalNote = false;
 
     #[Locked]
     public bool $canUseFiscalNotes = false;

@@ -975,13 +975,16 @@
         $activeFiscalNote = $order->activeFiscalNote;
         $fiscalCompany = app()->bound('current.company') ? app('current.company') : null;
         $fiscalEnabled = $fiscalCompany?->canUseFiscalNotes();
-        $canShowFiscal = $fiscalEnabled && in_array($order->status, ['paid', 'delivered', 'preparing', 'ready']);
+        $canShowFiscal = $fiscalEnabled && in_array($order->status, \App\Models\Order::FISCAL_ISSUABLE_STATUSES, true);
     @endphp
     @if($canShowFiscal || $activeFiscalNote)
         <div class="mt-6">
             <x-admin.form-card padding="p-4">
-                <p class="font-semibold text-neutral-700 mb-3 dark:text-neutral-200">Nota Fiscal (NFC-e)</p>
+                <p class="font-semibold text-neutral-700 mb-3 dark:text-neutral-200">Nota Fiscal ({{ $activeFiscalNote?->model_label ?? (\App\Services\Fiscal\FiscalRecipient::model($this->effectiveFiscalRecipient()) === '55' ? 'NF-e' : 'NFC-e') }})</p>
 
+                @if($order->fiscal_error)
+                    <p class="text-sm text-amber-700 mb-3">Pendência fiscal: {{ $order->fiscal_error }}</p>
+                @endif
                 @if($activeFiscalNote)
                     @php
                         $noteStatusColors = [
@@ -996,13 +999,13 @@
                             {{ $noteStatusLabels[$activeFiscalNote->status] ?? $activeFiscalNote->status }}
                         </span>
                         @if($activeFiscalNote->danfe_url)
-                            <a href="{{ $activeFiscalNote->danfe_url }}" target="_blank"
+                            <a href="{{ route('admin.fiscal.document', ['note' => $activeFiscalNote->id, 'type' => 'danfe']) }}" target="_blank"
                                 class="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium">
                                 Baixar DANFE
                             </a>
                         @endif
                         @if($activeFiscalNote->xml_url)
-                            <a href="{{ $activeFiscalNote->xml_url }}" target="_blank"
+                            <a href="{{ route('admin.fiscal.document', ['note' => $activeFiscalNote->id, 'type' => 'xml']) }}" target="_blank"
                                 class="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium">
                                 Baixar XML
                             </a>
@@ -1012,9 +1015,10 @@
                         @endif
                     </div>
                 @elseif($canShowFiscal && $canIssueFiscal)
+                    @include('livewire.partials.fiscal-recipient')
                     <button wire:click="openFiscalModal"
                         class="mt-1 text-sm bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:hover:bg-purple-900/50 px-4 py-2 rounded-lg transition-colors">
-                        Emitir NFC-e
+                        Emitir {{ \App\Services\Fiscal\FiscalRecipient::model($this->effectiveFiscalRecipient()) === '55' ? 'NF-e' : 'NFC-e' }}
                     </button>
                 @elseif($canShowFiscal)
                     <p class="text-sm text-neutral-400 dark:text-neutral-500">Nenhuma nota emitida.</p>
@@ -1027,10 +1031,10 @@
     @if($showFiscalModal)
         <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
             <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-xl p-6 w-full max-w-md mx-4 space-y-4">
-                <h3 class="text-lg font-semibold text-neutral-800 dark:text-neutral-100">Emitir NFC-e</h3>
-                <p class="text-sm text-neutral-500 dark:text-neutral-400">Informe o CPF/CNPJ do consumidor (opcional).</p>
+                <h3 class="text-lg font-semibold text-neutral-800 dark:text-neutral-100">Emitir {{ \App\Services\Fiscal\FiscalRecipient::model(['document' => $fiscalCustomerDocument]) === '55' ? 'NF-e' : 'NFC-e' }}</h3>
+                <p class="text-sm text-neutral-500 dark:text-neutral-400">O modelo será selecionado automaticamente pelo CPF ou CNPJ. Confira os dados fiscais antes de emitir.</p>
                 <div>
-                    <flux:input wire:model="fiscalCustomerDocument" label="CPF ou CNPJ do consumidor" placeholder="000.000.000-00" />
+                    <flux:input wire:model.live.debounce.300ms="fiscalCustomerDocument" label="CPF ou CNPJ na nota" placeholder="000.000.000-00" />
                     @error('fiscalCustomerDocument') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
                 <div class="flex justify-end gap-3">

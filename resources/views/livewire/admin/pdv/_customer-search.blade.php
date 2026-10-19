@@ -7,7 +7,7 @@
 <div class="flex gap-2">
     <flux:input
         wire:model.live.debounce.300ms="customerQuery"
-        placeholder="Nome, telefone ou CPF..."
+        placeholder="Nome, telefone, CPF ou CNPJ..."
         class="flex-1"
     />
     <flux:button wire:click="lookupCustomer" variant="outline" icon="magnifying-glass" size="sm" aria-label="Buscar cliente" />

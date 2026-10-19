@@ -6,7 +6,7 @@
         x-show="toastMessage"
         x-transition
         x-text="toastMessage"
-        class="fixed top-4 right-4 z-50 rounded-lg bg-neutral-900 text-white text-sm font-semibold px-4 py-2.5 shadow-lg dark:bg-amber-500 dark:text-white"
+        class="fixed top-4 right-4 z-50 max-w-[calc(100vw-2rem)] sm:max-w-sm rounded-lg bg-neutral-900 text-white text-sm font-semibold px-4 py-2.5 shadow-lg dark:bg-amber-500 dark:text-white"
         style="display: none;"
     ></div>
 
@@ -1153,10 +1153,7 @@
                                     </div>
 
                                     @if ($canUseFiscalNotes)
-                                        <label class="flex items-center gap-2 px-3 py-2 border rounded-xl dark:border-zinc-700 cursor-pointer">
-                                            <flux:checkbox wire:model.live="printFiscalNote" aria-label="Imprimir nota fiscal ao confirmar" />
-                                            <span class="text-sm">Imprimir nota fiscal ao confirmar</span>
-                                        </label>
+                                        @include('livewire.admin.pdv._fiscal-checkout')
                                     @endif
 
                                     <div class="grid grid-cols-2 gap-2">

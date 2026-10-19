@@ -144,7 +144,8 @@ test('reemitir NFC-e reconcilia antes: se a Focus já processou a tentativa ante
 
     Livewire::actingAs($admin)
         ->test(Notes::class)
-        ->call('reissue', $note->id);
+        ->call('openReissueModal', $note->id)
+        ->call('confirmReissue');
 
     Queue::assertNotPushed(\App\Jobs\IssueFiscalNote::class);
     expect($note->fresh()->status)->toBe('authorized');
@@ -161,8 +162,56 @@ test('reemitir NFC-e prossegue quando a reconciliação confirma que a tentativa
 
     Livewire::actingAs($admin)
         ->test(Notes::class)
-        ->call('reissue', $note->id);
+        ->call('openReissueModal', $note->id)
+        ->call('confirmReissue');
 
     Queue::assertPushed(\App\Jobs\IssueFiscalNote::class, fn ($job) => $job->orderId === $note->order_id);
     expect($note->fresh()->status)->toBe('error');
 });
+
+test('reemitir abre modal com o motivo da falha e o aviso de duplicidade, sem enfileirar nada', function () {
+    ['note' => $note, 'admin' => $admin] = reconcileTestContext();
+    $note->update(['status' => 'rejected', 'data' => [
+        'error_message' => 'Duplicidade de NF-e, com diferenca na Chave de Acesso.',
+        'raw_response' => ['status_sefaz' => '539'],
+    ]]);
+
+    Queue::fake();
+
+    Livewire::actingAs($admin)
+        ->test(Notes::class)
+        ->call('openReissueModal', $note->id)
+        ->assertSet('showReissueModal', true)
+        ->assertSee('Reemitir nota fiscal')
+        ->assertSee('Duplicidade de NF-e, com diferenca na Chave de Acesso.')
+        ->assertSee('A SEFAZ já tem uma nota com esta série e número.')
+        ->call('closeReissueModal')
+        ->assertSet('showReissueModal', false)
+        ->assertSet('reissueNoteId', null);
+
+    Queue::assertNotPushed(\App\Jobs\IssueFiscalNote::class);
+});
+
+test('modal de reemissão não abre para nota autorizada nem para nota de outra empresa', function () {
+    ['company' => $company, 'note' => $note, 'admin' => $admin] = reconcileTestContext();
+    $note->update(['status' => 'authorized']);
+
+    $other = reconcileTestContext()['note'];
+    app()->instance('current.company', $company);
+
+    Livewire::actingAs($admin)
+        ->test(Notes::class)
+        ->call('openReissueModal', $note->id)
+        ->assertSet('showReissueModal', false)
+        ->call('openReissueModal', $other->id)
+        ->assertSet('showReissueModal', false)
+        ->assertSet('reissueNoteId', null);
+});
+
+test('id da nota no modal de reemissão não pode ser trocado pelo navegador', function () {
+    ['note' => $note, 'admin' => $admin] = reconcileTestContext();
+
+    Livewire::actingAs($admin)
+        ->test(Notes::class)
+        ->set('reissueNoteId', $note->id);
+})->throws(\Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException::class);

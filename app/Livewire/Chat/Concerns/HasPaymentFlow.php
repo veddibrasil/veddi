@@ -324,6 +324,8 @@ trait HasPaymentFlow
             $coupon = Coupon::find($this->appliedCoupon['id']);
         }
 
+        $fiscalRecipient = $this->fiscalRecipientForCheckout();
+
         try {
             $this->reauthorizeDeliveryFee();
 
@@ -340,6 +342,7 @@ trait HasPaymentFlow
                 $scheduledAt,
                 buyerData: $this->checkoutBuyerData(),
                 checkoutKey: $this->checkoutKey,
+                fiscalRecipient: $fiscalRecipient,
             );
 
             Log::channel('orders')->info('Pedido criado no chat', [
@@ -403,7 +406,7 @@ trait HasPaymentFlow
             $this->transitionTo('ORDER_CONFIRMED');
         } elseif ($initialStatus === 'paid') {
             // Pedido nasce 'paid' (dinheiro) e nunca passa por outra transição de status depois —
-            // sem isso, nada escuta OrderStatusUpdated e a nota fiscal automática nunca dispara.
+            // sem isso, os listeners de OrderStatusUpdated (WhatsApp, e-mail) nunca disparam.
             OrderStatusUpdated::dispatch($order);
             $this->addMessage('bot', $summary."\n\nPagamento em dinheiro na entrega. Obrigado!");
             $this->transitionTo('ORDER_CONFIRMED');

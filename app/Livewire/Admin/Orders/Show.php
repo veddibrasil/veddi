@@ -26,6 +26,8 @@ use Throwable;
 
 class Show extends Component
 {
+    use \App\Livewire\Concerns\HasFiscalRecipient;
+
     public Order $order;
 
     // Flags calculadas no mount: travadas para o navegador não se promover (ex.: cozinha cancelando pedido pago).
@@ -1445,7 +1447,7 @@ class Show extends Component
     {
         abort_unless($this->canIssueFiscal, 403);
 
-        $this->fiscalCustomerDocument = '';
+        $this->fiscalCustomerDocument = $this->effectiveFiscalRecipient()['document'] ?? '';
         $this->showFiscalModal = true;
     }
 
@@ -1457,15 +1459,16 @@ class Show extends Component
     public function issueFiscalNote(): void
     {
         abort_unless($this->canIssueFiscal, 403);
+        abort_unless(in_array($this->order->status, Order::FISCAL_ISSUABLE_STATUSES, true), 422);
 
         $this->validate([
             'fiscalCustomerDocument' => ['nullable', 'string', 'max:20'],
         ]);
 
-        IssueFiscalNote::dispatch($this->order->id, $this->fiscalCustomerDocument ?: null);
+        IssueFiscalNote::dispatch($this->order->id, $this->fiscalCustomerDocument, auth()->id());
 
         $this->showFiscalModal = false;
-        session()->flash('status', 'Emissão de NFC-e enfileirada.');
+        session()->flash('status', 'Emissão de nota fiscal enfileirada.');
     }
 
     public function render()
