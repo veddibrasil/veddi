@@ -14,9 +14,6 @@
 </div>
 @if ($customerFound)
     <p class="text-xs text-green-600 dark:text-green-400">✓ {{ $customerName }}</p>
-    @if(app('current.company')->canUseFiscalNotes())
-        @include('livewire.partials.fiscal-recipient')
-    @endif
 @elseif (!empty($customerResults))
     <div class="border rounded-xl overflow-hidden dark:border-zinc-600 max-h-32 overflow-y-auto">
         @foreach ($customerResults as $result)

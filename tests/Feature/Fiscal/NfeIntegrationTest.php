@@ -2,7 +2,6 @@
 
 use App\Events\OrderStatusUpdated;
 use App\Jobs\IssueFiscalNote;
-use App\Listeners\IssueFiscalNoteOnPaid;
 use App\Livewire\Admin\Orders\Show;
 use App\Models\Branch;
 use App\Models\Company;
@@ -161,12 +160,13 @@ test('webhook atrasado não reautoriza nota cancelada', function () {
     expect($note->fresh()->status)->toBe('cancelled');
 });
 
-test('pagamento enfileira emissão com destinatário empresarial preservado', function () {
+test('pagamento não emite NF-e sozinho e a pré-checagem aceita o destinatário empresarial preservado', function () {
     ['order' => $order] = nfeContext();
     Queue::fake();
-    app(IssueFiscalNoteOnPaid::class)->handle(new OrderStatusUpdated($order));
-    Queue::assertPushed(IssueFiscalNote::class, fn ($job) => $job->orderId === $order->id);
-    expect($order->fresh()->fiscal_recipient['document'])->toBe('11222333000181');
+    event(new OrderStatusUpdated($order));
+    Queue::assertNotPushed(IssueFiscalNote::class);
+    expect(app(FiscalNoteService::class)->preflight($order->fresh()))->toBeNull()
+        ->and($order->fresh()->fiscal_recipient['document'])->toBe('11222333000181');
 });
 
 test('falha de dados fiscais fica pendente no pedido sem alterar nota em processamento', function () {

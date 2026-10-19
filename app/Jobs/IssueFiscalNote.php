@@ -2,17 +2,24 @@
 
 namespace App\Jobs;
 
+use App\Events\FiscalNoteFailed;
 use App\Exceptions\FiscalNoteAlreadyIssuedException;
 use App\Models\CompanyNotification;
 use App\Models\Order;
 use App\Services\Fiscal\FiscalNoteService;
+use Illuminate\Bus\Batchable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * Emissão de uma nota fiscal por pedido. Disparada só por ação de alguém: o caixa no PDV
+ * ("Emitir e imprimir nota fiscal"), o botão do pedido ou o Controle de notas fiscais
+ * (individual ou em lote via Bus::batch, na fila 'low' pra não segurar a 'default').
+ */
 class IssueFiscalNote implements ShouldQueue
 {
-    use Queueable;
+    use Batchable, Queueable;
 
     public int $tries = 3;
 
@@ -28,6 +35,10 @@ class IssueFiscalNote implements ShouldQueue
 
     public function handle(FiscalNoteService $service): void
     {
+        if ($this->batch()?->cancelled()) {
+            return;
+        }
+
         Log::channel('fiscal')->info('IssueFiscalNote: job iniciado', [
             'order_id' => $this->orderId,
             'attempt' => $this->attempts(),
@@ -72,9 +83,13 @@ class IssueFiscalNote implements ShouldQueue
 
         Order::withoutGlobalScopes()->whereKey($this->orderId)->update(['fiscal_error' => $exception->getMessage()]);
 
+        FiscalNoteFailed::dispatch($this->orderId, $exception->getMessage());
+
         $companyId = Order::withoutGlobalScopes()->find($this->orderId)?->company_id;
 
-        if ($companyId) {
+        // Em lote, uma notificação por pedido lotaria o sino — o resumo único sai no
+        // callback finally() do batch (ver Admin\Fiscal\IssueControl::issueSelected()).
+        if ($companyId && $this->batchId === null) {
             CompanyNotification::create([
                 'company_id' => $companyId,
                 'type' => 'fiscal_note_failed',

@@ -228,6 +228,40 @@ test('salvar novamente com empresa já registrada dispara PUT em vez de POST', f
     expect($config->token_producao)->toBe('tok-prod-2');
 });
 
+test('série da tela vai pro cadastro da empresa na Focus, que é de onde ela numera a nota', function () {
+    $company = fiscalConfigTestCompany();
+    app()->instance('current.company', $company);
+
+    CompanyFiscalConfig::create([
+        'company_id' => $company->id,
+        'branch_id' => fiscalConfigTestBranch($company)->id,
+        'is_default' => true,
+        'enabled' => true,
+        'focus_nfe_company_id' => 'focus-empresa-1',
+    ]);
+
+    Http::fake([
+        '*/v2/empresas/focus-empresa-1' => Http::response(['id' => 'focus-empresa-1'], 200),
+    ]);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+    grantFiscalSettingsPermission($admin, $company);
+
+    Livewire::actingAs($admin)
+        ->test(Config::class)
+        ->set('nfceSerie', '2')
+        ->set('nfeSerie', '3')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    Http::assertSent(fn (\Illuminate\Http\Client\Request $request) => $request->method() === 'PUT'
+        && ($request['serie_nfce_producao'] ?? null) === 2
+        && ($request['serie_nfce_homologacao'] ?? null) === 2
+        && ($request['serie_nfe_producao'] ?? null) === 3
+        && ($request['serie_nfe_homologacao'] ?? null) === 3);
+});
+
 test('erro 422 da Focus NFe (certificado inválido) impede salvar e mostra erro no formulário', function () {
     Http::fake([
         '*/v2/empresas' => Http::response(['mensagem' => 'Certificado inválido ou senha incorreta'], 422),
@@ -720,4 +754,159 @@ test('falha ao registrar webhook não impede salvar a configuração fiscal', fu
     expect($config)->not->toBeNull();
     expect($config->focus_nfe_company_id)->toBe('focus-empresa-1');
     expect($config->focus_nfe_webhook_id)->toBeNull();
+});
+
+test('certificado .pfx que o servidor detecta como application/octet-stream é aceito (extensão, não MIME)', function () {
+    // Caso real do navegador: finfo não reconhece PKCS12 e devolve octet-stream ("bin"),
+    // então a regra mimes:pfx,p12 recusava todo .pfx válido.
+    fakeFocusNfeEmpresaCreated();
+
+    $company = fiscalConfigTestCompany();
+    app()->instance('current.company', $company);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+    grantFiscalSettingsPermission($admin, $company);
+
+    Livewire::actingAs($admin)
+        ->test(Config::class)
+        ->set('enabled', true)
+        ->set('certificateFile', fakeFiscalCertificate('senha123')->mimeType('application/octet-stream'))
+        ->set('certificatePassword', 'senha123')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect(CompanyFiscalConfig::where('company_id', $company->id)->first()->certificate_path)->toEndWith('.pfx');
+});
+
+test('arquivo com outra extensão continua recusado', function () {
+    $company = fiscalConfigTestCompany();
+    app()->instance('current.company', $company);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+    grantFiscalSettingsPermission($admin, $company);
+
+    Livewire::actingAs($admin)
+        ->test(Config::class)
+        ->set('certificateFile', UploadedFile::fake()->create('certificado.pdf', 10, 'application/pdf'))
+        ->call('save')
+        ->assertHasErrors(['certificateFile']);
+});
+
+function legacyFiscalCertificate(): UploadedFile
+{
+    // A1 emitido com criptografia legada (pbeWithSHA1And40BitRC2-CBC), comum em
+    // certificados brasileiros — o OpenSSL 3 do PHP não abre sem o provider legacy.
+    return UploadedFile::fake()
+        ->createWithContent('certificado.pfx', file_get_contents(base_path('tests/Fixtures/fiscal/legacy-rc2-senha123.pfx')))
+        ->mimeType('application/octet-stream');
+}
+
+test('certificado com criptografia legada e senha correta segue para a Focus validar', function () {
+    fakeFocusNfeEmpresaCreated();
+
+    $company = fiscalConfigTestCompany();
+    app()->instance('current.company', $company);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+    grantFiscalSettingsPermission($admin, $company);
+
+    Livewire::actingAs($admin)
+        ->test(Config::class)
+        ->set('enabled', true)
+        ->set('certificateFile', legacyFiscalCertificate())
+        ->set('certificatePassword', 'senha123')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    Http::assertSent(fn (\Illuminate\Http\Client\Request $request) => str_contains($request->url(), '/v2/empresas')
+        && $request['senha_certificado'] === 'senha123'
+        && $request['arquivo_certificado_base64'] === base64_encode(file_get_contents(base_path('tests/Fixtures/fiscal/legacy-rc2-senha123.pfx'))));
+});
+
+test('certificado com criptografia legada e senha errada é barrado antes da Focus', function () {
+    fakeFocusNfeEmpresaCreated();
+
+    $company = fiscalConfigTestCompany();
+    app()->instance('current.company', $company);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+    grantFiscalSettingsPermission($admin, $company);
+
+    Livewire::actingAs($admin)
+        ->test(Config::class)
+        ->set('enabled', true)
+        ->set('certificateFile', legacyFiscalCertificate())
+        ->set('certificatePassword', 'senha-errada')
+        ->call('save')
+        ->assertHasErrors(['certificateFile']);
+
+    Http::assertNothingSent();
+    expect(CompanyFiscalConfig::where('company_id', $company->id)->first())->toBeNull();
+});
+
+test('empresa removida na Focus (PUT 404) é recadastrada com POST e troca id e tokens', function () {
+    $company = fiscalConfigTestCompany();
+    app()->instance('current.company', $company);
+
+    CompanyFiscalConfig::create([
+        'company_id' => $company->id,
+        'branch_id' => fiscalConfigTestBranch($company)->id,
+        'is_default' => true,
+        'enabled' => true,
+        'focus_nfe_company_id' => 'focus-antigo',
+        'token_homologacao' => 'tok-antigo',
+    ]);
+
+    Http::fake([
+        '*/v2/empresas/focus-antigo' => Http::response(['codigo' => 'nao_encontrado', 'mensagem' => 'Empresa não encontrada'], 404),
+        '*/v2/empresas' => Http::response(['id' => 'focus-novo', 'token_producao' => 'tok-prod-novo', 'token_homologacao' => 'tok-homolog-novo'], 201),
+    ]);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+    grantFiscalSettingsPermission($admin, $company);
+
+    Livewire::actingAs($admin)
+        ->test(Config::class)
+        ->call('save')
+        ->assertHasNoErrors();
+
+    Http::assertSent(fn (\Illuminate\Http\Client\Request $request) => $request->method() === 'POST' && str_ends_with($request->url(), '/v2/empresas'));
+
+    $config = CompanyFiscalConfig::where('company_id', $company->id)->first();
+    expect($config->focus_nfe_company_id)->toBe('focus-novo')
+        ->and($config->token_homologacao)->toBe('tok-homolog-novo');
+});
+
+test('erro da Focus diferente de 404 no PUT não recadastra', function () {
+    $company = fiscalConfigTestCompany();
+    app()->instance('current.company', $company);
+
+    CompanyFiscalConfig::create([
+        'company_id' => $company->id,
+        'branch_id' => fiscalConfigTestBranch($company)->id,
+        'is_default' => true,
+        'enabled' => true,
+        'focus_nfe_company_id' => 'focus-1',
+    ]);
+
+    Http::fake([
+        '*/v2/empresas/focus-1' => Http::response(['mensagem' => 'Erro de validação', 'erros' => [['mensagem' => 'Inscrição estadual inválida']]], 422),
+    ]);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+    grantFiscalSettingsPermission($admin, $company);
+
+    Livewire::actingAs($admin)
+        ->test(Config::class)
+        ->call('save')
+        ->assertHasErrors(['enabled']);
+
+    Http::assertNotSent(fn (\Illuminate\Http\Client\Request $request) => $request->method() === 'POST');
+    expect(CompanyFiscalConfig::where('company_id', $company->id)->first()->focus_nfe_company_id)->toBe('focus-1');
 });

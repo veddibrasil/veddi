@@ -975,7 +975,7 @@
         $activeFiscalNote = $order->activeFiscalNote;
         $fiscalCompany = app()->bound('current.company') ? app('current.company') : null;
         $fiscalEnabled = $fiscalCompany?->canUseFiscalNotes();
-        $canShowFiscal = $fiscalEnabled && in_array($order->status, ['paid', 'delivered', 'preparing', 'ready']);
+        $canShowFiscal = $fiscalEnabled && in_array($order->status, \App\Models\Order::FISCAL_ISSUABLE_STATUSES, true);
     @endphp
     @if($canShowFiscal || $activeFiscalNote)
         <div class="mt-6">

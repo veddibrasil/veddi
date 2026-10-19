@@ -73,6 +73,26 @@ class FiscalRecipient
         return $data;
     }
 
+    /** CPF (11) ou CNPJ (14) com dígitos verificadores corretos; aceita com ou sem máscara. */
+    public static function isValidDocument(?string $document): bool
+    {
+        $digits = preg_replace('/\D/', '', (string) $document);
+
+        return in_array(strlen($digits), [11, 14], true) && self::validDocument($digits);
+    }
+
+    /** 529.982.247-25 / 11.444.777/0001-61 — documento fora do tamanho volta como veio. */
+    public static function formatDocument(?string $document): string
+    {
+        $digits = preg_replace('/\D/', '', (string) $document);
+
+        return match (strlen($digits)) {
+            11 => preg_replace('/^(\d{3})(\d{3})(\d{3})(\d{2})$/', '$1.$2.$3-$4', $digits),
+            14 => preg_replace('/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/', '$1.$2.$3/$4-$5', $digits),
+            default => (string) $document,
+        };
+    }
+
     private static function validDocument(string $digits): bool
     {
         if (preg_match('/^(\d)\1+$/', $digits)) {

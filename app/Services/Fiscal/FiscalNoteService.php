@@ -29,56 +29,16 @@ class FiscalNoteService
             'company_id' => $company->id,
         ]);
 
-        if (! $company->canUseFiscalNotes()) {
-            throw new \RuntimeException('Módulo de nota fiscal não habilitado para esta empresa.');
-        }
-
-        $companyConfig = $this->resolver->forBranch($company, $order->branch_id);
-
-        if (! $companyConfig) {
-            throw new \RuntimeException('Nenhuma configuração fiscal encontrada para esta filial. Configure a filial ou marque uma configuração padrão.');
-        }
-
-        if (! $companyConfig->enabled) {
-            throw new \RuntimeException('Configuração fiscal não habilitada para esta filial.');
-        }
-
-        $environment = $companyConfig->environment ?: config('fiscal.environment');
-        $effectiveEnvironment = $this->effectiveEnvironment($environment);
-        $token = $companyConfig->tokenFor($effectiveEnvironment) ?: config('fiscal.focus_nfe.token');
-
-        if (! $token) {
-            throw new \RuntimeException('Token do provedor fiscal não configurado. Contate o suporte.');
-        }
+        [
+            'config' => $companyConfig,
+            'environment' => $effectiveEnvironment,
+            'branch' => $branch,
+            'recipient' => $recipient,
+            'model' => $model,
+            'items' => $items,
+        ] = $this->prepare($order, $customerDocument);
 
         $provider = $this->resolveProvider($companyConfig, $effectiveEnvironment);
-
-        $branch = Branch::withoutGlobalScopes()->where('company_id', $company->id)->find($companyConfig->branch_id ?? $order->branch_id);
-        $recipient = $order->fiscal_recipient ?? FiscalRecipient::fromCustomer($order->customer);
-        if ($customerDocument !== null) {
-            $recipient['document'] = $customerDocument;
-        }
-        $model = FiscalRecipient::model($recipient);
-        try {
-            $recipient = FiscalRecipient::validate($recipient);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            throw new \RuntimeException('Dados fiscais pendentes: '.implode(' ', $e->validator->errors()->all()));
-        }
-        if ($model === '55' && ! $companyConfig->nfe_enabled) {
-            throw new \RuntimeException('NF-e não habilitada para o emitente. Habilite NF-e na configuração fiscal.');
-        }
-        if ($model === '55' && (blank($branch?->state) || blank($branch?->cnpj ?: $company->owner_cpf_cnpj))) {
-            throw new \RuntimeException('Complete o CNPJ e a UF do emitente antes de emitir NF-e.');
-        }
-        $items = $this->buildItems($order, $model, $branch?->state, $recipient['state'] ?? null, (int) ($companyConfig->crt ?: config('fiscal.crt')));
-        if ($model === '55') {
-            $calculated = array_sum(array_column($items, 'subtotal')) + (float) $order->delivery_fee
-                + (float) $order->service_fee + (float) $order->couvert_fee
-                - (float) $order->discount - (float) $order->manual_discount;
-            if (round($calculated * 100) !== round((float) $order->total * 100) || $calculated <= 0) {
-                throw new \RuntimeException('Totais fiscais divergentes. Confira itens, descontos e taxas do pedido.');
-            }
-        }
         $reference = 'order_'.$order->id.'_'.Str::uuid();
 
         $dto = new FiscalNoteDTO(
@@ -173,6 +133,135 @@ class FiscalNoteService
         }
 
         return $fiscalNote->fresh();
+    }
+
+    /**
+     * Mesmas validações de issue() sem criar nota nem chamar a Focus NFe — o Controle de notas
+     * fiscais usa antes de emitir em lote, pra separar o que está pronto do que tem pendência.
+     *
+     * @return string|null mensagem da primeira pendência, ou null se o pedido pode ser emitido
+     */
+    public function preflight(Order $order): ?string
+    {
+        try {
+            $this->prepare($order);
+
+            return null;
+        } catch (\RuntimeException $e) {
+            return $e->getMessage();
+        }
+    }
+
+    /**
+     * Resultado de um lote do Controle de notas: situação da última tentativa de cada pedido.
+     * Job que falha antes do envio (pendência de dados, configuração) não cria nota — conta
+     * como 'not_sent'. Rejeição da SEFAZ não falha o job, por isso não dá pra usar só
+     * $batch->failedJobs pra dizer ao lojista como o lote terminou.
+     *
+     * @param  array<int, int>  $orderIds
+     * @return array{authorized: int, rejected: int, pending: int, not_sent: int}
+     */
+    public function batchOutcome(int $companyId, array $orderIds): array
+    {
+        $latest = FiscalNote::withoutGlobalScopes()
+            ->where('company_id', $companyId)
+            ->whereIn('order_id', $orderIds)
+            ->orderBy('id')
+            ->get(['order_id', 'status'])
+            ->keyBy('order_id');
+
+        $outcome = ['authorized' => 0, 'rejected' => 0, 'pending' => 0, 'not_sent' => 0];
+
+        foreach ($orderIds as $orderId) {
+            $outcome[match ($latest->get($orderId)?->status) {
+                'authorized' => 'authorized',
+                'rejected', 'error' => 'rejected',
+                'pending' => 'pending',
+                default => 'not_sent',
+            }]++;
+        }
+
+        return $outcome;
+    }
+
+    /** "11 autorizada(s), 3 rejeitada(s)" — usado no banner do lote e na notificação do sino. */
+    public static function describeBatchOutcome(array $outcome): string
+    {
+        $labels = ['authorized' => 'autorizada(s)', 'rejected' => 'rejeitada(s)/com erro', 'pending' => 'em processamento', 'not_sent' => 'não enviada(s) por pendência'];
+
+        return collect($labels)
+            ->filter(fn ($label, $key) => ($outcome[$key] ?? 0) > 0)
+            ->map(fn ($label, $key) => $outcome[$key].' '.$label)
+            ->implode(', ') ?: 'nenhum pedido processado';
+    }
+
+    /**
+     * Valida módulo, configuração fiscal da filial, destinatário e itens e monta o que a emissão
+     * precisa. Lança RuntimeException com mensagem pro lojista na primeira pendência.
+     *
+     * @return array{config: CompanyFiscalConfig, environment: string, branch: ?Branch, recipient: array, model: string, items: array}
+     */
+    private function prepare(Order $order, ?string $customerDocument = null): array
+    {
+        $company = $order->company;
+
+        if (! $company->canUseFiscalNotes()) {
+            throw new \RuntimeException('Módulo de nota fiscal não habilitado para esta empresa.');
+        }
+
+        $companyConfig = $this->resolver->forBranch($company, $order->branch_id);
+
+        if (! $companyConfig) {
+            throw new \RuntimeException('Nenhuma configuração fiscal encontrada para esta filial. Configure a filial ou marque uma configuração padrão.');
+        }
+
+        if (! $companyConfig->enabled) {
+            throw new \RuntimeException('Configuração fiscal não habilitada para esta filial.');
+        }
+
+        $environment = $companyConfig->environment ?: config('fiscal.environment');
+        $effectiveEnvironment = $this->effectiveEnvironment($environment);
+        $token = $companyConfig->tokenFor($effectiveEnvironment) ?: config('fiscal.focus_nfe.token');
+
+        if (! $token) {
+            throw new \RuntimeException('Token do provedor fiscal não configurado. Contate o suporte.');
+        }
+
+        $branch = Branch::withoutGlobalScopes()->where('company_id', $company->id)->find($companyConfig->branch_id ?? $order->branch_id);
+        $recipient = $order->fiscal_recipient ?? FiscalRecipient::fromCustomer($order->customer);
+        if ($customerDocument !== null) {
+            $recipient['document'] = $customerDocument;
+        }
+        $model = FiscalRecipient::model($recipient);
+        try {
+            $recipient = FiscalRecipient::validate($recipient);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw new \RuntimeException('Dados fiscais pendentes: '.implode(' ', $e->validator->errors()->all()));
+        }
+        if ($model === '55' && ! $companyConfig->nfe_enabled) {
+            throw new \RuntimeException('NF-e não habilitada para o emitente. Habilite NF-e na configuração fiscal.');
+        }
+        if ($model === '55' && (blank($branch?->state) || blank($branch?->cnpj ?: $company->owner_cpf_cnpj))) {
+            throw new \RuntimeException('Complete o CNPJ e a UF do emitente antes de emitir NF-e.');
+        }
+        $items = $this->buildItems($order, $model, $branch?->state, $recipient['state'] ?? null, (int) ($companyConfig->crt ?: config('fiscal.crt')));
+        if ($model === '55') {
+            $calculated = array_sum(array_column($items, 'subtotal')) + (float) $order->delivery_fee
+                + (float) $order->service_fee + (float) $order->couvert_fee
+                - (float) $order->discount - (float) $order->manual_discount;
+            if (round($calculated * 100) !== round((float) $order->total * 100) || $calculated <= 0) {
+                throw new \RuntimeException('Totais fiscais divergentes. Confira itens, descontos e taxas do pedido.');
+            }
+        }
+
+        return [
+            'config' => $companyConfig,
+            'environment' => $effectiveEnvironment,
+            'branch' => $branch,
+            'recipient' => $recipient,
+            'model' => $model,
+            'items' => $items,
+        ];
     }
 
     /**

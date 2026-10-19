@@ -116,6 +116,28 @@ class PrintPayloadController extends Controller
     }
 
     /**
+     * Situação atual da emissão — o PDV consulta uma vez logo depois de assinar o canal do
+     * pedido, porque a emissão roda na fila e pode autorizar/falhar antes da inscrição ficar
+     * pronta (aí o broadcast se perde). 'pending'/'none' = continua esperando o evento.
+     */
+    public function fiscalNoteStatus(Order $order)
+    {
+        $this->authorizeAccess();
+
+        $note = $order->fiscalNotes()->latest('id')->first();
+
+        $status = $note?->status ?? ($order->fiscal_error ? 'error' : 'none');
+
+        return response()->json([
+            'status' => $status,
+            'model' => $note?->model ?? '65',
+            'reason' => in_array($status, ['rejected', 'error'], true)
+                ? mb_substr((string) ($note?->error_message ?? $order->fiscal_error), 0, 300)
+                : null,
+        ]);
+    }
+
+    /**
      * @return array{connection_type: string, ip: ?string, port: ?int, name: ?string}
      */
     private function printerPayload(BranchPrinter $printer): array

@@ -226,7 +226,10 @@ class Config extends Component
             'branchCnpj' => ['nullable', 'string'],
             'cscNfceProducao' => ['nullable', 'string', 'max:255'],
             'idTokenNfceProducao' => ['nullable', 'string', 'max:20'],
-            'certificateFile' => ['nullable', 'file', 'mimes:pfx,p12', 'max:2048'],
+            // extensions (nome do arquivo), não mimes: o finfo não reconhece PKCS12 e devolve
+            // application/octet-stream ("bin"), então mimes:pfx,p12 recusava todo .pfx válido.
+            // O conteúdo é conferido com a senha em certificatePasswordMatches() antes de ir pra Focus.
+            'certificateFile' => ['nullable', 'file', 'extensions:pfx,p12', 'max:2048'],
             'certificatePassword' => ['nullable', 'string', 'max:255'],
         ]);
 
@@ -420,6 +423,14 @@ class Config extends Component
             'cep' => preg_replace('/\D/', '', $branch?->cep ?? '') ?: null,
             'habilita_nfce' => true,
             'habilita_nfe' => $this->nfeEnabled,
+            // A Focus numera a nota pela série do cadastro da empresa e ignora o 'serie' do
+            // payload de emissão (só vale junto com 'numero'). Sem isso a série da tela não
+            // tem efeito e a empresa emite sempre na série 1 — recadastrada (contador zerado),
+            // bate em números já autorizados na SEFAZ: rejeição 539, duplicidade.
+            'serie_nfce_producao' => (int) $this->nfceSerie,
+            'serie_nfce_homologacao' => (int) $this->nfceSerie,
+            'serie_nfe_producao' => (int) $this->nfeSerie,
+            'serie_nfe_homologacao' => (int) $this->nfeSerie,
             'email' => $company->email,
             'telefone' => $branch?->phone,
         ];
@@ -430,7 +441,7 @@ class Config extends Component
 
             // Valida arquivo+senha localmente (ext-openssl) antes de ir pra Focus —
             // sem isso o erro só aparece depois do round-trip com a API deles.
-            if (! openssl_pkcs12_read($certificateContent, $parsedCertificate, (string) $password)) {
+            if (! $this->certificatePasswordMatches($certificateContent, (string) $password)) {
                 throw new FocusNfeCompanyRegistrationException(
                     message: 'Não foi possível ler o certificado com a senha informada. Verifique o arquivo (.pfx/.p12) e a senha.',
                     statusCode: 422,
@@ -460,9 +471,27 @@ class Config extends Component
             $this->baseUrlForRegistration(),
         );
 
-        $response = $config->focus_nfe_company_id
-            ? $service->updateCompany($config->focus_nfe_company_id, $payload)
-            : $service->createCompany($payload);
+        try {
+            $response = $config->focus_nfe_company_id
+                ? $service->updateCompany($config->focus_nfe_company_id, $payload)
+                : $service->createCompany($payload);
+        } catch (FocusNfeCompanyRegistrationException $e) {
+            // Empresa removida do lado da Focus (ou cadastrada em outra conta): o id salvo
+            // aponta pro nada e todo PUT dá 404 — sem isso a filial nunca mais consegue
+            // se registrar pela tela. Recadastra e troca id/tokens pelos novos.
+            if ($e->statusCode !== 404 || ! $config->focus_nfe_company_id) {
+                throw $e;
+            }
+
+            Log::channel('fiscal')->warning('Focus NFe: empresa não encontrada no PUT, recadastrando', [
+                'company_id' => $company->id,
+                'focus_nfe_company_id' => $config->focus_nfe_company_id,
+            ]);
+
+            $config->focus_nfe_company_id = null;
+            $config->focus_nfe_webhook_id = null;
+            $response = $service->createCompany($payload);
+        }
 
         $config->focus_nfe_company_id = $response['id'] ?? $config->focus_nfe_company_id;
         $config->token_producao = $response['token_producao'] ?? $config->token_producao;
@@ -532,6 +561,40 @@ class Config extends Component
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Muitos A1 brasileiros usam criptografia legada (pbeWithSHA1And40BitRC2-CBC), que o
+     * OpenSSL 3 do PHP não abre ("digital envelope routines::unsupported") mesmo com a senha
+     * certa. A verificação do MAC do PKCS12 roda antes da decifragem, então senha errada (ou
+     * arquivo corrompido) sempre aparece como "mac verify failure" — só isso barra aqui; o
+     * certificado legado com senha certa segue e a Focus NFe valida do lado dela.
+     */
+    private function certificatePasswordMatches(string $content, string $password): bool
+    {
+        while (openssl_error_string() !== false) {
+            // descarta erros de chamadas anteriores
+        }
+
+        if (openssl_pkcs12_read($content, $parsed, $password)) {
+            return true;
+        }
+
+        $errors = [];
+        while (($error = openssl_error_string()) !== false) {
+            $errors[] = $error;
+        }
+
+        $legacyOnly = $errors !== []
+            && collect($errors)->every(fn (string $e) => str_contains($e, 'unsupported') || str_contains($e, 'digital envelope'));
+
+        if ($legacyOnly) {
+            Log::channel('fiscal')->info('Focus NFe: certificado com criptografia legada, validação delegada à Focus', [
+                'company_id' => app('current.company')->id,
+            ]);
+        }
+
+        return $legacyOnly;
     }
 
     private function baseUrlForRegistration(): string

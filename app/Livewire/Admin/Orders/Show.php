@@ -1409,6 +1409,7 @@ class Show extends Component
     public function issueFiscalNote(): void
     {
         abort_unless($this->canIssueFiscal, 403);
+        abort_unless(in_array($this->order->status, Order::FISCAL_ISSUABLE_STATUSES, true), 422);
 
         $this->validate([
             'fiscalCustomerDocument' => ['nullable', 'string', 'max:20'],

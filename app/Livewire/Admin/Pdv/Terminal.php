@@ -24,7 +24,6 @@ use Livewire\Component;
 /** Venda direta / balcão. Fluxo de mesa/comanda fica em {@see TabTerminal}. */
 class Terminal extends Component
 {
-    use \App\Livewire\Concerns\HasFiscalRecipient;
     use HasBranchContext;
     use HasCartManagement;
     use HasCashSession;
@@ -91,9 +90,9 @@ class Terminal extends Component
 
     public bool $couvertFeeWaived = false;
 
-    // Só aparece se company.canUseFiscalNotes() — desmarcado por padrão, controla
-    // só a impressão automática da nota (a emissão em si é sempre obrigatória).
-    public bool $printFiscalNote = false;
+    // Só aparece se company.canUseFiscalNotes() — desmarcado por padrão. Marcado, emite a nota
+    // e imprime quando autorizar; desmarcado, o pedido vai pro Controle de notas fiscais.
+    public bool $issueFiscalNote = false;
 
     #[Locked]
     public bool $canUseFiscalNotes = false;
@@ -277,9 +276,6 @@ class Terminal extends Component
 
     private function resetCartForNextOrder(): void
     {
-        $this->savedFiscalRecipient = null;
-        $this->fiscalRecipientCustomerId = null;
-        $this->showFiscalRecipient = false;
         $this->cart = [];
         $this->customerQuery = '';
         $this->customerName = '';

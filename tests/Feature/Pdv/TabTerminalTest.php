@@ -986,7 +986,7 @@ test('fechar comanda vinculando cliente informado pelo mesário salva o cliente 
     expect($order->customer_id)->toBe($customer->id);
 });
 
-test('fechar comanda com dinheiro dispara emissão automática de nota fiscal', function () {
+test('fechar comanda paga sem marcar "Emitir e imprimir nota fiscal" não emite nota', function () {
     ['admin' => $admin, 'product' => $product, 'company' => $company, 'branch' => $branch] = pdvContext();
     $table = openTable($company, $branch);
 
@@ -1008,6 +1008,36 @@ test('fechar comanda com dinheiro dispara emissão automática de nota fiscal', 
         ->call('proceedToCloseTab', $orderId)
         ->set('paymentMethod', 'cash')
         ->set('cashReceivedInput', '10.00')
+        ->call('confirmCloseTab')
+        ->assertSet('step', 'catalog');
+
+    expect(Order::withoutGlobalScopes()->find($orderId)->status)->toBe('paid');
+    Bus::assertNotDispatched(IssueFiscalNote::class);
+});
+
+test('fechar comanda com "Emitir e imprimir nota fiscal" marcado emite a nota', function () {
+    ['admin' => $admin, 'product' => $product, 'company' => $company, 'branch' => $branch] = pdvContext();
+    $table = openTable($company, $branch);
+
+    $company->update(['fiscal_notes_enabled' => true]);
+    CompanyFiscalConfig::create(['company_id' => $company->id, 'branch_id' => $branch->id, 'is_default' => true, 'enabled' => true]);
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(TabTerminal::class)
+        ->set('selectedTableId', $table->id)
+        ->call('addProduct', $product->id)
+        ->assertHasNoErrors();
+
+    $orderId = Order::withoutGlobalScopes()->first()->id;
+
+    Bus::fake();
+
+    $component
+        ->call('proceedToCloseTab', $orderId)
+        ->set('paymentMethod', 'cash')
+        ->set('cashReceivedInput', '10.00')
+        ->set('issueFiscalNote', true)
         ->call('confirmCloseTab')
         ->assertSet('step', 'catalog');
 
@@ -1244,14 +1274,14 @@ test('lançar item na comanda não dispara nada pra produção — só "Finaliza
     Event::assertNotDispatched(TabOrderSentToProduction::class);
 });
 
-test('checkbox de imprimir nota fiscal só aparece com o módulo fiscal habilitado na empresa', function () {
+test('checkbox de emitir nota fiscal só aparece com o módulo fiscal habilitado na empresa', function () {
     ['admin' => $admin] = pdvContext();
 
     $this->actingAs($admin);
 
     Livewire::test(TabTerminal::class)
         ->assertSet('canUseFiscalNotes', false)
-        ->assertSet('printFiscalNote', false);
+        ->assertSet('issueFiscalNote', false);
 });
 
 test('fechar comanda com checkbox de nota fiscal marcado dispara order-paid com printFiscalNote, mesmo sem impressora de auto-print', function () {
@@ -1259,6 +1289,8 @@ test('fechar comanda com checkbox de nota fiscal marcado dispara order-paid com 
     $table = openTable($company, $branch);
 
     $company->update(['fiscal_notes_enabled' => true]);
+    CompanyFiscalConfig::create(['company_id' => $company->id, 'branch_id' => $branch->id, 'is_default' => true, 'enabled' => true]);
+    Bus::fake();
 
     $this->actingAs($admin);
 
@@ -1274,7 +1306,7 @@ test('fechar comanda com checkbox de nota fiscal marcado dispara order-paid com 
         ->call('proceedToCloseTab', $orderId)
         ->set('paymentMethod', 'cash')
         ->set('cashReceivedInput', '10.00')
-        ->set('printFiscalNote', true)
+        ->set('issueFiscalNote', true)
         ->call('confirmCloseTab')
         ->assertSet('step', 'catalog')
         ->assertDispatched('order-paid', printFiscalNote: true, stations: []);
@@ -1285,6 +1317,8 @@ test('fechar comanda NÃO reimprime cupom mesmo com impressora de auto-print con
     $table = openTable($company, $branch);
 
     $company->update(['fiscal_notes_enabled' => true]);
+    CompanyFiscalConfig::create(['company_id' => $company->id, 'branch_id' => $branch->id, 'is_default' => true, 'enabled' => true]);
+    Bus::fake();
 
     \App\Models\BranchPrinter::create([
         'company_id' => $company->id,
@@ -1310,7 +1344,7 @@ test('fechar comanda NÃO reimprime cupom mesmo com impressora de auto-print con
         ->call('proceedToCloseTab', $orderId)
         ->set('paymentMethod', 'cash')
         ->set('cashReceivedInput', '10.00')
-        ->set('printFiscalNote', true)
+        ->set('issueFiscalNote', true)
         ->call('confirmCloseTab')
         ->assertSet('step', 'catalog')
         ->assertDispatched('order-paid', printFiscalNote: true, stations: []);

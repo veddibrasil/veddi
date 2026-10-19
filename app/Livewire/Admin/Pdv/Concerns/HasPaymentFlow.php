@@ -7,10 +7,12 @@ use App\Events\OrderStatusUpdated;
 use App\Models\Branch;
 use App\Services\Order\OrderService;
 use Illuminate\Support\Facades\DB;
+use Livewire\Attributes\Computed;
 
 trait HasPaymentFlow
 {
     use HasAutoPrint;
+    use HasCheckoutFiscalNote;
     use HasPaymentSettlement;
 
     // Guarda contra double-submit: se duas chamadas a processOrder() caírem na mesma
@@ -139,18 +141,16 @@ trait HasPaymentFlow
 
         $orderCart = $this->buildOrderCart();
 
-        $isPaidOnCreate = ($this->isSplitPayment || in_array($this->paymentMethod, ['cash', 'credit_card', 'pix']))
-            && ! ($this->deliveryType === 'entrega' && $this->deliveryPaymentStatus === 'on_delivery')
-            && ! ($this->deliveryType === 'retirar' && $this->pickupPaymentStatus === 'on_pickup');
+        $isPaidOnCreate = $this->checkoutSettlesNow();
 
         // Pedido agendado: pagamento pode ser coletado agora, mas o status fica 'scheduled'
-        // (não 'paid') pra não disparar preparo/nota fiscal antes da hora combinada — mesma
-        // convenção usada no agendamento do chat público.
+        // (não 'paid') pra não disparar preparo antes da hora combinada — mesma convenção
+        // usada no agendamento do chat público.
         $status = $isPaidOnCreate
             ? ($scheduledAt ? 'scheduled' : 'paid')
             : 'awaiting_payment';
 
-        $fiscalRecipient = $this->fiscalRecipientForCheckout();
+        $fiscalRecipient = $this->checkoutFiscalRecipient();
         try {
             $order = DB::transaction(function () use ($customerId, $orderCart, $status, $scheduledAt, $isPaidOnCreate, $fiscalRecipient) {
                 $order = app(OrderService::class)->createOrder(
@@ -210,10 +210,10 @@ trait HasPaymentFlow
         }
 
         // Fora da transação: pedido nasce 'paid' aqui (à vista/cartão/pix no PDV, quando não
-        // agendado) e nunca passa por outra transição depois — sem isso a nota fiscal automática
-        // nunca dispara. Se agendado, status é 'scheduled' e o listener de nota fiscal ignora.
+        // agendado) e nunca passa por outra transição depois — sem isso os listeners de status
+        // (WhatsApp, e-mail) nunca disparam. Se agendado, status é 'scheduled'.
         // Cada efeito é isolado: o pedido já foi gravado e pago, então uma falha aqui (Reverb fora
-        // do ar, SEFAZ) não pode virar "erro ao processar" e induzir o operador a refazer a venda.
+        // do ar, fila) não pode virar "erro ao processar" e induzir o operador a refazer a venda.
         if ($isPaidOnCreate) {
             $this->afterCommit('order_status_updated', $order, fn () => OrderStatusUpdated::dispatch($order));
         }
@@ -223,7 +223,8 @@ trait HasPaymentFlow
         $this->afterCommit('new_order_broadcast', $order, fn () => NewOrderPlaced::dispatch($order->load('customer')));
 
         if ($isPaidOnCreate) {
-            $this->afterCommit('auto_print', $order, fn () => $this->dispatchAutoPrintPayload($order));
+            $printFiscalNote = $this->issueFiscalNoteIfRequested($order);
+            $this->afterCommit('auto_print', $order, fn () => $this->dispatchAutoPrintPayload($order, printFiscalNote: $printFiscalNote));
         }
 
         $this->lastOrderTotal = (float) $order->total;
@@ -235,5 +236,23 @@ trait HasPaymentFlow
         // próximo pedido. O card flutuante (fora do fluxo de step) mostra o resultado
         // por cima, sem bloquear o caixa.
         $this->resetCartForNextOrder();
+    }
+
+    /** Pagamento recebido agora no balcão (não "receber na entrega/retirada"). */
+    private function checkoutSettlesNow(): bool
+    {
+        return ($this->isSplitPayment || in_array($this->paymentMethod, ['cash', 'credit_card', 'pix']))
+            && ! ($this->deliveryType === 'entrega' && $this->deliveryPaymentStatus === 'on_delivery')
+            && ! ($this->deliveryType === 'retirar' && $this->pickupPaymentStatus === 'on_pickup');
+    }
+
+    /**
+     * "Emitir e imprimir nota fiscal" só vale pra venda que já nasce 'paid' — agendada ou a
+     * receber na entrega/retirada vai pro Controle de notas e é emitida depois do pagamento.
+     */
+    #[Computed]
+    public function fiscalNoteAvailableOnCheckout(): bool
+    {
+        return $this->checkoutSettlesNow() && ! $this->isScheduled;
     }
 }

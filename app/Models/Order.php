@@ -14,6 +14,9 @@ class Order extends Model
 {
     use BelongsToCompany;
 
+    /** Pedido já pago e não cancelado/reembolsado — só esses podem ter nota fiscal emitida. */
+    public const FISCAL_ISSUABLE_STATUSES = ['paid', 'preparing', 'ready', 'out_for_delivery', 'delivered'];
+
     protected $fillable = [
         'fiscal_recipient',
         'fiscal_error',
@@ -262,6 +265,12 @@ class Order extends Model
     public function activeFiscalNote(): HasOne
     {
         return $this->hasOne(FiscalNote::class)->whereIn('status', ['pending', 'authorized'])->latestOfMany();
+    }
+
+    /** Última tentativa de emissão (qualquer status) — define a situação fiscal no Controle de notas. */
+    public function latestFiscalNote(): HasOne
+    {
+        return $this->hasOne(FiscalNote::class)->latestOfMany();
     }
 
     public function whatsappMessages(): HasMany

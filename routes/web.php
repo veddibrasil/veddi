@@ -126,6 +126,7 @@ Route::middleware(['auth', 'verified', 'company.active'])
         // Fiscal — company_admin + branch_manager (com permissão)
         Route::middleware('company.role:company_admin,branch_manager')->group(function () {
             Route::get('/fiscal/documentos/{note}/{type}', \App\Http\Controllers\Admin\FiscalDocumentController::class)->name('fiscal.document');
+            Route::get('/fiscal/controle', \App\Livewire\Admin\Fiscal\IssueControl::class)->name('fiscal.control');
             Route::get('/fiscal/notas', \App\Livewire\Admin\Fiscal\Notes::class)->name('fiscal.notes');
             Route::get('/fiscal/configuracoes', \App\Livewire\Admin\Fiscal\Config::class)->name('fiscal.config');
         });
@@ -167,6 +168,7 @@ Route::middleware(['auth', 'verified', 'company.active'])
         Route::get('/pdv/print/receipt/{order}/{station?}', [\App\Http\Controllers\Admin\Pdv\PrintPayloadController::class, 'receipt'])->name('pdv.print.receipt');
         Route::get('/pdv/print/closing', [\App\Http\Controllers\Admin\Pdv\PrintPayloadController::class, 'closing'])->name('pdv.print.closing');
         Route::get('/pdv/print/fiscal-note/{order}', [\App\Http\Controllers\Admin\Pdv\PrintPayloadController::class, 'fiscalNote'])->name('pdv.print.fiscal-note');
+        Route::get('/pdv/fiscal-note-status/{order}', [\App\Http\Controllers\Admin\Pdv\PrintPayloadController::class, 'fiscalNoteStatus'])->name('pdv.fiscal-note-status');
         Route::get('/pdv/qz-certificate', [\App\Http\Controllers\Admin\Pdv\QzTraySignatureController::class, 'certificate'])->name('pdv.qz-certificate');
         Route::post('/pdv/qz-sign', [\App\Http\Controllers\Admin\Pdv\QzTraySignatureController::class, 'sign'])->name('pdv.qz-sign');
 

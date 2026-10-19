@@ -5,6 +5,7 @@ namespace App\Livewire\Admin\Fiscal;
 use App\Jobs\IssueFiscalNote;
 use App\Models\FiscalNote;
 use App\Services\Fiscal\FiscalNoteService;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -105,15 +106,6 @@ class Notes extends Component
         session()->flash('status', 'Consulta fiscal concluída.');
     }
 
-    public function issuePendingOrder(int $orderId): void
-    {
-        $this->authorizeFiscalWrite();
-        $order = \App\Models\Order::where('company_id', app('current.company')->id)->findOrFail($orderId);
-        abort_unless(in_array($order->status, ['paid', 'preparing', 'ready', 'delivered'], true), 422);
-        IssueFiscalNote::dispatch($order->id, null, auth()->id());
-        session()->flash('status', 'Emissão de nota fiscal enfileirada.');
-    }
-
     public bool $canView = false;
 
     public bool $canIssue = false;
@@ -127,6 +119,12 @@ class Notes extends Component
     public bool $showErrorModal = false;
 
     public ?int $errorNoteId = null;
+
+    public bool $showReissueModal = false;
+
+    /** Locked: a nota confirmada é a que o servidor abriu no modal, não uma trocada pelo navegador. */
+    #[Locked]
+    public ?int $reissueNoteId = null;
 
     public function mount(): void
     {
@@ -204,13 +202,34 @@ class Notes extends Component
         $this->errorNoteId = null;
     }
 
-    public function reissue(int $noteId): void
+    public function openReissueModal(int $noteId): void
     {
         $this->authorizeFiscalWrite();
 
-        $note = FiscalNote::find($noteId);
+        if (! $this->findReissuableNote($noteId)) {
+            session()->flash('error', 'Nota não pode ser reemitida.');
 
-        if (! $note || ! $note->order_id || ! in_array($note->status, ['error', 'rejected'], true)) {
+            return;
+        }
+
+        $this->reissueNoteId = $noteId;
+        $this->showReissueModal = true;
+    }
+
+    public function closeReissueModal(): void
+    {
+        $this->showReissueModal = false;
+        $this->reissueNoteId = null;
+    }
+
+    public function confirmReissue(): void
+    {
+        $this->authorizeFiscalWrite();
+
+        $note = $this->reissueNoteId ? $this->findReissuableNote($this->reissueNoteId) : null;
+        $this->closeReissueModal();
+
+        if (! $note) {
             session()->flash('error', 'Nota não pode ser reemitida.');
 
             return;
@@ -237,6 +256,13 @@ class Notes extends Component
         session()->flash('status', 'Reemissão de nota fiscal enfileirada.');
     }
 
+    private function findReissuableNote(int $noteId): ?FiscalNote
+    {
+        $note = FiscalNote::where('company_id', app('current.company')->id)->with('order')->find($noteId);
+
+        return $note && $note->order_id && in_array($note->status, ['error', 'rejected'], true) ? $note : null;
+    }
+
     public function render()
     {
         $query = FiscalNote::with(['order'])
@@ -260,10 +286,10 @@ class Notes extends Component
 
         return view('livewire.admin.fiscal.notes', [
             'notes' => $query->paginate(15),
-            'pendingOrders' => \App\Models\Order::whereNotNull('fiscal_error')->latest()->limit(20)->get(),
             'fiscalEvents' => \App\Models\FiscalNoteEvent::latest()->limit(20)->get(),
             'emitterConfigs' => \App\Models\CompanyFiscalConfig::where('company_id', app('current.company')->id)->where('nfe_enabled', true)->with('branch')->get(),
             'errorNote' => $this->errorNoteId ? FiscalNote::find($this->errorNoteId) : null,
+            'reissueNote' => $this->showReissueModal && $this->reissueNoteId ? $this->findReissuableNote($this->reissueNoteId) : null,
         ])->layout('layouts.app', ['title' => 'Notas Fiscais']);
     }
 }

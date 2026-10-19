@@ -18,18 +18,10 @@
     @if($canIssue)
         <flux:button wire:click="openInvalidation" size="sm">Inutilizar numeração de NF-e</flux:button>
     @endif
-    @if($pendingOrders->isNotEmpty())
-        <div class="rounded-xl border border-amber-200 p-4 space-y-2">
-            <h2 class="font-semibold">Pendências fiscais</h2>
-            @foreach($pendingOrders as $pendingOrder)
-                <div class="text-sm">
-                    <a class="text-blue-600 underline" href="{{ route('admin.orders.show', $pendingOrder) }}" wire:navigate>{{ $pendingOrder->order_number }} — Completar dados fiscais</a>
-                    <p class="text-xs text-amber-700">{{ $pendingOrder->fiscal_error }}</p>
-                    @if($canIssue)<button wire:click="issuePendingOrder({{ $pendingOrder->id }})" class="text-blue-600 text-xs">Tentar emissão novamente</button>@endif
-                </div>
-            @endforeach
-        </div>
-    @endif
+    <p class="text-sm text-neutral-500 dark:text-neutral-400">
+        Histórico das notas emitidas. Para emitir notas de pedidos sem nota ou com erro, use o
+        <a href="{{ route('admin.fiscal.control') }}" class="text-blue-600 underline dark:text-blue-400" wire:navigate>Controle de notas</a>.
+    </p>
     {{-- Filters --}}
     <div class="flex flex-col sm:flex-row gap-3">
         <flux:input wire:model.live.debounce.300ms="search" placeholder="Buscar por chave, ref ou pedido..." class="sm:max-w-xs" />
@@ -124,8 +116,7 @@
                                     </button>
                                 @endif
                                 @if($canIssue && $note->order_id && in_array($note->status, ['error', 'rejected']))
-                                    <button wire:click="reissue({{ $note->id }})"
-                                        wire:confirm="Reemitir a nota fiscal para este pedido?"
+                                    <button wire:click="openReissueModal({{ $note->id }})"
                                         class="text-blue-600 hover:text-blue-800 dark:text-blue-400 font-medium text-xs">
                                         Reemitir
                                     </button>
@@ -191,6 +182,37 @@
 
                 <div class="flex justify-end mt-6">
                     <flux:button wire:click="closeErrorModal" variant="ghost">Fechar</flux:button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- Reissue modal --}}
+    @if($showReissueModal && $reissueNote)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div class="max-h-[85vh] w-full max-w-lg space-y-4 overflow-y-auto rounded-xl bg-white p-6 shadow-xl dark:bg-zinc-800">
+                <h3 class="text-lg font-semibold text-neutral-800 dark:text-neutral-100">Reemitir nota fiscal</h3>
+
+                <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                    <dt class="text-neutral-500 dark:text-neutral-400">Pedido</dt>
+                    <dd class="font-medium text-neutral-800 dark:text-neutral-100">{{ $reissueNote->order?->order_number ?? '—' }} · {{ $reissueNote->model_label }}</dd>
+                    <dt class="text-neutral-500 dark:text-neutral-400">Última tentativa</dt>
+                    <dd class="text-neutral-700 dark:text-neutral-200">{{ $reissueNote->created_at->format('d/m/Y H:i') }} · {{ $reissueNote->status === 'rejected' ? 'Rejeitada' : 'Erro' }}</dd>
+                </dl>
+
+                @include('livewire.admin.fiscal._issue-warnings', [
+                    'errorMessage' => $reissueNote->error_message,
+                    'sefazStatus' => $reissueNote->raw_response['status_sefaz'] ?? null,
+                    'orderDate' => $reissueNote->order?->created_at,
+                ])
+
+                <p class="text-sm text-neutral-600 dark:text-neutral-300">
+                    Uma nova tentativa de emissão será enviada à SEFAZ. Se a anterior já tiver sido processada, só o status é atualizado.
+                </p>
+
+                <div class="flex justify-end gap-3">
+                    <flux:button wire:click="closeReissueModal" variant="ghost">Voltar</flux:button>
+                    <flux:button wire:click="confirmReissue" wire:loading.attr="disabled" wire:target="confirmReissue" variant="primary">Reemitir nota</flux:button>
                 </div>
             </div>
         </div>
