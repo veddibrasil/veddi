@@ -24,5 +24,12 @@ readonly class FiscalNoteDTO
         public ?string $customerDocument = null,
         public string $environment = 'homologacao',
         public ?string $orderType = null,
+        public string $model = '65',
+        public array $recipient = [],
+        public ?string $reference = null,
+        public float $freight = 0,
+        public float $discount = 0,
+        public float $otherExpenses = 0,
+        public array $payments = [],
     ) {}
 }

@@ -1,6 +1,6 @@
 <div class="w-full space-y-6">
     <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100">Notas Fiscais (NFC-e)</h1>
+        <h1 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100">Notas Fiscais (NF-e e NFC-e)</h1>
     </div>
 
     @if(session('status'))
@@ -15,9 +15,27 @@
         </div>
     @endif
 
+    @if($canIssue)
+        <flux:button wire:click="openInvalidation" size="sm">Inutilizar numeração de NF-e</flux:button>
+    @endif
+    @if($pendingOrders->isNotEmpty())
+        <div class="rounded-xl border border-amber-200 p-4 space-y-2">
+            <h2 class="font-semibold">Pendências fiscais</h2>
+            @foreach($pendingOrders as $pendingOrder)
+                <div class="text-sm">
+                    <a class="text-blue-600 underline" href="{{ route('admin.orders.show', $pendingOrder) }}" wire:navigate>{{ $pendingOrder->order_number }} — Completar dados fiscais</a>
+                    <p class="text-xs text-amber-700">{{ $pendingOrder->fiscal_error }}</p>
+                    @if($canIssue)<button wire:click="issuePendingOrder({{ $pendingOrder->id }})" class="text-blue-600 text-xs">Tentar emissão novamente</button>@endif
+                </div>
+            @endforeach
+        </div>
+    @endif
     {{-- Filters --}}
     <div class="flex flex-col sm:flex-row gap-3">
         <flux:input wire:model.live.debounce.300ms="search" placeholder="Buscar por chave, ref ou pedido..." class="sm:max-w-xs" />
+        <flux:select wire:model.live="modelFilter" class="sm:max-w-xs">
+            <option value="">Todos os modelos</option><option value="55">NF-e</option><option value="65">NFC-e</option>
+        </flux:select>
         <flux:select wire:model.live="statusFilter" class="sm:max-w-xs">
             <option value="">Todos os status</option>
             <option value="pending">Pendente</option>
@@ -62,7 +80,7 @@
                         <td class="px-4 py-3 text-sm text-neutral-700 dark:text-neutral-200">
                             @if($note->order)
                                 <a href="{{ route('admin.orders.show', $note->order) }}" class="font-medium hover:underline" wire:navigate>
-                                    {{ $note->order->order_number }}
+                                    {{ $note->order->order_number }} · {{ $note->model_label }}
                                 </a>
                             @else
                                 <span class="text-neutral-400">—</span>
@@ -80,15 +98,21 @@
                             {{ $note->created_at->format('d/m/Y H:i') }}
                         </td>
                         <td class="px-4 py-3 text-right text-sm">
-                            <div class="flex justify-end gap-2">
+                            <div class="flex justify-end gap-2 flex-wrap">
+                                @if($canIssue)
+                                    <button wire:click="consult({{ $note->id }})" class="text-blue-600 text-xs">Consultar</button>
+                                    @if($note->model === '55' && $note->status === 'authorized')
+                                        <button wire:click="openCorrection({{ $note->id }})" class="text-blue-600 text-xs">Carta de correção</button>
+                                    @endif
+                                @endif
                                 @if($note->danfe_url)
-                                    <a href="{{ $note->danfe_url }}" target="_blank"
+                                    <a href="{{ route('admin.fiscal.document', ['note' => $note->id, 'type' => 'danfe']) }}" target="_blank"
                                         class="text-blue-600 hover:text-blue-800 dark:text-blue-400 font-medium text-xs">
                                         DANFE
                                     </a>
                                 @endif
                                 @if($note->xml_url)
-                                    <a href="{{ $note->xml_url }}" target="_blank"
+                                    <a href="{{ route('admin.fiscal.document', ['note' => $note->id, 'type' => 'xml']) }}" target="_blank"
                                         class="text-blue-600 hover:text-blue-800 dark:text-blue-400 font-medium text-xs">
                                         XML
                                     </a>
@@ -101,7 +125,7 @@
                                 @endif
                                 @if($canIssue && $note->order_id && in_array($note->status, ['error', 'rejected']))
                                     <button wire:click="reissue({{ $note->id }})"
-                                        wire:confirm="Reemitir NFC-e para este pedido?"
+                                        wire:confirm="Reemitir a nota fiscal para este pedido?"
                                         class="text-blue-600 hover:text-blue-800 dark:text-blue-400 font-medium text-xs">
                                         Reemitir
                                     </button>
@@ -168,6 +192,47 @@
                 <div class="flex justify-end mt-6">
                     <flux:button wire:click="closeErrorModal" variant="ghost">Fechar</flux:button>
                 </div>
+            </div>
+        </div>
+    @endif
+
+    @if($fiscalEvents->isNotEmpty())
+        <details class="border rounded-xl p-4">
+            <summary class="cursor-pointer">Histórico de eventos fiscais</summary>
+            @foreach($fiscalEvents as $event)
+                <p class="text-xs mt-2">#{{ $event->id }} · {{ ['correction' => 'Carta de correção', 'invalidation' => 'Inutilização', 'cancellation' => 'Cancelamento'][$event->type] ?? $event->type }} · {{ $event->status }} · {{ $event->created_at->format('d/m/Y H:i') }}</p>
+                @if($canIssue && $event->status === 'pending')<button wire:click="consultEvent({{ $event->id }})" class="text-xs text-blue-600">Consultar evento</button>@endif
+                <p class="text-xs text-neutral-500">{{ $event->data['response']['mensagem_sefaz'] ?? $event->data['response']['mensagem'] ?? $event->data['error'] ?? '' }}</p>
+            @endforeach
+        </details>
+    @endif
+    @if($showCorrectionModal)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div class="bg-white dark:bg-zinc-800 rounded-xl p-6 w-full max-w-lg space-y-3">
+                <h2 class="font-semibold">Carta de correção da NF-e</h2>
+                <p class="text-xs text-neutral-500">Use apenas para alterações permitidas. Mudanças de valores, impostos e identidade do destinatário exigem outro procedimento fiscal.</p>
+                <flux:textarea wire:model="correctionText" label="Correção" rows="4" />
+                @error('correctionText') <p class="text-xs text-red-600">{{ $message }}</p> @enderror
+                <flux:button wire:click="$set('showCorrectionModal', false)">Voltar</flux:button>
+                <flux:button wire:click="confirmCorrection" wire:loading.attr="disabled" variant="primary">Enviar correção</flux:button>
+            </div>
+        </div>
+    @endif
+    @if($showInvalidationModal)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div class="bg-white dark:bg-zinc-800 rounded-xl p-6 w-full max-w-lg space-y-3">
+                <h2 class="font-semibold">Inutilizar numeração de NF-e</h2>
+                <flux:select wire:model="invalidationConfigId" label="Emitente">
+                    <option value="">Selecione</option>
+                    @foreach($emitterConfigs as $emitter)<option value="{{ $emitter->id }}">{{ $emitter->branch?->name }} · {{ $emitter->branch?->cnpj }}</option>@endforeach
+                </flux:select>
+                @error('invalidationConfigId') <p class="text-xs text-red-600">{{ $message }}</p> @enderror
+                @foreach(['serie' => 'Série', 'numero_inicial' => 'Número inicial', 'numero_final' => 'Número final', 'justificativa' => 'Justificativa'] as $field => $label)
+                    <flux:input wire:model="invalidation.{{ $field }}" :label="$label" />
+                    @error($field) <p class="text-xs text-red-600">{{ $message }}</p> @enderror
+                @endforeach
+                <flux:button wire:click="$set('showInvalidationModal', false)">Voltar</flux:button>
+                <flux:button wire:click="confirmInvalidation" wire:loading.attr="disabled" variant="danger">Confirmar inutilização</flux:button>
             </div>
         </div>
     @endif

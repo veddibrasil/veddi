@@ -160,6 +160,7 @@ trait HasPaymentFlow
         }
 
         $scheduledAt = $this->scheduledAt ? Carbon::parse($this->scheduledAt) : null;
+        $fiscalRecipient = $this->fiscalRecipientForCheckout();
 
         try {
             $this->reauthorizeDeliveryFee();
@@ -175,6 +176,7 @@ trait HasPaymentFlow
                 $this->deliveryFee,
                 $coupon,
                 $scheduledAt,
+                fiscalRecipient: $fiscalRecipient,
             );
 
             Log::channel('orders')->info('Pedido criado no chat', [

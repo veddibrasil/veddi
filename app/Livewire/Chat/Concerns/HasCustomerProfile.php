@@ -236,6 +236,6 @@ trait HasCustomerProfile
         $this->number = $customer->number ?? '';
         $this->city = $customer->city ?? '';
         $this->cep = $customer->cep ?? '';
-        $this->taxId = $customer->tax_id ?? '';
+        $this->taxId = strlen(preg_replace('/\D/', '', $customer->tax_id ?? '')) === 11 ? $customer->tax_id : '';
     }
 }

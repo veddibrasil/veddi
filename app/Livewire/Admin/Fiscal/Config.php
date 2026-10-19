@@ -35,6 +35,10 @@ class Config extends Component
 
     public string $nfceSerie = '1';
 
+    public bool $nfeEnabled = false;
+
+    public string $nfeSerie = '1';
+
     public $certificateFile = null;
 
     public bool $hasCertificate = false;
@@ -177,6 +181,8 @@ class Config extends Component
         $this->provider = $config?->provider ?? 'focus_nfe';
         $this->environment = $config?->environment ?? 'homologacao';
         $this->nfceSerie = (string) ($config?->nfce_serie ?? '1');
+        $this->nfeEnabled = $config?->nfe_enabled ?? false;
+        $this->nfeSerie = (string) ($config?->nfe_serie ?? '1');
         $this->hasProviderToken = filled($config?->provider_token);
         $this->hasCertificate = filled($config?->certificate_path);
         $this->focusNfeCompanyId = $config?->focus_nfe_company_id;
@@ -212,7 +218,9 @@ class Config extends Component
             'crt' => ['required', 'integer', 'in:1,2,3'],
             'providerToken' => ['nullable', 'string', 'max:255'],
             'environment' => ['required', 'in:homologacao,producao'],
-            'nfceSerie' => ['required', 'integer', 'min:1'],
+            'nfceSerie' => ['required', 'integer', 'min:1', 'max:999'],
+            'nfeSerie' => ['required', 'integer', 'min:1', 'max:999'],
+            'nfeEnabled' => ['boolean'],
             'inscricaoEstadual' => ['nullable', 'string', 'max:50'],
             'inscricaoMunicipal' => ['nullable', 'string', 'max:50'],
             'branchCnpj' => ['nullable', 'string'],
@@ -292,6 +300,8 @@ class Config extends Component
         $config->provider = $this->provider;
         $config->environment = $this->environment;
         $config->nfce_serie = (int) $this->nfceSerie;
+        $config->nfe_enabled = $this->nfeEnabled;
+        $config->nfe_serie = (int) $this->nfeSerie;
         $config->id_token_nfce_producao = $this->idTokenNfceProducao ?: null;
 
         // Token/senha/CSC só são sobrescritos quando o usuário digita um novo valor —
@@ -409,6 +419,7 @@ class Config extends Component
             'uf' => $branch?->state,
             'cep' => preg_replace('/\D/', '', $branch?->cep ?? '') ?: null,
             'habilita_nfce' => true,
+            'habilita_nfe' => $this->nfeEnabled,
             'email' => $company->email,
             'telefone' => $branch?->phone,
         ];

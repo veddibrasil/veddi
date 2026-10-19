@@ -140,6 +140,7 @@ trait HasOpenTabs
                     cart: [(string) $product->id => ['product_id' => $product->id, 'qty' => 1, 'options' => $optionSelections]],
                     notes: $this->notes,
                     paymentMethod: '',
+                    fiscalRecipient: $this->effectiveFiscalRecipient(),
                     orderType: 'pdv',
                     status: 'pending',
                 );
@@ -416,7 +417,7 @@ trait HasOpenTabs
                     // Comanda geralmente abre sem cliente vinculado (guest); se o mesário identificar
                     // o cliente só agora no fechamento, precisa gravar — senão a busca/seleção feita
                     // na tela de pagamento é descartada e o pedido fica com "Cliente Balcão".
-                    ...($this->customerId ? ['customer_id' => $this->customerId] : []),
+                    ...($this->customerId ? ['customer_id' => $this->customerId, 'fiscal_recipient' => $this->fiscalRecipientForCheckout()] : []),
                 ]);
 
                 if ($isPaidOnCreate) {
@@ -593,7 +594,7 @@ trait HasOpenTabs
                         'status' => 'paid',
                         'is_open_tab' => false,
                         'pdv_cash_session_id' => $this->cashSessionId,
-                        ...($this->customerId ? ['customer_id' => $this->customerId] : []),
+                        ...($this->customerId ? ['customer_id' => $this->customerId, 'fiscal_recipient' => $this->fiscalRecipientForCheckout()] : []),
                     ]);
 
                     app(PaymentOrchestrator::class)->processSplit($order, $orderParts);

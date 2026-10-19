@@ -24,6 +24,7 @@ use Livewire\Component;
 /** Venda direta / balcão. Fluxo de mesa/comanda fica em {@see TabTerminal}. */
 class Terminal extends Component
 {
+    use \App\Livewire\Concerns\HasFiscalRecipient;
     use HasBranchContext;
     use HasCartManagement;
     use HasCashSession;
@@ -276,6 +277,9 @@ class Terminal extends Component
 
     private function resetCartForNextOrder(): void
     {
+        $this->savedFiscalRecipient = null;
+        $this->fiscalRecipientCustomerId = null;
+        $this->showFiscalRecipient = false;
         $this->cart = [];
         $this->customerQuery = '';
         $this->customerName = '';

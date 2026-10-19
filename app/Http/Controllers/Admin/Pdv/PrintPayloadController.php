@@ -99,7 +99,7 @@ class PrintPayloadController extends Controller
 
         $note = $order->activeFiscalNote;
 
-        abort_unless($note && $note->status === 'authorized', 404);
+        abort_unless($note && $note->status === 'authorized' && $note->model !== '55', 404);
 
         $printer = $order->branch->printers->firstWhere('print_fiscal_note', true);
 

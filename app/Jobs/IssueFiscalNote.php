@@ -4,7 +4,6 @@ namespace App\Jobs;
 
 use App\Exceptions\FiscalNoteAlreadyIssuedException;
 use App\Models\CompanyNotification;
-use App\Models\FiscalNote;
 use App\Models\Order;
 use App\Services\Fiscal\FiscalNoteService;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -22,6 +21,7 @@ class IssueFiscalNote implements ShouldQueue
     public function __construct(
         public readonly int $orderId,
         public readonly ?string $customerDocument = null,
+        public readonly ?int $requestedBy = null,
     ) {
         $this->onQueue('default');
     }
@@ -44,7 +44,7 @@ class IssueFiscalNote implements ShouldQueue
         }
 
         try {
-            $service->issue($order, $this->customerDocument);
+            $service->issue($order, $this->customerDocument, $this->requestedBy);
         } catch (FiscalNoteAlreadyIssuedException $e) {
             Log::channel('fiscal')->info('IssueFiscalNote: emissão ignorada, nota já ativa', [
                 'order_id' => $this->orderId,
@@ -70,9 +70,7 @@ class IssueFiscalNote implements ShouldQueue
             'error' => $exception->getMessage(),
         ]);
 
-        FiscalNote::where('order_id', $this->orderId)
-            ->where('status', 'pending')
-            ->update(['status' => 'error', 'data->error_message' => $exception->getMessage()]);
+        Order::withoutGlobalScopes()->whereKey($this->orderId)->update(['fiscal_error' => $exception->getMessage()]);
 
         $companyId = Order::withoutGlobalScopes()->find($this->orderId)?->company_id;
 

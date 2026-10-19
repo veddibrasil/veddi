@@ -150,8 +150,9 @@ trait HasPaymentFlow
             ? ($scheduledAt ? 'scheduled' : 'paid')
             : 'awaiting_payment';
 
+        $fiscalRecipient = $this->fiscalRecipientForCheckout();
         try {
-            $order = DB::transaction(function () use ($customerId, $orderCart, $status, $scheduledAt, $isPaidOnCreate) {
+            $order = DB::transaction(function () use ($customerId, $orderCart, $status, $scheduledAt, $isPaidOnCreate, $fiscalRecipient) {
                 $order = app(OrderService::class)->createOrder(
                     customerId: $customerId,
                     branchId: $this->selectedBranchId,
@@ -165,6 +166,7 @@ trait HasPaymentFlow
                     extraDiscount: $this->manualDiscountAmount,
                     serviceFee: $this->serviceFeeAmount,
                     couvertFee: $this->couvertFeeAmount,
+                    fiscalRecipient: $fiscalRecipient,
                 );
 
                 $order->delivery_type = $this->deliveryType;

@@ -125,3 +125,5 @@ Schedule::call(function () {
     ->everyFiveMinutes()
     ->withoutOverlapping()
     ->onOneServer();
+
+Schedule::job(new \App\Jobs\ArchiveFiscalDocuments)->hourly()->withoutOverlapping()->onOneServer();

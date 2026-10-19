@@ -12,6 +12,13 @@ class FiscalNote extends Model
 
     protected $fillable = [
         'company_id',
+        'model',
+        'fiscal_config_id',
+        'environment',
+        'issuer_cnpj',
+        'number',
+        'series',
+        'protocol',
         'order_id',
         'branch_id',
         'status',
@@ -23,6 +30,16 @@ class FiscalNote extends Model
     protected $casts = [
         'data' => 'array',
     ];
+
+    public function getModelLabelAttribute(): string
+    {
+        return $this->model === '55' ? 'NF-e' : 'NFC-e';
+    }
+
+    public function events(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(FiscalNoteEvent::class);
+    }
 
     public function order(): BelongsTo
     {

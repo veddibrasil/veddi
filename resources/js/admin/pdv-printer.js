@@ -260,6 +260,10 @@ export function listenForFiscalNoteAuthorization(orderId, onError) {
 
     channel.listen('.FiscalNoteAuthorized', (event) => {
         clearTimeout(timeout);
+        if (event.model === '55') {
+            stopListening();
+            return;
+        }
         autoPrintFiscalNote(event.order_id, onError);
         stopListening();
     });

@@ -23,6 +23,7 @@ use Livewire\Component;
 /** Mesa/comanda. Venda direta/balcão fica em {@see Terminal}. */
 class TabTerminal extends Component
 {
+    use \App\Livewire\Concerns\HasFiscalRecipient;
     use HasBranchContext;
     use HasCashSession;
     use HasCatalog;
@@ -374,6 +375,9 @@ class TabTerminal extends Component
 
     public function resetTerminal(): void
     {
+        $this->savedFiscalRecipient = null;
+        $this->fiscalRecipientCustomerId = null;
+        $this->showFiscalRecipient = false;
         $this->customerQuery = '';
         $this->customerName = '';
         $this->customerId = null;

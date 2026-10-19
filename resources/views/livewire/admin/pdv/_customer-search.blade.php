@@ -7,13 +7,16 @@
 <div class="flex gap-2">
     <flux:input
         wire:model.live.debounce.300ms="customerQuery"
-        placeholder="Nome, telefone ou CPF..."
+        placeholder="Nome, telefone, CPF ou CNPJ..."
         class="flex-1"
     />
     <flux:button wire:click="lookupCustomer" variant="outline" icon="magnifying-glass" size="sm" aria-label="Buscar cliente" />
 </div>
 @if ($customerFound)
     <p class="text-xs text-green-600 dark:text-green-400">✓ {{ $customerName }}</p>
+    @if(app('current.company')->canUseFiscalNotes())
+        @include('livewire.partials.fiscal-recipient')
+    @endif
 @elseif (!empty($customerResults))
     <div class="border rounded-xl overflow-hidden dark:border-zinc-600 max-h-32 overflow-y-auto">
         @foreach ($customerResults as $result)

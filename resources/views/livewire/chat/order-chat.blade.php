@@ -955,6 +955,10 @@
             <div wire:key="step-confirm" class="space-y-3">
                 <p class="text-xs font-semibold text-gray-500 text-center uppercase tracking-wider">Confirme seu pedido</p>
 
+                @if($currentCompany?->canUseFiscalNotes() && $customerId)
+                    @include('livewire.partials.fiscal-recipient')
+                @endif
+
                 {{-- Itens --}}
                 <div class="max-h-44 overflow-y-auto mc-scrollbar space-y-1.5 pr-0.5">
                     @foreach ($cart as $item)

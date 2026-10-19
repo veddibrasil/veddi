@@ -168,6 +168,10 @@
                     @error('environment') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
                 <div>
+                    <flux:checkbox wire:model="nfeEnabled" label="Habilitar NF-e para clientes com CNPJ" :disabled="!$canManage" />
+                    <flux:input wire:model="nfeSerie" label="Série NF-e" type="number" min="1" max="999" :disabled="!$canManage" />
+                    @error('nfeSerie') <p class="text-red-500 text-xs">{{ $message }}</p> @enderror
+                    <p class="text-xs text-neutral-500">CNPJ seleciona NF-e automaticamente. CPF ou sem documento seleciona NFC-e.</p>
                     <flux:input wire:model="nfceSerie" label="Série NFC-e" type="number" min="1" :disabled="!$canManage" />
                     @error('nfceSerie') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>

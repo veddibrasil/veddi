@@ -27,6 +27,8 @@ class CompanyFiscalConfig extends Model
         'id_token_nfce_producao',
         'environment',
         'nfce_serie',
+        'nfe_enabled',
+        'nfe_serie',
         'certificate_path',
         'certificate_password',
     ];
@@ -36,6 +38,8 @@ class CompanyFiscalConfig extends Model
         'is_default' => 'boolean',
         'crt' => 'integer',
         'nfce_serie' => 'integer',
+        'nfe_enabled' => 'boolean',
+        'nfe_serie' => 'integer',
         'provider_token' => 'encrypted',
         'token_producao' => 'encrypted',
         'token_homologacao' => 'encrypted',

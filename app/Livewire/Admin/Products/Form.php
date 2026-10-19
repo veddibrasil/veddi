@@ -91,9 +91,24 @@ class Form extends Component
 
     public string $minQuantity = '0';
 
+    public array $fiscalData = [];
+
+    public string $fiscalTaxes = '';
+
     protected function rules(): array
     {
         return [
+            'fiscalData' => ['array'],
+            'fiscalData.ncm' => ['nullable', 'regex:/^[0-9]{8}$/'],
+            'fiscalData.cfop' => ['nullable', 'regex:/^5[0-9]{3}$/'],
+            'fiscalData.interstate_cfop' => ['nullable', 'regex:/^6[0-9]{3}$/'],
+            'fiscalData.icms_situation' => ['nullable', 'regex:/^[0-9]{2,3}$/'],
+            'fiscalData.origin' => ['nullable', 'integer', 'between:0,8'],
+            'fiscalData.unit' => ['nullable', 'string', 'max:6'],
+            'fiscalData.cest' => ['nullable', 'regex:/^[0-9]{7}$/'],
+            'fiscalData.pis_situation' => ['nullable', 'regex:/^[0-9]{2}$/'],
+            'fiscalData.cofins_situation' => ['nullable', 'regex:/^[0-9]{2}$/'],
+            'fiscalTaxes' => ['nullable', 'json'],
             'company_id' => $this->isSuperAdmin ? ['required', 'integer', 'exists:companies,id'] : ['nullable'],
             'product_category_id' => ['required', 'integer', 'exists:product_categories,id'],
             'name' => ['required', 'string', $this->appliesIfoodRules() ? 'max:100' : 'max:150'],
@@ -230,6 +245,8 @@ class Form extends Component
 
         if ($product?->exists) {
             $this->product = $product;
+            $this->fiscalData = $product->fiscal_data ?? [];
+            $this->fiscalTaxes = empty($this->fiscalData['taxes']) ? '' : json_encode($this->fiscalData['taxes'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
             $this->isEditing = true;
             $this->company_id = $product->company_id;
             $this->fill($product->only('product_category_id', 'name', 'active', 'available_in_pdv', 'available_in_delivery', 'sort_order'));
@@ -670,6 +687,19 @@ class Form extends Component
             $imagePath = $stored;
         }
 
+        $taxes = $this->fiscalTaxes !== '' ? json_decode($this->fiscalTaxes, true) : [];
+        if (! is_array($taxes) || array_is_list($taxes) && $taxes !== []) {
+            $this->addError('fiscalTaxes', 'Informe um objeto JSON de campos tributários.');
+
+            return;
+        }
+        foreach ($taxes as $key => $value) {
+            if (! preg_match('/^(icms_|pis_|cofins_|ipi_|ibs_|cbs_|is_)/', $key) || is_array($value) || is_object($value)) {
+                $this->addError('fiscalTaxes', 'Use somente campos tributários válidos da Focus NFe.');
+
+                return;
+            }
+        }
         $isVariantProduct = $this->isVariant;
 
         $data = [
@@ -687,6 +717,7 @@ class Form extends Component
             'available_in_ifood' => $validated['available_in_ifood'],
             'sort_order' => $validated['sort_order'],
             'image_path' => $imagePath,
+            'fiscal_data' => array_replace($this->fiscalData, ['taxes' => $taxes]),
         ];
 
         if (! $isVariantProduct && ! empty($data['promo_price_enabled'])) {
