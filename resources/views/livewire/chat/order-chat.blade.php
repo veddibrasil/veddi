@@ -255,6 +255,7 @@
                     />
                     @error('phone') <p class="text-red-600 text-xs mt-1 flex items-center gap-1"><span>⚠</span> {{ $message }}</p> @enderror
                 </div>
+                {{-- Opt-in de notificações por WhatsApp desligado até a integração ser validada em produção.
                 @if ($this->whatsappAvailable)
                     <label class="flex items-start gap-2.5 cursor-pointer">
                         <input wire:model="whatsappOptIn" type="checkbox" class="mt-0.5 w-4 h-4 rounded border-gray-300 shrink-0" />
@@ -263,7 +264,7 @@
                             <span class="block text-gray-400">Você pode parar a qualquer momento respondendo PARAR.</span>
                         </span>
                     </label>
-                @endif
+                @endif --}}
                 <button wire:click="submitPhone" class="mc-btn-primary" wire:loading.attr="disabled" wire:target="submitPhone">
                     <span wire:loading.remove wire:target="submitPhone">Continuar →</span>
                     <span wire:loading wire:target="submitPhone">Verificando...</span>

@@ -55,6 +55,17 @@ const WHATSAPP_OPT_IN_TEXT = 'Quero receber atualizações do meu pedido pelo Wh
 
 // ── Exibição do checkbox ──────────────────────────────────────────────────────
 
+const WHATSAPP_CHAT_DISABLED = 'Opt-in de WhatsApp no chat desligado até a integração ser validada em produção';
+
+test('o chat não mostra o checkbox de WhatsApp enquanto o opt-in está desligado, mesmo com a empresa ativa', function () {
+    $company = whatsappChatCompany();
+
+    whatsappChatAtPhoneStep($this, $company)
+        ->assertOk()
+        ->assertSee('Telefone com DDD')
+        ->assertDontSee(WHATSAPP_OPT_IN_TEXT);
+});
+
 test('o chat mostra o checkbox de WhatsApp, desmarcado, quando a empresa notifica por WhatsApp', function () {
     $company = whatsappChatCompany();
 
@@ -65,7 +76,7 @@ test('o chat mostra o checkbox de WhatsApp, desmarcado, quando a empresa notific
         ->assertSee('respondendo PARAR');
 
     expect((new OrderChat)->whatsappOptIn)->toBeFalse();
-});
+})->skip(WHATSAPP_CHAT_DISABLED);
 
 test('o chat esconde o checkbox quando a empresa não tem WhatsApp ativo', function (string $cenario) {
     $company = whatsappChatCompany(false);
@@ -99,7 +110,7 @@ test('com o fallback da plataforma ativo o chat também pede o consentimento', f
     WhatsAppSetting::create(['company_id' => $company->id, 'enabled' => true]);
 
     whatsappChatAtPhoneStep($this, $company)->assertSee(WHATSAPP_OPT_IN_TEXT);
-});
+})->skip(WHATSAPP_CHAT_DISABLED);
 
 test('a conexão de outra empresa não faz o checkbox aparecer', function () {
     whatsappChatCompany(); // outra empresa, com tudo ativo
@@ -122,7 +133,7 @@ test('digitar telefone não altera consentimentos mesmo marcando o checkbox', fu
     $chat->submitPhone();
     expect($customer->fresh()->getAttributes())->toBe($original)
         ->and($chat->customerId)->toBeNull()
-        ->and($chat->step)->toBe('CUSTOMER_OPTIONS');
+        ->and($chat->step)->toBe('REGISTER_NAME');
 })->with([[false, false], [true, false], [true, true]]);
 
 test('preencher compra não cria perfil nem opt-in permanente', function () {
