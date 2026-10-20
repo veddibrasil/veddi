@@ -19,6 +19,7 @@ use Livewire\Attributes\Computed;
 trait HasOpenTabs
 {
     use HasAutoPrint;
+    use HasCheckoutFiscalNote;
     use HasPaymentSettlement;
 
     public function updatedOrderMode(): void
@@ -140,6 +141,7 @@ trait HasOpenTabs
                     cart: [(string) $product->id => ['product_id' => $product->id, 'qty' => 1, 'options' => $optionSelections]],
                     notes: $this->notes,
                     paymentMethod: '',
+                    fiscalRecipient: null,
                     orderType: 'pdv',
                     status: 'pending',
                 );
@@ -395,8 +397,12 @@ trait HasOpenTabs
 
         $isPaidOnCreate = $this->isSplitPayment || in_array($this->paymentMethod, ['cash', 'credit_card', 'pix']);
 
+        // Fora da transação: erro de CPF/CNPJ na nota volta como erro de campo, não como
+        // "não foi possível processar o pedido".
+        $fiscalRecipient = $this->checkoutFiscalRecipient();
+
         try {
-            DB::transaction(function () use ($order, $isPaidOnCreate) {
+            DB::transaction(function () use ($order, $isPaidOnCreate, $fiscalRecipient) {
                 app(OrderService::class)->applyManualDiscountToOrder(
                     $order,
                     $this->manualDiscountAmount,
@@ -417,6 +423,7 @@ trait HasOpenTabs
                     // o cliente só agora no fechamento, precisa gravar — senão a busca/seleção feita
                     // na tela de pagamento é descartada e o pedido fica com "Cliente Balcão".
                     ...($this->customerId ? ['customer_id' => $this->customerId] : []),
+                    ...($fiscalRecipient !== null ? ['fiscal_recipient' => $fiscalRecipient] : []),
                 ]);
 
                 if ($isPaidOnCreate) {
@@ -436,12 +443,13 @@ trait HasOpenTabs
         }
 
         // Fora da transação: fechar comanda com status 'paid' não passa por createOrder()
-        // nem por nenhuma outra transição — sem isso a nota fiscal automática nunca dispara
-        // pra pedidos pagos aqui (ver OrderService::createOrder() pro mesmo problema na criação).
+        // nem por nenhuma outra transição — sem isso os listeners de status (WhatsApp, e-mail)
+        // nunca disparam pra pedidos pagos aqui (ver OrderService::createOrder()).
         // Efeitos isolados: a comanda já está paga, falha aqui não pode virar "erro" na tela.
         if ($isPaidOnCreate) {
             $this->afterCommit('order_status_updated', $order, fn () => OrderStatusUpdated::dispatch($order));
-            $this->afterCommit('auto_print', $order, fn () => $this->dispatchAutoPrintPayload($order, includeReceiptStations: false));
+            $printFiscalNote = $this->issueFiscalNoteIfRequested($order);
+            $this->afterCommit('auto_print', $order, fn () => $this->dispatchAutoPrintPayload($order, includeReceiptStations: false, printFiscalNote: $printFiscalNote));
         }
 
         $this->lastOrderTotal = (float) $order->total;
@@ -529,9 +537,10 @@ trait HasOpenTabs
 
         $closedOrders = [];
         $totalChangeCents = 0;
+        $fiscalRecipient = $this->checkoutFiscalRecipient();
 
         try {
-            DB::transaction(function () use (&$closedOrders, &$totalChangeCents, &$pool, $orders, $tableServiceFee, $tableCouvertFee) {
+            DB::transaction(function () use (&$closedOrders, &$totalChangeCents, &$pool, $orders, $tableServiceFee, $tableCouvertFee, $fiscalRecipient) {
                 $lastMethod = $pool[0]['method'];
 
                 foreach ($orders as $orderIndex => $order) {
@@ -594,6 +603,7 @@ trait HasOpenTabs
                         'is_open_tab' => false,
                         'pdv_cash_session_id' => $this->cashSessionId,
                         ...($this->customerId ? ['customer_id' => $this->customerId] : []),
+                        ...($fiscalRecipient !== null ? ['fiscal_recipient' => $fiscalRecipient] : []),
                     ]);
 
                     app(PaymentOrchestrator::class)->processSplit($order, $orderParts);
@@ -617,7 +627,8 @@ trait HasOpenTabs
 
         foreach ($closedOrders as $order) {
             $this->afterCommit('order_status_updated', $order, fn () => OrderStatusUpdated::dispatch($order));
-            $this->afterCommit('auto_print', $order, fn () => $this->dispatchAutoPrintPayload($order, includeReceiptStations: false));
+            $printFiscalNote = $this->issueFiscalNoteIfRequested($order);
+            $this->afterCommit('auto_print', $order, fn () => $this->dispatchAutoPrintPayload($order, includeReceiptStations: false, printFiscalNote: $printFiscalNote));
         }
 
         $this->changeAmount = $totalChangeCents / 100;

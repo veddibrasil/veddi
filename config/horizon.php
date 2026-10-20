@@ -224,6 +224,9 @@ return [
         'local' => [
             'supervisor-1' => [
                 'maxProcesses' => 3,
+                // Mesmas filas dos workers do cloud.yaml — só 'default' deixa parado o lote
+                // do Controle de notas ('low'), o onboarding do WhatsApp ('critical') e os envios.
+                'queue' => ['critical', 'default', 'whatsapp', 'low'],
             ],
         ],
     ],

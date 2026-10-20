@@ -25,6 +25,7 @@ interface OrderServiceInterface
         string $channel = 'chat',
         ?string $externalOrderId = null,
         ?array $externalMetadata = null,
+        ?array $fiscalRecipient = null,
     ): Order;
 
     public function cancelOrder(Order $order, int $customerId): void;

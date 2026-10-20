@@ -20,7 +20,7 @@ function bindPdvGlobalListenersOnce() {
     window.addEventListener('product-added-to-cart', (e) => pdvActiveInstance?.showToast(`${e.detail.name} adicionado ao carrinho`));
     window.addEventListener('order-paid', (e) => pdvActiveInstance?._handleOrderPaid(e.detail));
     window.addEventListener('tab-order-finalized', (e) => pdvActiveInstance?._handleTabOrderFinalized(e.detail));
-    window.addEventListener('pdv-toast', (e) => pdvActiveInstance?.showToast(e.detail.message));
+    window.addEventListener('pdv-toast', (e) => pdvActiveInstance?.showToast(e.detail.message, e.detail.duration));
 
     window.addEventListener('keydown', (e) => {
         const instance = pdvActiveInstance;
@@ -159,12 +159,17 @@ Alpine.data('pdvApp', () => ({
     // Cupom imprime na hora (config auto_print da filial); a nota fiscal so
     // fica pronta depois (emissao assincrona), entao so assina o canal do
     // pedido e imprime quando o evento de autorizacao chegar — e so faz isso
-    // se o operador marcou o checkbox "Imprimir nota fiscal" no pagamento.
+    // se o operador marcou "Emitir e imprimir nota fiscal" no pagamento (o
+    // backend so manda printFiscalNote quando a emissao foi enfileirada).
     _handleOrderPaid({ orderId, stations, printFiscalNote }) {
         autoPrintOrderReceipt(orderId, stations, () => this.showToast('Falha ao imprimir cupom automaticamente'));
 
         if (printFiscalNote) {
-            listenForFiscalNoteAuthorization(orderId, () => this.showToast('Falha ao imprimir nota fiscal automaticamente'));
+            listenForFiscalNoteAuthorization(orderId, {
+                onPrintError: () => this.showToast('Falha ao imprimir nota fiscal automaticamente', 5000),
+                onFailed: (reason) => this.showToast(`Nota fiscal não emitida${reason ? ': ' + reason : ''}. O pedido ficou no Controle de notas.`, 8000),
+                onNfeAuthorized: () => this.showToast('NF-e autorizada. O DANFE está disponível no pedido.', 5000),
+            });
         }
 
         // Terminal nao entra mais em step 'success' (card flutuante mostra o resultado
@@ -181,10 +186,10 @@ Alpine.data('pdvApp', () => ({
         autoPrintTabOrderTicket(orderId, stations, () => this.showToast('Falha ao imprimir pedido da mesa'));
     },
 
-    showToast(message) {
+    showToast(message, duration = 2200) {
         this.toastMessage = message;
         clearTimeout(this._toastTimer);
-        this._toastTimer = setTimeout(() => { this.toastMessage = ''; }, 2200);
+        this._toastTimer = setTimeout(() => { this.toastMessage = ''; }, duration);
     },
 
     // Alça de arrasto genérica pra redimensionar uma seção do carrinho (QA/teste de

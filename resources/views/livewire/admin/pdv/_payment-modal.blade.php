@@ -325,10 +325,13 @@
                     </div>
 
                     @if ($canUseFiscalNotes)
-                        <label class="flex items-center gap-2 px-3 py-2 border rounded-xl dark:border-zinc-700 cursor-pointer">
-                            <flux:checkbox wire:model.live="printFiscalNote" aria-label="Imprimir nota fiscal ao confirmar" />
-                            <span class="text-sm">Imprimir nota fiscal ao confirmar</span>
-                        </label>
+                        @if ($this->fiscalNoteAvailableOnCheckout)
+                            @include('livewire.admin.pdv._fiscal-checkout')
+                        @else
+                            <p class="px-3 py-2 border border-dashed rounded-xl text-xs text-neutral-500 dark:border-zinc-700 dark:text-neutral-400">
+                                Nota fiscal: emita pelo Controle de notas depois do pagamento.
+                            </p>
+                        @endif
                     @endif
 
                     <div class="grid grid-cols-2 gap-2">

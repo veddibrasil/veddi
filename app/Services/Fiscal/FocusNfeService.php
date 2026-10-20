@@ -15,6 +15,16 @@ class FocusNfeService implements FiscalNoteProviderInterface
 
     private string $token;
 
+    private string $documentPath = 'nfce';
+
+    public function forModel(string $model): self
+    {
+        $copy = clone $this;
+        $copy->documentPath = $model === '55' ? 'nfe' : 'nfce';
+
+        return $copy;
+    }
+
     public function __construct(string $token, string $baseUrl)
     {
         $this->token = $token;
@@ -29,11 +39,12 @@ class FocusNfeService implements FiscalNoteProviderInterface
     public function issue(FiscalNoteDTO $dto): FiscalNoteResult
     {
         $payload = $this->buildPayload($dto);
-        $ref = 'order_'.$dto->orderId.'_'.time();
+        $this->documentPath = $dto->model === '55' ? 'nfe' : 'nfce';
+        $ref = $dto->reference ?? ('order_'.$dto->orderId.'_'.\Illuminate\Support\Str::uuid());
 
         try {
             $response = $this->client()
-                ->post("{$this->baseUrl}/v2/nfce?ref={$ref}", $payload);
+                ->post("{$this->baseUrl}/v2/{$this->documentPath}?ref={$ref}", $payload);
 
             $body = $response->json() ?? [];
 
@@ -70,7 +81,7 @@ class FocusNfeService implements FiscalNoteProviderInterface
             }
 
             return new FiscalNoteResult(
-                status: 'error',
+                status: $response->serverError() ? 'pending' : 'error',
                 providerReference: $ref,
                 errorMessage: $body['mensagem'] ?? 'Erro na comunicação com Focus NFe',
                 rawResponse: $body,
@@ -83,7 +94,7 @@ class FocusNfeService implements FiscalNoteProviderInterface
             ]);
 
             return new FiscalNoteResult(
-                status: 'error',
+                status: 'pending',
                 // Exceção pode vir de timeout após o POST já ter chegado na Focus (que
                 // pode ter repassado a SEFAZ) — sem o ref, uma reconciliação posterior
                 // (consulta por GET /v2/nfce/{ref}) não tem como checar o que de fato
@@ -100,13 +111,13 @@ class FocusNfeService implements FiscalNoteProviderInterface
     {
         try {
             $response = $this->client()
-                ->delete("{$this->baseUrl}/v2/nfce/{$providerReference}", [
+                ->delete("{$this->baseUrl}/v2/{$this->documentPath}/{$providerReference}", [
                     'justificativa' => $justification,
                 ]);
 
             $body = $response->json() ?? [];
 
-            $status = $response->successful() ? 'cancelled' : 'error';
+            $status = $response->successful() && ($body['status'] ?? '') === 'cancelado' ? 'cancelled' : 'error';
 
             return new FiscalNoteResult(
                 status: $status,
@@ -127,10 +138,10 @@ class FocusNfeService implements FiscalNoteProviderInterface
     {
         try {
             $response = $this->client()
-                ->get("{$this->baseUrl}/v2/nfce/{$providerReference}");
+                ->get("{$this->baseUrl}/v2/{$this->documentPath}/{$providerReference}");
 
             $body = $response->json() ?? [];
-            $status = $this->mapStatus($body['status'] ?? 'error');
+            $status = $response->successful() ? $this->mapStatus($body['status'] ?? 'error') : ($response->status() === 404 ? 'error' : 'pending');
 
             return new FiscalNoteResult(
                 status: $status,
@@ -142,7 +153,7 @@ class FocusNfeService implements FiscalNoteProviderInterface
             );
         } catch (\Throwable $e) {
             return new FiscalNoteResult(
-                status: 'error',
+                status: 'pending',
                 providerReference: $providerReference,
                 errorMessage: $e->getMessage(),
             );
@@ -315,6 +326,23 @@ class FocusNfeService implements FiscalNoteProviderInterface
             ],
         ];
 
+        if ($dto->model === '55') {
+            if ($dto->payments !== [] && round(array_sum(array_column($dto->payments, 'amount')) * 100) === round($dto->total * 100)) {
+                $payload['formas_pagamento'] = array_map(fn ($payment) => [
+                    'forma_pagamento' => $this->mapPaymentMethod($payment['method']),
+                    'valor_pagamento' => $payment['amount'],
+                ], $dto->payments);
+            }
+            foreach ($payload['formas_pagamento'] as &$payment) {
+                if ($payment['forma_pagamento'] === '99') {
+                    $payment['descricao_pagamento'] = 'Outros';
+                }
+            }
+            unset($payment);
+
+            return NfePayloadBuilder::build($dto, $payload);
+        }
+
         if ($dto->customerDocument) {
             $doc = preg_replace('/\D/', '', $dto->customerDocument);
             $payload['CPF'] = strlen($doc) === 11 ? $doc : null;
@@ -327,8 +355,8 @@ class FocusNfeService implements FiscalNoteProviderInterface
     private function mapPaymentMethod(string $method): string
     {
         return match (strtolower($method)) {
-            'pix' => '17',
-            'credit_card', 'cartao_credito' => '03',
+            'pix', 'pix_manual' => '17',
+            'credit_card', 'card', 'card_machine', 'cartao_credito' => '03',
             'debit_card', 'cartao_debito' => '04',
             'cash', 'dinheiro' => '01',
             default => '99',

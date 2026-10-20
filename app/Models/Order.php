@@ -14,7 +14,12 @@ class Order extends Model
 {
     use BelongsToCompany;
 
+    /** Pedido já pago e não cancelado/reembolsado — só esses podem ter nota fiscal emitida. */
+    public const FISCAL_ISSUABLE_STATUSES = ['paid', 'preparing', 'ready', 'out_for_delivery', 'delivered'];
+
     protected $fillable = [
+        'fiscal_recipient',
+        'fiscal_error',
         'company_id', 'order_number', 'customer_id', 'branch_id', 'subtotal', 'delivery_fee', 'total',
         'status', 'notes', 'scheduled_at', 'payment_method', 'order_type', 'delivery_type', 'coupon_id', 'discount', 'fee', 'net_value',
         'channel', 'external_order_id', 'external_metadata',
@@ -32,6 +37,7 @@ class Order extends Model
     ];
 
     protected $casts = [
+        'fiscal_recipient' => 'array',
         'delivered_email_sent_at' => 'datetime',
         'confirmation_email_sent_at' => 'datetime',
         'scheduled_at' => 'datetime',
@@ -44,6 +50,10 @@ class Order extends Model
     {
         static::creating(function (Order $order) {
             $order->order_number = static::generateOrderNumber();
+            if ($order->fiscal_recipient === null) {
+                $customer = Customer::withoutGlobalScopes()->where('company_id', $order->company_id)->find($order->customer_id);
+                $order->fiscal_recipient = \App\Services\Fiscal\FiscalRecipient::fromCustomer($customer);
+            }
         });
 
         static::saved(function (Order $order) {
@@ -255,6 +265,12 @@ class Order extends Model
     public function activeFiscalNote(): HasOne
     {
         return $this->hasOne(FiscalNote::class)->whereIn('status', ['pending', 'authorized'])->latestOfMany();
+    }
+
+    /** Última tentativa de emissão (qualquer status) — define a situação fiscal no Controle de notas. */
+    public function latestFiscalNote(): HasOne
+    {
+        return $this->hasOne(FiscalNote::class)->latestOfMany();
     }
 
     public function whatsappMessages(): HasMany

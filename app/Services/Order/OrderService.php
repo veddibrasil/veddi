@@ -44,6 +44,7 @@ class OrderService implements OrderServiceInterface
         string $channel = 'chat',
         ?string $externalOrderId = null,
         ?array $externalMetadata = null,
+        ?array $fiscalRecipient = null,
     ): Order {
         $currentCompany = app()->bound('current.company') ? app('current.company') : null;
 
@@ -58,7 +59,7 @@ class OrderService implements OrderServiceInterface
 
         $customer = \App\Models\Customer::withoutGlobalScopes()->find($customerId);
 
-        $order = $this->transactionRetryingOnOrderNumberCollision(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer, $extraDiscount, $serviceFee, $couvertFee, $channel, $externalOrderId, $externalMetadata) {
+        $order = $this->transactionRetryingOnOrderNumberCollision(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer, $extraDiscount, $serviceFee, $couvertFee, $channel, $externalOrderId, $externalMetadata, $fiscalRecipient) {
             $subtotal = 0.0;
             $optionPricing = app(CartOptionPricing::class);
             // Pedido do cliente no chat público: o servidor não confia que a UI travou item sem escolha
@@ -128,6 +129,7 @@ class OrderService implements OrderServiceInterface
             }
 
             $order = Order::create([
+                'fiscal_recipient' => $fiscalRecipient,
                 'customer_id' => $customerId,
                 'branch_id' => $branchId,
                 'subtotal' => $subtotal,

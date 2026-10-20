@@ -29,6 +29,8 @@ class FiscalNoteAuthorized implements ShouldBroadcast
         return [
             'order_id' => $this->note->order_id,
             'fiscal_note_id' => $this->note->id,
+            'model' => $this->note->model ?? '65',
+            'danfe_url' => $this->note->danfe_url,
             'access_key' => $this->note->access_key,
         ];
     }

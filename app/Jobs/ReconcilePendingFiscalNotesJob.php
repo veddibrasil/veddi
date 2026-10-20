@@ -27,6 +27,10 @@ class ReconcilePendingFiscalNotesJob implements ShouldQueue
             ->where('created_at', '<=', now()->subMinutes(10))
             ->get();
 
+        \App\Models\FiscalNoteEvent::withoutGlobalScopes()->where('status', 'pending')
+            ->whereIn('type', ['correction', 'invalidation'])->where('created_at', '<=', now()->subMinutes(10))
+            ->eachById(fn ($event) => app(\App\Services\Fiscal\FiscalEventService::class)->reconcile($event));
+
         foreach ($notes as $note) {
             $service->reconcile($note);
         }

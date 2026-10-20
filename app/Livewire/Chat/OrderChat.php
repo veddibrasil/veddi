@@ -20,6 +20,7 @@ use Livewire\Component;
 
 class OrderChat extends Component
 {
+    use \App\Livewire\Concerns\HasFiscalRecipient;
     use HasCartManagement;
     use HasCustomerProfile;
     use HasOrderFlow;
@@ -633,6 +634,8 @@ class OrderChat extends Component
             'cart' => $this->cart,
             'notes' => $this->notes,
             'taxId' => $this->taxId,
+            'savedFiscalRecipient' => $this->savedFiscalRecipient,
+            'fiscalRecipientCustomerId' => $this->fiscalRecipientCustomerId,
             'orderId' => $this->orderId,
             'scheduledAt' => $this->scheduledAt,
             'scheduleInput' => $this->scheduleInput,
@@ -660,6 +663,9 @@ class OrderChat extends Component
 
     private function resetState(): void
     {
+        $this->savedFiscalRecipient = null;
+        $this->fiscalRecipientCustomerId = null;
+        $this->showFiscalRecipient = false;
         session()->forget('chat_state');
         $this->step = 'IDENTIFY_PHONE';
         $this->customerId = null;

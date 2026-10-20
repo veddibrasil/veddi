@@ -720,6 +720,23 @@
         </div>
     </div>
 
+    <details class="bg-white border rounded-xl p-4 dark:bg-zinc-800 dark:border-zinc-700">
+        <summary class="cursor-pointer font-semibold">Dados fiscais do produto</summary>
+        <p class="text-xs text-neutral-500 my-3">Preencha conforme a classificação definida pela contabilidade. A NF-e exige os campos fiscais completos.</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            @foreach(['ncm' => 'NCM', 'cfop' => 'CFOP interno', 'interstate_cfop' => 'CFOP interestadual', 'icms_situation' => 'CST / CSOSN ICMS', 'origin' => 'Origem (0 a 8)', 'unit' => 'Unidade comercial', 'cest' => 'CEST', 'pis_situation' => 'CST PIS', 'cofins_situation' => 'CST COFINS'] as $field => $label)
+                <div>
+                    <flux:input wire:model="fiscalData.{{ $field }}" :label="$label" />
+                    @error('fiscalData.'.$field) <p class="text-xs text-red-600">{{ $message }}</p> @enderror
+                </div>
+            @endforeach
+        </div>
+        <div class="mt-3">
+            <flux:textarea wire:model="fiscalTaxes" label="Campos tributários adicionais (JSON Focus NFe)" rows="3" />
+            @error('fiscalTaxes') <p class="text-xs text-red-600">{{ $message }}</p> @enderror
+        </div>
+    </details>
+
     <div class="flex gap-3 pb-8">
         <flux:button wire:click="save" class="!bg-amber-500 !text-white hover:!bg-amber-600"
             wire:loading.attr="disabled">
