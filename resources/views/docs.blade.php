@@ -706,6 +706,7 @@
                                 <li>Nome, endereço, cidade e telefone de contato</li>
                                 <li>Horário de funcionamento: hora de abertura e fechamento</li>
                                 <li>Ative ou pause uma filial sem precisar excluí-la</li>
+                                <li>Ao criar uma filial, copie os produtos e categorias de outra filial da empresa — o estoque não é copiado e começa zerado</li>
                                 <li>O número máximo de filiais depende do plano (Grátis: 1, Essencial: 2, PRO: ilimitadas)</li>
                                 <li>A empresa precisa ter ao menos 1 filial ativa — a exclusão da última é bloqueada</li>
                             </ul>

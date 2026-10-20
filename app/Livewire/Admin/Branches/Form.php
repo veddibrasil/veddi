@@ -5,7 +5,11 @@ namespace App\Livewire\Admin\Branches;
 use App\Models\Branch;
 use App\Models\Company;
 use App\Models\Scopes\CompanyScope;
+use App\Services\Company\BranchMenuCopier;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
 
@@ -74,6 +78,10 @@ class Form extends Component
     // valor é ignorado ao gravar (a filial fica sempre no tenant atual).
     public ?int $company_id = null;
 
+    // Só na criação: filial cujo cardápio a nova passa a vender ('' = começar sem produtos).
+    // Validada contra copySourceBranches(), que nunca sai da empresa da filial criada.
+    public string $copyMenuFromBranchId = '';
+
     protected function rules(): array
     {
         $companyRule = $this->needsCompanySelect
@@ -95,6 +103,7 @@ class Form extends Component
             'available_days' => ['required', 'array', 'min:1'],
             'available_days.*' => ['integer', 'between:0,6'],
             'day_hours' => ['required', 'array'],
+            'copyMenuFromBranchId' => ['nullable', Rule::in($this->copySourceBranches()->pluck('id')->all())],
         ] + $this->dayHoursRules();
     }
 
@@ -122,6 +131,7 @@ class Form extends Component
             'state.in' => 'UF inválida. Selecione um estado da lista.',
             'cep.regex' => 'CEP inválido. Use o formato 00000-000.',
             'phone.regex' => 'Telefone inválido.',
+            'copyMenuFromBranchId.in' => 'Selecione uma filial da empresa para copiar o cardápio.',
             'available_days.required' => 'Selecione ao menos um dia de funcionamento.',
             'available_days.min' => 'Selecione ao menos um dia de funcionamento.',
             'day_hours.*.opens_at.required' => 'Informe o horário de abertura.',
@@ -153,9 +163,22 @@ class Form extends Component
         $closes = array_column(array_values($businessHours), 'closes_at');
         $validated['opens_at'] = min($opens);
         $validated['closes_at'] = max($closes);
-        unset($validated['day_hours']);
+        $copyFromBranchId = $this->isEditing ? 0 : (int) ($validated['copyMenuFromBranchId'] ?? 0);
+        unset($validated['day_hours'], $validated['copyMenuFromBranchId']);
 
-        $branch = $this->persistBranch($validated);
+        // Filial e cardápio copiado entram juntos: se a cópia falhar, a filial não fica criada pela metade.
+        $copiedFrom = null;
+        $copiedProducts = 0;
+        $branch = DB::transaction(function () use ($validated, $copyFromBranchId, &$copiedFrom, &$copiedProducts) {
+            $branch = $this->persistBranch($validated);
+
+            $copiedFrom = $copyFromBranchId ? $this->copySourceBranches()->firstWhere('id', $copyFromBranchId) : null;
+            if ($copiedFrom) {
+                $copiedProducts = app(BranchMenuCopier::class)->copy($copiedFrom, $branch);
+            }
+
+            return $branch;
+        });
         $companyId = $branch->company_id;
 
         session()->forget('chat_state');
@@ -170,9 +193,18 @@ class Form extends Component
             return;
         }
 
-        session()->flash('status', 'Filial criada! Próximo passo: configure a entrega e as pausas nas abas abaixo.');
+        $created = $copiedFrom
+            ? "Filial criada com {$copiedProducts} produto(s) do cardápio de {$copiedFrom->name}!"
+            : 'Filial criada!';
+        session()->flash('status', "{$created} Próximo passo: configure a entrega e as pausas nas abas abaixo.");
 
         $this->redirect(route('admin.branches.edit', $branch));
+    }
+
+    /** Lista de origem do cardápio é por empresa: trocar a empresa (super admin) desfaz a escolha. */
+    public function updatedCompanyId(): void
+    {
+        $this->copyMenuFromBranchId = '';
     }
 
     public function render()
@@ -187,9 +219,71 @@ class Form extends Component
         $company = ! $this->needsCompanySelect && app()->bound('current.company') ? app('current.company') : null;
         $schedulingEnabled = (bool) $company?->schedulingEnabled();
         $canCompanySettings = $company && auth()->user()->hasPermission('company.settings', $company);
+        $copySources = $this->copySourceBranches();
+        $copySourceProductCounts = $this->productCountsByBranch($copySources);
 
-        return view('livewire.admin.branches.form', compact('companies', 'schedulingEnabled', 'canCompanySettings'))
+        return view('livewire.admin.branches.form', compact('companies', 'schedulingEnabled', 'canCompanySettings', 'copySources', 'copySourceProductCounts'))
             ->layout('layouts.app', ['title' => $this->isEditing ? 'Editar Filial' : 'Nova Filial']);
+    }
+
+    /**
+     * Filiais que podem emprestar o cardápio para a nova: as da empresa onde ela será criada (o
+     * super admin escolhe no formulário; os demais ficam no tenant atual, nunca no company_id
+     * vindo do cliente) e, para papel preso a uma filial, só a própria.
+     *
+     * @return Collection<int, Branch>
+     */
+    private function copySourceBranches(): Collection
+    {
+        if ($this->isEditing) {
+            return collect();
+        }
+
+        $user = auth()->user();
+        $lockedBranchId = null;
+
+        if ($user->isSuperAdmin()) {
+            $companyId = $this->company_id;
+        } else {
+            $company = app()->bound('current.company') ? app('current.company') : $user->companies()->first();
+            $companyId = $company?->id;
+            $lockedBranchId = $company ? $user->lockedBranchId($company) : null;
+        }
+
+        if (! $companyId) {
+            return collect();
+        }
+
+        // withoutGlobalScope: o super admin opera fora do tenant; o filtro por empresa é explícito.
+        return Branch::withoutGlobalScope(CompanyScope::class)
+            ->where('company_id', $companyId)
+            ->when($lockedBranchId, fn ($q) => $q->whereKey($lockedBranchId))
+            ->orderBy('name')
+            ->get(['id', 'company_id', 'name', 'active']);
+    }
+
+    /**
+     * Quantos produtos cada filial vende hoje (o mesmo recorte que BranchMenuCopier copia).
+     *
+     * @param  Collection<int, Branch>  $branches
+     * @return array<int, int>
+     */
+    private function productCountsByBranch(Collection $branches): array
+    {
+        if ($branches->isEmpty()) {
+            return [];
+        }
+
+        return DB::table('branch_product')
+            ->join('products', 'products.id', '=', 'branch_product.product_id')
+            ->whereIn('branch_product.branch_id', $branches->pluck('id'))
+            ->where('products.company_id', $branches->first()->company_id)
+            ->whereNull('products.deleted_at')
+            ->groupBy('branch_product.branch_id')
+            ->selectRaw('branch_product.branch_id, count(*) as total')
+            ->pluck('total', 'branch_id')
+            ->map(fn ($total) => (int) $total)
+            ->all();
     }
 
     private function resolvePermissions(?Branch $branch): void
