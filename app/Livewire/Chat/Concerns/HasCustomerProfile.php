@@ -29,8 +29,12 @@ trait HasCustomerProfile
 
         $this->clearCheckoutIdentity();
         $this->addMessage('user', $this->phone);
-        $this->addMessage('bot', 'Você pode preencher os dados desta compra ou confirmar seu telefone para usar dados salvos.');
-        $this->transitionTo('CUSTOMER_OPTIONS');
+
+        // Confirmação do telefone por código no WhatsApp desligada até a integração ser validada em
+        // produção: sem ela não há "usar dados salvos", então o cliente segue direto para preencher.
+        // $this->addMessage('bot', 'Você pode preencher os dados desta compra ou confirmar seu telefone para usar dados salvos.');
+        // $this->transitionTo('CUSTOMER_OPTIONS');
+        $this->continueAsGuest();
     }
 
     private function clearCheckoutIdentity(): void
