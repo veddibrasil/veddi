@@ -275,8 +275,8 @@
                 @if ($step === 'CUSTOMER_OPTIONS')
                     <p class="text-sm text-gray-600">Como deseja continuar esta compra?</p>
                     <button wire:click="continueAsGuest" class="mc-btn-primary">Preencher meus dados</button>
-                    <button wire:click="useSavedData" wire:loading.attr="disabled" class="mc-btn-secondary w-full">Usar meus dados salvos</button>
-                    <p class="text-xs text-gray-500">Enviaremos um código pelo WhatsApp para {{ $phone }}. Você pode comprar sem código escolhendo preencher seus dados.</p>
+                    {{-- <button wire:click="useSavedData" wire:loading.attr="disabled" class="mc-btn-secondary w-full">Usar meus dados salvos</button>
+                    <p class="text-xs text-gray-500">Enviaremos um código pelo WhatsApp para {{ $phone }}. Você pode comprar sem código escolhendo preencher seus dados.</p> --}}
                 @else
                     <label for="chat-verification-code" class="block text-sm font-semibold">Código enviado pelo WhatsApp para {{ $phone }}</label>
                     <input id="chat-verification-code" wire:model="verificationCode" wire:keydown.enter="submitVerificationCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" class="mc-input" />
