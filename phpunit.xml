@@ -31,6 +31,8 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="DISCORD_LOG_WEBHOOK_URL" value=""/>
+        <env name="DISCORD_PIX_LOG_WEBHOOK_URL" value=""/>
         <env name="VINDI_TOKEN_ACCOUNT" value=""/>
         <env name="VINDI_CONSUMER_KEY" value=""/>
         <env name="VINDI_CONSUMER_SECRET" value=""/>

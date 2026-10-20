@@ -25,7 +25,8 @@
         <x-admin.form-card title="Informações básicas">
             @if ($needsCompanySelect)
                 <div>
-                    <flux:select wire:model="company_id" label="Empresa" placeholder="Selecione uma empresa...">
+                    {{-- .live: a lista de filiais para copiar o cardápio depende da empresa escolhida. --}}
+                    <flux:select wire:model.live="company_id" label="Empresa" placeholder="Selecione uma empresa...">
                         @foreach ($companies as $company)
                             <flux:select.option value="{{ $company->id }}">{{ $company->name }}</flux:select.option>
                         @endforeach
@@ -149,6 +150,29 @@
                 @endforeach
             </div>
         </x-admin.form-card>
+
+        {{-- Só na criação e quando já existe outra filial: a nova passa a vender os mesmos produtos. --}}
+        @if (! $isEditing && $copySources->isNotEmpty())
+            <x-admin.form-card title="Cardápio">
+                <div>
+                    <flux:select wire:model="copyMenuFromBranchId" label="Copiar produtos e categorias de">
+                        <flux:select.option value="">Não copiar — começar sem produtos</flux:select.option>
+                        @foreach ($copySources as $source)
+                            <flux:select.option value="{{ $source->id }}">
+                                {{ $source->name }}{{ $source->active ? '' : ' (inativa)' }} — {{ $copySourceProductCounts[$source->id] ?? 0 }} produto(s)
+                            </flux:select.option>
+                        @endforeach
+                    </flux:select>
+                    @error('copyMenuFromBranchId') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+                </div>
+
+                <p class="text-xs text-neutral-600 dark:text-neutral-400">
+                    A nova filial passa a vender os mesmos produtos da filial escolhida, com suas categorias e adicionais.
+                    Preço, foto e descrição continuam compartilhados: editar um produto muda nas duas filiais.
+                    O estoque não é copiado — produtos com controle de estoque começam zerados até você lançar a quantidade desta filial.
+                </p>
+            </x-admin.form-card>
+        @endif
     </fieldset>
 
     {{-- Agendamento: recolhido quando a empresa não usa agendamento (evita uma segunda lista de 7 dias sem uso). --}}

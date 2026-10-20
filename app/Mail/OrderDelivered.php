@@ -18,9 +18,13 @@ class OrderDelivered extends Mailable implements ShouldQueue
 
     public function __construct(
         public Order $order,
-        public Customer $customer,
+        public ?Customer $customer,
         public ?Company $company,
-    ) {}
+    ) {
+        if ($order->buyer_data !== null) {
+            $this->customer = null;
+        }
+    }
 
     public function envelope(): Envelope
     {
@@ -34,6 +38,7 @@ class OrderDelivered extends Mailable implements ShouldQueue
     public function content(): Content
     {
         return new Content(
+            with: ['buyer' => $this->order->buyer_data !== null ? $this->order->customer : $this->customer],
             view: 'emails.order-delivered',
         );
     }

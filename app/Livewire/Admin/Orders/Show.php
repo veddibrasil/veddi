@@ -7,6 +7,7 @@ use App\Enums\OrderChannel;
 use App\Events\OrderItemsUpdated;
 use App\Events\OrderStatusUpdated;
 use App\Exceptions\IfoodApiException;
+use App\Exceptions\InsufficientStockException;
 use App\Jobs\IssueFiscalNote;
 use App\Models\IfoodDispute;
 use App\Models\Order;
@@ -29,9 +30,12 @@ class Show extends Component
 
     public Order $order;
 
+    // Flags calculadas no mount: travadas para o navegador não se promover (ex.: cozinha cancelando pedido pago).
+    #[Locked]
     public bool $canUpdate = false;
 
     /** Só admin da empresa (ou super admin) vê o histórico de auditoria do pedido. */
+    #[Locked]
     public bool $canViewHistory = false;
 
     // ── Confirmar pagamento na entrega ──────────────────────────────────────
@@ -150,9 +154,11 @@ class Show extends Component
 
     public string $fiscalCustomerDocument = '';
 
+    #[Locked]
     public bool $canIssueFiscal = false;
 
     /** Estação do usuário logado ('cozinha'|'bar'|'entrega') quando o papel é restrito a uma estação, senão null. */
+    #[Locked]
     public ?string $userStation = null;
 
     /** Escuta eventos do próprio pedido (status/itens) pra manter a tela em tempo real. */
@@ -187,6 +193,8 @@ class Show extends Component
             $this->canViewHistory = true;
         } elseif (app()->bound('current.company')) {
             $company = app('current.company');
+            // A lista já esconde pedidos de outras filiais; aqui fecha o acesso direto pela URL.
+            abort_unless($user->canAccessBranch($company, $this->order->branch_id), 404);
             $this->canUpdate = $user->hasPermission('orders.update', $company);
             // fiscal.issue é concedida por papel (company_admin ganha por padrão), mas
             // isso não significa que a empresa contratou o módulo fiscal em Faturamento —
@@ -251,6 +259,13 @@ class Show extends Component
 
         if (! in_array($status, $allowed)) {
             $this->addError('status', 'Status inválido.');
+
+            return;
+        }
+
+        // Pedido cancelado/estornado já teve estoque devolvido e estorno disparado: não reabre.
+        if ($this->order->isClosed()) {
+            $this->addError('status', 'Pedido cancelado não pode mudar de status.');
 
             return;
         }
@@ -352,7 +367,7 @@ class Show extends Component
 
     public function openCancelModal(): void
     {
-        abort_unless($this->canUpdate, 403);
+        abort_unless($this->canUpdate && ! $this->userStation, 403);
 
         $this->cancelReason = '';
         $this->resetErrorBag('cancelReason');
@@ -372,7 +387,7 @@ class Show extends Component
      */
     public function confirmCancel(): void
     {
-        abort_unless($this->canUpdate, 403);
+        abort_unless($this->canUpdate && ! $this->userStation, 403);
 
         $this->validate([
             'cancelReason' => ['required', 'string', 'min:5', 'max:500'],
@@ -397,7 +412,7 @@ class Show extends Component
 
     public function openIfoodCancelModal(): void
     {
-        abort_unless($this->canUpdate, 403);
+        abort_unless($this->canUpdate && ! $this->userStation, 403);
 
         $this->ifoodCancelReason = '';
         try {
@@ -423,7 +438,7 @@ class Show extends Component
      */
     public function confirmIfoodCancel(): void
     {
-        abort_unless($this->canUpdate, 403);
+        abort_unless($this->canUpdate && ! $this->userStation, 403);
 
         if ($this->ifoodCancelReason === '') {
             return;
@@ -544,7 +559,7 @@ class Show extends Component
      */
     public function openConfirmPaymentModal(): void
     {
-        abort_unless($this->canUpdate, 403);
+        abort_unless($this->canUpdate && ! $this->userStation, 403);
 
         $this->showConfirmPaymentModal = true;
     }
@@ -556,7 +571,7 @@ class Show extends Component
 
     public function confirmPayment(): void
     {
-        abort_unless($this->canUpdate, 403);
+        abort_unless($this->canUpdate && ! $this->userStation, 403);
 
         $this->showConfirmPaymentModal = false;
 
@@ -590,6 +605,7 @@ class Show extends Component
 
     public function startEditAddress(): void
     {
+        // Endereço continua editável pelas estações (entregador corrige número/complemento).
         abort_unless($this->canUpdate && $this->order->isEditable(), 403);
 
         $this->editDeliveryAddress = $this->order->delivery_address ?? $this->order->customer?->address ?? '';
@@ -705,7 +721,7 @@ class Show extends Component
 
     public function openSwapItem(int $index): void
     {
-        abort_unless($this->canUpdate && $this->order->isEditable(), 403);
+        abort_unless($this->canUpdate && ! $this->userStation && $this->order->isEditable(), 403);
 
         if (! isset($this->editableItems[$index])) {
             return;
@@ -786,7 +802,7 @@ class Show extends Component
 
     public function selectSwapProduct(int $productId): void
     {
-        abort_unless($this->canUpdate && $this->order->isEditable(), 403);
+        abort_unless($this->canUpdate && ! $this->userStation && $this->order->isEditable(), 403);
 
         if ($this->swapItemIndex === null || ! isset($this->editableItems[$this->swapItemIndex])) {
             return;
@@ -1003,7 +1019,7 @@ class Show extends Component
 
     public function applySwapItem(): void
     {
-        abort_unless($this->canUpdate && $this->order->isEditable(), 403);
+        abort_unless($this->canUpdate && ! $this->userStation && $this->order->isEditable(), 403);
 
         $this->swapError = null;
 
@@ -1054,7 +1070,6 @@ class Show extends Component
             return;
         }
 
-        $this->editableItems[$this->swapItemIndex]['product_id'] = $product->id;
         $newOptions = $this->normalizeSwapOptionsForStorage();
 
         $originalQty = max(1, (int) ($this->editableItems[$this->swapItemIndex]['quantity'] ?? 1));
@@ -1087,7 +1102,7 @@ class Show extends Component
 
     public function addProductToEdit(int $productId): void
     {
-        abort_unless($this->canUpdate && $this->order->isEditable(), 403);
+        abort_unless($this->canUpdate && ! $this->userStation && $this->order->isEditable(), 403);
 
         $product = collect($this->productResults)->firstWhere('id', $productId);
 
@@ -1136,7 +1151,7 @@ class Show extends Component
 
     public function removeItem(int $index): void
     {
-        abort_unless($this->canUpdate && $this->order->isEditable(), 403);
+        abort_unless($this->canUpdate && ! $this->userStation && $this->order->isEditable(), 403);
 
         unset($this->editableItems[$index]);
         $this->editableItems = array_values($this->editableItems);
@@ -1144,7 +1159,7 @@ class Show extends Component
 
     public function saveItems(): void
     {
-        abort_unless($this->canUpdate && $this->order->isEditable(), 403);
+        abort_unless($this->canUpdate && ! $this->userStation && $this->order->isEditable(), 403);
 
         if (empty($this->editableItems)) {
             $this->addError('editableItems', 'O pedido deve ter pelo menos um item.');
@@ -1178,46 +1193,55 @@ class Show extends Component
             }
         }
 
-        DB::transaction(function () {
-            $existingIds = collect($this->editableItems)
-                ->filter(fn ($item) => ! empty($item['id']))
-                ->pluck('id')
-                ->all();
+        try {
+            DB::transaction(function () use ($itemsBeforeEdit) {
+                $existingIds = collect($this->editableItems)
+                    ->filter(fn ($item) => ! empty($item['id']))
+                    ->pluck('id')
+                    ->all();
 
-            // Delete removed items
-            $this->order->items()->whereNotIn('id', $existingIds)->delete();
+                // Delete removed items
+                $this->order->items()->whereNotIn('id', $existingIds)->delete();
 
-            foreach ($this->editableItems as $item) {
-                $quantity = max(1, (int) $item['quantity']);
-                $unitPrice = (float) $item['unit_price'];
-                $subtotal = round($unitPrice * $quantity, 2);
+                foreach ($this->editableItems as $item) {
+                    $quantity = max(1, (int) $item['quantity']);
+                    $unitPrice = (float) $item['unit_price'];
+                    $subtotal = round($unitPrice * $quantity, 2);
 
-                if (! empty($item['id'])) {
-                    OrderItem::where('id', $item['id'])->update([
-                        'product_id' => $item['product_id'] ?? null,
-                        'product_name' => $item['product_name'],
-                        'quantity' => $quantity,
-                        'unit_price' => $unitPrice,
-                        'subtotal' => $subtotal,
-                        'options' => $item['options'] ?? null,
-                    ]);
-                } else {
-                    OrderItem::create([
-                        'order_id' => $this->order->id,
-                        'product_id' => $item['product_id'],
-                        'product_name' => $item['product_name'],
-                        'unit_price' => $unitPrice,
-                        'quantity' => $quantity,
-                        'subtotal' => $subtotal,
-                        'options' => $item['options'] ?? null,
-                    ]);
+                    if (! empty($item['id'])) {
+                        // Sempre via relação: o id vem do navegador e não pode apontar item de outro pedido.
+                        $this->order->items()->whereKey($item['id'])->update([
+                            'product_id' => $item['product_id'] ?? null,
+                            'product_name' => $item['product_name'],
+                            'quantity' => $quantity,
+                            'unit_price' => $unitPrice,
+                            'subtotal' => $subtotal,
+                            'options' => $item['options'] ?? null,
+                        ]);
+                    } else {
+                        OrderItem::create([
+                            'order_id' => $this->order->id,
+                            'product_id' => $item['product_id'],
+                            'product_name' => $item['product_name'],
+                            'unit_price' => $unitPrice,
+                            'quantity' => $quantity,
+                            'subtotal' => $subtotal,
+                            'options' => $item['options'] ?? null,
+                        ]);
+                    }
                 }
-            }
 
-            $this->order->refresh();
+                $this->order->refresh();
 
-            app(OrderService::class)->recalculateTotalsFromItems($this->order);
-        });
+                app(OrderService::class)->recalculateTotalsFromItems($this->order);
+
+                $this->syncStockWithEditedItems($itemsBeforeEdit);
+            });
+        } catch (InsufficientStockException $e) {
+            $this->addError('editableItems', $e->getMessage());
+
+            return;
+        }
 
         $this->order->refresh();
         $this->editingItems = false;
@@ -1235,6 +1259,32 @@ class Show extends Component
         ]);
 
         session()->flash('status', 'Itens atualizados.');
+    }
+
+    /**
+     * Trocar/adicionar/remover item mexe no estoque pela diferença de quantidade por produto
+     * (antes só o total era recalculado e o estoque ficava com o produto antigo).
+     *
+     * @param  \Illuminate\Support\Collection<int, OrderItem>  $itemsBefore
+     */
+    private function syncStockWithEditedItems($itemsBefore): void
+    {
+        $before = $itemsBefore->filter(fn ($item) => $item->product_id)
+            ->groupBy('product_id')->map(fn ($items) => (int) $items->sum('quantity'));
+        $after = collect($this->editableItems)->filter(fn ($item) => ! empty($item['product_id']))
+            ->groupBy('product_id')->map(fn ($items) => (int) $items->sum(fn ($item) => max(1, (int) $item['quantity'])));
+
+        $stock = app(StockService::class);
+
+        foreach ($before->keys()->merge($after->keys())->unique() as $productId) {
+            $delta = ($after[$productId] ?? 0) - ($before[$productId] ?? 0);
+
+            if ($delta > 0) {
+                $stock->deductQuantity($this->order, (int) $productId, $delta);
+            } elseif ($delta < 0) {
+                $stock->restoreQuantity($this->order, (int) $productId, -$delta);
+            }
+        }
     }
 
     /**
@@ -1286,7 +1336,7 @@ class Show extends Component
     public function openManualRefundModal(): void
     {
         // Reembolso de pedido iFood é feito pelo iFood (cancelamento ou negociação).
-        abort_unless($this->canUpdate && $this->order->channel !== OrderChannel::Ifood->value, 403);
+        abort_unless($this->canUpdate && ! $this->userStation && $this->order->channel !== OrderChannel::Ifood->value, 403);
 
         $this->order->loadMissing('payments');
 
@@ -1308,7 +1358,7 @@ class Show extends Component
 
     public function manualRefund(): void
     {
-        abort_unless($this->canUpdate && $this->order->channel !== OrderChannel::Ifood->value, 403);
+        abort_unless($this->canUpdate && ! $this->userStation && $this->order->channel !== OrderChannel::Ifood->value, 403);
 
         $this->validate([
             'manualRefundType' => ['required', 'in:gateway,offline'],

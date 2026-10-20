@@ -27,10 +27,14 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
      */
     protected function gate(): void
     {
+        // E-mail sozinho não basta (conta com e-mail não verificado, troca de e-mail):
+        // exige também a flag de super admin, que só se ganha pelo banco.
         Gate::define('viewHorizon', function ($user = null) {
-            return in_array(optional($user)->email, [
-                'guilhermeieski@gmail.com',
-            ]);
+            return $user !== null
+                && $user->isSuperAdmin()
+                && in_array($user->email, [
+                    'guilhermeieski@gmail.com',
+                ], true);
         });
     }
 }

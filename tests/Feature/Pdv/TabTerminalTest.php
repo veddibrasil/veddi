@@ -490,7 +490,7 @@ test('editar item de comanda já fechada não é permitido', function () {
         ->assertSet('step', 'catalog');
 
     Livewire::test(TabTerminal::class)
-        ->set('openTabOrderId', $orderId)
+        ->call('selectOpenTab', $orderId)
         ->call('updateTabItemQuantity', $item->id, 5)
         ->assertHasErrors('order');
 

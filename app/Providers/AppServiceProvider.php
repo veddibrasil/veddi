@@ -13,16 +13,6 @@ use App\Contracts\TransactionServiceInterface;
 use App\Contracts\WalletServiceInterface;
 use App\Contracts\WhatsAppManagementInterface;
 use App\Contracts\WhatsAppProviderInterface;
-use App\Events\CompanyActivated;
-use App\Events\NewOrderPlaced;
-use App\Events\OrderStatusUpdated;
-use App\Listeners\CreateVindiPartnerAccountOnActivation;
-use App\Listeners\PropagateIfoodOrderStatus;
-use App\Listeners\SendOrderConfirmationEmail;
-use App\Listeners\SendOrderDeliveredEmail;
-use App\Listeners\SendWelcomeSubscriptionEmail;
-use App\Listeners\SendWhatsAppOrderNotification;
-use App\Listeners\SendWhatsAppStatusNotification;
 use App\Models\Branch;
 use App\Models\Company;
 use App\Models\Coupon;
@@ -57,10 +47,11 @@ use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use Laravel\Nightwatch\Facades\Nightwatch;
+use Laravel\Nightwatch\Records\OutgoingRequest;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -75,6 +66,8 @@ class AppServiceProvider extends ServiceProvider
         );
 
         $this->app->singleton(\App\Services\Payment\AsaasCircuitBreaker::class);
+
+        $this->app->bind(\App\Contracts\ChatCodeSender::class, \App\Services\Chat\WhatsAppCodeSender::class);
 
         $this->app->bind(AsaasServiceInterface::class, AsaasService::class);
         $this->app->bind(OrderServiceInterface::class, OrderService::class);
@@ -110,24 +103,44 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Middlewares de rota não rodam em /livewire/update por padrão: sem isto, uma aba aberta
+        // seguia agindo depois de o usuário perder o papel, a empresa ser bloqueada ou o super
+        // admin ser rebaixado (e current.branch não era bindado nos updates).
+        \Livewire\Livewire::addPersistentMiddleware([
+            \App\Http\Middleware\CheckCompanyRole::class,
+            \App\Http\Middleware\RequireSuperAdmin::class,
+            \App\Http\Middleware\EnsureCompanyIsActive::class,
+        ]);
+
         $this->configureDefaults();
         $this->registerPolicies();
         $this->configureNotifications();
-        $this->configureEvents();
+        $this->configureNightwatch();
 
         FiscalNote::observe(FiscalNoteObserver::class);
         Product::observe(ProductObserver::class);
     }
 
-    protected function configureEvents(): void
+    /**
+     * O Nightwatch grava a URL completa das requisições externas. A Graph API da Meta recebe
+     * client_secret, code de uso único, tokens e appsecret_proof na query: os valores nunca
+     * podem sair do servidor.
+     */
+    protected function configureNightwatch(): void
     {
-        Event::listen(CompanyActivated::class, SendWelcomeSubscriptionEmail::class);
-        Event::listen(CompanyActivated::class, CreateVindiPartnerAccountOnActivation::class);
-        Event::listen(NewOrderPlaced::class, SendWhatsAppOrderNotification::class);
-        Event::listen(NewOrderPlaced::class, SendOrderConfirmationEmail::class);
-        Event::listen(OrderStatusUpdated::class, SendWhatsAppStatusNotification::class);
-        Event::listen(OrderStatusUpdated::class, SendOrderDeliveredEmail::class);
-        Event::listen(OrderStatusUpdated::class, PropagateIfoodOrderStatus::class);
+        Nightwatch::redactRequests(function (\Laravel\Nightwatch\Records\Request $request) {
+            if (str_ends_with($request->routeName, 'livewire.update') || $request->headers->has('X-Livewire')) {
+                $request->payload->replace(['livewire' => '[redacted]']);
+            }
+        });
+
+        Nightwatch::redactOutgoingRequests(function (OutgoingRequest $request) {
+            $request->url = (string) preg_replace(
+                '/([?&](?:client_secret|code|access_token|input_token|appsecret_proof|fb_exchange_token|token|pin)=)[^&#]*/i',
+                '$1[redacted]',
+                $request->url,
+            );
+        });
     }
 
     protected function registerPolicies(): void
@@ -166,10 +179,12 @@ class AppServiceProvider extends ServiceProvider
     protected function configureNotifications(): void
     {
         ResetPassword::toMailUsing(function ($notifiable, string $token) {
-            $url = url(route('password.reset', [
+            // Host fixo do APP_URL: montar pelo host da request deixava o link com o token
+            // apontar para um domínio injetado no cabeçalho.
+            $url = rtrim(config('app.url'), '/').route('password.reset', [
                 'token' => $token,
                 'email' => $notifiable->getEmailForPasswordReset(),
-            ], false));
+            ], false);
 
             $expire = config('auth.passwords.'.config('auth.defaults.passwords').'.expire');
 

@@ -19,7 +19,7 @@ class CouponService
      *
      * @throws CouponException
      */
-    public function validate(string $code, int $customerId, array $cart, float $subtotal): Coupon
+    public function validate(string $code, ?int $customerId, array $cart, float $subtotal): Coupon
     {
         $normalizedCode = strtoupper(trim($code));
         $companyId = app('current.company')->id;
@@ -47,7 +47,11 @@ class CouponService
             throw new CouponException('Limite de usos deste cupom foi atingido.');
         }
 
-        if ($coupon->hasReachedMaxUsesForCustomer($customerId)) {
+        if ($customerId === null && $coupon->max_uses_per_customer !== null) {
+            throw new CouponException('Confirme seu telefone para usar este benefício pessoal.');
+        }
+
+        if ($customerId !== null && $coupon->hasReachedMaxUsesForCustomer($customerId)) {
             throw new CouponException('Você já utilizou este cupom o número máximo de vezes.');
         }
 
@@ -67,7 +71,7 @@ class CouponService
      *
      * @throws CouponException
      */
-    public function revalidateForOrder(int $couponId, int $customerId, float $subtotal, ?string $paymentMethod = null): Coupon
+    public function revalidateForOrder(int $couponId, ?int $customerId, float $subtotal, ?string $paymentMethod = null): Coupon
     {
         $coupon = Coupon::whereKey($couponId)->lockForUpdate()->first();
 
@@ -92,7 +96,11 @@ class CouponService
             throw new CouponException('Limite de usos deste cupom foi atingido.');
         }
 
-        if ($coupon->hasReachedMaxUsesForCustomer($customerId)) {
+        if ($customerId === null && $coupon->max_uses_per_customer !== null) {
+            throw new CouponException('Confirme seu telefone para usar este benefício pessoal.');
+        }
+
+        if ($customerId !== null && $coupon->hasReachedMaxUsesForCustomer($customerId)) {
             throw new CouponException('Você já utilizou este cupom o número máximo de vezes.');
         }
 
@@ -122,7 +130,7 @@ class CouponService
     /**
      * Registra o uso do cupom após a criação do pedido.
      */
-    public function recordUsage(Coupon $coupon, Order $order, int $customerId, float $discountApplied): CouponUsage
+    public function recordUsage(Coupon $coupon, Order $order, ?int $customerId, float $discountApplied): CouponUsage
     {
         return CouponUsage::create([
             'coupon_id' => $coupon->id,
@@ -208,7 +216,10 @@ class CouponService
             return 0.0;
         }
 
-        $product = Product::withoutGlobalScope(CompanyScope::class)->find($coupon->free_product_id);
+        // Sem o escopo da empresa (roda também fora do request): o brinde precisa ser da empresa do cupom.
+        $product = Product::withoutGlobalScope(CompanyScope::class)
+            ->where('company_id', $coupon->company_id)
+            ->find($coupon->free_product_id);
 
         return $product ? (float) $product->effective_price : 0.0;
     }

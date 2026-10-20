@@ -31,11 +31,14 @@ class OrderClosingReportService
     {
         $orders = $query->get(['total', 'status', 'payment_method', 'discount']);
 
-        $valid = $orders->whereNotIn('status', ['cancelled', 'refunded']);
+        // Faturamento só de pedidos confirmados; pendente/aguardando pagamento fica numa linha própria.
+        $valid = $orders->whereIn('status', Order::CONFIRMED_STATUSES);
+        $cancelled = $orders->whereIn('status', ['cancelled', 'refunded']);
 
         return [
-            'count' => $orders->count(),
-            'cancelled_count' => $orders->count() - $valid->count(),
+            'count' => $valid->count(),
+            'cancelled_count' => $cancelled->count(),
+            'pending_count' => $orders->count() - $valid->count() - $cancelled->count(),
             'revenue' => (float) $valid->sum('total'),
             'discounts' => (float) $valid->sum('discount'),
             'payments' => $this->paymentBreakdown($valid),
@@ -44,14 +47,15 @@ class OrderClosingReportService
 
     private function paymentBreakdown(Collection $orders): array
     {
-        $totals = ['cash' => 0.0, 'pix' => 0.0, 'card' => 0.0];
+        // 'split' (PDV dividido) e formas fora da lista (ex.: iFood) ficam em linhas próprias
+        // para a soma das formas bater com o TOTAL.
+        $totals = ['cash' => 0.0, 'pix' => 0.0, 'card' => 0.0, 'split' => 0.0, 'other' => 0.0];
 
         foreach ($orders as $order) {
-            $method = $order->payment_method === 'credit_card' ? 'card' : $order->payment_method;
+            $method = strtolower((string) $order->payment_method);
+            $method = $method === 'credit_card' ? 'card' : $method;
 
-            if (array_key_exists($method, $totals)) {
-                $totals[$method] += (float) $order->total;
-            }
+            $totals[array_key_exists($method, $totals) ? $method : 'other'] += (float) $order->total;
         }
 
         return $totals;

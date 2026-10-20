@@ -323,7 +323,7 @@ test('taxa de entrega calculada some ao voltar o pedido para balcão', function 
     $component = Livewire::test(Terminal::class)
         ->call('addProduct', $product->id)
         ->call('proceedToPayment')
-        ->set('customerId', $customer->id)
+        ->call('selectCustomer', $customer->id)
         ->set('deliveryType', 'entrega')
         ->set('deliveryAddress', 'Rua das Flores')
         ->set('deliveryNumber', '123')

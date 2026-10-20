@@ -13,7 +13,6 @@ use App\Models\ProductCategory;
 use App\Services\Messaging\WhatsAppService;
 use App\Services\Order\MenuCache;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
@@ -30,7 +29,38 @@ class OrderChat extends Component
     // --- State machine ---
     public string $step = 'IDENTIFY_PHONE';
 
+    #[Locked]
+    public bool $checkoutReady = false;
+
+    #[Locked]
+    public bool $useSavedProfile = false;
+
+    #[Locked]
+    public bool $orderTypeChosen = false;
+
+    #[Locked]
+    public ?string $checkoutKey = null;
+
+    #[Locked]
+    public ?string $challengeId = null;
+
+    public string $verificationCode = '';
+
+    public bool $rememberDevice = false;
+
+    #[Locked]
+    public ?string $trackingLink = null;
+
+    #[Locked]
+    public bool $trackingOnly = false;
+
+    #[Locked]
+    public ?array $trackingSummary = null;
+
     // --- Customer data ---
+    // Ids que decidem dono e empresa: só o servidor atribui (o client não pode trocar de cliente,
+    // pedido ou empresa via payload). Ver HasPaymentFlow::findOwnOrder().
+    #[Locked]
     public ?int $customerId = null;
 
     public string $phone = '';
@@ -61,6 +91,9 @@ class OrderChat extends Component
     public string $customer_longitude = '';
 
     // --- Branch ---
+    // Só o servidor escolhe (selectBranch/initialize/retomada de pedido); o placeOrder ainda
+    // reconfere empresa, horário e pausa da filial na hora do pedido.
+    #[Locked]
     public ?int $selectedBranchId = null;
 
     // --- Cart: [product_id => ['qty', 'name', 'price']] ---
@@ -71,8 +104,12 @@ class OrderChat extends Component
 
     public string $taxId = '';
 
+    #[Locked]
     public ?int $orderId = null;
 
+    // Gravado só por submitScheduleTime() depois de validar grade/pausa da filial; pedido agendado
+    // pula a checagem de "aberta agora" no placeOrder, então o client não pode escrevê-lo.
+    #[Locked]
     public ?string $scheduledAt = null;
 
     public string $scheduleInput = '';
@@ -93,6 +130,8 @@ class OrderChat extends Component
     public bool $freeDelivery = false;
 
     // --- Company ---
+    // boot() rebinda current.company a partir dele: adulterado, abriria o chat de outra empresa.
+    #[Locked]
     public ?int $companyId = null;
 
     // --- Session recovery ---
@@ -187,6 +226,7 @@ class OrderChat extends Component
 
     public function mount(): void
     {
+        $this->trackingOnly = request()->routeIs('chat.tracking');
         $slug = request()->route('company');
 
         if (! $slug) {
@@ -204,22 +244,40 @@ class OrderChat extends Component
 
         $currentCompanyId = $company->id;
 
-        if (empty($company->email)) {
+        if ($this->trackingOnly) {
+            $this->companyId = $currentCompanyId;
+            $this->step = 'TRACKING_LINK';
+
+            return;
+        }
+
+        if (empty($company->email) || ! $this->companyAcceptsOrders($company)) {
             $this->companyId = $currentCompanyId;
             $this->step = 'UNAVAILABLE';
 
             return;
         }
 
+        app(\App\Services\Chat\RememberedDevice::class)->restore($currentCompanyId);
         $savedState = session('chat_state');
+        if ($savedState && ($savedState['securityVersion'] ?? null) !== 2) {
+            $savedState = array_intersect_key($savedState, array_flip(['companyId', 'cart', 'selectedBranchId']));
+            session()->forget('chat_state');
+        }
         if ($savedState && ($savedState['companyId'] ?? null) === $currentCompanyId) {
             foreach ($savedState as $key => $value) {
-                if (property_exists($this, $key)) {
+                if ($key !== 'securityVersion' && property_exists($this, $key)) {
                     $this->$key = $value;
                 }
             }
 
-            if ($this->step === 'CLOSED') {
+            if (! isset($savedState['securityVersion'])) {
+                $this->initialize();
+            }
+            $this->enforceChatAuthorization();
+
+            // UNAVAILABLE também é reavaliado: a loja pode ter voltado a aceitar pedidos.
+            if (in_array($this->step, ['CLOSED', 'UNAVAILABLE'], true)) {
                 $this->initialize();
             }
 
@@ -228,7 +286,51 @@ class OrderChat extends Component
         session()->forget('chat_state');
 
         $this->companyId = $currentCompanyId;
+        $this->checkoutKey = \Illuminate\Support\Str::random(64);
         $this->initialize();
+    }
+
+    public function hydrate(): void
+    {
+        $this->enforceChatAuthorization();
+    }
+
+    private function verifiedCustomer(bool $recent = false): ?\App\Models\Customer
+    {
+        return $this->companyId ? app(\App\Services\Chat\ChatAccess::class)->customer($this->companyId, $recent) : null;
+    }
+
+    private function enforceChatAuthorization(): void
+    {
+        if ($this->customerId && $this->verifiedCustomer()?->id !== $this->customerId) {
+            $this->clearCheckoutIdentity();
+            $this->messages = [];
+            $this->step = 'MENU_BROWSE';
+        }
+        if (! $this->verifiedCustomer(true)) {
+            $this->customerCards = [];
+            $this->selectedCardId = null;
+        }
+        if ($this->orderId && ! $this->findOwnOrder()) {
+            $this->orderId = null;
+            $this->reset('pixQrCode', 'pixCopyPaste', 'paymentId', 'expiresAt', 'trackingLink', 'trackingSummary', 'messages');
+            $this->step = 'MENU_BROWSE';
+        }
+    }
+
+    public function redeemTrackingLink(#[\SensitiveParameter] string $token): void
+    {
+        $order = app(\App\Services\Chat\ChatAccess::class)->redeemOrderLink($this->companyId, $token);
+        if (! $order) {
+            $this->addError('trackingLink', 'Link inválido ou expirado.');
+
+            return;
+        }
+        $this->orderId = $order->id;
+        $this->selectedBranchId = $order->branch_id;
+        $this->lastNotifiedStatus = null;
+        $this->transitionTo('ORDER_TRACKING');
+        $this->checkPaymentStatus();
     }
 
     private function initialize(): void
@@ -299,17 +401,8 @@ class OrderChat extends Component
 
     public function getListeners(): array
     {
-        $listeners = [];
-
-        if ($this->orderId) {
-            // Chat público (cliente sem sessão autenticada) — Laravel bloqueia canal
-            // privado pra convidado antes do authorizer rodar, por isso este listener
-            // continua público. Só é seguro porque OrderStatusUpdated::broadcastWith()
-            // é deliberadamente mínimo (status + order_number, sem PII/valor).
-            $listeners["echo:order.{$this->orderId},OrderStatusUpdated"] = 'checkPaymentStatus';
-        }
-
-        return $listeners;
+        // Guests poll through the authorized component; order ids never name public channels.
+        return [];
     }
 
     // -------------------------------------------------------------------------
@@ -318,21 +411,19 @@ class OrderChat extends Component
 
     protected function rules(): array
     {
-        return match ($this->step) {
+        return $this->rulesFor($this->step);
+    }
+
+    protected function rulesFor(string $step): array
+    {
+        return match ($step) {
             'IDENTIFY_PHONE' => [
                 'phone' => ['required', 'string', 'regex:/^\d{10,11}$/'],
             ],
             'REGISTER_NAME' => [
                 'name' => ['required', 'string', 'min:3', 'max:100'],
             ],
-            'REGISTER_EMAIL' => [
-                'email' => [
-                    'nullable', 'email', 'max:200',
-                    app()->bound('current.company')
-                        ? Rule::unique('customers', 'email')->where('company_id', app('current.company')->id)->whereNotNull('email')
-                        : Rule::unique('customers', 'email')->whereNotNull('email'),
-                ],
-            ],
+            'REGISTER_EMAIL' => ['email' => ['nullable', 'email', 'max:200']],
             'REGISTER_ADDRESS' => [
                 'address' => ['required', 'string', 'min:5', 'max:255'],
                 'number' => ['required', 'string', 'max:20'],
@@ -592,6 +683,15 @@ class OrderChat extends Component
         return app()->bound('current.company') ? app('current.company') : null;
     }
 
+    /**
+     * Mesma régua do painel (EnsureCompanyIsActive): só ACTIVE ou OVERDUE vendem. Empresa
+     * bloqueada, com ativação pendente ou desativada pelo super admin não recebe pedido pelo chat.
+     */
+    protected function companyAcceptsOrders(?\App\Models\Company $company): bool
+    {
+        return $company !== null && $company->active && ($company->isActive() || $company->isOverdue());
+    }
+
     private function transitionTo(string $step): void
     {
         if ($step === 'CHECKOUT_SCHEDULE') {
@@ -614,7 +714,16 @@ class OrderChat extends Component
 
     private function saveToSession(): void
     {
+        if ($this->trackingOnly) {
+            return;
+        }
         session(['chat_state' => [
+            'securityVersion' => 2,
+            'checkoutReady' => $this->checkoutReady,
+            'useSavedProfile' => $this->useSavedProfile,
+            'orderTypeChosen' => $this->orderTypeChosen,
+            'checkoutKey' => $this->checkoutKey,
+            'trackingLink' => $this->trackingLink,
             'step' => $this->step,
             'companyId' => $this->companyId,
             'customerId' => $this->customerId,
@@ -667,6 +776,13 @@ class OrderChat extends Component
         $this->fiscalRecipientCustomerId = null;
         $this->showFiscalRecipient = false;
         session()->forget('chat_state');
+        $this->checkoutKey = \Illuminate\Support\Str::random(64);
+        $this->checkoutReady = false;
+        $this->useSavedProfile = false;
+        $this->orderTypeChosen = false;
+        $this->challengeId = null;
+        $this->verificationCode = '';
+        $this->trackingLink = null;
         $this->step = 'IDENTIFY_PHONE';
         $this->customerId = null;
         $this->phone = '';
@@ -734,6 +850,6 @@ class OrderChat extends Component
         $currentCompany = $this->currentCompany();
 
         return view('livewire.chat.order-chat', compact('currentCompany'))
-            ->layout('layouts.chat');
+            ->layout('layouts.chat', ['trackingPage' => $this->trackingOnly]);
     }
 }

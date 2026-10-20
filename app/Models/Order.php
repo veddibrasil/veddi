@@ -20,7 +20,7 @@ class Order extends Model
     protected $fillable = [
         'fiscal_recipient',
         'fiscal_error',
-        'company_id', 'order_number', 'customer_id', 'branch_id', 'subtotal', 'delivery_fee', 'total',
+        'checkout_key', 'buyer_data', 'company_id', 'order_number', 'customer_id', 'branch_id', 'subtotal', 'delivery_fee', 'total',
         'status', 'notes', 'scheduled_at', 'payment_method', 'order_type', 'delivery_type', 'coupon_id', 'discount', 'fee', 'net_value',
         'channel', 'external_order_id', 'external_metadata',
         'delivery_address_id',
@@ -44,6 +44,7 @@ class Order extends Model
         'is_open_tab' => 'boolean',
         'external_metadata' => 'array',
         'cancelled_at' => 'datetime',
+        'buyer_data' => 'array',
     ];
 
     protected static function booted(): void
@@ -129,6 +130,28 @@ class Order extends Model
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    /** Immutable checkout contact; legacy orders still use their customer relation. */
+    public function getCustomerAttribute(): ?Customer
+    {
+        if ($this->buyer_data === null) {
+            return $this->getRelationValue('customer');
+        }
+
+        $data = $this->buyer_data;
+        $customer = new Customer;
+        $customer->setRawAttributes(collect($data)->only(['name', 'phone', 'email', 'tax_id'])->all());
+        $customer->company_id = $this->company_id;
+        if (($data['whatsapp_opt_in'] ?? false) && ($data['phone_verified'] ?? false)) {
+            $customer->whatsapp_opt_in_at = $this->created_at;
+        }
+        $customer->setRelation('addressRecord', new Address([
+            'line1' => $data['address'] ?? null,
+            ...collect($data)->only(['number', 'complement', 'neighborhood', 'city', 'state', 'cep', 'latitude', 'longitude'])->all(),
+        ]));
+
+        return $customer;
     }
 
     public function branch(): BelongsTo
@@ -325,6 +348,15 @@ class Order extends Model
     {
         return $this->channel !== 'ifood'
             && in_array($this->status, ['pending', 'awaiting_payment', 'paid', 'preparing', 'ready', 'scheduled']);
+    }
+
+    /** Pedidos com pagamento confirmado (ou a receber já aceito): os únicos que contam como faturamento. */
+    public const CONFIRMED_STATUSES = ['paid', 'scheduled', 'preparing', 'ready', 'out_for_delivery', 'delivered'];
+
+    /** Cancelado/estornado: nenhuma mudança manual de status pode reabrir o pedido. */
+    public function isClosed(): bool
+    {
+        return in_array($this->status, ['cancelled', 'refunded'], true);
     }
 
     public function getStatusLabelAttribute(): string

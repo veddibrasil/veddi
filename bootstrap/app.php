@@ -12,10 +12,14 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Sem HEADER_X_FORWARDED_HOST: com REMOTE_ADDR qualquer origem conta como
+        // proxy, então quem mandasse X-Forwarded-Host escolhia o host de url() —
+        // inclusive o do link de redefinição de senha enviado por e-mail. Assume que o
+        // proxy à frente (Laravel Cloud) repassa o Host original; Proto/For/Port seguem
+        // confiáveis para HTTPS e IP do cliente.
         $middleware->trustProxies(
             at: env('TRUSTED_PROXIES', 'REMOTE_ADDR'),
             headers: \Illuminate\Http\Request::HEADER_X_FORWARDED_FOR |
-                \Illuminate\Http\Request::HEADER_X_FORWARDED_HOST |
                 \Illuminate\Http\Request::HEADER_X_FORWARDED_PORT |
                 \Illuminate\Http\Request::HEADER_X_FORWARDED_PROTO,
         );

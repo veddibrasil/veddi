@@ -145,7 +145,10 @@ class CompanySettings extends Component
             if ($company->logo_path) {
                 Storage::disk('s3')->delete($company->logo_path);
             }
-            $data['logo_path'] = $this->logo->storeAs('logos', "company_{$company->id}.".$this->logo->getClientOriginalExtension(), 's3');
+            // Extensão pelo conteúdo (finfo), nunca pelo nome enviado pelo navegador: um GIF
+            // chamado "logo.html" passa na regra `image` e o S3 serviria o .html como text/html.
+            $extension = $this->logo->guessExtension() ?: 'png';
+            $data['logo_path'] = $this->logo->storeAs('logos', "company_{$company->id}.{$extension}", 's3');
         }
 
         $company->update($data);

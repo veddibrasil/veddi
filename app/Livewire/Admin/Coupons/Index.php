@@ -9,6 +9,7 @@ use App\Models\Scopes\CompanyScope;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -25,6 +26,7 @@ class Index extends Component
     // --- Form ---
     public bool $showModal = false;
 
+    #[Locked]
     public ?int $editingId = null;
 
     public ?int $deletingId = null;
@@ -59,12 +61,16 @@ class Index extends Component
 
     public bool $active = true;
 
+    #[Locked]
     public bool $isSuperAdmin = false;
 
+    #[Locked]
     public bool $canCreate = false;
 
+    #[Locked]
     public bool $canUpdate = false;
 
+    #[Locked]
     public bool $canDelete = false;
 
     public function mount(): void
@@ -94,11 +100,22 @@ class Index extends Component
         $this->resetPage();
     }
 
+    /** Empresa do cupom: a do cupom em edição (super admin edita de qualquer uma) ou o tenant atual. */
+    private function couponCompanyId(): ?int
+    {
+        if ($this->editingId) {
+            return Coupon::withoutGlobalScope(CompanyScope::class)->whereKey($this->editingId)->value('company_id');
+        }
+
+        return app()->bound('current.company') ? app('current.company')->id : null;
+    }
+
     protected function rules(): array
     {
+        $companyId = $this->couponCompanyId();
+
         $codeUnique = Rule::unique('coupons', 'code')
-            ->where(function ($q) {
-                $companyId = app()->bound('current.company') ? app('current.company')->id : null;
+            ->where(function ($q) use ($companyId) {
                 if ($companyId) {
                     $q->where('company_id', $companyId);
                 }
@@ -117,7 +134,8 @@ class Index extends Component
                 'nullable', 'numeric', 'min:0.01', 'required_if:type,percentage', 'required_if:type,fixed',
                 Rule::when($this->type === 'percentage', ['max:100']),
             ],
-            'free_product_id' => ['nullable', 'integer', 'exists:products,id', 'required_if:type,free_product'],
+            // Brinde só da própria empresa: o preço do produto de outra entrava no desconto.
+            'free_product_id' => ['nullable', 'integer', Rule::exists('products', 'id')->where('company_id', $companyId), 'required_if:type,free_product'],
             'scope' => ['required', Rule::in(['order', 'category', 'product'])],
             'scope_ids' => ['nullable', 'array'],
             'payment_method' => ['nullable', Rule::in(['CASH', 'PIX', 'CARD'])],
@@ -162,7 +180,9 @@ class Index extends Component
         $this->code = strtoupper(trim($this->code));
         $validated = $this->validate($this->rules(), $this->messages());
 
-        $data = array_filter([
+        // Sem filtrar nulos: na edição, limpar validade, limite de usos, pedido mínimo ou forma de
+        // pagamento precisa gravar null (todas essas colunas são nullable).
+        $data = [
             'code' => $this->code,
             'name' => $this->name,
             'description' => $this->description ?: null,
@@ -178,7 +198,7 @@ class Index extends Component
             'starts_at' => $this->starts_at ?: null,
             'expires_at' => $this->expires_at ?: null,
             'active' => $this->active,
-        ], fn ($v) => $v !== null || is_bool($v) || is_numeric($v));
+        ];
 
         if ($this->editingId) {
             $coupon = Coupon::withoutGlobalScope(CompanyScope::class)->findOrFail($this->editingId);
@@ -188,7 +208,9 @@ class Index extends Component
             session()->flash('status', 'Cupom atualizado com sucesso.');
         } else {
             $this->authorize('create', Coupon::class);
-            $coupon = Coupon::create($data);
+            // Na criação, campo vazio fica com o padrão do banco (ex.: 1 uso por cliente);
+            // só na edição o null serve para limpar a restrição.
+            $coupon = Coupon::create(array_filter($data, fn ($v) => $v !== null));
             Log::channel('audit')->info('Cupom criado', ['admin_id' => auth()->id(), 'coupon_id' => $coupon->id, 'code' => $coupon->code]);
             session()->flash('status', 'Cupom criado com sucesso.');
         }
@@ -265,7 +287,7 @@ class Index extends Component
     public function render()
     {
         $query = Coupon::withoutGlobalScope(CompanyScope::class)
-            ->withCount('usages');
+            ->withCount(['countedUsages as usages_count']);
 
         if (! $this->isSuperAdmin && app()->bound('current.company')) {
             $query->where('company_id', app('current.company')->id);

@@ -12,7 +12,7 @@ class AsaasSimulatePaymentController extends Controller
 {
     public function __invoke(Request $request): JsonResponse|RedirectResponse
     {
-        abort_unless(config('app.debug'), 403, 'Disponível apenas em ambiente de desenvolvimento.');
+        abort_unless(config('app.debug') && ! app()->isProduction(), 403, 'Disponível apenas em ambiente de desenvolvimento.');
 
         $request->validate([
             'company_id' => ['sometimes', 'integer', 'exists:companies,id'],

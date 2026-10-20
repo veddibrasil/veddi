@@ -3,7 +3,10 @@
 namespace App\Http\Controllers\Admin\Pdv;
 
 use App\Http\Controllers\Controller;
+use App\Models\Company;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 
 /**
  * QZ Tray exige que o site assine cada requisição de impressão com uma chave
@@ -26,6 +29,16 @@ use Illuminate\Http\Request;
  */
 class QzTraySignatureController extends Controller
 {
+    /**
+     * Quem imprime pelo QZ Tray: caixa/PDV, garçom (tickets de comanda) e
+     * cozinha/bar/entrega (impressão automática de pedidos, via orders.view).
+     */
+    private const SIGN_PERMISSIONS = ['pdv.operate', 'pdv.waiter_operate', 'orders.view'];
+
+    // O QZ pede uma assinatura por chamada à API (conectar, achar impressora,
+    // imprimir): folga para rajada de pedidos, mas sem virar oráculo de assinatura.
+    private const SIGN_MAX_PER_MINUTE = 120;
+
     public function certificate()
     {
         $certificate = $this->certificateContents();
@@ -40,6 +53,21 @@ class QzTraySignatureController extends Controller
 
     public function sign(Request $request)
     {
+        // A chave é da plataforma (a mesma para todas as empresas): só assina para
+        // quem opera impressão na empresa atual. Antes bastava estar autenticado,
+        // inclusive conta sem empresa nenhuma.
+        $user = $request->user();
+        $company = app()->bound('current.company') ? app('current.company') : null;
+
+        abort_unless($user && $company && $this->canSign($user, $company), 403);
+
+        $rateLimitKey = 'qz-sign:'.$user->id;
+        abort_if(RateLimiter::tooManyAttempts($rateLimitKey, self::SIGN_MAX_PER_MINUTE), 429);
+        RateLimiter::hit($rateLimitKey, 60);
+
+        $toSign = $request->input('request', '');
+        abort_unless(is_string($toSign), 422);
+
         $privateKey = $this->privateKeyContents();
 
         abort_unless($privateKey !== null, 404);
@@ -48,9 +76,24 @@ class QzTraySignatureController extends Controller
 
         abort_if($privateKey === false, 500, 'Chave privada do QZ Tray inválida.');
 
-        openssl_sign($request->input('request', ''), $signature, $privateKey, OPENSSL_ALGO_SHA512);
+        openssl_sign($toSign, $signature, $privateKey, OPENSSL_ALGO_SHA512);
 
         return response(base64_encode($signature), 200, ['Content-Type' => 'text/plain']);
+    }
+
+    private function canSign(User $user, Company $company): bool
+    {
+        if ($user->isSuperAdmin()) {
+            return true;
+        }
+
+        foreach (self::SIGN_PERMISSIONS as $permission) {
+            if ($user->hasPermission($permission, $company)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function privateKeyContents(): ?string

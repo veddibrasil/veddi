@@ -82,6 +82,7 @@ test('total do pedido usa a taxa de entrega recalculada no servidor, mesmo se o 
     $component = new OrderChat;
     $component->customerId = $customer->id;
     $component->companyId = $company->id;
+    verifiedChatFixture($component, $customer);
     $component->selectedBranchId = $branch->id;
     $component->orderType = 'delivery';
     $component->paymentMethod = 'CASH';

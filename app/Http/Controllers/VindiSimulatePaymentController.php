@@ -11,7 +11,7 @@ class VindiSimulatePaymentController extends Controller
 {
     public function __invoke(Request $request, VindiService $vindi): JsonResponse
     {
-        abort_unless(config('app.debug'), 403, 'Disponível apenas em ambiente de desenvolvimento.');
+        abort_unless(config('app.debug') && ! app()->isProduction(), 403, 'Disponível apenas em ambiente de desenvolvimento.');
 
         $request->validate([
             'transaction_token' => ['required', 'string'],

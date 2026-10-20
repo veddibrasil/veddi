@@ -56,11 +56,61 @@ class WhatsAppWebhookController extends Controller
         ]);
 
         if (($payload['object'] ?? null) === 'whatsapp_business_account') {
-            ProcessWhatsAppWebhook::dispatch($payload);
+            $payload = $this->withoutCoexistenceSync($payload);
+
+            if ($payload['entry'] !== []) {
+                ProcessWhatsAppWebhook::dispatch($payload);
+            }
         }
 
         // A Meta só precisa de 200 rápido; ela reenvia se demorar ou falhar.
         return response()->json(['status' => 'queued']);
+    }
+
+    /**
+     * history e smb_app_state_sync (coexistência) trazem até 180 dias de conversas e contatos do
+     * restaurante (vários MB por entrega) e ainda não são processados: só registra que chegaram,
+     * sem colocar esses dados na fila.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function withoutCoexistenceSync(array $payload): array
+    {
+        $skipped = [];
+        $entries = [];
+
+        foreach ((array) ($payload['entry'] ?? []) as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+
+            $changes = [];
+
+            foreach ((array) ($entry['changes'] ?? []) as $change) {
+                $field = is_array($change) ? (string) ($change['field'] ?? '') : '';
+
+                if (in_array($field, ['history', 'smb_app_state_sync'], true)) {
+                    $skipped[] = ['field' => $field, 'waba_id' => $entry['id'] ?? null];
+
+                    continue;
+                }
+
+                $changes[] = $change;
+            }
+
+            if ($changes !== []) {
+                $entries[] = [...$entry, 'changes' => $changes];
+            }
+        }
+
+        if ($skipped !== []) {
+            Log::channel('whatsapp')->info('Webhook WhatsApp: sincronização da coexistência recebida sem processamento', [
+                'changes' => $skipped,
+            ]);
+        }
+
+        return [...$payload, 'entry' => $entries];
     }
 
     /**

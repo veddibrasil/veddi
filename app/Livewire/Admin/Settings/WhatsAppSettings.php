@@ -30,6 +30,12 @@ class WhatsAppSettings extends Component
     /** Máximo de mensagens de teste por empresa a cada 10 minutos (cada uma é um envio real). */
     private const TEST_LIMIT = 5;
 
+    /**
+     * Minutos sem avanço para uma conexão pending ser dada como travada (o job leva segundos; sem
+     * worker na fila critical ela ficaria "Conectando…" para sempre). Travada, dá para conectar de novo.
+     */
+    private const STALE_PENDING_MINUTES = 2;
+
     public bool $enabled = false;
 
     public bool $notifyOnNewOrder = true;
@@ -102,6 +108,17 @@ class WhatsAppSettings extends Component
         return app(WhatsAppService::class)->resolveSender(app('current.company')) !== null;
     }
 
+    /** Conexão pending que não avança há minutos: o job não rodou (ou morreu). A tela para de esperar. */
+    #[Computed]
+    public function stalePending(): bool
+    {
+        $connection = $this->connection;
+
+        return $connection?->status === WhatsAppConnection::STATUS_PENDING
+            && $connection->updated_at !== null
+            && $connection->updated_at->lt(now()->subMinutes(self::STALE_PENDING_MINUTES));
+    }
+
     /**
      * Templates exigidos para ativar a conexão, com o status de cada um na WABA do restaurante.
      *
@@ -126,6 +143,13 @@ class WhatsAppSettings extends Component
 
     public function save(): void
     {
+        $this->authorize('company.settings');
+
+        // Mesmo critério da tela (toggles desabilitados): sem conexão ativa nem fallback, nada a salvar.
+        if (! $this->canConfigure) {
+            return;
+        }
+
         $company = app('current.company');
 
         WhatsAppSetting::updateOrCreate(
@@ -179,9 +203,10 @@ class WhatsAppSettings extends Component
 
         // Conexão em andamento ou ativa não é recomeçada por engano (duplo clique, aba antiga):
         // recomeçar apagaria o token e os templates dela. Para trocar de número, desconecte antes.
+        // Exceção: pending travada (o job não rodou) pode ser recomeçada.
         $current = $this->connection;
 
-        if ($current && ($current->isActive() || in_array($current->status, self::IN_PROGRESS, true))) {
+        if ($current && ! $this->stalePending && ($current->isActive() || in_array($current->status, self::IN_PROGRESS, true))) {
             $this->signupError = 'Já existe uma conexão de WhatsApp em andamento ou ativa. Desconecte-a antes de conectar outro número.';
 
             return;
@@ -195,7 +220,7 @@ class WhatsAppSettings extends Component
             return;
         }
 
-        unset($this->connection, $this->templateProgress);
+        unset($this->connection, $this->stalePending, $this->templateProgress);
     }
 
     public function confirmDisconnect(): void
@@ -219,7 +244,7 @@ class WhatsAppSettings extends Component
         $this->showDisconnectModal = false;
         $this->signupError = null;
 
-        unset($this->connection, $this->canConfigure, $this->templateProgress);
+        unset($this->connection, $this->canConfigure, $this->stalePending, $this->templateProgress);
     }
 
     public function openTestModal(): void

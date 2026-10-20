@@ -33,6 +33,14 @@ Schedule::command('whatsapp:check-connections')
     ->withoutOverlapping()
     ->onOneServer();
 
+// Conexões presas aguardando templates: relê o status na Meta. Cobre webhook de aprovação perdido
+// (ou chegado no meio do provisionamento) e templates que falharam ao ser criados.
+Schedule::command('whatsapp:sync-templates --pending')
+    ->name('whatsapp-sync-pending-templates')
+    ->everyThirtyMinutes()
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // Não é necessário para o saldo: BalanceService já trata como liberada a transação
 // confirmed cuja release_date chegou.
 // Schedule::job(new \App\Jobs\ReleaseCompanyTransactionsJob)
@@ -125,5 +133,12 @@ Schedule::call(function () {
     ->everyFiveMinutes()
     ->withoutOverlapping()
     ->onOneServer();
+
+// Temporary authentication/access records contain hashes only; remove after expiry.
+Schedule::call(function () {
+    foreach (['chat_phone_challenges', 'chat_remembered_devices', 'chat_order_access'] as $table) {
+        \Illuminate\Support\Facades\DB::table($table)->where('expires_at', '<', now()->subDay())->delete();
+    }
+})->name('chat-security-prune')->daily()->withoutOverlapping()->onOneServer();
 
 Schedule::job(new \App\Jobs\ArchiveFiscalDocuments)->hourly()->withoutOverlapping()->onOneServer();

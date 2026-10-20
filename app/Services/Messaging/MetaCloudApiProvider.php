@@ -116,8 +116,9 @@ class MetaCloudApiProvider implements WhatsAppManagementInterface, WhatsAppProvi
 
     public function listPhoneNumbers(string $wabaId, string $token): array
     {
+        // is_on_biz_app/platform_type: na coexistência identificam o número que vive no app WhatsApp Business.
         $response = $this->client->request('get', "{$wabaId}/phone_numbers", [
-            'fields' => 'id,display_phone_number,verified_name,quality_rating',
+            'fields' => 'id,display_phone_number,verified_name,quality_rating,is_on_biz_app,platform_type',
         ], $token);
 
         return collect((array) ($response['data'] ?? []))
@@ -127,6 +128,8 @@ class MetaCloudApiProvider implements WhatsAppManagementInterface, WhatsAppProvi
                 'display_phone_number' => $item['display_phone_number'] ?? null,
                 'verified_name' => $item['verified_name'] ?? null,
                 'quality_rating' => $item['quality_rating'] ?? null,
+                'is_on_biz_app' => isset($item['is_on_biz_app']) ? (bool) $item['is_on_biz_app'] : null,
+                'platform_type' => isset($item['platform_type']) ? (string) $item['platform_type'] : null,
             ])
             ->values()
             ->all();
@@ -159,7 +162,7 @@ class MetaCloudApiProvider implements WhatsAppManagementInterface, WhatsAppProvi
     public function getPhoneNumber(string $phoneNumberId, string $token): array
     {
         $response = $this->client->request('get', $phoneNumberId, [
-            'fields' => 'verified_name,display_phone_number,quality_rating,messaging_limit_tier',
+            'fields' => 'verified_name,display_phone_number,quality_rating,messaging_limit_tier,is_on_biz_app',
         ], $token);
 
         return [
@@ -167,6 +170,7 @@ class MetaCloudApiProvider implements WhatsAppManagementInterface, WhatsAppProvi
             'display_phone_number' => $response['display_phone_number'] ?? null,
             'quality_rating' => $response['quality_rating'] ?? null,
             'messaging_limit_tier' => $response['messaging_limit_tier'] ?? null,
+            'is_on_biz_app' => isset($response['is_on_biz_app']) ? (bool) $response['is_on_biz_app'] : null,
         ];
     }
 

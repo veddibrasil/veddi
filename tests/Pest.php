@@ -658,3 +658,19 @@ function whatsappMetaRequests(string $methodAndRoute): \Illuminate\Support\Colle
         })
         ->values();
 }
+
+/** Explicitly establish a verified checkout fixture for business-rule tests. */
+function verifiedChatFixture(\App\Livewire\Chat\OrderChat $chat, \App\Models\Customer $customer): void
+{
+    app(\App\Services\Chat\ChatAccess::class)->verify($customer->company_id, $customer->phone);
+    $chat->checkoutReady = true;
+    $chat->useSavedProfile = true;
+    $chat->phone = $customer->phone;
+    $chat->name = $customer->name;
+    $chat->email = $customer->email ?? '';
+    $chat->address = $customer->address ?? 'Rua de Teste';
+    $chat->number = $customer->number ?? '10';
+    $chat->neighborhood = $customer->neighborhood ?? 'Centro';
+    $chat->city = $customer->city ?? 'São Paulo';
+    $chat->cep = $customer->cep ?? '01001000';
+}

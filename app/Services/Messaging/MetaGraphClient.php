@@ -24,8 +24,12 @@ class MetaGraphClient
 {
     private const BASE_URL = 'https://graph.facebook.com';
 
-    /** Falhas transitórias: throughput, erro genérico, rate limit da WABA e do app. */
-    private const RETRYABLE_CODES = [130429, 131000, 80007, 4];
+    /**
+     * Falhas transitórias: throughput, erro genérico, rate limit da WABA e do app, erro desconhecido
+     * ou temporário da API (1, 2), serviço indisponível (131016, 133004) e limite por par
+     * remetente/destinatário (131056).
+     */
+    private const RETRYABLE_CODES = [130429, 131000, 80007, 4, 1, 2, 131016, 131056, 133004];
 
     /** Token inválido/expirado (190) ou permissão negada (200, 10). */
     private const AUTH_CODES = [190, 200, 10];
@@ -48,6 +52,7 @@ class MetaGraphClient
         ?string $token = null,
         int $timeout = 15,
         bool $signed = true,
+        bool $sensitiveResponse = false,
     ): array {
         $method = strtolower($method);
         $url = $this->url($endpoint);
@@ -88,6 +93,9 @@ class MetaGraphClient
         }
 
         if ($response->failed()) {
+            if ($sensitiveResponse) {
+                throw new WhatsAppPermanentException('Envio de autenticação recusado.');
+            }
             throw $this->exceptionFor($method, $endpoint, $response);
         }
 

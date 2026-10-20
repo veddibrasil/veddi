@@ -3,6 +3,7 @@
 namespace App\Livewire\SuperAdmin;
 
 use App\Enums\Plan;
+use App\Livewire\SuperAdmin\Concerns\RequiresSuperAdmin;
 use App\Models\Company;
 use App\Models\Order;
 use Illuminate\Support\Facades\Cache;
@@ -11,6 +12,8 @@ use Livewire\Component;
 
 class Dashboard extends Component
 {
+    use RequiresSuperAdmin;
+
     public function render()
     {
         $data = Cache::remember('superadmin:dashboard', now()->addMinutes(5), function () {

@@ -158,6 +158,41 @@ test('a Meta pode aprovar o template na hora da criação', function () {
         ->and($connection->fresh()->connected_at)->not->toBeNull();
 });
 
+test('aprovação gravada pelo webhook durante a criação não é sobrescrita pelo PENDING da resposta', function () {
+    $connection = provisioningConnection();
+
+    // O webhook de aprovação chega (e grava a linha) antes de a resposta do POST ser processada.
+    whatsappFakeMeta(['POST message_templates' => function (Request $request) use ($connection) {
+        WhatsAppTemplate::create([
+            'whatsapp_connection_id' => $connection->id,
+            'event' => collect(config('whatsapp_templates.templates'))->search(fn ($definition) => $definition['name'] === $request['name']),
+            'name' => $request['name'],
+            'language' => 'pt_BR',
+            'status' => WhatsAppTemplate::STATUS_APPROVED,
+        ]);
+
+        return ['id' => (string) random_int(10 ** 14, 10 ** 15), 'status' => 'PENDING', 'category' => 'UTILITY'];
+    }]);
+
+    $result = provisioner()->provision($connection);
+
+    expect($connection->templates()->where('status', WhatsAppTemplate::STATUS_APPROVED)->count())->toBe(10)
+        ->and($result['status'])->toBe('active');
+});
+
+test('template criado com categoria diferente de UTILITY é registrado para o suporte', function () {
+    $logs = whatsappCaptureLogs();
+    whatsappFakeMeta(['POST message_templates' => ['id' => '9002', 'status' => 'APPROVED', 'category' => 'MARKETING']]);
+
+    provisioner()->provision(provisioningConnection());
+
+    $warnings = collect($logs->getRecords())
+        ->filter(fn ($record) => $record['message'] === 'Provisionamento: template criado com categoria diferente da enviada');
+
+    expect($warnings)->toHaveCount(10)
+        ->and($warnings->first()['context']['category'])->toBe('MARKETING');
+});
+
 test('todos os templates já aprovados na WABA deixam a conexão active sem criar nada', function () {
     whatsappFakeMeta(['GET message_templates' => remoteTemplates()]);
     $connection = provisioningConnection();

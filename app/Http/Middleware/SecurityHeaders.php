@@ -21,6 +21,13 @@ class SecurityHeaders
         $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
         $response->headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(self)');
 
+        // HSTS só em produção e sobre HTTPS (atrás do proxy, isSecure() vem do X-Forwarded-Proto):
+        // em local/HTTP fixaria HTTPS no navegador para o host de desenvolvimento. Sem
+        // includeSubDomains/preload até confirmar que todo subdomínio do APP_URL serve HTTPS.
+        if ($request->isSecure() && app()->isProduction()) {
+            $response->headers->set('Strict-Transport-Security', 'max-age=31536000');
+        }
+
         $devSources = app()->environment('local') ? ' http://localhost:* ws://localhost:*' : '';
 
         $response->headers->set(

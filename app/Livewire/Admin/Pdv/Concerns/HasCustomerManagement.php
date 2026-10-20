@@ -187,6 +187,24 @@ trait HasCustomerManagement
         $this->newCustomerPhone = '';
     }
 
+    /**
+     * `customerId` só se o cliente for da empresa atual. Quem grava o cliente direto no pedido
+     * (fechamento de comanda) não passa pela checagem de OrderService::createOrder().
+     */
+    private function companyCustomerId(): ?int
+    {
+        $company = app()->bound('current.company') ? app('current.company') : null;
+
+        if (! $this->customerId || ! $company) {
+            return null;
+        }
+
+        return Customer::withoutGlobalScopes()
+            ->where('company_id', $company->id)
+            ->whereKey($this->customerId)
+            ->value('id');
+    }
+
     private function resolveCustomerId(Company $company): int
     {
         if ($this->customerId) {

@@ -81,6 +81,7 @@ Route::view('/termos-de-uso', 'legal.terms')->name('legal.terms');
 Route::view('/politica-de-privacidade', 'legal.privacy')->name('legal.privacy');
 
 // --- Chat Público ---
+Route::get('/{company}/acompanhar', \App\Livewire\Chat\OrderChat::class)->name('chat.tracking');
 Route::get('/{company}', \App\Livewire\Chat\OrderChat::class)->name('chat.company');
 
 // --- Fechar popup de conclusão de pagamento ---

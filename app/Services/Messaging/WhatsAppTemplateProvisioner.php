@@ -59,8 +59,10 @@ class WhatsAppTemplateProvisioner
                             'example' => $definition['example'],
                         ]);
 
-                        $existing = ['id' => (string) ($result['id'] ?? ''), 'status' => $result['status'], 'rejected_reason' => null];
+                        $existing = ['id' => (string) ($result['id'] ?? ''), 'status' => $result['status'], 'rejected_reason' => null, 'just_created' => true];
                         $created++;
+
+                        $this->warnIfNotUtility($connection->id, $definition['name'], (string) ($result['category'] ?? ''));
                     } else {
                         $synced++;
                     }
@@ -109,7 +111,71 @@ class WhatsAppTemplateProvisioner
         return ['created' => $created, 'synced' => $synced, 'failed' => $failed, 'status' => $status];
     }
 
-    /** @param  array{id: string, status: string, rejected_reason: ?string}  $remote */
+    /**
+     * Número da plataforma (homologação e fallback): inscreve o app na WABA da Veddi e cria os
+     * templates que faltam. Não há linha em whatsapp_connections, então nada é gravado: o
+     * resultado só é exibido.
+     *
+     * @return array{created: int, templates: array<string, string>, failed: array<string, string>}|null null = plataforma sem WABA/token configurados
+     *
+     * @throws \App\Exceptions\WhatsAppApiException
+     */
+    public function provisionPlatform(): ?array
+    {
+        $wabaId = (string) config('services.whatsapp.platform.waba_id');
+        $token = (string) config('services.whatsapp.platform.token');
+
+        if ($wabaId === '' || $token === '') {
+            return null;
+        }
+
+        $language = (string) config('whatsapp_templates.language');
+        $created = 0;
+        $templates = [];
+        $failed = [];
+
+        // Sem a inscrição do app na WABA, status de entrega e respostas (opt-out) do número da
+        // plataforma não chegam ao webhook. A chamada é idempotente.
+        $this->meta->subscribeApp($wabaId, $token);
+
+        $remote = collect($this->meta->listTemplates($wabaId, $token))
+            ->filter(fn (array $template) => $template['language'] === $language)
+            ->keyBy('name');
+
+        foreach ((array) config('whatsapp_templates.templates') as $definition) {
+            $existing = $remote->get($definition['name']);
+
+            if ($existing !== null) {
+                $templates[$definition['name']] = (string) $existing['status'];
+
+                continue;
+            }
+
+            try {
+                $result = $this->meta->createTemplate($wabaId, $token, [
+                    'name' => $definition['name'],
+                    'language' => $language,
+                    'category' => (string) config('whatsapp_templates.category'),
+                    'body' => $definition['body'],
+                    'example' => $definition['example'],
+                ]);
+
+                $templates[$definition['name']] = (string) $result['status'];
+                $created++;
+            } catch (WhatsAppPermanentException $e) {
+                $failed[$definition['name']] = $e->getMessage();
+            }
+        }
+
+        Log::channel('whatsapp')->info('Provisionamento de templates da plataforma concluído', [
+            'created' => $created,
+            'failed' => array_keys($failed),
+        ]);
+
+        return ['created' => $created, 'templates' => $templates, 'failed' => $failed];
+    }
+
+    /** @param  array{id: string, status: string, rejected_reason: ?string, just_created?: bool}  $remote */
     private function storeTemplate(WhatsAppConnection $connection, string $event, string $name, string $language, array $remote): void
     {
         $template = WhatsAppTemplate::firstOrNew([
@@ -117,6 +183,12 @@ class WhatsAppTemplateProvisioner
             'name' => $name,
             'language' => $language,
         ]);
+
+        // O webhook de aprovação pode chegar entre o POST de criação e esta gravação: o PENDING
+        // da resposta da criação não pode sobrescrever o status que o webhook já gravou.
+        if (($remote['just_created'] ?? false) && $template->exists && $template->status !== WhatsAppTemplate::STATUS_PENDING) {
+            $remote['status'] = $template->status;
+        }
 
         // Status que não muda o uso (FLAGGED etc.) mantém o atual; template novo começa PENDING.
         $status = WhatsAppTemplate::mapMetaStatus($remote['status']) ?? $template->status ?? WhatsAppTemplate::STATUS_PENDING;
@@ -129,6 +201,23 @@ class WhatsAppTemplateProvisioner
             'status' => $status,
             'rejection_reason' => $status !== WhatsAppTemplate::STATUS_APPROVED && $reason !== 'NONE' && $reason !== '' ? $reason : null,
         ])->save();
+    }
+
+    /**
+     * A Meta aprova como MARKETING (em vez de rejeitar) um template UTILITY que julgue
+     * promocional: funciona, mas custa mais e tem limite de frequência. Só avisa o suporte.
+     */
+    private function warnIfNotUtility(int $connectionId, string $name, string $category): void
+    {
+        if ($category === '' || strtoupper($category) === strtoupper((string) config('whatsapp_templates.category'))) {
+            return;
+        }
+
+        Log::channel('whatsapp')->warning('Provisionamento: template criado com categoria diferente da enviada', [
+            'connection_id' => $connectionId,
+            'template' => $name,
+            'category' => strtoupper($category),
+        ]);
     }
 
     /**

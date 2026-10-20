@@ -213,6 +213,10 @@ class Customer extends Model
      */
     public function saveVindiCardToken(string $token, string $number, string $brand): ?CustomerCard
     {
+        if (! $this->exists) {
+            return null;
+        }
+
         $digits = preg_replace('/\D/', '', $number);
         $lastFour = substr($digits, -4);
 

@@ -6,6 +6,7 @@ use App\Contracts\AsaasServiceInterface;
 use App\Enums\Plan;
 use App\Jobs\CreateAsaasSubscription;
 use App\Jobs\CreateVindiPartnerAccount;
+use App\Livewire\SuperAdmin\Concerns\RequiresSuperAdmin;
 use App\Mail\WelcomeUser;
 use App\Models\Company;
 use App\Models\Subscription;
@@ -23,6 +24,7 @@ use Livewire\WithFileUploads;
 
 class Form extends Component
 {
+    use RequiresSuperAdmin;
     use WithFileUploads;
 
     public ?Company $company = null;

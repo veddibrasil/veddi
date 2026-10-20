@@ -5,6 +5,7 @@ namespace App\Livewire\Admin\Orders;
 use App\Models\Branch;
 use App\Models\Order;
 use App\Models\Scopes\CompanyScope;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -24,9 +25,16 @@ class Report extends Component
 
     public string $orderType = '';
 
+    // Travados: com isSuperAdmin=true o relatório listava pedidos de todas as empresas.
+    #[Locked]
     public bool $isSuperAdmin = false;
 
+    #[Locked]
     public bool $canView = false;
+
+    /** Filial fixa de papéis presos a uma filial (gerente só vê a própria). */
+    #[Locked]
+    public ?int $lockedBranchId = null;
 
     public function mount(): void
     {
@@ -38,6 +46,7 @@ class Report extends Component
         } elseif (app()->bound('current.company')) {
             $company = app('current.company');
             $this->canView = $user->hasPermission('orders.report', $company);
+            $this->lockedBranchId = $user->lockedBranchId($company);
         }
 
         abort_unless($this->canView, 403);
@@ -86,6 +95,7 @@ class Report extends Component
             ->when($this->dateStart, fn ($q) => $q->whereDate('created_at', '>=', $this->dateStart))
             ->when($this->dateEnd, fn ($q) => $q->whereDate('created_at', '<=', $this->dateEnd))
             ->when($this->statusFilter, fn ($q) => $q->where('status', $this->statusFilter))
+            ->when($this->lockedBranchId, fn ($q) => $q->where('branch_id', $this->lockedBranchId))
             ->when($this->branchFilter, fn ($q) => $q->where('branch_id', $this->branchFilter))
             ->when($this->paymentMethod, fn ($q) => $q->where('payment_method', $this->paymentMethod))
             ->when($this->orderType, fn ($q) => $q->where('order_type', $this->orderType));
@@ -143,9 +153,12 @@ class Report extends Component
 
         $allOrders = (clone $baseQuery)->get(['total', 'payment_method', 'status']);
 
+        // Faturamento e ticket médio só de pedidos confirmados: pendentes/aguardando pagamento
+        // nunca foram pagos e cancelados não entram no divisor.
         $totalCount = $allOrders->count();
-        $totalRevenue = $allOrders->whereNotIn('status', ['cancelled', 'refunded'])->sum('total');
-        $averageTicket = $totalCount > 0 ? $totalRevenue / $totalCount : 0;
+        $confirmed = $allOrders->whereIn('status', Order::CONFIRMED_STATUSES);
+        $totalRevenue = $confirmed->sum('total');
+        $averageTicket = $confirmed->count() > 0 ? $totalRevenue / $confirmed->count() : 0;
         $topPayment = $allOrders->isNotEmpty()
             ? $allOrders->groupBy('payment_method')->map->count()->sortDesc()->keys()->first()
             : null;
@@ -155,7 +168,7 @@ class Report extends Component
 
         $branches = $this->isSuperAdmin
             ? Branch::withoutGlobalScope(CompanyScope::class)->orderBy('name')->get(['id', 'name'])
-            : Branch::orderBy('name')->get(['id', 'name']);
+            : Branch::when($this->lockedBranchId, fn ($q) => $q->whereKey($this->lockedBranchId))->orderBy('name')->get(['id', 'name']);
 
         return view('livewire.admin.orders.report', compact(
             'orders', 'branches',

@@ -29,10 +29,30 @@ test('normalizePhone aceita celular com e sem DDI e rejeita fixo', function (str
     'celular formatado' => ['(11) 99999-0001', '5511999990001'],
     'celular com DDI' => ['5511999990001', '5511999990001'],
     'celular com +DDI' => ['+55 11 99999-0001', '5511999990001'],
+    // O chat aceita 10 dígitos: celular sem o 9º dígito (6-9) ganha o 9; fixo (2-5) segue sem WhatsApp.
+    'celular sem o 9 (começa com 9)' => ['1199990001', '5511999990001'],
+    'celular sem o 9 (começa com 8)' => ['(21) 8888-7777', '5521988887777'],
+    'celular sem o 9 (começa com 7)' => ['3177776666', '5531977776666'],
+    'celular sem o 9 (começa com 6)' => ['4166665555', '5541966665555'],
     'fixo (10 dígitos)' => ['1133334444', null],
+    'fixo começando com 2' => ['2122223333', null],
+    'fixo começando com 5' => ['5155554444', null],
     'curto' => ['99999', null],
     'vazio' => ['', null],
 ]);
+
+test('celular de 10 dígitos recebe o aviso e o opt-out pelo wa_id acha o cadastro dele', function () {
+    ['order' => $order, 'customer' => $customer] = whatsappOrderContext(['status' => 'preparing'], phone: '1188887777');
+
+    $prepared = whatsappService()->prepareNotification($order->fresh(), 'preparing');
+
+    expect($prepared)->not->toBeNull()
+        ->and($prepared['phone'])->toBe('5511988887777');
+
+    // A Meta pode responder com ou sem o 9º dígito; as duas grafias alcançam customers.phone (10 dígitos).
+    expect(whatsappService()->phoneCandidates('5511988887777'))->toContain($customer->phone)
+        ->and(whatsappService()->phoneCandidates('551188887777'))->toContain($customer->phone);
+});
 
 test('phoneCandidates cobre com e sem DDI e com e sem o 9º dígito', function (string $waId, array $expected) {
     expect(whatsappService()->phoneCandidates($waId))->toEqualCanonicalizing($expected);

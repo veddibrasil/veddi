@@ -19,7 +19,7 @@ class DevStart extends Command
         $services = [
             'schedule' => ['./vendor/bin/sail', 'artisan', 'schedule:work'],
             'reverb' => ['./vendor/bin/sail', 'artisan', 'reverb:start', '--debug'],
-            'queue' => ['./vendor/bin/sail', 'artisan', 'queue:work',  '--queue=critical,default,low --sleep=10 --tries=3'],
+            'queue' => ['./vendor/bin/sail', 'artisan', 'queue:work',  '--queue=critical,default,whatsapp,low --sleep=10 --tries=3'],
             'horizon' => ['./vendor/bin/sail', 'artisan', 'horizon'],
             'nightwatch' => ['./vendor/bin/sail', 'artisan', 'nightwatch:agent'],
             'npm' => ['npm', 'run', 'dev'],

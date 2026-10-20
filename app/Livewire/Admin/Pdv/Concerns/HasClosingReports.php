@@ -103,7 +103,8 @@ trait HasClosingReports
     #[Computed]
     public function closedSessions(): Collection
     {
-        if (! $this->selectedBranchId) {
+        // Caixa não tem a listagem de fechamentos dos outros operadores (ver openClosingReports()).
+        if (! $this->selectedBranchId || $this->isCaixa) {
             return collect();
         }
 
@@ -118,10 +119,14 @@ trait HasClosingReports
     #[Computed]
     public function viewingClosedSession(): ?PdvCashSession
     {
-        if (! $this->viewingClosedSessionId) {
+        if (! $this->viewingClosedSessionId || ! $this->selectedBranchId) {
             return null;
         }
 
-        return PdvCashSession::with('user')->find($this->viewingClosedSessionId);
+        // Mesmo escopo da listagem (filial selecionada); caixa só a própria sessão.
+        return PdvCashSession::with('user')
+            ->where('branch_id', $this->selectedBranchId)
+            ->when($this->isCaixa, fn ($q) => $q->where('user_id', auth()->id()))
+            ->find($this->viewingClosedSessionId);
     }
 }

@@ -12,6 +12,7 @@ use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\PdvCashSession;
+use App\Services\Order\OrderService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -229,6 +230,27 @@ class PaymentOrchestrator
         array $cardData,
         int $installments = 1,
     ): array {
+        // Nunca cobra pedido que já saiu do fluxo de pagamento (admin cancelou enquanto o cliente
+        // preenchia o cartão, PIX trocado, já pago): status relido do banco, não do model em memória.
+        $currentStatus = Order::withoutGlobalScopes()->whereKey($order->id)->value('status');
+
+        if (! in_array($currentStatus, ['pending', 'awaiting_payment'], true)) {
+            Log::channel('payments')->warning('Cartão: cobrança recusada, pedido fora do fluxo de pagamento', [
+                'order_id' => $order->id,
+                'status' => $currentStatus,
+            ]);
+
+            return [
+                'id' => null,
+                'approved' => false,
+                'status' => 'refused',
+                'method' => 'credit_card',
+                'gateway' => 'vindi',
+                'declined' => true,
+                'decline_reason' => 'Este pedido não está mais aguardando pagamento.',
+            ];
+        }
+
         $affiliateEmail = $company->email;
 
         if (! $affiliateEmail && config('app.env') === 'production') {
@@ -242,6 +264,9 @@ class PaymentOrchestrator
 
         $savedCard = null;
         if (! empty($cardData['saved_card_id'])) {
+            if (! $customer->exists || ($order->buyer_data !== null && ($order->customer_id !== $customer->id || app(\App\Services\Chat\ChatAccess::class)->customer($order->company_id, true)?->id !== $customer->id))) {
+                throw new \RuntimeException('Cartão salvo exige identidade verificada.');
+            }
             $savedCard = $customer->cards()->find($cardData['saved_card_id']);
 
             if (! $savedCard) {
@@ -377,9 +402,10 @@ class PaymentOrchestrator
         }
 
         $paymentToken = hash('sha256', $order->id.$customer->id.Str::random(32));
+        $closedDuringCharge = false;
 
         try {
-            DB::transaction(function () use ($order, $customer, $cardData, $savedCard, $brand, $cardToken, $transactionToken, $transactionId, $chargeAmount, $cardFee, $cardRate, $split, $installments, $paymentToken, $approved) {
+            DB::transaction(function () use ($order, $customer, $cardData, $savedCard, $brand, $cardToken, $transactionToken, $transactionId, $chargeAmount, $cardFee, $cardRate, $split, $installments, $paymentToken, $approved, &$closedDuringCharge) {
                 $payment = Payment::create([
                     'order_id' => $order->id,
                     'vindi_transaction_token' => $transactionToken,
@@ -398,10 +424,25 @@ class PaymentOrchestrator
                 ]);
 
                 if ($approved) {
-                    $order->update(['status' => 'paid']);
-                    $fresh = $order->fresh();
+                    // Relido com lock: o pedido pode ter sido cancelado enquanto a Vindi respondia.
+                    $locked = Order::withoutGlobalScopes()->whereKey($order->id)->lockForUpdate()->first() ?? $order;
+                    $closed = in_array($locked->status, ['cancelled', 'refunded'], true);
+
+                    // Mesma regra dos webhooks Vindi/Asaas: pedido agendado para o futuro fica
+                    // 'scheduled' (sem preparo/nota fiscal/aviso de "pago" antes da hora).
+                    if (in_array($locked->status, ['pending', 'awaiting_payment'], true)) {
+                        $locked->update(['status' => ($locked->scheduled_at && $locked->scheduled_at->isFuture()) ? 'scheduled' : 'paid']);
+                    }
+
+                    $fresh = $locked->fresh();
                     app(WalletServiceInterface::class)->creditForOrder($fresh, $payment);
                     app(TransactionServiceInterface::class)->createForPayment($fresh, $payment);
+
+                    // Cancelado durante a cobrança: não reabre, estorna (ver OrderService).
+                    if ($closed) {
+                        $closedDuringCharge = true;
+                        app(OrderService::class)->refundPaymentForClosedOrder($fresh, $payment, 'card_charge');
+                    }
                 }
 
                 // Vindi retorna um card_token novo a cada cobrança aprovada (mesmo
@@ -434,6 +475,18 @@ class PaymentOrchestrator
             'vindi_transaction_token' => $transactionToken,
             'approved' => $approved,
         ]);
+
+        if ($closedDuringCharge) {
+            return [
+                'id' => $transactionToken,
+                'approved' => false,
+                'status' => 'refused',
+                'method' => 'credit_card',
+                'gateway' => 'vindi',
+                'declined' => true,
+                'decline_reason' => 'Este pedido foi cancelado. O valor cobrado será estornado.',
+            ];
+        }
 
         return [
             'id' => $transactionToken,

@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\UserPermission;
 use App\Services\Company\UserPermissionService;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 #[Layout('layouts.app')]
@@ -27,6 +28,7 @@ class Index extends Component
 
     public string $assignUserRole = '';
 
+    #[Locked]
     public bool $canManage = false;
 
     public function mount(): void
@@ -138,17 +140,28 @@ class Index extends Component
         abort_unless($this->canManage, 403);
 
         $this->validate([
-            'assignUserEmail' => 'required|email|exists:users,email',
+            'assignUserEmail' => 'required|email',
         ], [
             'assignUserEmail.required' => 'Informe o e-mail do usuário.',
-            'assignUserEmail.exists' => 'Usuário não encontrado.',
         ]);
 
         $company = app('current.company');
         $role = Role::where('id', $this->assignRoleId)
             ->where(fn ($q) => $q->whereNull('company_id')->orWhere('company_id', $company->id))
             ->firstOrFail();
-        $user = User::where('email', $this->assignUserEmail)->firstOrFail();
+
+        // Mesma regra de Users/Index::linkUser: sem seletor de empresa, puxar alguém de outra
+        // empresa (ou o super admin) trocava o painel dele; mensagem única evita enumerar e-mails.
+        $user = User::where('email', $this->assignUserEmail)
+            ->where('is_super_admin', false)
+            ->whereDoesntHave('companies', fn ($q) => $q->where('companies.id', '!=', $company->id))
+            ->first();
+
+        if (! $user) {
+            $this->addError('assignUserEmail', 'Não é possível atribuir este e-mail. Use "Novo usuário" em Usuários para criar o acesso.');
+
+            return;
+        }
 
         $pivot = $user->companies()->where('companies.id', $company->id)->first();
 

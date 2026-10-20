@@ -564,7 +564,69 @@ test('eventos de template mapeiam para o status certo', function (string $event,
     ['PENDING', 'PENDING'],
     ['IN_APPEAL', 'PENDING'],
     ['REINSTATED', 'APPROVED'],
+    ['UNARCHIVED', 'APPROVED'],
 ]);
+
+test('idioma no formato da Meta (pt-BR ou só pt) casa com o template pt_BR e ativa a conexão', function (string $language) {
+    $connection = whatsappPendingConn(['refunded']);
+
+    processWhatsAppWebhook(whatsappWebhookPayload($connection->waba_id, [
+        whatsappTemplateChange('APPROVED', 'pedido_reembolsado', $language),
+    ]));
+
+    expect($connection->templates()->count())->toBe(count(config('whatsapp_templates.templates')))
+        ->and($connection->templates()->where('event', 'refunded')->first()->status)->toBe('APPROVED')
+        ->and($connection->fresh()->status)->toBe('active');
+})->with(['pt-BR', 'pt', 'PT_BR']);
+
+test('template é encontrado pelo id da Meta mesmo com idioma em outro formato', function () {
+    $connection = whatsappPendingConn(['refunded']);
+    $connection->templates()->where('event', 'refunded')->update(['meta_template_id' => '424242']);
+
+    processWhatsAppWebhook(whatsappWebhookPayload($connection->waba_id, [
+        whatsappTemplateChange('APPROVED', 'pedido_reembolsado', 'pt-BR', 'NONE', 424242),
+    ]));
+
+    expect($connection->templates()->where('event', 'refunded')->first()->status)->toBe('APPROVED')
+        ->and($connection->fresh()->status)->toBe('active');
+});
+
+test('template nosso em outro idioma nunca cria linha nova', function () {
+    $connection = whatsappConn(['status' => WhatsAppConnection::STATUS_PROVISIONING]);
+
+    processWhatsAppWebhook(whatsappWebhookPayload($connection->waba_id, [
+        whatsappTemplateChange('APPROVED', 'pedido_recebido', 'en-US', 'NONE', 778),
+    ]));
+
+    expect($connection->templates()->count())->toBe(0);
+});
+
+test('template aprovado como MARKETING (recategorizado) é registrado para o suporte', function () {
+    $logs = whatsappCaptureLogs();
+    $connection = whatsappPendingConn(['refunded']);
+
+    $change = whatsappTemplateChange('APPROVED', 'pedido_reembolsado');
+    $change['value']['message_template_category'] = 'MARKETING';
+
+    processWhatsAppWebhook(whatsappWebhookPayload($connection->waba_id, [
+        $change,
+        whatsappWabaChange('template_category_update', [
+            'message_template_id' => 990001,
+            'message_template_name' => 'pedido_em_preparo',
+            'message_template_language' => 'pt_BR',
+            'previous_category' => 'UTILITY',
+            'new_category' => 'MARKETING',
+        ]),
+    ]));
+
+    $warnings = collect($logs->getRecords())
+        ->filter(fn ($record) => $record['message'] === 'Webhook WhatsApp: template com categoria diferente da enviada')
+        ->pluck('context.template')
+        ->all();
+
+    expect($warnings)->toBe(['pedido_reembolsado', 'pedido_em_preparo'])
+        ->and($connection->fresh()->status)->toBe('active');
+});
 
 test('template aprovado que vira PAUSED deixa de estar aprovado, sem derrubar a conexão', function () {
     $connection = whatsappConn();
@@ -696,21 +758,47 @@ test('UNFLAGGED não altera qualidade que não estava vermelha', function () {
     expect($connection->fresh()->quality_rating)->toBe('GREEN');
 });
 
-test('account_alerts com limite atualiza o tier e não derruba a conexão', function () {
-    $connection = whatsappConn();
+test('account_alerts registra os dados de alert_info e não derruba a conexão', function () {
+    $logs = whatsappCaptureLogs();
+    $connection = whatsappConn(['messaging_limit_tier' => 'TIER_250']);
 
     processWhatsAppWebhook(whatsappWebhookPayload($connection->waba_id, [
         whatsappWabaChange('account_alerts', [
-            'entity_type' => 'WABA',
-            'alert_severity' => 'CRITICAL',
-            'alert_status' => 'ACTIVE',
-            'alert_type' => 'OBA_APPROVED',
-            'current_limit' => 'TIER_10K',
+            'entity_type' => 'BUSINESS',
+            'entity_id' => '506914307656634',
+            'alert_info' => [
+                'alert_severity' => 'WARNING',
+                'alert_status' => 'ACTIVE',
+                'alert_type' => 'INCREASED_CAPABILITIES_ELIGIBILITY_DEFERRED',
+                'alert_description' => 'Descrição do alerta',
+            ],
         ]),
     ]));
 
-    expect($connection->fresh()->messaging_limit_tier)->toBe('TIER_10K')
+    $record = collect($logs->getRecords())->first(fn ($record) => $record['message'] === 'Webhook WhatsApp: alerta de conta');
+
+    expect($record['context'])->toMatchArray([
+        'severity' => 'WARNING',
+        'status' => 'ACTIVE',
+        'type' => 'INCREASED_CAPABILITIES_ELIGIBILITY_DEFERRED',
+        'entity_type' => 'BUSINESS',
+    ])
+        ->and($connection->fresh()->messaging_limit_tier)->toBe('TIER_250')
         ->and($connection->fresh()->status)->toBe('active');
+});
+
+test('limite novo (max_daily_conversations_per_business) grava o tier da conexão', function () {
+    $connection = whatsappConn(['messaging_limit_tier' => 'TIER_250']);
+
+    processWhatsAppWebhook(whatsappWebhookPayload($connection->waba_id, [
+        whatsappWabaChange('phone_number_quality_update', [
+            'display_phone_number' => '551199990001',
+            'event' => 'THROUGHPUT_UPGRADE',
+            'max_daily_conversations_per_business' => 'TIER_2K',
+        ]),
+    ]));
+
+    expect($connection->fresh()->messaging_limit_tier)->toBe('TIER_2K');
 });
 
 test('isolamento: qualidade da WABA A não altera a conexão B', function () {
@@ -797,6 +885,64 @@ test('exclusão da conta e remoção do parceiro desconectam a conexão', functi
     ['ACCOUNT_DELETED', WhatsAppWebhookProcessor::DELETED_ACCOUNT_MESSAGE],
     ['PARTNER_REMOVED', WhatsAppWebhookProcessor::REMOVED_PARTNER_MESSAGE],
 ]);
+
+test('evento de parceiro com o id do business no entry resolve a conexão por waba_info', function (string $event) {
+    $connection = whatsappConn();
+
+    processWhatsAppWebhook(whatsappWebhookPayload('2949482758682047', [
+        whatsappWabaChange('account_update', [
+            'event' => $event,
+            'waba_info' => ['waba_id' => $connection->waba_id, 'owner_business_id' => '2329417887457253', 'partner_app_id' => '111222333'],
+            'disconnection_info' => ['reason' => 'PRIMARY_INACTIVITY', 'initiated_by' => 'SYSTEM'],
+        ]),
+    ]));
+
+    $connection->refresh();
+    expect($connection->status)->toBe('disconnected')
+        ->and($connection->last_error)->toBe(WhatsAppWebhookProcessor::REMOVED_PARTNER_MESSAGE);
+})->with(['PARTNER_REMOVED', 'PARTNER_APP_UNINSTALLED']);
+
+test('ACCOUNT_OFFBOARDED coloca a conexão em erro e ACCOUNT_RECONNECTED a reativa', function () {
+    $connection = whatsappPendingConn([]);
+    $connection->update(['status' => WhatsAppConnection::STATUS_ACTIVE, 'connected_at' => now()]);
+
+    processWhatsAppWebhook(whatsappWebhookPayload($connection->waba_id, [
+        whatsappWabaChange('account_update', ['event' => 'ACCOUNT_OFFBOARDED']),
+    ]));
+
+    $connection->refresh();
+    expect($connection->status)->toBe('error')
+        ->and($connection->last_error)->toBe(WhatsAppWebhookProcessor::OFFBOARDED_MESSAGE);
+
+    processWhatsAppWebhook(whatsappWebhookPayload($connection->waba_id, [
+        whatsappWabaChange('account_update', ['event' => 'ACCOUNT_RECONNECTED']),
+    ]));
+
+    $connection->refresh();
+    expect($connection->status)->toBe('active')
+        ->and($connection->last_error)->toBeNull();
+});
+
+test('ACCOUNT_RECONNECTED não apaga erro que não veio do offboarding', function () {
+    $connection = whatsappConn(['status' => WhatsAppConnection::STATUS_ERROR, 'last_error' => 'Token inválido (190).']);
+
+    processWhatsAppWebhook(whatsappWebhookPayload($connection->waba_id, [
+        whatsappWabaChange('account_update', ['event' => 'ACCOUNT_RECONNECTED']),
+    ]));
+
+    expect($connection->fresh()->status)->toBe('error')
+        ->and($connection->fresh()->last_error)->toBe('Token inválido (190).');
+});
+
+test('ACCOUNT_OFFBOARDED não mexe em conexão desconectada', function () {
+    $connection = whatsappConn(['status' => WhatsAppConnection::STATUS_DISCONNECTED]);
+
+    processWhatsAppWebhook(whatsappWebhookPayload($connection->waba_id, [
+        whatsappWabaChange('account_update', ['event' => 'ACCOUNT_OFFBOARDED']),
+    ]));
+
+    expect($connection->fresh()->status)->toBe('disconnected');
+});
 
 test('remoção de OUTRO parceiro da WABA não desconecta a conexão', function () {
     $connection = whatsappConn();

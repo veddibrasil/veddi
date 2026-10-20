@@ -9,7 +9,7 @@ use Carbon\Carbon;
 interface OrderServiceInterface
 {
     public function createOrder(
-        int $customerId,
+        ?int $customerId,
         int $branchId,
         array $cart,
         string $notes,
@@ -25,6 +25,8 @@ interface OrderServiceInterface
         string $channel = 'chat',
         ?string $externalOrderId = null,
         ?array $externalMetadata = null,
+        ?array $buyerData = null,
+        ?string $checkoutKey = null,
         ?array $fiscalRecipient = null,
     ): Order;
 

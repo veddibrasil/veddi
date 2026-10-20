@@ -14,13 +14,10 @@ function exceptionLogContext(Request $request): array
     return (fn () => $this->context())->call($handler);
 }
 
-test('requisição Livewire loga só componente, campos e métodos — nunca os valores', function () {
+test('requisição Livewire não registra nada do payload — nem senha de certificado', function () {
     $request = Request::create('/livewire/update', 'POST', [
         'components' => [[
-            'snapshot' => json_encode([
-                'data' => ['certificatePassword' => '', 'branchPhone' => '(44) 99999-0000'],
-                'memo' => ['name' => 'admin.fiscal.config'],
-            ]),
+            'snapshot' => json_encode(['data' => ['branchPhone' => '(44) 99999-0000'], 'memo' => ['name' => 'admin.fiscal.config']]),
             'updates' => ['certificatePassword' => 'senha-do-certificado'],
             'calls' => [['method' => 'save', 'params' => []]],
         ]],
@@ -29,25 +26,9 @@ test('requisição Livewire loga só componente, campos e métodos — nunca os 
 
     $context = exceptionLogContext($request);
 
-    expect($context['input'])->toBe([[
-        'component' => 'admin.fiscal.config',
-        'updates' => ['certificatePassword'],
-        'calls' => ['save'],
-    ]]);
+    expect($context['input'])->toBe(['livewire' => '[redacted]']);
     expect(json_encode($context))->not->toContain('senha-do-certificado')
         ->not->toContain('99999-0000');
-});
-
-test('payload Livewire malformado não derruba o log da exceção', function () {
-    $request = Request::create('/livewire/update', 'POST', [
-        'components' => ['texto', ['snapshot' => '{invalido', 'updates' => 'x', 'calls' => ['y']]],
-    ]);
-    $request->headers->set('X-Livewire', '1');
-
-    expect(exceptionLogContext($request)['input'])->toBe([
-        ['component' => null, 'updates' => [], 'calls' => []],
-        ['component' => null, 'updates' => [], 'calls' => []],
-    ]);
 });
 
 test('requisição comum mascara chaves sensíveis em qualquer nível e mantém o resto', function () {

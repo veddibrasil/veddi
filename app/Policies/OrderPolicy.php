@@ -16,13 +16,15 @@ class OrderPolicy
     public function view(User $user, Order $order): bool
     {
         return $user->hasPermission('orders.view', $this->company())
-            && $order->company_id === $this->company()->id;
+            && $order->company_id === $this->company()->id
+            && $user->canAccessBranch($this->company(), $order->branch_id);
     }
 
     public function update(User $user, Order $order): bool
     {
         return $user->hasPermission('orders.update', $this->company())
-            && $order->company_id === $this->company()->id;
+            && $order->company_id === $this->company()->id
+            && $user->canAccessBranch($this->company(), $order->branch_id);
     }
 
     public function report(User $user): bool

@@ -49,7 +49,7 @@ class Notes extends Component
     public function openCorrection(int $noteId): void
     {
         $this->authorizeFiscalWrite();
-        $note = FiscalNote::where('company_id', app('current.company')->id)->findOrFail($noteId);
+        $note = $this->notes()->where('company_id', app('current.company')->id)->findOrFail($noteId);
         abort_unless($note->model === '55' && $note->status === 'authorized', 422);
         $this->correctionNoteId = $note->id;
         $this->correctionText = '';
@@ -60,7 +60,7 @@ class Notes extends Component
     {
         $this->authorizeFiscalWrite();
         $this->validate(['correctionText' => 'required|string|min:15|max:1000']);
-        $note = FiscalNote::where('company_id', app('current.company')->id)->findOrFail($this->correctionNoteId);
+        $note = $this->notes()->where('company_id', app('current.company')->id)->findOrFail($this->correctionNoteId);
         try {
             $event = app(\App\Services\Fiscal\FiscalEventService::class)->correction($note, $this->correctionText);
             $this->showCorrectionModal = false;
@@ -101,14 +101,20 @@ class Notes extends Component
     public function consult(int $noteId): void
     {
         $this->authorizeFiscalWrite();
-        $note = FiscalNote::where('company_id', app('current.company')->id)->findOrFail($noteId);
+        $note = $this->notes()->where('company_id', app('current.company')->id)->findOrFail($noteId);
         app(FiscalNoteService::class)->reconcile($note);
         session()->flash('status', 'Consulta fiscal concluída.');
     }
 
+    #[Locked]
     public bool $canView = false;
 
+    #[Locked]
     public bool $canIssue = false;
+
+    /** Gerente de filial só vê e reemite notas da própria filial. */
+    #[Locked]
+    public ?int $lockedBranchId = null;
 
     public bool $showCancelModal = false;
 
@@ -137,6 +143,7 @@ class Notes extends Component
 
         $this->canView = $user->hasPermission('fiscal.view', $company);
         $this->canIssue = $user->hasPermission('fiscal.issue', $company);
+        $this->lockedBranchId = $user->lockedBranchId($company);
 
         abort_unless($this->canView, 403);
     }
@@ -175,7 +182,7 @@ class Notes extends Component
             'cancelJustification' => ['required', 'string', 'min:15', 'max:255'],
         ]);
 
-        $note = FiscalNote::find($this->cancelNoteId);
+        $note = $this->notes()->find($this->cancelNoteId);
 
         if (! $note || ! $note->isCancellable()) {
             session()->flash('error', 'Nota não encontrada ou não pode ser cancelada.');
@@ -258,14 +265,19 @@ class Notes extends Component
 
     private function findReissuableNote(int $noteId): ?FiscalNote
     {
-        $note = FiscalNote::where('company_id', app('current.company')->id)->with('order')->find($noteId);
+        $note = $this->notes()->where('company_id', app('current.company')->id)->with('order')->find($noteId);
 
         return $note && $note->order_id && in_array($note->status, ['error', 'rejected'], true) ? $note : null;
     }
 
+    private function notes()
+    {
+        return FiscalNote::query()->when($this->lockedBranchId, fn ($q) => $q->where('branch_id', $this->lockedBranchId));
+    }
+
     public function render()
     {
-        $query = FiscalNote::with(['order'])
+        $query = $this->notes()->with(['order'])
             ->orderByDesc('created_at');
 
         if ($this->modelFilter) {
@@ -288,7 +300,7 @@ class Notes extends Component
             'notes' => $query->paginate(15),
             'fiscalEvents' => \App\Models\FiscalNoteEvent::latest()->limit(20)->get(),
             'emitterConfigs' => \App\Models\CompanyFiscalConfig::where('company_id', app('current.company')->id)->with('branch')->get(),
-            'errorNote' => $this->errorNoteId ? FiscalNote::find($this->errorNoteId) : null,
+            'errorNote' => $this->errorNoteId ? $this->notes()->find($this->errorNoteId) : null,
             'reissueNote' => $this->showReissueModal && $this->reissueNoteId ? $this->findReissuableNote($this->reissueNoteId) : null,
         ])->layout('layouts.app', ['title' => 'Notas Fiscais']);
     }

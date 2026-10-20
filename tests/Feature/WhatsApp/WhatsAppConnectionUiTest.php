@@ -93,6 +93,31 @@ test('conexão pendente mostra progresso e atualiza sozinha a cada 5 segundos', 
         ->assertDontSee('Conectar WhatsApp');
 });
 
+test('conexão pendente travada (o job não rodou) para de atualizar e deixa conectar de novo', function () {
+    [$company, $admin] = whatsappUiCompany();
+    whatsappUiConnection($company, WhatsAppConnection::STATUS_PENDING, ['updated_at' => now()->subMinutes(3), 'connected_at' => null]);
+
+    Livewire::actingAs($admin)
+        ->test(WhatsAppSettings::class)
+        ->assertSee('A conexão não foi concluída. Tente conectar de novo.')
+        ->assertSee('Com problema')
+        ->assertSee('Reconectar WhatsApp')
+        ->assertSee('Cancelar conexão')
+        ->assertDontSee('Conectando com a Meta')
+        ->assertDontSeeHtml('wire:poll');
+});
+
+test('conexão pendente recente continua aguardando (não é dada como travada)', function () {
+    [$company, $admin] = whatsappUiCompany();
+    whatsappUiConnection($company, WhatsAppConnection::STATUS_PENDING, ['updated_at' => now()->subSeconds(90)]);
+
+    Livewire::actingAs($admin)
+        ->test(WhatsAppSettings::class)
+        ->assertSee('Conectando com a Meta')
+        ->assertDontSee('A conexão não foi concluída')
+        ->assertSeeHtml('wire:poll.5s');
+});
+
 test('aguardando templates lista o status de cada template e atualiza a cada 30 segundos', function () {
     [$company, $admin] = whatsappUiCompany();
     $connection = whatsappUiConnection($company, WhatsAppConnection::STATUS_TEMPLATES_PENDING);
@@ -139,6 +164,24 @@ test('conexão ativa mostra nome verificado, número, qualidade, tipo e as açõ
         ->assertDontSeeHtml('wire:poll');
 });
 
+test('limite diário TIER_2K aparece formatado (todos os tiers da Meta têm rótulo)', function (string $tier, string $label) {
+    [$company, $admin] = whatsappUiCompany();
+    whatsappUiConnection($company, WhatsAppConnection::STATUS_ACTIVE, ['messaging_limit_tier' => $tier]);
+
+    Livewire::actingAs($admin)
+        ->test(WhatsAppSettings::class)
+        ->assertSee($label.' clientes por dia')
+        ->assertDontSee($tier);
+})->with([
+    ['TIER_50', '50'],
+    ['TIER_250', '250'],
+    ['TIER_1K', '1.000'],
+    ['TIER_2K', '2.000'],
+    ['TIER_10K', '10.000'],
+    ['TIER_100K', '100.000'],
+    ['TIER_UNLIMITED', 'Ilimitados'],
+]);
+
 test('conexão em coexistência é identificada e avisa sobre o app WhatsApp Business', function () {
     [$company, $admin] = whatsappUiCompany();
     WhatsAppConnection::factory()->forCompany($company)->coexistence()->create();
@@ -170,6 +213,31 @@ test('conexão com erro mostra o motivo amigável e o botão Reconectar', functi
         ->assertSee('Reconectar WhatsApp')
         ->assertDontSee('Enviar teste');
 });
+
+test('conexão com erro também oferece encerrar: Cancelar conexão se nunca conectou, Desconectar se já conectou', function (?string $connectedAt, string $label) {
+    whatsappFakeMeta();
+    [$company, $admin] = whatsappUiCompany();
+    $connection = whatsappUiConnection($company, WhatsAppConnection::STATUS_ERROR, [
+        'last_error' => WhatsAppOnboardingService::MSG_TEMPORARY,
+        'connected_at' => $connectedAt,
+        'access_token' => null,
+    ]);
+
+    Livewire::actingAs($admin)
+        ->test(WhatsAppSettings::class)
+        ->assertSee($label)
+        ->assertSeeHtml('wire:click="confirmDisconnect"')
+        ->call('confirmDisconnect')
+        ->assertSet('showDisconnectModal', true)
+        ->assertSee('Desconectar o WhatsApp?')
+        ->call('disconnect')
+        ->assertSee('Reconectar WhatsApp');
+
+    expect($connection->fresh()->status)->toBe(WhatsAppConnection::STATUS_DISCONNECTED);
+})->with([
+    'nunca conectou' => [null, 'Cancelar conexão'],
+    'já conectou' => ['2026-01-10 10:00:00', 'Desconectar'],
+]);
 
 test('conexão desconectada oferece Reconectar', function () {
     [$company, $admin] = whatsappUiCompany();
@@ -376,6 +444,26 @@ test('completeSignup permite reconectar depois de erro ou desconexão', function
     'erro' => WhatsAppConnection::STATUS_ERROR,
     'desconectada' => WhatsAppConnection::STATUS_DISCONNECTED,
 ]);
+
+test('completeSignup recomeça uma conexão pendente travada', function () {
+    Queue::fake();
+    [$company, $admin] = whatsappUiCompany();
+    $connection = whatsappUiConnection($company, WhatsAppConnection::STATUS_PENDING, [
+        'updated_at' => now()->subMinutes(5), 'connected_at' => null, 'access_token' => null,
+    ]);
+
+    Livewire::actingAs($admin)
+        ->test(WhatsAppSettings::class)
+        ->call('completeSignup', 'code-novo', '1000000000001', '2000000000001', 'cloud_api')
+        ->assertSet('signupError', null)
+        ->assertSee('Conectando com a Meta')
+        ->assertDontSee('A conexão não foi concluída');
+
+    expect($connection->fresh()->status)->toBe(WhatsAppConnection::STATUS_PENDING)
+        ->and($connection->fresh()->updated_at->gt(now()->subMinute()))->toBeTrue();
+
+    Queue::assertPushed(CompleteWhatsAppOnboarding::class, fn ($job) => $job->connectionId === $connection->id && $job->code === 'code-novo');
+});
 
 // ── Desconectar ───────────────────────────────────────────────────────────────
 

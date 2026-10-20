@@ -36,9 +36,12 @@ class CashClosingReportService
 
     public function breakdown(PdvCashSession $session): array
     {
+        // Venda cancelada/estornada no PDV devolveu o dinheiro ao cliente: fora do esperado em
+        // caixa (mesmo critério de paymentTotals/orderStats deste relatório).
         $cashSales = (float) DB::table('orders')
             ->join('payments', 'payments.order_id', '=', 'orders.id')
             ->where('orders.pdv_cash_session_id', $session->id)
+            ->whereNotIn('orders.status', ['cancelled', 'refunded'])
             ->where('payments.payment_gateway', 'cash')
             ->where('payments.status', 'paid')
             ->sum('payments.amount');

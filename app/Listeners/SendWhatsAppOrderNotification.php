@@ -5,6 +5,7 @@ namespace App\Listeners;
 use App\Events\NewOrderPlaced;
 use App\Jobs\SendWhatsAppOrderNotificationJob;
 use App\Services\Messaging\WhatsAppService;
+use Illuminate\Support\Facades\Log;
 
 class SendWhatsAppOrderNotification
 {
@@ -19,10 +20,23 @@ class SendWhatsAppOrderNotification
         // NotifyScheduledOrderJob cai na idempotência (order_id + event).
         $notification = $order->status === 'scheduled' ? 'scheduled' : 'new_order';
 
-        if (! $this->whatsApp->shouldNotify($order, $notification)) {
-            return;
-        }
+        // Listener síncrono: uma falha do aviso não pode derrubar a criação do pedido nem os
+        // demais listeners do evento.
+        try {
+            if (! $this->whatsApp->shouldNotify($order, $notification)) {
+                return;
+            }
 
-        SendWhatsAppOrderNotificationJob::dispatch($order->id, $notification);
+            SendWhatsAppOrderNotificationJob::dispatch($order->id, $notification);
+        } catch (\Throwable $e) {
+            Log::channel('whatsapp')->error('Notificação WhatsApp: falha ao despachar aviso do pedido', [
+                'order_id' => $order->id,
+                'company_id' => $order->company_id,
+                'event' => $notification,
+                'exception' => $e::class,
+            ]);
+
+            report($e);
+        }
     }
 }

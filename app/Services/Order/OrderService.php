@@ -28,7 +28,7 @@ class OrderService implements OrderServiceInterface
      * @param  array<int, array{qty: int, name: string, price: float}>  $cart
      */
     public function createOrder(
-        int $customerId,
+        ?int $customerId,
         int $branchId,
         array $cart,
         string $notes,
@@ -44,6 +44,8 @@ class OrderService implements OrderServiceInterface
         string $channel = 'chat',
         ?string $externalOrderId = null,
         ?array $externalMetadata = null,
+        ?array $buyerData = null,
+        ?string $checkoutKey = null,
         ?array $fiscalRecipient = null,
     ): Order {
         $currentCompany = app()->bound('current.company') ? app('current.company') : null;
@@ -59,7 +61,21 @@ class OrderService implements OrderServiceInterface
 
         $customer = \App\Models\Customer::withoutGlobalScopes()->find($customerId);
 
-        $order = $this->transactionRetryingOnOrderNumberCollision(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer, $extraDiscount, $serviceFee, $couvertFee, $channel, $externalOrderId, $externalMetadata, $fiscalRecipient) {
+        // O id do cliente pode vir de payload (PDV) e a busca acima ignora o escopo da empresa:
+        // sem isto o pedido de uma empresa ficava vinculado ao cliente (nome, telefone,
+        // endereço) de outra.
+        $branchCompanyId = \App\Models\Branch::withoutGlobalScopes()->whereKey($branchId)->value('company_id');
+
+        if ($branchCompanyId === null || ($customerId !== null && (! $customer || (int) $customer->company_id !== (int) $branchCompanyId)) || ($customerId === null && ! $buyerData)) {
+            Log::channel('orders')->warning('Cliente fora da empresa da filial ao criar pedido', [
+                'customer_id' => $customerId,
+                'branch_id' => $branchId,
+            ]);
+
+            throw new RuntimeException('Cliente não encontrado nesta empresa.');
+        }
+
+        $order = $this->transactionRetryingOnOrderNumberCollision(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer, $extraDiscount, $serviceFee, $couvertFee, $channel, $externalOrderId, $externalMetadata, $buyerData, $checkoutKey, $fiscalRecipient) {
             $subtotal = 0.0;
             $optionPricing = app(CartOptionPricing::class);
             // Pedido do cliente no chat público: o servidor não confia que a UI travou item sem escolha
@@ -105,6 +121,11 @@ class OrderService implements OrderServiceInterface
                     $deliveryFee = 0.0;
                     $discount = 0.0; // desconto já está embutido no frete zerado
                 }
+                // Produto grátis: o benefício é o brinde a R$ 0,00 lançado abaixo; abater o preço
+                // dele do resto do pedido dava o benefício em dobro.
+                if ($coupon->type === 'free_product') {
+                    $discount = 0.0;
+                }
             }
 
             $safeExtraDiscount = max(0.0, (float) $extraDiscount);
@@ -131,6 +152,8 @@ class OrderService implements OrderServiceInterface
             $order = Order::create([
                 'fiscal_recipient' => $fiscalRecipient,
                 'customer_id' => $customerId,
+                'buyer_data' => $buyerData,
+                'checkout_key' => $checkoutKey,
                 'branch_id' => $branchId,
                 'subtotal' => $subtotal,
                 'delivery_fee' => $deliveryFee,
@@ -152,6 +175,10 @@ class OrderService implements OrderServiceInterface
                 'external_metadata' => $externalMetadata,
                 'attendant_id' => $orderType === 'pdv' ? auth()->id() : null,
             ]);
+
+            if ($buyerData) {
+                $customer = $order->customer;
+            }
 
             if ($orderType === 'delivery' && $customer) {
                 $order->delivery_address = $customer->address;
@@ -233,7 +260,16 @@ class OrderService implements OrderServiceInterface
                 ->delay($notifyAt->isFuture() ? $notifyAt : $scheduledAt);
         }
 
-        if ($currentCompany && $currentCompany->isFree() && ! $currentCompany->isWithinOrderLimit()) {
+        // Mesmo critério da taxa realmente cobrada (feePercentageForOrder conta só pedidos
+        // confirmados) e um aviso por mês: antes saía um sino a cada pedido acima do limite, e
+        // pedidos pendentes/não pagos já disparavam o "taxa ajustada" sem a taxa ter mudado.
+        if ($currentCompany && $currentCompany->isFree()
+            && $currentCompany->feePercentageForOrder($order) > $currentCompany->plan->feePercentage()
+            && ! CompanyNotification::withoutGlobalScopes()
+                ->where('company_id', $currentCompany->id)
+                ->where('type', 'plan_limit')
+                ->where('created_at', '>=', now()->startOfMonth())
+                ->exists()) {
             CompanyNotification::create([
                 'company_id' => $currentCompany->id,
                 'type' => 'plan_limit',
@@ -552,8 +588,18 @@ class OrderService implements OrderServiceInterface
     /**
      * Cancela um pedido pelo cliente.
      */
-    public function cancelOrder(Order $order, int $customerId, ?string $reason = null): void
+    public function cancelOrder(Order $order, ?int $customerId, ?string $reason = null): void
     {
+        // Cliente só cancela o próprio pedido (o chat público é a origem; admin usa cancelOrderAsAdmin).
+        if ($customerId === null ? ! app(\App\Services\Chat\ChatAccess::class)->canAccessOrder($order, true) : (int) $order->customer_id !== $customerId) {
+            Log::channel('orders')->warning('Cancelamento pelo cliente recusado: pedido de outro cliente', [
+                'order_id' => $order->id,
+                'customer_id' => $customerId,
+            ]);
+
+            throw new RuntimeException('Pedido não pertence ao cliente.');
+        }
+
         $policy = app(OrderCancellationPolicy::class);
         $policy->authorizeCustomerCancel($order);
 
@@ -644,6 +690,97 @@ class OrderService implements OrderServiceInterface
                 );
             }
         }
+    }
+
+    /**
+     * Cancelamento automático (PIX expirado, cobrança que não saiu, cartão recusado no webhook,
+     * cliente trocando a forma de pagamento no chat). Só cancela pedido que ainda espera
+     * pagamento (pending/awaiting_payment) e sem pagamento confirmado: pedido pago só sai pelo
+     * cancelamento do admin, com estorno. Com lock no pedido, numa transação: muda o status,
+     * devolve o estoque e grava o histórico. O uso do cupom volta junto (Coupon::countedUsages
+     * ignora pedido cancelado). Dispara OrderStatusUpdated (painel, chat e WhatsApp).
+     *
+     * @return bool true quando esta chamada cancelou o pedido; false se ele já tinha saído do fluxo
+     */
+    public function cancelBySystem(Order $order, string $reason, string $source): bool
+    {
+        $cancelled = DB::transaction(function () use ($order, $reason, $source) {
+            // Jobs e webhooks rodam sem empresa no contexto: o pedido vem pelo id já resolvido.
+            $locked = Order::withoutGlobalScopes()->whereKey($order->id)->lockForUpdate()->first();
+
+            if (! $locked || ! in_array($locked->status, ['pending', 'awaiting_payment'], true)) {
+                return false;
+            }
+
+            if ($locked->payments()->where('status', 'paid')->exists()) {
+                return false;
+            }
+
+            $previousStatus = $locked->status;
+
+            $locked->update([
+                'status' => 'cancelled',
+                'cancellation_reason' => $reason,
+                'cancelled_at' => now(),
+            ]);
+
+            app(StockService::class)->restoreForOrder($locked);
+
+            $this->recordStatusHistory($locked, null, $previousStatus, 'cancelled', $reason, [
+                'source' => $source,
+            ]);
+
+            return true;
+        });
+
+        if (! $cancelled) {
+            Log::channel('orders')->info('Cancelamento automático ignorado: pedido fora do fluxo de cobrança', [
+                'order_id' => $order->id,
+                'source' => $source,
+            ]);
+
+            return false;
+        }
+
+        $order->refresh();
+
+        Log::channel('orders')->info('Pedido cancelado pelo sistema', [
+            'order_id' => $order->id,
+            'source' => $source,
+        ]);
+
+        \App\Events\OrderStatusUpdated::dispatch($order);
+
+        return true;
+    }
+
+    /**
+     * Pagamento confirmado pelo gateway (webhook, polling ou cartão) para pedido já cancelado ou
+     * estornado — ex.: PIX copiado antes do cancelamento e pago depois. O pedido não reabre
+     * (estoque já devolvido, cliente já viu "cancelado"): quem chama registra o pagamento como
+     * recebido (carteira/transação, como qualquer pagamento) e aqui sai o estorno pelo mesmo
+     * caminho do cancelamento do admin, com alerta crítico só com ids.
+     */
+    public function refundPaymentForClosedOrder(Order $order, \App\Models\Payment $payment, string $source): void
+    {
+        Log::channel('discord')->critical('Pagamento confirmado para pedido já cancelado — estorno automático iniciado', [
+            'type' => 'payments',
+            'order_id' => $order->id,
+            'payment_id' => $payment->id,
+            'company_id' => $order->company_id,
+            'order_status' => $order->status,
+            'amount' => (float) $payment->amount,
+            'source' => $source,
+        ]);
+
+        app(RefundServiceInterface::class)->initiateRefund(
+            $order,
+            $payment,
+            (float) $payment->amount,
+            'system',
+            null,
+            'payment_after_cancel',
+        );
     }
 
     /**

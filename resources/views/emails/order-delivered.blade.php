@@ -27,7 +27,7 @@
 
     {{-- Body --}}
     <div style="padding: 32px 40px;">
-        <h2 style="font-size: 20px; margin-top: 0; color: #111;">Seu pedido foi finalizado, {{ $customer->name }}!</h2>
+        <h2 style="font-size: 20px; margin-top: 0; color: #111;">Seu pedido foi finalizado, {{ $buyer->name }}!</h2>
         <p style="font-size: 15px; line-height: 1.6; color: #555;">
             Obrigado por comprar com a gente. Esperamos que tenha gostado!
         </p>

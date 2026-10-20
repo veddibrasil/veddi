@@ -101,7 +101,10 @@ return [
     |
     */
 
-    'middleware' => ['web'],
+    // throttle:fortify-routes só limita o POST /admin/forgot-password (o Fortify não
+    // tem limiter próprio para ele); nas demais rotas o limiter devolve Limit::none().
+    // Ver FortifyServiceProvider::configureRateLimiting().
+    'middleware' => ['web', 'throttle:fortify-routes'],
 
     /*
     |--------------------------------------------------------------------------
@@ -144,7 +147,9 @@ return [
     */
 
     'features' => [
-        Features::registration(),
+        // Features::registration() desligado: o cadastro oficial é /cadastro
+        // (Onboarding\RegisterForm, que cria empresa + filial + admin). O
+        // /admin/register do Fortify criava conta solta, sem empresa.
         Features::resetPasswords(),
         Features::emailVerification(),
         Features::twoFactorAuthentication([

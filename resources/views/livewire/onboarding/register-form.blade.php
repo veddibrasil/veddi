@@ -173,9 +173,21 @@
                 autocomplete="email"
             />
 
-            <div>
+            {{-- Medidor de força calculado no navegador: a senha só vai ao servidor no "Continuar". --}}
+            <div x-data="{
+                get pw() { return $wire.userPassword || '' },
+                get hasMin() { return this.pw.length >= 8 },
+                get hasLetter() { return /[a-zA-Z]/.test(this.pw) },
+                get hasNumber() { return /[0-9]/.test(this.pw) },
+                get hasSpecial() { return /[\W_]/.test(this.pw) },
+                get strength() {
+                    if (this.pw.length === 0) return 0
+                    let score = [this.hasMin, this.hasLetter, this.hasNumber, this.hasSpecial].filter(Boolean).length
+                    return score <= 2 ? 1 : (score === 3 ? 2 : 3)
+                },
+            }">
                 <flux:input
-                    wire:model.live="userPassword"
+                    wire:model="userPassword"
                     label="Senha"
                     type="password"
                     placeholder="Mínimo 8 caracteres"
@@ -183,43 +195,40 @@
                     viewable
                 />
 
-                @if($passwordStrength > 0)
+                <div x-show="strength > 0" style="display: none">
                     {{-- Strength bar --}}
                     <div class="mt-2.5 flex gap-1">
-                        @for($i = 1; $i <= 3; $i++)
-                            <div class="h-1 flex-1 rounded-full transition-all duration-300 {{ $passwordStrength >= $i
-                                ? ($passwordStrength === 1 ? 'bg-red-400' : ($passwordStrength === 2 ? 'bg-amber-400' : 'bg-green-500'))
-                                : 'bg-zinc-200' }}"></div>
-                        @endfor
+                        <template x-for="i in 3" :key="i">
+                            <div class="h-1 flex-1 rounded-full transition-all duration-300"
+                                :class="strength >= i
+                                    ? (strength === 1 ? 'bg-red-400' : (strength === 2 ? 'bg-amber-400' : 'bg-green-500'))
+                                    : 'bg-zinc-200'"></div>
+                        </template>
                     </div>
-                    <p class="mt-1 text-xs font-medium
-                        {{ $passwordStrength === 1 ? 'text-red-500' : ($passwordStrength === 2 ? 'text-amber-500' : 'text-green-600') }}">
-                        {{ $passwordStrength === 1 ? 'Senha fraca' : ($passwordStrength === 2 ? 'Senha média' : 'Senha forte') }}
-                    </p>
+                    <p class="mt-1 text-xs font-medium"
+                        :class="strength === 1 ? 'text-red-500' : (strength === 2 ? 'text-amber-500' : 'text-green-600')"
+                        x-text="strength === 1 ? 'Senha fraca' : (strength === 2 ? 'Senha média' : 'Senha forte')"></p>
 
                     {{-- Checklist --}}
                     <ul class="mt-2.5 space-y-1">
                         @foreach([
-                            [$passwordHasMin,     '8 caracteres no mínimo'],
-                            [$passwordHasLetter,  'Contém letras'],
-                            [$passwordHasNumber,  'Contém números'],
-                            [$passwordHasSpecial, 'Contém caractere especial'],
-                        ] as [$ok, $label])
-                            <li class="flex items-center gap-2 text-xs {{ $ok ? 'text-green-600' : 'text-zinc-400' }}">
-                                @if($ok)
-                                    <svg class="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                                    </svg>
-                                @else
-                                    <svg class="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                                    </svg>
-                                @endif
+                            ['hasMin',     '8 caracteres no mínimo'],
+                            ['hasLetter',  'Contém letras'],
+                            ['hasNumber',  'Contém números'],
+                            ['hasSpecial', 'Contém caractere especial'],
+                        ] as [$check, $label])
+                            <li class="flex items-center gap-2 text-xs" :class="{{ $check }} ? 'text-green-600' : 'text-zinc-400'">
+                                <svg x-show="{{ $check }}" class="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                                </svg>
+                                <svg x-show="! {{ $check }}" class="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                                </svg>
                                 {{ $label }}
                             </li>
                         @endforeach
                     </ul>
-                @endif
+                </div>
 
                 @error('userPassword')
                     <p class="mt-1.5 text-xs text-red-600">{{ $message }}</p>
@@ -528,25 +537,27 @@
     style="display:none"
     class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
 >
+    {{-- Número, validade e CVV ficam só no Alpine (card) e vão como parâmetro de submitCard(): não viram propriedade do Livewire. --}}
     <div
         @click.outside="show = false"
         x-data="{
+            card: { number: '', expiry: '', cvv: '' },
             maskCardNumber(e) {
                 let v = e.target.value.replace(/\D/g, '').substring(0, 16);
                 v = v.replace(/(\d{4})(?=\d)/g, '$1 ');
                 e.target.value = v;
-                $wire.set('cardNumber', v);
+                this.card.number = v;
             },
             maskExpiry(e) {
                 let v = e.target.value.replace(/\D/g, '').substring(0, 4);
                 if (v.length >= 3) v = v.substring(0, 2) + '/' + v.substring(2);
                 e.target.value = v;
-                $wire.set('cardExpiry', v);
+                this.card.expiry = v;
             },
             maskCvv(e) {
                 let v = e.target.value.replace(/\D/g, '').substring(0, 4);
                 e.target.value = v;
-                $wire.set('cardCvv', v);
+                this.card.cvv = v;
             },
             maskCpfCnpj(e) {
                 let v = e.target.value.replace(/\D/g, '');
@@ -621,7 +632,7 @@
                 {{-- Número do cartão --}}
                 <div>
                     <flux:input
-                        wire:model="cardNumber"
+                        name="cardNumber"
                         x-on:input="maskCardNumber($event)"
                         label="Número do cartão"
                         placeholder="0000 0000 0000 0000"
@@ -636,7 +647,7 @@
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <flux:input
-                            wire:model="cardExpiry"
+                            name="cardExpiry"
                             x-on:input="maskExpiry($event)"
                             label="Validade"
                             placeholder="MM/AA"
@@ -648,7 +659,7 @@
                     </div>
                     <div>
                         <flux:input
-                            wire:model="cardCvv"
+                            name="cardCvv"
                             x-on:input="maskCvv($event)"
                             label="CVV"
                             placeholder="123"
@@ -715,7 +726,9 @@
 
                 {{-- Botão pagar --}}
                 <button
-                    wire:click="submitCard"
+                    type="button"
+                    x-on:click="$wire.submitCard({ number: card.number, expiry: card.expiry, cvv: card.cvv })"
+                    wire:target="submitCard"
                     wire:loading.attr="disabled"
                     wire:loading.class="opacity-75 cursor-not-allowed"
                     @if($cardProcessing) disabled @endif

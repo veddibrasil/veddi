@@ -109,6 +109,54 @@ test('sem --company sincroniza só conexões provisioning, templates_pending e a
         ->and($semToken->templates()->count())->toBe(0);
 });
 
+test('--pending sincroniza só conexões em provisioning e templates_pending', function () {
+    whatsappFakeMeta();
+
+    $provisioning = syncConnection('provisioning', ['waba_id' => '1000000000001', 'phone_number_id' => '2000000000001']);
+    $pending = syncConnection('templates_pending', ['waba_id' => '1000000000002', 'phone_number_id' => '2000000000002']);
+    $active = syncConnection('active', ['waba_id' => '1000000000003', 'phone_number_id' => '2000000000003']);
+
+    $this->artisan('whatsapp:sync-templates --pending')->assertSuccessful();
+
+    expect($provisioning->templates()->count())->toBe(10)
+        ->and($pending->templates()->count())->toBe(10)
+        ->and($active->templates()->count())->toBe(0);
+});
+
+test('--pending recupera aprovação cujo webhook se perdeu e ativa a conexão', function () {
+    whatsappFakeMeta(['GET message_templates' => allApprovedRemotely()]);
+
+    $connection = syncConnection('templates_pending');
+
+    $this->artisan('whatsapp:sync-templates --pending')->assertSuccessful();
+
+    expect($connection->fresh()->status)->toBe('active');
+});
+
+test('--pending sem conexão aguardando termina com sucesso sem chamar a Meta', function () {
+    whatsappFakeMeta();
+
+    syncConnection('active');
+
+    $this->artisan('whatsapp:sync-templates --pending')
+        ->expectsOutput('Nenhuma conexão aguardando templates.')
+        ->assertSuccessful();
+
+    Http::assertNothingSent();
+});
+
+test('--pending está agendado a cada 30 minutos, sem sobreposição', function () {
+    \Illuminate\Support\Facades\Artisan::call('list');
+
+    $event = collect(app(\Illuminate\Console\Scheduling\Schedule::class)->events())
+        ->first(fn ($event) => str_contains((string) $event->command, 'whatsapp:sync-templates --pending'));
+
+    expect($event)->not->toBeNull()
+        ->and($event->expression)->toBe('*/30 * * * *')
+        ->and($event->withoutOverlapping)->toBeTrue()
+        ->and($event->onOneServer)->toBeTrue();
+});
+
 test('--company com conexão em erro ainda sincroniza (decisão explícita do suporte)', function () {
     whatsappFakeMeta();
     $connection = syncConnection('error');
@@ -202,4 +250,52 @@ test('token recusado deixa a conexão em erro e mostra isso no resumo', function
         ->expectsOutputToContain('status error');
 
     expect($connection->fresh()->status)->toBe('error');
+});
+
+test('--platform cria na WABA da plataforma só os templates que faltam, sem gravar conexão', function () {
+    whatsappFakeMeta(['GET message_templates' => ['data' => [
+        ['id' => 'r-1', 'name' => 'pedido_em_preparo', 'language' => 'pt_BR', 'status' => 'APPROVED'],
+    ]]]);
+    config([
+        'services.whatsapp.platform.waba_id' => '9000000000001',
+        'services.whatsapp.platform.phone_number_id' => '9000000000002',
+        'services.whatsapp.platform.token' => 'tok-plataforma',
+    ]);
+
+    $this->artisan('whatsapp:sync-templates', ['--platform' => true])
+        ->expectsOutputToContain('Plataforma: 9 template(s) criado(s).')
+        ->expectsOutputToContain('pedido_em_preparo: APPROVED')
+        ->assertSuccessful();
+
+    expect(WhatsAppConnection::withoutGlobalScopes()->count())->toBe(0)
+        ->and(collect(whatsappMetaCalls())->filter(fn ($call) => $call === 'POST message_templates'))->toHaveCount(9);
+
+    Http::assertSent(fn (Request $request) => str_contains($request->url(), '/9000000000001/message_templates')
+        && $request->hasHeader('Authorization', 'Bearer tok-plataforma'));
+
+    // Inscreve o app na WABA da plataforma (webhook de status e opt-out).
+    Http::assertSent(fn (Request $request) => $request->method() === 'POST'
+        && str_contains($request->url(), '/9000000000001/subscribed_apps'));
+});
+
+test('--platform sem número da plataforma configurado falha com instrução', function () {
+    whatsappFakeMeta();
+    config(['services.whatsapp.platform.waba_id' => null, 'services.whatsapp.platform.token' => null]);
+
+    $this->artisan('whatsapp:sync-templates', ['--platform' => true])
+        ->expectsOutputToContain('WHATSAPP_PLATFORM_WABA_ID')
+        ->assertFailed();
+
+    Http::assertNothingSent();
+});
+
+test('--platform com token da plataforma expirado orienta a trocar o token', function () {
+    whatsappFakeMeta(['GET message_templates' => Http::response(['error' => [
+        'message' => 'Error validating access token: Session has expired', 'type' => 'OAuthException', 'code' => 190, 'error_subcode' => 463,
+    ]], 401)]);
+    config(['services.whatsapp.platform.waba_id' => '9000000000001', 'services.whatsapp.platform.token' => 'tok-vencido']);
+
+    $this->artisan('whatsapp:sync-templates', ['--platform' => true])
+        ->expectsOutputToContain('WHATSAPP_PLATFORM_TOKEN')
+        ->assertFailed();
 });

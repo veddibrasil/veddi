@@ -9,9 +9,11 @@ use App\Models\CompanyNotification;
 use App\Models\Coupon;
 use App\Models\Customer;
 use App\Models\Order;
+use App\Models\Product;
+use App\Services\Order\CartOptionPricing;
 use App\Services\Order\DeliveryService;
 use App\Services\Order\OrderCancellationPolicy;
-use App\Services\Order\StockService;
+use App\Services\Order\OrderService;
 use App\Services\Payment\PaymentCalculatorService;
 use App\Services\Payment\PaymentOrchestrator;
 use App\Services\Payment\PaymentService;
@@ -24,6 +26,7 @@ trait HasPaymentFlow
 {
     public function selectPaymentMethod(string $method): void
     {
+        abort_unless(in_array($method, ['PIX', 'CARD', 'CASH'], true), 422);
         $restrictedMethod = $this->appliedCoupon['payment_method'] ?? null;
         if ($restrictedMethod !== null && $method !== $restrictedMethod) {
             return;
@@ -53,6 +56,29 @@ trait HasPaymentFlow
     }
 
     public function confirmOrder(): void
+    {
+        if (! $this->checkoutKey) {
+            $this->checkoutKey = \Illuminate\Support\Str::random(64);
+        }
+        \Illuminate\Support\Facades\Cache::lock('chat-checkout:'.$this->checkoutKey, 30)->block(5, function () {
+            $existing = Order::withoutGlobalScopes()->where('company_id', $this->companyId)->where('checkout_key', $this->checkoutKey)->first();
+            if ($existing) {
+                if (app(\App\Services\Chat\ChatAccess::class)->canAccessOrder($existing)) {
+                    $this->orderId = $existing->id;
+                    $this->transitionTo(match (true) {
+                        in_array($existing->status, ['cancelled', 'refunded']) => 'ORDER_FAILED',
+                        in_array($existing->status, ['pending', 'awaiting_payment']) => strtoupper($existing->payment_method) === 'CARD' ? 'PAYMENT_CARD_FORM' : 'PAYMENT_PIX',
+                        default => 'ORDER_CONFIRMED',
+                    });
+                }
+
+                return;
+            }
+            $this->placeConfirmedOrder();
+        });
+    }
+
+    private function placeConfirmedOrder(): void
     {
         if ($this->paymentMethod === 'CASH') {
             $status = $this->scheduledAt ? 'scheduled' : 'paid';
@@ -119,10 +145,12 @@ trait HasPaymentFlow
             return;
         }
 
+        // Pedido mínimo e "frete grátis acima de R$ X" decididos com o subtotal do banco: o
+        // cartTotal soma `cart.*.price`, que vem do navegador e serve só para exibir.
         $result = app(DeliveryService::class)->validate(
             $settings,
             $this->neighborhood,
-            $this->cartTotal,
+            $this->serverCartSubtotal(),
             $this->customer_latitude !== '' ? (float) $this->customer_latitude : null,
             $this->customer_longitude !== '' ? (float) $this->customer_longitude : null
         );
@@ -130,17 +158,153 @@ trait HasPaymentFlow
         $this->deliveryFee = $result['fee'];
     }
 
+    /**
+     * Subtotal do carrinho com preço e adicionais vindos do banco — mesmo cálculo de
+     * OrderService::createOrder (effective_price + CartOptionPricing). Produto que não é da
+     * empresa fica fora da conta (o createOrder recusa o pedido de qualquer forma).
+     */
+    private function serverCartSubtotal(): float
+    {
+        $productId = fn ($item, $cartKey): int => (int) ((is_array($item) ? ($item['product_id'] ?? null) : null) ?? explode('_', (string) $cartKey)[0]);
+
+        $products = Product::withoutGlobalScopes()
+            ->where('company_id', $this->companyId)
+            ->whereIn('id', collect($this->cart)->map($productId)->unique()->values())
+            ->with('optionGroups')
+            ->get()
+            ->keyBy('id');
+
+        $optionPricing = app(CartOptionPricing::class);
+        $subtotal = 0.0;
+
+        foreach ($this->cart as $cartKey => $item) {
+            $product = $products->get($productId($item, $cartKey));
+
+            if (! $product) {
+                continue;
+            }
+
+            $extra = (float) $optionPricing->resolve($product, is_array($item) ? $item : [])['extra'];
+            $subtotal += ((float) $product->effective_price + $extra) * max(0, (int) ($item['qty'] ?? 0));
+        }
+
+        return $subtotal;
+    }
+
+    /**
+     * Empresa e filial conferidas de novo na hora do pedido: o estado do chat sobrevive na sessão
+     * (carrinho montado com a loja aberta e confirmado depois do fechamento, empresa bloqueada no
+     * meio da conversa) e horário/pausa só eram checados em selectBranch(). Recusa com mensagem
+     * ao cliente, sem o aviso de "falha ao criar pedido" para a loja.
+     */
+    private function orderPlacementAllowed(?Carbon $scheduledAt): bool
+    {
+        if (! $this->companyAcceptsOrders(\App\Models\Company::find($this->companyId))) {
+            Log::channel('chat')->warning('placeOrder recusado: empresa sem permissão de venda', [
+                'company_id' => $this->companyId,
+                'customer_id' => $this->customerId,
+            ]);
+
+            $this->addMessage('bot', 'No momento esta loja não está aceitando pedidos.');
+            $this->transitionTo('UNAVAILABLE');
+
+            return false;
+        }
+
+        $branch = Branch::withoutGlobalScopes()
+            ->where('id', $this->selectedBranchId)
+            ->where('company_id', $this->companyId)
+            ->where('active', true)
+            ->first();
+
+        $refusal = match (true) {
+            $branch === null => 'A filial escolhida não está disponível no momento.',
+            // Agendado: o horário escolhido já foi validado contra a grade da filial.
+            $scheduledAt !== null => null,
+            $branch->isPaused() => "A filial {$branch->name} está temporariamente fechada. Tente mais tarde.",
+            ! $this->branchOpenNow($branch) => "A filial {$branch->name} está fechada no momento. Tente mais tarde.",
+            default => null,
+        };
+
+        if ($refusal === null) {
+            return true;
+        }
+
+        Log::channel('chat')->info('placeOrder recusado: filial indisponível', [
+            'customer_id' => $this->customerId,
+            'branch_id' => $this->selectedBranchId,
+        ]);
+
+        $this->addMessage('bot', $refusal);
+
+        return false;
+    }
+
+    /**
+     * Branch::isOpen() não cobre a janela que vira a noite (ex.: 18:00–02:00); o initialize()
+     * do chat cobre, então a mesma tolerância vale aqui para não travar loja noturna.
+     */
+    private function branchOpenNow(Branch $branch): bool
+    {
+        if ($branch->isOpen()) {
+            return true;
+        }
+
+        $now = now(config('app.timezone'));
+        $day = (int) $now->format('w');
+
+        if ($branch->available_days !== null && ! in_array($day, $branch->available_days)) {
+            return false;
+        }
+
+        $hours = $branch->hoursForDay($day);
+        $time = $now->format('H:i:s');
+
+        return $hours['opens_at'] && $hours['closes_at']
+            && $hours['opens_at'] > $hours['closes_at']
+            && ($time >= $hours['opens_at'] || $time <= $hours['closes_at']);
+    }
+
     private function placeOrder(string $initialStatus): void
     {
-        if ($this->submitting) {
+        if ($this->submitting || $this->orderId || ! $this->checkoutReady) {
+            return;
+        }
+        $this->validate([
+            'phone' => ['required', 'regex:/^\d{10,11}$/'],
+            'name' => ['required', 'string', 'min:3', 'max:100'],
+            'email' => ['nullable', 'email', 'max:200'],
+            'paymentMethod' => ['required', 'in:PIX,CARD,CASH'],
+            'orderType' => ['required', 'in:delivery,pickup'],
+            'cart' => ['required', 'array', 'min:1'],
+            'notes' => ['nullable', 'string', 'max:500'],
+            'complement' => ['nullable', 'string', 'max:100'],
+            'customer_latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'customer_longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'taxId' => [in_array($this->paymentMethod, ['PIX', 'CARD']) ? 'required' : 'nullable', 'regex:/^\d{3}\.?\d{3}\.?\d{3}-?\d{2}$/'],
+            ...($this->orderType === 'delivery' ? [
+                'address' => ['required', 'string', 'min:5', 'max:255'],
+                'number' => ['required', 'string', 'max:20'],
+                'neighborhood' => ['required', 'string', 'max:100'],
+                'city' => ['required', 'string', 'max:100'],
+                'cep' => ['required', 'regex:/^\d{5}-?\d{3}$/'],
+            ] : []),
+        ]);
+        $identity = $this->verifiedCustomer();
+        $this->customerId = $this->useSavedProfile && $identity?->phone === $this->phone ? $identity?->id : null;
+
+        $scheduledAt = $this->scheduledAt ? Carbon::parse($this->scheduledAt) : null;
+
+        if (! $this->orderPlacementAllowed($scheduledAt)) {
             return;
         }
 
         // Sem limite aqui, um cliente conseguia gerar pedidos `pending`/`awaiting_payment`
         // em sequência sem nunca pagar (spam) — o único freio antes era o debounce de clique.
-        $rateLimitKey = "place-order:{$this->customerId}";
+        $rateLimitKey = "place-order:{$this->companyId}:session:".hash('sha256', session()->getId());
+        $ipLimitKey = "place-order:{$this->companyId}:ip:".hash('sha256', (string) request()->ip());
 
-        if (RateLimiter::tooManyAttempts($rateLimitKey, 8)) {
+        if (RateLimiter::tooManyAttempts($rateLimitKey, 8) || RateLimiter::tooManyAttempts($ipLimitKey, 60)) {
             Log::channel('chat')->warning('placeOrder rate limitado', ['customer_id' => $this->customerId]);
             $this->addMessage('bot', 'Muitas tentativas de pedido em pouco tempo. Aguarde alguns minutos e tente novamente.');
 
@@ -148,6 +312,7 @@ trait HasPaymentFlow
         }
 
         RateLimiter::hit($rateLimitKey, 300);
+        RateLimiter::hit($ipLimitKey, 300);
 
         $this->submitting = true;
         $this->isLoading = true;
@@ -159,7 +324,6 @@ trait HasPaymentFlow
             $coupon = Coupon::find($this->appliedCoupon['id']);
         }
 
-        $scheduledAt = $this->scheduledAt ? Carbon::parse($this->scheduledAt) : null;
         $fiscalRecipient = $this->fiscalRecipientForCheckout();
 
         try {
@@ -176,6 +340,8 @@ trait HasPaymentFlow
                 $this->deliveryFee,
                 $coupon,
                 $scheduledAt,
+                buyerData: $this->checkoutBuyerData(),
+                checkoutKey: $this->checkoutKey,
                 fiscalRecipient: $fiscalRecipient,
             );
 
@@ -216,13 +382,10 @@ trait HasPaymentFlow
 
         $this->orderId = $order->id;
 
-        $customer = Customer::findOrFail($this->customerId);
+        app(\App\Services\Chat\ChatAccess::class)->grantOrder($order);
+        $this->trackingLink = app(\App\Services\Chat\ChatAccess::class)->orderLink($order);
+        $customer = $order->customer;
         $company = $this->currentCompany();
-
-        if ($this->taxId && ! $customer->tax_id) {
-            $customer->update(['tax_id' => preg_replace('/\D/', '', $this->taxId)]);
-            $customer->refresh();
-        }
 
         \App\Events\NewOrderPlaced::dispatch($order->load('customer'));
 
@@ -261,6 +424,33 @@ trait HasPaymentFlow
         $this->isLoading = false;
     }
 
+    /** Access comes from the server identity or an explicit order grant, never component ids. */
+    private function findOwnOrder(bool $manage = false): ?Order
+    {
+        if (! $this->orderId || ! $this->companyId) {
+            return null;
+        }
+        $order = Order::withoutGlobalScopes()->where('company_id', $this->companyId)->find($this->orderId);
+
+        return $order && app(\App\Services\Chat\ChatAccess::class)->canAccessOrder($order, $manage) ? $order : null;
+    }
+
+    private function checkoutBuyerData(): array
+    {
+        return [
+            'name' => $this->name, 'phone' => $this->phone, 'email' => $this->email ?: null,
+            'tax_id' => preg_replace('/\D/', '', $this->taxId),
+            'phone_verified' => app(\App\Services\Chat\ChatAccess::class)->phoneVerified($this->companyId, $this->phone),
+            'whatsapp_opt_in' => $this->whatsappOptIn && app(\App\Services\Chat\ChatAccess::class)->phoneVerified($this->companyId, $this->phone) && $this->whatsappAvailable(),
+            'address' => $this->orderType === 'delivery' ? $this->address : null,
+            'number' => $this->number, 'complement' => $this->complement,
+            'neighborhood' => $this->neighborhood, 'city' => $this->city,
+            'cep' => preg_replace('/\D/', '', $this->cep),
+            'latitude' => $this->customer_latitude !== '' ? (float) $this->customer_latitude : null,
+            'longitude' => $this->customer_longitude !== '' ? (float) $this->customer_longitude : null,
+        ];
+    }
+
     public function checkPaymentStatus(): void
     {
         if (! $this->orderId) {
@@ -286,7 +476,7 @@ trait HasPaymentFlow
         }
         RateLimiter::hit($rateLimitKey, 60);
 
-        $order = Order::find($this->orderId);
+        $order = $this->findOwnOrder();
         if (! $order) {
             Log::channel('chat')->warning('checkPaymentStatus: pedido não encontrado', [
                 'order_id' => $this->orderId,
@@ -297,8 +487,16 @@ trait HasPaymentFlow
         }
 
         $status = $order->status;
+        if ($this->trackingOnly || ! $this->findOwnOrder(true)) {
+            $this->trackingSummary = [
+                'order_number' => $order->order_number, 'status' => $status,
+                'status_label' => $order->status_label, 'order_type' => $order->order_type,
+            ];
 
-        if ($status === 'awaiting_payment' && ! $this->pixCopyPaste) {
+            return;
+        }
+
+        if ($status === 'awaiting_payment' && ! $this->pixCopyPaste && $this->findOwnOrder(true)) {
             $payment = $order->payment;
             if ($payment) {
                 $sessionKey = 'payment_token_'.$this->orderId;
@@ -362,7 +560,7 @@ trait HasPaymentFlow
             return;
         }
 
-        $order = Order::find($this->orderId);
+        $order = $this->findOwnOrder(true);
         if (! $order) {
             Log::channel('chat')->warning('handlePaymentExpired: pedido não encontrado', [
                 'order_id' => $this->orderId,
@@ -377,7 +575,7 @@ trait HasPaymentFlow
         $this->expiresAt = null;
         $this->paymentId = null;
 
-        $customer = Customer::findOrFail($this->customerId);
+        $customer = $order?->customer;
         $company = $this->currentCompany();
 
         app(PaymentService::class)->expireAndRenew($order, $customer, $company, $this->paymentMethod);
@@ -390,6 +588,14 @@ trait HasPaymentFlow
      */
     private function loadCustomerCards(Customer $customer): void
     {
+        $customer = $this->verifiedCustomer(true);
+        if (! $customer || ! $this->useSavedProfile || $this->findOwnOrder(true)?->customer_id !== $customer->id) {
+            $this->customerCards = [];
+            $this->selectedCardId = null;
+            $this->useNewCard = true;
+
+            return;
+        }
         $this->customerCards = $customer->cards()
             ->get(['id', 'brand', 'last_four'])
             ->map(fn ($card) => ['id' => $card->id, 'label' => $card->label()])
@@ -401,6 +607,10 @@ trait HasPaymentFlow
 
     public function selectSavedCard(int $cardId): void
     {
+        $customer = $this->verifiedCustomer(true);
+        if (! $customer || ! $customer->cards()->whereKey($cardId)->exists()) {
+            return;
+        }
         $this->selectedCardId = $cardId;
         $this->useNewCard = false;
         $this->cardCvv = '';
@@ -422,6 +632,12 @@ trait HasPaymentFlow
         $this->cardError = null;
 
         $usingSavedCard = ! $this->useNewCard && $this->selectedCardId;
+
+        if ($usingSavedCard && ! $this->verifiedCustomer(true)) {
+            $this->cardError = 'Confirme seu telefone novamente para usar cartão salvo.';
+
+            return;
+        }
 
         if ($usingSavedCard) {
             $this->validate([
@@ -450,8 +666,8 @@ trait HasPaymentFlow
 
         $this->submitting = true;
 
-        $order = Order::find($this->orderId);
-        $customer = Customer::findOrFail($this->customerId);
+        $order = $this->findOwnOrder(true);
+        $customer = $order?->customer;
         $company = $this->currentCompany();
 
         if (! $order) {
@@ -462,6 +678,14 @@ trait HasPaymentFlow
                 'order_id' => $this->orderId,
                 'customer_id' => $this->customerId,
             ]);
+
+            return;
+        }
+
+        // Pedido cancelado (pelo admin, por expiração) ou já pago enquanto o cliente preenchia o
+        // cartão: não cobra (o PaymentOrchestrator também recusa) e leva o chat ao estado real.
+        if (! in_array($order->status, ['pending', 'awaiting_payment'], true)) {
+            $this->leaveCardFormForClosedOrder($order);
 
             return;
         }
@@ -492,7 +716,7 @@ trait HasPaymentFlow
 
         try {
             $result = app(PaymentOrchestrator::class)->processCreditCard(
-                $order, $customer, $company, $cardData, 1
+                $order, $usingSavedCard ? $this->verifiedCustomer(true) : $customer, $company, $cardData, 1
             );
 
             Log::channel('orders')->info('Resultado do cartão recebido no chat', [
@@ -517,6 +741,9 @@ trait HasPaymentFlow
                 OrderStatusUpdated::dispatch($order->fresh());
                 $this->addMessage('bot', 'Pagamento aprovado! Seu pedido está confirmado.');
                 $this->transitionTo('ORDER_CONFIRMED');
+            } elseif (($result['declined'] ?? false) && ! in_array($order->fresh()->status, ['pending', 'awaiting_payment'], true)) {
+                // Pedido cancelado durante a cobrança (o valor, se capturado, é estornado).
+                $this->leaveCardFormForClosedOrder($order->fresh());
             } elseif ($result['declined'] ?? false) {
                 // Recusa definitiva da Vindi (não análise assíncrona) — mostra o motivo
                 // real e deixa o cliente corrigir/tentar outro cartão. O cartão nunca é
@@ -551,16 +778,44 @@ trait HasPaymentFlow
         }
     }
 
+    private function leaveCardFormForClosedOrder(Order $order): void
+    {
+        Log::channel('chat')->info('submitCardPayment: pedido fora do fluxo de pagamento', [
+            'order_id' => $order->id,
+            'customer_id' => $this->customerId,
+            'status' => $order->status,
+        ]);
+
+        $this->cardCvv = '';
+        $this->submitting = false;
+        $this->lastNotifiedStatus = $order->status;
+
+        if (in_array($order->status, ['cancelled', 'refunded'], true)) {
+            $this->addMessage('bot', "❌ Seu pedido {$order->order_number} foi cancelado e não pode mais ser pago. Entre em contato se precisar de ajuda.");
+            $this->transitionTo('ORDER_FAILED');
+
+            return;
+        }
+
+        $this->addMessage('bot', "✅ O pagamento do pedido {$order->order_number} já foi confirmado.");
+        $this->transitionTo('ORDER_CONFIRMED');
+    }
+
     public function simulatePayment(): void
     {
-        app(PaymentService::class)->simulatePayment($this->orderId);
+        $order = $this->findOwnOrder(true);
+        if (! $order) {
+            return;
+        }
+
+        app(PaymentService::class)->simulatePayment($order->id);
         $this->addMessage('bot', 'Pagamento simulado! Pedido confirmado.');
         $this->transitionTo('ORDER_CONFIRMED');
     }
 
     public function requestCancelOrder(): void
     {
-        $order = Order::find($this->orderId);
+        $order = $this->findOwnOrder(true);
         if (! $order) {
             $this->addMessage('bot', 'Não é possível cancelar o pedido no momento. Entre em contato com a loja.');
 
@@ -586,7 +841,7 @@ trait HasPaymentFlow
 
     public function confirmCancelOrder(): void
     {
-        $order = Order::find($this->orderId);
+        $order = $this->findOwnOrder(true);
         if (! $order) {
             $this->showCancelConfirm = false;
             $this->addMessage('bot', 'Não foi possível cancelar o pedido. Entre em contato com a loja.');
@@ -609,6 +864,9 @@ trait HasPaymentFlow
             return;
         }
 
+        // Painel (tempo real), WhatsApp e demais listeners acompanham o cancelamento feito pelo cliente.
+        OrderStatusUpdated::dispatch($order->fresh());
+
         $this->showCancelConfirm = false;
         $this->lastNotifiedStatus = 'cancelled';
         $this->addMessage('bot', "❌ Pedido {$order->order_number} cancelado. Se precisar de ajuda, entre em contato com a loja.");
@@ -623,17 +881,32 @@ trait HasPaymentFlow
     public function changePaymentMethod(): void
     {
         if ($this->orderId) {
-            $order = Order::find($this->orderId);
-            if ($order && $order->status === 'pending') {
-                $order->update(['status' => 'cancelled']);
-                app(StockService::class)->restoreForOrder($order);
+            $order = $this->findOwnOrder(true);
+            if (! $order) {
+                return;
+            }
+
+            // Na tela do PIX o pedido já está 'awaiting_payment' (QR válido): cancelar só 'pending'
+            // deixava o pedido antigo vivo ao lado do novo (estoque e cupom em dobro, PIX pagável).
+            // cancelBySystem cancela os dois status, devolve estoque/cupom e avisa painel/WhatsApp;
+            // se o PIX for pago mesmo assim, o webhook estorna.
+            if ($order && app(OrderService::class)->cancelBySystem($order, 'Cliente trocou a forma de pagamento', 'chat_change_payment_method')) {
                 Log::channel('orders')->info('Pedido cancelado para trocar forma de pagamento', [
                     'order_id' => $order->id,
                     'customer_id' => $this->customerId,
                 ]);
+            } elseif ($order && ! in_array($status = $order->fresh()->status, ['cancelled', 'refunded'], true)) {
+                // Pago (ou já em andamento na loja) enquanto o cliente estava na tela: não abre um
+                // segundo pedido ao lado deste.
+                $this->lastNotifiedStatus = $status;
+                $this->addMessage('bot', "Seu pedido {$order->order_number} já foi confirmado e não pode mais trocar a forma de pagamento.");
+                $this->transitionTo('ORDER_CONFIRMED');
+
+                return;
             }
         }
 
+        $this->checkoutKey = \Illuminate\Support\Str::random(64);
         $this->orderId = null;
         $this->paymentId = null;
         $this->pixQrCode = null;
@@ -665,6 +938,7 @@ trait HasPaymentFlow
             ]);
         }
 
+        $this->checkoutKey = \Illuminate\Support\Str::random(64);
         $this->cart = [];
         $this->orderId = null;
         $this->pixQrCode = null;

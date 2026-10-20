@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\Scopes\CompanyScope;
 use App\Services\Order\MenuCache;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -22,18 +23,25 @@ class Index extends Component
 
     public bool $active = true;
 
+    #[Locked]
     public ?int $editingId = null;
 
     public ?int $deletingId = null;
 
+    #[Locked]
     public bool $isSuperAdmin = false;
 
+    // Sem #[Locked]: o select de empresa do super admin grava aqui. Para os demais papéis o
+    // valor é ignorado em save() (a categoria fica sempre no tenant atual).
     public ?int $company_id = null;
 
+    #[Locked]
     public bool $canCreate = false;
 
+    #[Locked]
     public bool $canUpdate = false;
 
+    #[Locked]
     public bool $canDelete = false;
 
     protected function rules(): array
@@ -89,7 +97,7 @@ class Index extends Component
             $category = ProductCategory::withoutGlobalScope(CompanyScope::class)->findOrFail($this->editingId);
             $this->authorize('update', $category);
             $data = collect($validated)->except('company_id')->toArray();
-            if ($this->isSuperAdmin && $this->company_id) {
+            if (auth()->user()->isSuperAdmin() && $this->company_id) {
                 $data['company_id'] = $this->company_id;
             }
             $category->update($data);
@@ -98,7 +106,7 @@ class Index extends Component
         } else {
             $this->authorize('create', ProductCategory::class);
             $data = collect($validated)->except('company_id')->toArray();
-            if ($this->isSuperAdmin) {
+            if (auth()->user()->isSuperAdmin()) {
                 $data['company_id'] = $this->company_id;
                 $created = ProductCategory::withoutGlobalScope(CompanyScope::class)->create($data);
             } else {

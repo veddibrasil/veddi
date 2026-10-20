@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -43,6 +44,8 @@ class Config extends Component
 
     public string $certificatePassword = '';
 
+    // Travado: gerente com só fiscal.view gravava token/CSC/certificado forjando canManage=true.
+    #[Locked]
     public bool $canManage = false;
 
     public ?string $focusNfeCompanyId = null;

@@ -20,10 +20,10 @@ class Handler extends ExceptionHandler
             $context['ip'] = $request->ip();
 
             // Requisição Livewire carrega o estado inteiro do componente (snapshot + updates):
-            // senha de certificado, token, CPF e telefone de cliente iriam pro log e pro
-            // Nightwatch. Fica só o que ajuda a reproduzir — componente, campos e métodos.
-            $context['input'] = $request->hasHeader('X-Livewire')
-                ? $this->livewireSummary($request->input('components'))
+            // senha de certificado, token, código de verificação, CPF e telefone de cliente
+            // iriam pro log e pro Nightwatch — nada do payload é registrado.
+            $context['input'] = ($request->hasHeader('X-Livewire') || $request->routeIs('*livewire.update'))
+                ? ['livewire' => '[redacted]']
                 : $this->redact($request->all());
         }
 
@@ -40,27 +40,6 @@ class Handler extends ExceptionHandler
         $context['environment'] = app()->environment();
 
         return $context;
-    }
-
-    /** Payload vem do cliente: qualquer formato, nunca pode derrubar o log da exceção. */
-    private function livewireSummary(mixed $components): array
-    {
-        if (! is_array($components)) {
-            return [];
-        }
-
-        return array_values(array_map(function (mixed $component): array {
-            $component = is_array($component) ? $component : [];
-            $snapshot = is_string($component['snapshot'] ?? null) ? json_decode($component['snapshot'], true) : null;
-
-            return [
-                'component' => is_array($snapshot) ? ($snapshot['memo']['name'] ?? null) : null,
-                'updates' => is_array($component['updates'] ?? null) ? array_keys($component['updates']) : [],
-                'calls' => is_array($component['calls'] ?? null)
-                    ? array_values(array_filter(array_map(fn ($call) => is_array($call) ? ($call['method'] ?? null) : null, $component['calls'])))
-                    : [],
-            ];
-        }, $components));
     }
 
     private function redact(array $input): array

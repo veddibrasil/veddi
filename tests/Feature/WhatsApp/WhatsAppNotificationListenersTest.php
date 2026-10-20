@@ -453,3 +453,18 @@ test('opt-in é por cliente de cada empresa', function () {
     Queue::assertPushed(SendWhatsAppOrderNotificationJob::class, 1);
     assertWhatsAppDispatched($orderB, 'preparing');
 });
+
+test('cancelamento feito pelo cliente no chat dispara o aviso de cancelado', function () {
+    ['order' => $order, 'customer' => $customer, 'company' => $company] = whatsappOrderContext(['status' => 'pending']);
+
+    $chat = new \App\Livewire\Chat\OrderChat;
+    $chat->companyId = $company->id;
+    $chat->orderId = $order->id;
+    $chat->customerId = $customer->id;
+    verifiedChatFixture($chat, $customer);
+
+    $chat->confirmCancelOrder();
+
+    expect($order->fresh()->status)->toBe('cancelled');
+    assertWhatsAppDispatched($order, 'cancelled');
+});

@@ -24,7 +24,12 @@ trait HasOrderCancellation
     public function openCancelOrderModal(int $orderId): void
     {
         $this->cancelModalOrderId = $orderId;
-        $this->cancelModalOrderNumber = Order::withoutGlobalScopes()->find($orderId)?->order_number ?? '';
+        // Mesmo filtro do cancelPdvOrder(): o id vem do cliente, só por id expunha o número de
+        // pedido de qualquer empresa.
+        $this->cancelModalOrderNumber = Order::withoutGlobalScopes()
+            ->where('company_id', app('current.company')->id)
+            ->where('order_type', 'pdv')
+            ->find($orderId)?->order_number ?? '';
         $this->resetCancelReasonFields();
     }
 

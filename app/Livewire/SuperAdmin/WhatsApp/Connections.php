@@ -3,6 +3,7 @@
 namespace App\Livewire\SuperAdmin\WhatsApp;
 
 use App\Jobs\ProvisionWhatsAppTemplates;
+use App\Livewire\SuperAdmin\Concerns\RequiresSuperAdmin;
 use App\Models\WhatsAppConnection;
 use App\Models\WhatsAppTemplate;
 use Livewire\Attributes\Url;
@@ -11,6 +12,7 @@ use Livewire\WithPagination;
 
 class Connections extends Component
 {
+    use RequiresSuperAdmin;
     use WithPagination;
 
     /** Status em que ainda há templates a criar/sincronizar (o job ignora os demais). */

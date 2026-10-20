@@ -9,6 +9,7 @@ use App\Models\Scopes\CompanyScope;
 use App\Services\Order\MenuCache;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -26,14 +27,19 @@ class Index extends Component
 
     public ?int $deletingId = null;
 
+    #[Locked]
     public bool $isSuperAdmin = false;
 
+    #[Locked]
     public bool $canCreate = false;
 
+    #[Locked]
     public bool $canUpdate = false;
 
+    #[Locked]
     public bool $canDelete = false;
 
+    #[Locked]
     public ?int $lockedBranchId = null; // branch_manager: escopo fixo de filial
 
     public bool $reorderMode = false;
@@ -98,7 +104,7 @@ class Index extends Component
             abort(403);
         }
 
-        $category = $this->isSuperAdmin
+        $category = auth()->user()->isSuperAdmin()
             ? ProductCategory::withoutGlobalScope(CompanyScope::class)->findOrFail($categoryId)
             : ProductCategory::findOrFail($categoryId);
 
@@ -121,7 +127,7 @@ class Index extends Component
             abort(403);
         }
 
-        $categories = ($this->isSuperAdmin
+        $categories = (auth()->user()->isSuperAdmin()
             ? ProductCategory::withoutGlobalScope(CompanyScope::class)
             : ProductCategory::query()
         )->whereIn('id', $orderedIds)->get()->keyBy('id');
@@ -156,7 +162,7 @@ class Index extends Component
             abort(403);
         }
 
-        $product = $this->isSuperAdmin
+        $product = auth()->user()->isSuperAdmin()
             ? Product::withoutGlobalScope(CompanyScope::class)->findOrFail($productId)
             : Product::findOrFail($productId);
 
@@ -181,7 +187,7 @@ class Index extends Component
             abort(403);
         }
 
-        $category = $this->isSuperAdmin
+        $category = auth()->user()->isSuperAdmin()
             ? ProductCategory::withoutGlobalScope(CompanyScope::class)->findOrFail($categoryId)
             : ProductCategory::findOrFail($categoryId);
 

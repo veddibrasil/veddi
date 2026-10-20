@@ -281,6 +281,11 @@ class Index extends Component
 
         $order = $this->findActionableOrder($orderId);
 
+        // Pedido cancelado/estornado não volta para a fila arrastando o card.
+        if ($order->isClosed()) {
+            return;
+        }
+
         if ($newStatus === 'out_for_delivery' && ! $order->isDeliveryOrder()) {
             return;
         }
@@ -543,11 +548,12 @@ class Index extends Component
             ->when($this->isSuperAdmin && $this->companyFilter, fn ($q) => $q->where('company_id', $this->companyFilter));
 
         $summarize = function (\Illuminate\Database\Eloquent\Builder $query): array {
-            $orders = $query->get(['total', 'status']);
+            // Só pedidos confirmados: pendente/aguardando pagamento nunca foi pago.
+            $orders = $query->whereIn('status', Order::CONFIRMED_STATUSES)->get(['total']);
 
             return [
                 'count' => $orders->count(),
-                'total' => $orders->whereNotIn('status', ['cancelled', 'refunded'])->sum('total'),
+                'total' => $orders->sum('total'),
             ];
         };
 
@@ -581,10 +587,11 @@ class Index extends Component
                 ->when($this->userStation === 'entrega', fn ($q) => $q->deliveryOnly())
                 ->when(in_array($this->userStation, ['cozinha', 'bar']), fn ($q) => $q->forStation($this->userStation))
                 ->when($this->userBranchId, fn ($q) => $q->where('branch_id', $this->userBranchId))
-                ->when($this->search, fn ($q) => $q
+                ->when($this->search, fn ($q) => $q->where(fn ($s) => $s
                     ->where('order_number', 'like', "%{$this->search}%")
+                    ->orWhere('buyer_data->name', 'like', "%{$this->search}%")
                     ->orWhereHas('customer', fn ($cq) => $cq->where('name', 'like', "%{$this->search}%"))
-                )
+                ))
                 ->when($this->isSuperAdmin && $this->companyFilter, fn ($q) => $q->where('company_id', $this->companyFilter));
 
             $baseQuery = $this->applyChannelFilter($baseQuery);
@@ -635,10 +642,12 @@ class Index extends Component
             ->when($this->userBranchId, fn ($q) => $q->where('branch_id', $this->userBranchId))
             ->when($this->statusFilter === 'new', fn ($q) => $q->whereIn('status', ['pending', 'awaiting_payment', 'paid']))
             ->when($this->statusFilter && $this->statusFilter !== 'new', fn ($q) => $q->where('status', $this->statusFilter))
-            ->when($this->search, fn ($q) => $q
+            // Agrupado: o orWhereHas solto ignorava filial, estação, status e canal.
+            ->when($this->search, fn ($q) => $q->where(fn ($s) => $s
                 ->where('order_number', 'like', "%{$this->search}%")
+                ->orWhere('buyer_data->name', 'like', "%{$this->search}%")
                 ->orWhereHas('customer', fn ($cq) => $cq->where('name', 'like', "%{$this->search}%"))
-            )
+            ))
             ->when($this->isSuperAdmin && $this->companyFilter, fn ($q) => $q->where('company_id', $this->companyFilter));
 
         $orders = $this->applyChannelFilter($orders)

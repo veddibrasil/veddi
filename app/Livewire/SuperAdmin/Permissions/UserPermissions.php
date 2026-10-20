@@ -2,6 +2,7 @@
 
 namespace App\Livewire\SuperAdmin\Permissions;
 
+use App\Livewire\SuperAdmin\Concerns\RequiresSuperAdmin;
 use App\Models\Company;
 use App\Models\Permission;
 use App\Models\Role;
@@ -13,6 +14,8 @@ use Livewire\Component;
 #[Layout('layouts.app')]
 class UserPermissions extends Component
 {
+    use RequiresSuperAdmin;
+
     public User $user;
 
     public int $companyId = 0;

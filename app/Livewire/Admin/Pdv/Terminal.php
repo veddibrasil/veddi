@@ -64,6 +64,8 @@ class Terminal extends Component
 
     public string $customerName = '';
 
+    // Só muda por selectCustomer()/lookupCustomer()/createCustomer(), que filtram pela empresa.
+    #[Locked]
     public ?int $customerId = null;
 
     public bool $customerFound = false;
@@ -192,8 +194,12 @@ class Terminal extends Component
     public ?int $closingTabOrderId = null;
 
     // ── Relatórios de fechamento ──────────────────────────────────────────────
+    // Travados: caixa não abre a lista nem o fechamento de outro operador setando direto
+    // (openClosingReports()/viewClosedSession() barram o caixa).
+    #[Locked]
     public bool $showClosingReports = false;
 
+    #[Locked]
     public ?int $viewingClosedSessionId = null;
 
     // ── Permissões ────────────────────────────────────────────────────────────

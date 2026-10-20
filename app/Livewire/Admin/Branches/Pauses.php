@@ -7,6 +7,7 @@ use App\Models\Branch;
 use App\Models\BranchPause;
 use App\Services\Ifood\IfoodBranchPauseSync;
 use Illuminate\Support\Facades\Cache;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Throwable;
 
@@ -14,6 +15,7 @@ class Pauses extends Component
 {
     public Branch $branch;
 
+    #[Locked]
     public bool $canSave = false;
 
     public string $reason = '';
@@ -85,7 +87,7 @@ class Pauses extends Component
 
     public function create(): void
     {
-        abort_unless($this->canSave, 403);
+        $this->authorizeSave();
 
         $validated = $this->validate($this->rules(), $this->messages());
 
@@ -147,7 +149,7 @@ class Pauses extends Component
 
     public function delete(): void
     {
-        abort_unless($this->canSave, 403);
+        $this->authorizeSave();
 
         $pause = $this->branch->pauses()->findOrFail($this->deletingId);
         $removedFromIfood = app(IfoodBranchPauseSync::class)->remove($pause);
@@ -169,6 +171,30 @@ class Pauses extends Component
     }
 
     /** Filial com iFood conectado: oferece fechar a loja no iFood junto. */
+    /**
+     * canSave vem do mount e só desenha a tela; quem grava é reconferido aqui (permissão do
+     * papel e filial do gerente), sem confiar no estado que volta do navegador.
+     */
+    private function authorizeSave(): void
+    {
+        $user = auth()->user();
+
+        if ($user->isSuperAdmin()) {
+            return;
+        }
+
+        $company = app()->bound('current.company') ? app('current.company') : null;
+
+        abort_unless(
+            $this->canSave
+                && $company
+                && (int) $this->branch->company_id === (int) $company->id
+                && $user->hasPermission('branches.update', $company)
+                && $user->canAccessBranch($company, $this->branch->id),
+            403
+        );
+    }
+
     public function getIfoodConnectedProperty(): bool
     {
         return app(IfoodBranchPauseSync::class)->integrationFor($this->branch) !== null;

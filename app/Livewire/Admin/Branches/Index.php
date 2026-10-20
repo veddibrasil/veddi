@@ -4,6 +4,7 @@ namespace App\Livewire\Admin\Branches;
 
 use App\Models\Branch;
 use App\Models\Scopes\CompanyScope;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 class Index extends Component
@@ -12,21 +13,29 @@ class Index extends Component
 
     public string $deletingName = '';
 
+    #[Locked]
     public bool $canCreate = false;
 
+    #[Locked]
     public bool $canUpdate = false;
 
+    #[Locked]
     public bool $canDelete = false;
 
+    #[Locked]
     public bool $canView = false;
 
+    #[Locked]
     public bool $canCreateMoreBranches = false;
 
     /** Papéis travados numa filial (ex.: gerente) só enxergam a própria. */
+    #[Locked]
     public bool $branchScoped = false;
 
+    #[Locked]
     public int $branchCount = 0;
 
+    #[Locked]
     public int $branchLimit = 1;
 
     public function mount(): void

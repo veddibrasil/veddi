@@ -6,14 +6,17 @@ use App\Contracts\PrinterServiceInterface;
 use App\Models\Branch;
 use App\Models\BranchPrinter;
 use Illuminate\Support\Collection;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 class PrinterSettings extends Component
 {
     public Branch $branch;
 
+    #[Locked]
     public bool $canSave = false;
 
+    #[Locked]
     public ?int $editingId = null;
 
     public string $station = 'geral';
@@ -109,7 +112,7 @@ class PrinterSettings extends Component
 
     public function edit(int $printerId): void
     {
-        abort_unless($this->canSave, 403);
+        $this->authorizeSave();
 
         $printer = $this->branch->printers()->findOrFail($printerId);
 
@@ -146,7 +149,7 @@ class PrinterSettings extends Component
 
     public function testConnection(): void
     {
-        abort_unless($this->canSave, 403);
+        $this->authorizeSave();
         // Teste de conexão só faz sentido pra impressora de rede — USB fala com o
         // navegador do caixa via driver do SO, o backend não alcança de jeito nenhum.
         abort_if($this->connectionType === 'usb', 422);
@@ -164,7 +167,7 @@ class PrinterSettings extends Component
 
     public function save(): void
     {
-        abort_unless($this->canSave, 403);
+        $this->authorizeSave();
 
         $this->validate($this->rules(), $this->messages());
 
@@ -194,7 +197,7 @@ class PrinterSettings extends Component
 
     public function delete(int $printerId): void
     {
-        abort_unless($this->canSave, 403);
+        $this->authorizeSave();
 
         $this->branch->printers()->where('id', $printerId)->delete();
 
@@ -203,6 +206,30 @@ class PrinterSettings extends Component
         }
 
         session()->flash('status', 'Impressora removida.');
+    }
+
+    /**
+     * canSave vem do mount e só desenha a tela; quem grava é reconferido aqui (permissão do
+     * papel e filial do gerente), sem confiar no estado que volta do navegador.
+     */
+    private function authorizeSave(): void
+    {
+        $user = auth()->user();
+
+        if ($user->isSuperAdmin()) {
+            return;
+        }
+
+        $company = app()->bound('current.company') ? app('current.company') : null;
+
+        abort_unless(
+            $this->canSave
+                && $company
+                && (int) $this->branch->company_id === (int) $company->id
+                && $user->hasPermission('branches.update', $company)
+                && $user->canAccessBranch($company, $this->branch->id),
+            403
+        );
     }
 
     public function render()

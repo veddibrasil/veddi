@@ -78,6 +78,7 @@ test('cliente anônimo não recupera pedido/dados de pagamento de outro cliente 
     $component = new OrderChat;
     $component->customerId = $customerA->id;
     $component->companyId = $company->id;
+    app(\App\Services\Chat\ChatAccess::class)->verify($company->id, $customerA->phone);
     $component->pendingOrderSummary = ['id' => $foreignOrder->id];
 
     $component->resumePendingOrder();
@@ -118,6 +119,7 @@ test('cliente recupera normalmente o próprio pedido pendente', function () {
     $component = new OrderChat;
     $component->customerId = $customerA->id;
     $component->companyId = $company->id;
+    app(\App\Services\Chat\ChatAccess::class)->verify($company->id, $customerA->phone);
     $component->pendingOrderSummary = ['id' => $ownOrder->id];
 
     $component->resumePendingOrder();
