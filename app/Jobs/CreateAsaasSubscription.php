@@ -48,6 +48,18 @@ class CreateAsaasSubscription implements ShouldBeUnique, ShouldQueue
             return;
         }
 
+        // Todo fluxo que despacha este job zera asaas_subscription_id antes. Se ele voltou
+        // preenchido, o checkout no cartão criou a assinatura enquanto o job esperava na
+        // fila (webhook da taxa chegando antes da gravação): criar outra cobraria em dobro.
+        if ($this->company->asaas_subscription_id) {
+            Log::channel('payments')->info('CreateAsaasSubscription ignorado: empresa já tem assinatura', [
+                'company_id' => $this->company->id,
+                'asaas_subscription_id' => $this->company->asaas_subscription_id,
+            ]);
+
+            return;
+        }
+
         $plan = $this->company->pending_plan ?? $this->company->plan;
         $billingType = $this->company->subscription_payment_method ?? 'PIX';
 

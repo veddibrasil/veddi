@@ -35,7 +35,24 @@ function fiscalBillingCreditCardFields($test)
         ->set('cardAddressNumber', '100');
 }
 
-test('ativação do módulo fiscal combina valor do plano + fiscal em uma única assinatura', function () {
+/**
+ * Assinatura ativa no Asaas com a próxima fatura (já gerada) vencendo em $nextDueDate.
+ */
+function fiscalBillingActiveSubscription($mock, string $nextDueDate): void
+{
+    $mock->shouldReceive('getSubscription')->andReturn([
+        'id' => 'sub_000000000001', 'status' => 'ACTIVE', 'deleted' => false,
+        'value' => 59.0, 'nextDueDate' => now()->parse($nextDueDate)->addMonth()->toDateString(), 'billingType' => 'CREDIT_CARD',
+    ]);
+    $mock->shouldReceive('getPendingSubscriptionPayments')->andReturn([
+        ['id' => 'pay_next', 'status' => 'PENDING', 'value' => 59.0, 'dueDate' => $nextDueDate],
+    ]);
+}
+
+test('ativação do módulo fiscal no meio do ciclo cobra só o proporcional do módulo', function () {
+    // Faltam 15 dos 31 dias do ciclo 24/10 → 24/11: 149 × 15/31 = 72,10.
+    $this->travelTo(now()->setDate(2026, 11, 9)->setTime(10, 0));
+
     $company = fiscalBillingTestCompany();
     app()->instance('current.company', $company);
 
@@ -44,25 +61,29 @@ test('ativação do módulo fiscal combina valor do plano + fiscal em uma única
 
     $this->mock(AsaasServiceInterface::class, function ($mock) {
         $mock->shouldReceive('getSubscriptionPayments')->andReturn([]);
+        fiscalBillingActiveSubscription($mock, '2026-11-24');
+        $mock->shouldReceive('updateSubscriptionValue')
+            ->once()
+            ->with('sub_000000000001', 59.0 + 149.0, 'Assinatura Plano VEDDI ESSENCIAL + Módulo Fiscal')
+            ->andReturn(['id' => 'sub_000000000001', 'status' => 'ACTIVE', 'value' => 208.0]);
         $mock->shouldReceive('createCreditCardCharge')
             ->once()
-            ->withArgs(fn ($customerId, $amount, $description) => $amount === 59.0 + 149.0)
-            ->andReturn(['status' => 'CONFIRMED']);
-        $mock->shouldReceive('cancelSubscription')->once();
-        $mock->shouldReceive('createSubscription')
-            ->once()
-            ->withArgs(fn ($customerId, $plan, $billingType, $creditCard, $holderInfo, $nextDueDate, $extraAmount, $extraDescription) => $extraAmount === 149.0 && $extraDescription === 'Módulo Fiscal')
-            ->andReturn(['id' => 'sub_new_fiscal', 'status' => 'ACTIVE', 'value' => 59.0 + 149.0, 'nextDueDate' => now()->addMonth()->toDateString()]);
+            ->withArgs(fn ($customerId, $amount, $description) => $amount === 72.10
+                && str_contains($description, 'proporcional até 24/11/2026'))
+            ->andReturn(['id' => 'pay_fiscal', 'status' => 'CONFIRMED']);
+        $mock->shouldNotReceive('cancelSubscription');
+        $mock->shouldNotReceive('createSubscription');
     });
 
     $test = Livewire::actingAs($admin)->test(BillingSettings::class);
     fiscalBillingCreditCardFields($test)
         ->call('activateFiscalModule')
-        ->assertHasNoErrors();
+        ->assertHasNoErrors()
+        ->assertSet('fiscalError', null);
 
     $company->refresh();
     expect($company->fiscal_notes_enabled)->toBeTrue();
-    expect($company->asaas_subscription_id)->toBe('sub_new_fiscal');
+    expect($company->asaas_subscription_id)->toBe('sub_000000000001');
 });
 
 test('cancelamento do módulo fiscal debita valor da assinatura mantendo apenas o plano', function () {
@@ -89,7 +110,9 @@ test('cancelamento do módulo fiscal debita valor da assinatura mantendo apenas 
     expect($company->fresh()->fiscal_notes_enabled)->toBeFalse();
 });
 
-test('ativação do módulo fiscal soma ao módulo PDV já ativo', function () {
+test('ativação do módulo fiscal soma ao módulo PDV já ativo sem cobrar o PDV de novo', function () {
+    $this->travelTo(now()->setDate(2026, 10, 24)->setTime(12, 0));
+
     $company = fiscalBillingTestCompany();
     $company->update(['pdv_module_enabled' => true]);
     app()->instance('current.company', $company);
@@ -99,15 +122,16 @@ test('ativação do módulo fiscal soma ao módulo PDV já ativo', function () {
 
     $this->mock(AsaasServiceInterface::class, function ($mock) {
         $mock->shouldReceive('getSubscriptionPayments')->andReturn([]);
+        fiscalBillingActiveSubscription($mock, '2026-11-24');
+        $mock->shouldReceive('updateSubscriptionValue')
+            ->once()
+            ->with('sub_000000000001', 59.0 + 99.0 + 149.0, 'Assinatura Plano VEDDI ESSENCIAL + Módulo PDV + Módulo Fiscal')
+            ->andReturn(['id' => 'sub_000000000001', 'status' => 'ACTIVE', 'value' => 307.0]);
         $mock->shouldReceive('createCreditCardCharge')
             ->once()
-            ->withArgs(fn ($customerId, $amount) => $amount === 59.0 + 99.0 + 149.0)
-            ->andReturn(['status' => 'CONFIRMED']);
-        $mock->shouldReceive('cancelSubscription')->once();
-        $mock->shouldReceive('createSubscription')
-            ->once()
-            ->withArgs(fn ($customerId, $plan, $billingType, $creditCard, $holderInfo, $nextDueDate, $extraAmount, $extraDescription) => $extraAmount === 99.0 + 149.0 && $extraDescription === 'Módulo PDV + Módulo Fiscal')
-            ->andReturn(['id' => 'sub_new_combined', 'status' => 'ACTIVE', 'value' => 59.0 + 99.0 + 149.0, 'nextDueDate' => now()->addMonth()->toDateString()]);
+            ->withArgs(fn ($customerId, $amount) => $amount === 149.0)
+            ->andReturn(['id' => 'pay_fiscal', 'status' => 'CONFIRMED']);
+        $mock->shouldNotReceive('createSubscription');
     });
 
     $test = Livewire::actingAs($admin)->test(BillingSettings::class);

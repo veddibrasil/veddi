@@ -7,12 +7,15 @@ use App\DTOs\CreditCardDTO;
 use App\DTOs\CreditCardHolderDTO;
 use App\DTOs\OnboardingDTO;
 use App\Enums\Plan;
+use App\Exceptions\CardPaymentDeclinedException;
 use App\Helpers\Validation;
 use App\Models\Company;
 use App\Models\Subscription;
 use App\Rules\ReservedSlug;
+use App\Services\Company\AddonModulePricing;
 use App\Services\Company\CompanyService;
 use App\Services\Company\OnboardingService;
+use App\Services\Company\SubscriptionBillingService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Validator;
@@ -572,63 +575,57 @@ class RegisterForm extends Component
                 phone: $phone,
             );
 
-            $asaasService = app(AsaasServiceInterface::class);
-
-            $charge = $asaasService->createCreditCardCharge(
-                customerId: $company->asaas_customer_id,
-                amount: $firstAmount,
-                description: $description,
-                externalReference: "setup_fee_{$company->id}",
-                creditCard: $creditCard,
-                holderInfo: $holderInfo,
-            );
-
-            if (($charge['status'] ?? '') !== 'CONFIRMED') {
-                // Motivo da recusa só no log: devolvê-lo na tela ajudava a testar cartões.
-                Log::channel('payments')->warning('Onboarding: cartão da taxa de ativação recusado', [
-                    'company_id' => $company->id,
-                    'charge_status' => $charge['status'] ?? null,
-                    'decline_reason' => $charge['creditCard']['declineReason'] ?? $charge['failReason'] ?? null,
-                ]);
-
-                $this->cardError = 'Pagamento não aprovado. Confira os dados do cartão ou use outro cartão.';
-                $this->cardProcessing = false;
-
-                return;
-            }
-
-            $company->update([
-                'asaas_setup_charge_id' => $charge['id'],
-                'setup_fee_paid_at' => now(),
-            ]);
-            $company->saveAsaasCreditCardFromCharge($charge);
+            $subscription = null;
 
             if ($plan?->hasMonthlySubscription()) {
-                $creditCardToken = $charge['creditCard']['creditCardToken'] ?? null;
-
-                $result = $asaasService->createSubscription(
-                    customerId: $company->asaas_customer_id,
+                // Assinatura antes da cobrança: se o cartão for recusado em qualquer dos dois
+                // passos, nada fica cobrado (antes a taxa era cobrada e a assinatura recusada
+                // depois, deixando a empresa paga, pendente e sem como tentar de novo).
+                ['subscription' => $subscription, 'charge' => $charge] = app(SubscriptionBillingService::class)->subscribeThenCharge(
+                    company: $company,
                     plan: $plan,
-                    billingType: 'CREDIT_CARD',
-                    creditCard: $creditCardToken ? null : $creditCard,
-                    holderInfo: $creditCardToken ? null : $holderInfo,
-                    nextDueDate: now()->addMonth()->toDateString(),
-                    creditCardToken: $creditCardToken,
+                    extra: AddonModulePricing::extraFor($company),
+                    chargeAmount: $firstAmount,
+                    description: $description,
+                    externalReference: "setup_fee_{$company->id}",
+                    creditCard: $creditCard,
+                    holderInfo: $holderInfo,
+                );
+            } else {
+                $charge = app(AsaasServiceInterface::class)->createCreditCardCharge(
+                    customerId: $company->asaas_customer_id,
+                    amount: $firstAmount,
+                    description: $description,
+                    externalReference: "setup_fee_{$company->id}",
+                    creditCard: $creditCard,
+                    holderInfo: $holderInfo,
                 );
 
+                if (($charge['status'] ?? '') !== 'CONFIRMED') {
+                    throw CardPaymentDeclinedException::fromCharge($charge);
+                }
+            }
+
+            // Tudo numa gravação só: o webhook da taxa usa asaas_subscription_id para não
+            // criar uma segunda assinatura.
+            $company->update(array_merge([
+                'asaas_setup_charge_id' => $charge['id'],
+                'setup_fee_paid_at' => now(),
+            ], $subscription ? [
+                'asaas_subscription_id' => $subscription['id'],
+                'subscription_payment_method' => 'CREDIT_CARD',
+            ] : []));
+            $company->saveAsaasCreditCardFromCharge($charge);
+
+            if ($subscription) {
                 Subscription::create([
                     'company_id' => $company->id,
-                    'asaas_subscription_id' => $result['id'],
+                    'asaas_subscription_id' => $subscription['id'],
                     'plan' => $plan->value,
                     'status' => 'active',
-                    'amount' => $result['value'],
+                    'amount' => $subscription['value'],
                     'billing_cycle' => 'MONTHLY',
-                    'next_due_date' => $result['nextDueDate'],
-                ]);
-
-                $company->update([
-                    'asaas_subscription_id' => $result['id'],
-                    'subscription_payment_method' => 'CREDIT_CARD',
+                    'next_due_date' => $subscription['nextDueDate'],
                 ]);
             }
 
@@ -640,6 +637,15 @@ class RegisterForm extends Component
             $this->cardProcessing = false;
 
             $this->redirectRoute('login');
+        } catch (CardPaymentDeclinedException $e) {
+            // Motivo da recusa só no log: devolvê-lo na tela ajudava a testar cartões.
+            Log::channel('payments')->warning('Onboarding: cartão da taxa de ativação recusado', [
+                'company_id' => $company->id,
+                'decline_reason' => $e->reason,
+            ]);
+
+            $this->cardError = 'Pagamento não aprovado. Confira os dados do cartão ou use outro cartão.';
+            $this->cardProcessing = false;
         } catch (\Throwable $e) {
             Log::channel('payments')->warning('Onboarding: falha ao processar cartão da taxa de ativação', [
                 'company_id' => $company->id,
