@@ -3,6 +3,8 @@
 namespace App\Services\Company;
 
 use App\Models\Company;
+use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 
 /**
  * Preço mensal dos módulos adicionais (PDV, Fiscal, Garçom) cobrados na mesma
@@ -60,5 +62,19 @@ class AddonModulePricing
         }
 
         return ['amount' => $amount, 'description' => implode(' + ', $parts)];
+    }
+
+    /**
+     * Valor de uma mensalidade proporcional aos dias que faltam até o próximo
+     * vencimento da assinatura (o ciclo é o mês que termina nesse vencimento).
+     */
+    public static function prorate(float $monthlyAmount, CarbonInterface $today, CarbonInterface $nextDueDate): float
+    {
+        $dueDate = CarbonImmutable::instance($nextDueDate)->startOfDay();
+        $cycleDays = max(1, (int) round($dueDate->subMonthNoOverflow()->diffInDays($dueDate)));
+        $remainingDays = (int) round(CarbonImmutable::instance($today)->startOfDay()->diffInDays($dueDate, false));
+        $remainingDays = max(0, min($cycleDays, $remainingDays));
+
+        return round($monthlyAmount * $remainingDays / $cycleDays, 2);
     }
 }

@@ -266,10 +266,12 @@ class AsaasService implements AsaasServiceInterface
 
         Log::channel('payments')->info('Assinatura criada no Asaas', ['subscription_id' => $data['id']]);
 
+        // O Asaas já gera a 1ª cobrança na criação e devolve o nextDueDate do ciclo
+        // seguinte; o vencimento que interessa (1ª cobrança) é o que foi enviado.
         return [
             'id' => $data['id'],
             'status' => $data['status'],
-            'nextDueDate' => $data['nextDueDate'] ?? now()->addDay()->toDateString(),
+            'nextDueDate' => $payload['nextDueDate'],
             'value' => $data['value'] ?? $amount,
         ];
     }
@@ -278,7 +280,9 @@ class AsaasService implements AsaasServiceInterface
      * Update the recurring value/description of an existing subscription in place.
      * Used to add/remove a paid module (e.g. PDV) from a company's plan subscription
      * without cancelling it — no card data needed, since the subscription already
-     * has its payment method configured on Asaas. Applies from the next due date on.
+     * has its payment method configured on Asaas. Applies from the next due date on:
+     * the next payment is already generated (PENDING) when the subscription is
+     * created, so updatePendingPayments is required for it to get the new value.
      *
      * @return array{id: string, status: string, value: float}
      */
@@ -292,6 +296,7 @@ class AsaasService implements AsaasServiceInterface
         $response = $this->request('put', "subscriptions/{$subscriptionId}", [
             'value' => $value,
             'description' => $description,
+            'updatePendingPayments' => true,
         ]);
 
         if ($response->failed()) {
@@ -313,6 +318,69 @@ class AsaasService implements AsaasServiceInterface
             'status' => $data['status'],
             'value' => $data['value'] ?? $value,
         ];
+    }
+
+    /**
+     * Fetch a subscription from Asaas. A removed subscription comes back with
+     * deleted=true (or 404). Throws when Asaas does not answer: callers use this
+     * to decide whether to charge, so a failure must not look like "no data".
+     *
+     * @return array{id: string, status: string, deleted: bool, value: float, nextDueDate: ?string, billingType: ?string}
+     */
+    public function getSubscription(string $subscriptionId): array
+    {
+        $response = $this->request('get', "subscriptions/{$subscriptionId}", [], 10);
+
+        if ($response->status() === 404) {
+            return [
+                'id' => $subscriptionId,
+                'status' => 'INACTIVE',
+                'deleted' => true,
+                'value' => 0.0,
+                'nextDueDate' => null,
+                'billingType' => null,
+            ];
+        }
+
+        if ($response->failed()) {
+            Log::channel('payments')->warning('Falha ao buscar assinatura no Asaas', [
+                'subscription_id' => $subscriptionId,
+                'status' => $response->status(),
+            ]);
+            throw new RuntimeException('Asaas subscription fetch error: '.$response->body(), $response->status());
+        }
+
+        $data = $response->json();
+
+        return [
+            'id' => $data['id'] ?? $subscriptionId,
+            'status' => $data['status'] ?? 'INACTIVE',
+            'deleted' => (bool) ($data['deleted'] ?? false),
+            'value' => (float) ($data['value'] ?? 0),
+            'nextDueDate' => $data['nextDueDate'] ?? null,
+            'billingType' => $data['billingType'] ?? null,
+        ];
+    }
+
+    /**
+     * Payments of a subscription still awaiting payment (the next invoice is generated
+     * ahead of its due date). Throws on failure, unlike getSubscriptionPayments.
+     *
+     * @return array<int, array{id: string, status: string, value: float, dueDate: string}>
+     */
+    public function getPendingSubscriptionPayments(string $subscriptionId): array
+    {
+        $response = $this->request('get', "subscriptions/{$subscriptionId}/payments", ['status' => 'PENDING', 'limit' => 10], 10);
+
+        if ($response->failed()) {
+            Log::channel('payments')->warning('Falha ao buscar cobranças pendentes da assinatura no Asaas', [
+                'subscription_id' => $subscriptionId,
+                'status' => $response->status(),
+            ]);
+            throw new RuntimeException('Asaas subscription payments error: '.$response->body(), $response->status());
+        }
+
+        return $response->json('data', []);
     }
 
     /**

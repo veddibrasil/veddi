@@ -27,6 +27,13 @@ interface AsaasServiceInterface
 
     public function updateSubscriptionValue(string $subscriptionId, float $value, string $description): array;
 
+    /**
+     * @return array{id: string, status: string, deleted: bool, value: float, nextDueDate: ?string, billingType: ?string}
+     */
+    public function getSubscription(string $subscriptionId): array;
+
+    public function getPendingSubscriptionPayments(string $subscriptionId): array;
+
     public function getSubscriptionPayments(string $subscriptionId): array;
 
     public function cancelSubscription(string $subscriptionId): void;

@@ -106,7 +106,9 @@ test('ativação do módulo Garçom exige o módulo PDV ativo', function () {
     expect($company->fresh()->waiter_module_enabled)->toBeFalse();
 });
 
-test('ativação do módulo Garçom combina valor do plano + PDV + garçom em uma única assinatura', function () {
+test('ativação do módulo Garçom soma o garçom à assinatura atual e cobra só o garçom', function () {
+    $this->travelTo(now()->setDate(2026, 10, 24)->setTime(12, 26));
+
     $company = waiterBillingTestCompany();
     app()->instance('current.company', $company);
 
@@ -115,23 +117,39 @@ test('ativação do módulo Garçom combina valor do plano + PDV + garçom em um
 
     $this->mock(AsaasServiceInterface::class, function ($mock) {
         $mock->shouldReceive('getSubscriptionPayments')->andReturn([]);
+        $mock->shouldReceive('getSubscription')->with('sub_000000000002')->andReturn([
+            'id' => 'sub_000000000002', 'status' => 'ACTIVE', 'deleted' => false,
+            'value' => 158.0, 'nextDueDate' => '2026-12-24', 'billingType' => 'CREDIT_CARD',
+        ]);
+        $mock->shouldReceive('getPendingSubscriptionPayments')->andReturn([
+            ['id' => 'pay_next', 'status' => 'PENDING', 'value' => 158.0, 'dueDate' => '2026-11-24'],
+        ]);
+        $mock->shouldReceive('updateSubscriptionValue')
+            ->once()
+            ->with('sub_000000000002', 59.0 + 99.0 + 99.0, 'Assinatura Plano VEDDI ESSENCIAL + Módulo PDV + Módulo Garçom')
+            ->andReturn(['id' => 'sub_000000000002', 'status' => 'ACTIVE', 'value' => 257.0]);
+        // Ciclo inteiro pela frente (assinatura recém-criada): o garçom sai cheio; plano e PDV não.
         $mock->shouldReceive('createCreditCardCharge')
             ->once()
-            ->withArgs(fn ($customerId, $amount) => $amount === 59.0 + 99.0 + 99.0)
-            ->andReturn(['status' => 'CONFIRMED']);
-        $mock->shouldReceive('cancelSubscription')->once();
-        $mock->shouldReceive('createSubscription')
-            ->once()
-            ->withArgs(fn ($customerId, $plan, $billingType, $creditCard, $holderInfo, $nextDueDate, $extraAmount, $extraDescription) => $extraAmount === 99.0 + 99.0 && $extraDescription === 'Módulo PDV + Módulo Garçom')
-            ->andReturn(['id' => 'sub_new_waiter', 'status' => 'ACTIVE', 'value' => 59.0 + 99.0 + 99.0, 'nextDueDate' => now()->addMonth()->toDateString()]);
+            ->withArgs(fn ($customerId, $amount, $description, $externalReference) => $amount === 99.0
+                && $externalReference === 'waiter_module_activation_'.Company::first()->id)
+            ->andReturn(['id' => 'pay_waiter', 'status' => 'CONFIRMED']);
+        $mock->shouldNotReceive('cancelSubscription');
+        $mock->shouldNotReceive('createSubscription');
     });
 
     $test = Livewire::actingAs($admin)->test(BillingSettings::class);
     waiterBillingCreditCardFields($test)
         ->call('activateWaiterModule')
-        ->assertHasNoErrors();
+        ->assertHasNoErrors()
+        ->assertSet('waiterSuccess', true)
+        ->assertSet('waiterError', null)
+        ->assertSet('combinedMonthlyAmount', 257.0)
+        ->assertSet('nextDueDate', '24/11/2026');
 
-    expect($company->fresh()->waiter_module_enabled)->toBeTrue();
+    $company->refresh();
+    expect($company->waiter_module_enabled)->toBeTrue()
+        ->and($company->asaas_subscription_id)->toBe('sub_000000000002');
 });
 
 test('cancelamento do módulo PDV cancela o módulo Garçom em cascata', function () {

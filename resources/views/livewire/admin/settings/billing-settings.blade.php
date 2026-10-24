@@ -570,7 +570,7 @@
                 <div>
                     <flux:heading size="lg">Ativar módulo PDV?</flux:heading>
                     <flux:subheading class="mt-1">
-                        O valor do módulo (<strong>R$ {{ number_format($pdvAddonAmount, 2, ',', '.') }}/mês</strong>) será somado à sua assinatura, totalizando <strong>R$ {{ number_format($combinedMonthlyAmount, 2, ',', '.') }}/mês</strong> em uma única cobrança no cartão de crédito. Sua assinatura atual será recriada e o primeiro mês é cobrado imediatamente.
+                        @include('livewire.admin.settings._module-activation-summary', ['addonAmount' => $pdvAddonAmount])
                     </flux:subheading>
                 </div>
             </div>
@@ -830,7 +830,7 @@
                         <svg class="h-4 w-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z" />
                         </svg>
-                        Pagar e ativar módulo
+                        @if($activationChargeNow === 0.0) Ativar módulo @elseif($activationChargeNow) Pagar R$ {{ number_format($activationChargeNow, 2, ',', '.') }} e ativar @else Pagar e ativar módulo @endif
                     </span>
                     <span wire:loading wire:target="activatePdvModule" class="flex items-center gap-2">
                         <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -862,7 +862,7 @@
                 <div>
                     <flux:heading size="lg">Ativar módulo Fiscal?</flux:heading>
                     <flux:subheading class="mt-1">
-                        O valor do módulo (<strong>R$ {{ number_format($fiscalAddonAmount, 2, ',', '.') }}/mês</strong>) será somado à sua assinatura, totalizando <strong>R$ {{ number_format($combinedMonthlyAmount, 2, ',', '.') }}/mês</strong> em uma única cobrança no cartão de crédito. Sua assinatura atual será recriada e o primeiro mês é cobrado imediatamente.
+                        @include('livewire.admin.settings._module-activation-summary', ['addonAmount' => $fiscalAddonAmount])
                     </flux:subheading>
                 </div>
             </div>
@@ -1122,7 +1122,7 @@
                         <svg class="h-4 w-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z" />
                         </svg>
-                        Pagar e ativar módulo
+                        @if($activationChargeNow === 0.0) Ativar módulo @elseif($activationChargeNow) Pagar R$ {{ number_format($activationChargeNow, 2, ',', '.') }} e ativar @else Pagar e ativar módulo @endif
                     </span>
                     <span wire:loading wire:target="activateFiscalModule" class="flex items-center gap-2">
                         <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -1154,7 +1154,7 @@
                 <div>
                     <flux:heading size="lg">Ativar módulo Garçom?</flux:heading>
                     <flux:subheading class="mt-1">
-                        O valor do módulo (<strong>R$ {{ number_format($waiterAddonAmount, 2, ',', '.') }}/mês</strong>) será somado à sua assinatura, totalizando <strong>R$ {{ number_format($combinedMonthlyAmount, 2, ',', '.') }}/mês</strong> em uma única cobrança no cartão de crédito. Sua assinatura atual será recriada e o primeiro mês é cobrado imediatamente.
+                        @include('livewire.admin.settings._module-activation-summary', ['addonAmount' => $waiterAddonAmount])
                     </flux:subheading>
                 </div>
             </div>
@@ -1414,7 +1414,7 @@
                         <svg class="h-4 w-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z" />
                         </svg>
-                        Pagar e ativar módulo
+                        @if($activationChargeNow === 0.0) Ativar módulo @elseif($activationChargeNow) Pagar R$ {{ number_format($activationChargeNow, 2, ',', '.') }} e ativar @else Pagar e ativar módulo @endif
                     </span>
                     <span wire:loading wire:target="activateWaiterModule" class="flex items-center gap-2">
                         <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">

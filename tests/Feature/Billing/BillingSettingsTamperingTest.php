@@ -98,18 +98,23 @@ test('empresa com fatura em atraso não sai do bloqueio mudando para o gratuito'
         ->and($company->asaas_subscription_id)->toBe('sub_assinatura_001');
 });
 
-test('troca de plano no cartão só cancela a assinatura atual depois que o cartão é aprovado', function () {
+test('troca de plano no cartão recusado apaga só a assinatura nova e mantém a atual', function () {
     Queue::fake();
     [$company, $admin] = billingTamperingActors();
 
     $this->mock(AsaasServiceInterface::class, function ($mock) {
         $mock->shouldReceive('getSubscriptionPayments')->andReturn([]);
+        $mock->shouldReceive('createSubscription')->once()->andReturn([
+            'id' => 'sub_nova_pro',
+            'value' => 119.0,
+            'nextDueDate' => now()->addMonth()->toDateString(),
+        ]);
         $mock->shouldReceive('createCreditCardCharge')->once()->andReturn([
             'status' => 'DECLINED',
             'creditCard' => ['declineReason' => 'saldo insuficiente'],
         ]);
-        $mock->shouldNotReceive('cancelSubscription');
-        $mock->shouldNotReceive('createSubscription');
+        $mock->shouldReceive('cancelSubscription')->once()->with('sub_nova_pro');
+        $mock->shouldNotReceive('cancelSubscription')->with('sub_assinatura_001');
     });
 
     $test = Livewire::actingAs($admin)
@@ -125,7 +130,7 @@ test('troca de plano no cartão só cancela a assinatura atual depois que o cart
 
     billingCardFields($test)
         ->call('submitCardForSubscription')
-        ->assertSet('cardError', 'Pagamento recusado: saldo insuficiente.')
+        ->assertSet('cardError', 'Pagamento recusado: saldo insuficiente. Nenhum valor foi cobrado.')
         ->assertSet('cardNumber', '')
         ->assertSet('cardCvv', '');
 
@@ -139,16 +144,18 @@ test('troca de plano no cartão aprovada substitui a assinatura antiga', functio
 
     $this->mock(AsaasServiceInterface::class, function ($mock) {
         $mock->shouldReceive('getSubscriptionPayments')->andReturn([]);
-        $mock->shouldReceive('createCreditCardCharge')
-            ->once()
-            ->withArgs(fn ($customerId, $amount) => $amount === 119.0)
-            ->andReturn(['status' => 'CONFIRMED']);
-        $mock->shouldReceive('cancelSubscription')->once()->with('sub_assinatura_001');
-        $mock->shouldReceive('createSubscription')->once()->andReturn([
+        // Ordem: assinatura nova → cobrança → só então a antiga sai.
+        $mock->shouldReceive('createSubscription')->once()->ordered()->andReturn([
             'id' => 'sub_assinatura_pro',
             'value' => 119.0,
             'nextDueDate' => now()->addMonth()->toDateString(),
         ]);
+        $mock->shouldReceive('createCreditCardCharge')
+            ->once()
+            ->ordered()
+            ->withArgs(fn ($customerId, $amount) => $amount === 119.0)
+            ->andReturn(['id' => 'pay_pro', 'status' => 'CONFIRMED']);
+        $mock->shouldReceive('cancelSubscription')->once()->ordered()->with('sub_assinatura_001');
     });
 
     $test = Livewire::actingAs($admin)

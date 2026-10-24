@@ -6,11 +6,15 @@ use App\Contracts\AsaasServiceInterface;
 use App\DTOs\CreditCardDTO;
 use App\DTOs\CreditCardHolderDTO;
 use App\Enums\Plan;
+use App\Exceptions\CardPaymentDeclinedException;
+use App\Exceptions\SubscriptionBillingException;
 use App\Jobs\CreateAsaasSubscription;
 use App\Models\Company;
 use App\Models\Subscription;
 use App\Services\Company\AddonModulePricing;
+use App\Services\Company\SubscriptionBillingService;
 use App\Services\Company\UserPermissionService;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
@@ -93,6 +97,20 @@ class BillingSettings extends Component
 
     #[Locked]
     public float $combinedMonthlyAmount = 0.0;
+
+    // Cotação do módulo em ativação (PDV, Fiscal ou Garçom — um modal por vez), calculada
+    // no servidor ao abrir a confirmação. null = Asaas indisponível, valor sai na confirmação.
+    #[Locked]
+    public ?float $activationChargeNow = null;
+
+    #[Locked]
+    public bool $activationProrated = false;
+
+    #[Locked]
+    public float $activationMonthlyTotal = 0.0;
+
+    #[Locked]
+    public ?string $activationNextDueDate = null;
 
     public bool $confirmingPdvActivation = false;
 
@@ -243,7 +261,7 @@ class BillingSettings extends Component
         $this->targetPlan = '';
     }
 
-    public function submitCardForSubscription(AsaasServiceInterface $asaasService): void
+    public function submitCardForSubscription(SubscriptionBillingService $billing): void
     {
         if (! $this->acceptedTerms) {
             session()->flash('error', 'Você precisa aceitar os Termos de Responsabilidade para continuar.');
@@ -272,58 +290,9 @@ class BillingSettings extends Component
 
             [$creditCard, $holderInfo, $creditCardToken] = $this->cardPayload($company, $useSavedCard);
 
-            // Upgrade from free includes setup fee; cross-grade between paid plans does not.
-            // Sempre a partir do plano gravado na empresa, nunca do estado da tela.
-            $isFromFree = $company->plan === Plan::Free;
-            $setupFee = $isFromFree ? $targetPlan->setupFee() : 0.0;
-            // Módulos PDV/Fiscal/Garçom são cobrados na mesma fatura do plano, não como assinatura separada.
-            $extra = AddonModulePricing::extraFor($company);
-            $chargeAmount = $setupFee + $targetPlan->monthlyPrice() + $extra['amount'];
-            $description = $isFromFree
-                ? "Taxa de ativação + 1º mês ({$targetPlan->label()}) — {$company->name}"
-                : "1º mês plano {$targetPlan->label()} — {$company->name}";
-            if ($extra['description'] !== '') {
-                $description .= " + {$extra['description']}";
-            }
-
-            // Charge first month (+ activation fee if upgrading from free, + módulos ativos) via transparent checkout
-            $charge = $asaasService->createCreditCardCharge(
-                customerId: $company->asaas_customer_id,
-                amount: $chargeAmount,
-                description: $description,
-                externalReference: "plan_change_{$company->id}_{$targetPlan->value}",
-                creditCard: $creditCard,
-                holderInfo: $holderInfo,
-                creditCardToken: $creditCardToken,
-            );
-
-            if (($charge['status'] ?? '') !== 'CONFIRMED') {
-                $this->cardError = $this->declineMessage($charge);
-
-                return;
-            }
-
-            $company->saveAsaasCreditCardFromCharge($charge);
-            $creditCardToken ??= $charge['creditCard']['creditCardToken'] ?? null;
-
-            // Só agora, com o novo plano já pago, a assinatura antiga sai — antes disso
-            // um cartão recusado deixava a empresa no plano pago sem assinatura nenhuma.
-            $result = $this->replaceSubscription($asaasService, $company, $targetPlan, $extra, $creditCard, $holderInfo, $creditCardToken);
-
-            $companyUpdates = [
-                'plan' => $targetPlan->value,
-                'pending_plan' => null,
-                'status' => 'ACTIVE',
-                'active' => true,
-                'asaas_subscription_id' => $result['id'],
-                'subscription_payment_method' => 'CREDIT_CARD',
-            ];
-
-            if ($isFromFree) {
-                $companyUpdates['setup_fee_paid_at'] = now();
-            }
-
-            $company->update($companyUpdates);
+            // Valores, ordem (assinatura nova → cobrança → cancela a antiga) e desfazer em
+            // caso de recusa ficam no serviço; aqui só a tela.
+            $result = $billing->changePlanByCard($company, $targetPlan, $creditCard, $holderInfo, $creditCardToken);
 
             $this->persistTermsAcceptance($company);
 
@@ -331,10 +300,15 @@ class BillingSettings extends Component
             $this->plan = $targetPlan->value;
             $this->status = 'ACTIVE';
             $this->applySubscriptionResult($result);
-            $this->combinedMonthlyAmount = $targetPlan->monthlyPrice() + $extra['amount'];
+            $this->combinedMonthlyAmount = (float) $result['value'];
 
             $this->cardSuccess = true;
+        } catch (CardPaymentDeclinedException $e) {
+            $this->cardError = $this->declineMessage($e);
+        } catch (SubscriptionBillingException $e) {
+            $this->cardError = $e->getMessage();
         } catch (\Throwable $e) {
+            $this->logBillingFailure('troca de plano', $company, $e);
             $this->cardError = 'Erro ao processar pagamento. Por favor, tente novamente.';
         } finally {
             $this->cardProcessing = false;
@@ -376,9 +350,9 @@ class BillingSettings extends Component
         $this->proceedToCardModal('pdv');
     }
 
-    public function activatePdvModule(AsaasServiceInterface $asaasService): void
+    public function activatePdvModule(SubscriptionBillingService $billing): void
     {
-        $this->activateModule('pdv', $asaasService);
+        $this->activateModule('pdv', $billing);
     }
 
     public function cancelPdvModule(AsaasServiceInterface $asaasService): void
@@ -412,9 +386,9 @@ class BillingSettings extends Component
         $this->proceedToCardModal('fiscal');
     }
 
-    public function activateFiscalModule(AsaasServiceInterface $asaasService): void
+    public function activateFiscalModule(SubscriptionBillingService $billing): void
     {
-        $this->activateModule('fiscal', $asaasService);
+        $this->activateModule('fiscal', $billing);
     }
 
     public function cancelFiscalModule(AsaasServiceInterface $asaasService): void
@@ -454,9 +428,9 @@ class BillingSettings extends Component
         $this->proceedToCardModal('waiter');
     }
 
-    public function activateWaiterModule(AsaasServiceInterface $asaasService): void
+    public function activateWaiterModule(SubscriptionBillingService $billing): void
     {
-        $this->activateModule('waiter', $asaasService);
+        $this->activateModule('waiter', $billing);
     }
 
     public function cancelWaiterModule(AsaasServiceInterface $asaasService): void
@@ -618,6 +592,29 @@ class BillingSettings extends Component
 
     private function openActivationConfirmation(string $module): void
     {
+        $company = app('current.company');
+
+        try {
+            $quote = app(SubscriptionBillingService::class)->quoteModuleActivation($company, $module);
+
+            $this->activationChargeNow = $quote['charge_now'];
+            $this->activationProrated = $quote['prorated'];
+            $this->activationMonthlyTotal = $quote['monthly_total'];
+            $this->activationNextDueDate = $quote['next_due_date']->format('d/m/Y');
+        } catch (SubscriptionBillingException $e) {
+            session()->flash('error', $e->getMessage());
+
+            return;
+        } catch (\Throwable $e) {
+            // Asaas fora do ar: o modal abre sem o valor proporcional, que é recalculado
+            // (e só então cobrado) na confirmação.
+            $this->activationChargeNow = null;
+            $this->activationProrated = false;
+            $this->activationMonthlyTotal = ($company->plan?->monthlyPrice() ?? 0.0)
+                + AddonModulePricing::extraFor($company, [$module => true])['amount'];
+            $this->activationNextDueDate = null;
+        }
+
         $this->{"{$module}Error"} = null;
         $this->{"{$module}Success"} = false;
         $this->{"{$module}AcceptedTerms"} = false;
@@ -643,7 +640,7 @@ class BillingSettings extends Component
         $this->dispatch("open-{$module}-card-modal");
     }
 
-    private function activateModule(string $module, AsaasServiceInterface $asaasService): void
+    private function activateModule(string $module, SubscriptionBillingService $billing): void
     {
         $company = app('current.company');
 
@@ -663,59 +660,30 @@ class BillingSettings extends Component
         $this->{"{$module}Error"} = null;
 
         try {
-            if (! $company->asaas_customer_id) {
-                $this->{"{$module}Error"} = 'Esta empresa não possui cadastro no Asaas. Entre em contato com o suporte.';
-
-                return;
-            }
-
-            $plan = $company->plan;
             [$creditCard, $holderInfo, $creditCardToken] = $this->cardPayload($company, $useSavedCard);
 
-            // O módulo entra na MESMA fatura da assinatura do plano — não é uma assinatura separada.
-            // Por isso a assinatura atual é cancelada e recriada já com o valor combinado.
-            $extra = AddonModulePricing::extraFor($company, [$module => true]);
-            $combinedAmount = $plan->monthlyPrice() + $extra['amount'];
-
-            $charge = $asaasService->createCreditCardCharge(
-                customerId: $company->asaas_customer_id,
-                amount: $combinedAmount,
-                description: "{$plan->asaasDescription()} + {$extra['description']} — {$company->name}",
-                externalReference: "{$module}_module_activation_{$company->id}",
-                creditCard: $creditCard,
-                holderInfo: $holderInfo,
-                creditCardToken: $creditCardToken,
-            );
-
-            if (($charge['status'] ?? '') !== 'CONFIRMED') {
-                $this->{"{$module}Error"} = $this->declineMessage($charge);
-
-                return;
-            }
-
-            $company->saveAsaasCreditCardFromCharge($charge);
-            $creditCardToken ??= $charge['creditCard']['creditCardToken'] ?? null;
-
-            $result = $this->replaceSubscription($asaasService, $company, $plan, $extra, $creditCard, $holderInfo, $creditCardToken);
-
-            $company->update([
-                AddonModulePricing::MODULES[$module]['column'] => true,
-                'asaas_subscription_id' => $result['id'],
-                'subscription_payment_method' => 'CREDIT_CARD',
-            ]);
-
-            if ($module === 'pdv') {
-                UserPermissionService::grantPdvPermissions($company->fresh());
-            }
+            // O módulo entra na MESMA fatura da assinatura do plano. Com assinatura ativa ela só
+            // ganha o valor do módulo (sem recriar nem reautorizar o cartão) e o cartão paga o
+            // proporcional até o próximo vencimento — o plano já pago não é cobrado de novo.
+            $result = $billing->activateModule($company, $module, $creditCard, $holderInfo, $creditCardToken);
 
             $this->persistTermsAcceptance($company);
 
+            Cache::forget("asaas_payments_{$result['subscription_id']}");
+
             $this->{"{$module}ModuleEnabled"} = true;
-            $this->applySubscriptionResult($result);
-            $this->combinedMonthlyAmount = (float) $result['value'];
+            $this->asaasSubscriptionId = $result['subscription_id'];
+            $this->amount = $result['monthly_total'];
+            $this->nextDueDate = $result['next_due_date']->format('d/m/Y');
+            $this->combinedMonthlyAmount = $result['monthly_total'];
             $this->{"{$module}Success"} = true;
+        } catch (CardPaymentDeclinedException $e) {
+            $this->{"{$module}Error"} = $this->declineMessage($e);
+        } catch (SubscriptionBillingException $e) {
+            $this->{"{$module}Error"} = $e->getMessage();
         } catch (\Throwable $e) {
-            $this->{"{$module}Error"} = 'Erro ao processar pagamento. Por favor, tente novamente.';
+            $this->logBillingFailure("ativação do módulo {$module}", $company, $e);
+            $this->{"{$module}Error"} = 'Não foi possível ativar o módulo agora. Tente novamente em alguns minutos ou fale com o suporte.';
         } finally {
             $this->{"{$module}Processing"} = false;
             $this->clearCardData();
@@ -805,57 +773,27 @@ class BillingSettings extends Component
             ->update(['status' => 'cancelled']);
     }
 
-    /**
-     * Troca a assinatura atual por uma nova no cartão, começando no mês seguinte
-     * (o mês corrente acabou de ser cobrado à parte).
-     *
-     * @param  array{amount: float, description: string}  $extra
-     */
-    private function replaceSubscription(
-        AsaasServiceInterface $asaasService,
-        Company $company,
-        Plan $plan,
-        array $extra,
-        ?CreditCardDTO $creditCard,
-        ?CreditCardHolderDTO $holderInfo,
-        ?string $creditCardToken,
-    ): array {
-        if ($company->asaas_subscription_id) {
-            $this->cancelCurrentSubscription($asaasService, $company);
-        }
-
-        $result = $asaasService->createSubscription(
-            customerId: $company->asaas_customer_id,
-            plan: $plan,
-            billingType: 'CREDIT_CARD',
-            creditCard: $creditCardToken ? null : $creditCard,
-            holderInfo: $creditCardToken ? null : $holderInfo,
-            nextDueDate: now()->addMonth()->toDateString(),
-            extraAmount: $extra['amount'],
-            extraDescription: $extra['description'],
-            creditCardToken: $creditCardToken,
-        );
-
-        Subscription::create([
-            'company_id' => $company->id,
-            'asaas_subscription_id' => $result['id'],
-            'plan' => $plan->value,
-            'status' => 'active',
-            'amount' => $result['value'],
-            'billing_cycle' => 'MONTHLY',
-            'next_due_date' => $result['nextDueDate'],
-        ]);
-
-        return $result;
-    }
-
     private function applySubscriptionResult(array $result): void
     {
         $this->asaasSubscriptionId = $result['id'];
         $this->amount = (float) $result['value'];
-        $this->nextDueDate = now()->addMonth()->format('d/m/Y');
+        $this->nextDueDate = Carbon::parse($result['nextDueDate'])->format('d/m/Y');
         $this->lastPaymentAt = now()->format('d/m/Y');
         $this->payments = [];
+    }
+
+    /**
+     * Erro inesperado no meio de uma cobrança: o serviço já desfez o que dava (estorno,
+     * assinatura); aqui fica o registro, que antes se perdia no catch genérico.
+     */
+    private function logBillingFailure(string $operation, Company $company, \Throwable $e): void
+    {
+        Log::channel('discord')->error("Assinatura: falha inesperada na {$operation}", [
+            'type' => 'payments',
+            'company_id' => $company->id,
+            'exception' => $e::class,
+            'error' => $e->getMessage(),
+        ]);
     }
 
     private function validateCard(): void
@@ -935,13 +873,11 @@ class BillingSettings extends Component
         return [$creditCard, $holderInfo, null];
     }
 
-    private function declineMessage(array $charge): string
+    private function declineMessage(CardPaymentDeclinedException $e): string
     {
-        $reason = $charge['creditCard']['declineReason']
-            ?? $charge['failReason']
-            ?? 'verifique os dados e tente novamente';
+        $reason = $e->reason ?? 'verifique os dados e tente novamente';
 
-        return "Pagamento recusado: {$reason}.";
+        return "Pagamento recusado: {$reason}. Nenhum valor foi cobrado.";
     }
 
     /**
