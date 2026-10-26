@@ -739,3 +739,40 @@ test('processCreditCard simula aprovação e cria payment quando sem credenciais
         ->and($payment->status)->toBe('paid')
         ->and($payment->vindi_transaction_token)->toStartWith('sim_vindi_');
 });
+
+test('cartão de visitante na retirada usa o CEP da filial quando o chat manda CEP em branco', function () {
+    config()->set('payments.vindi_token_account', 'tok_test');
+    $capturedPayload = null;
+    Http::fake([
+        '*/transactions/payment' => function ($request) use (&$capturedPayload) {
+            $capturedPayload = $request->data();
+
+            return Http::response([
+                'data_response' => ['transaction' => ['token_transaction' => 'tok_card_retirada', 'status_name' => 'Em análise', 'payment' => []]],
+                'message_response' => ['message' => 'success'],
+            ], 200);
+        },
+    ]);
+    $ctx = vindiCardContext();
+    $ctx['branch']->update(['address' => 'Rua Vereador Silvério Regis', 'number' => '100', 'city' => 'Guabiruba', 'state' => 'SC', 'cep' => '88360-000']);
+    $order = Order::withoutGlobalScopes()->create([
+        'company_id' => $ctx['company']->id, 'branch_id' => $ctx['branch']->id, 'customer_id' => null,
+        'subtotal' => 100.00, 'total' => 100.00, 'status' => 'pending', 'payment_method' => 'credit_card',
+        'order_type' => 'pickup', 'order_number' => 'VCC-2026-00099',
+        'buyer_data' => ['name' => 'Visitante', 'phone' => '47999990001', 'tax_id' => '12345678909', 'address' => null, 'number' => '', 'city' => '', 'cep' => ''],
+    ]);
+
+    // Mesmo formato que HasPaymentFlow::submitCardPayment monta para visitante sem CEP.
+    app(PaymentOrchestrator::class)->processCreditCard($order, $order->customer, $ctx['company'], [
+        'holderName' => 'Visitante', 'number' => '4111111111111111', 'expiryMonth' => '12', 'expiryYear' => '2030',
+        'ccv' => '123', 'cpfCnpj' => '12345678909', 'postalCode' => '', 'addressNumber' => 'S/N',
+    ], 1);
+
+    assert(is_array($capturedPayload));
+
+    expect($capturedPayload['customer']['addresses'][0])->toMatchArray([
+        'postal_code' => '88360-000',
+        'city' => 'Guabiruba',
+        'state' => 'Santa Catarina',
+    ]);
+});
