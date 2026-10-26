@@ -642,15 +642,18 @@ class PaymentOrchestrator
     private function vindiAddressFromOrder(Order $order, Customer $customer): array
     {
         $branch = $order->branch;
+        // Visitante na retirada grava '' no endereço do checkout: '' também cai para a filial,
+        // senão a Vindi recusa a cobrança (422: CEP, cidade, UF e número em branco).
+        $first = fn (...$values) => collect($values)->first(fn ($value) => trim((string) $value) !== '');
 
         return [
-            'street' => $order->delivery_address ?? $customer->address ?? $branch?->address,
-            'number' => $order->delivery_number ?? $customer->number ?? $branch?->number,
-            'complement' => $order->delivery_complement ?? $customer->complement ?? $branch?->complement,
-            'neighborhood' => $order->delivery_neighborhood ?? $customer->neighborhood ?? $branch?->neighborhood,
-            'city' => $order->delivery_city ?? $customer->city ?? $branch?->city,
-            'state' => $customer->state ?? $branch?->state,
-            'postal_code' => $order->delivery_cep ?? $customer->cep ?? $branch?->cep,
+            'street' => $first($order->delivery_address, $customer->address, $branch?->address),
+            'number' => $first($order->delivery_number, $customer->number, $branch?->number),
+            'complement' => $first($order->delivery_complement, $customer->complement, $branch?->complement),
+            'neighborhood' => $first($order->delivery_neighborhood, $customer->neighborhood, $branch?->neighborhood),
+            'city' => $first($order->delivery_city, $customer->city, $branch?->city),
+            'state' => $first($customer->state, $branch?->state),
+            'postal_code' => $first($order->delivery_cep, $customer->cep, $branch?->cep),
         ];
     }
 
