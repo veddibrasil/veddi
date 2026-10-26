@@ -1,7 +1,8 @@
 <?php
 
 return [
-    'enabled' => env('NIGHTWATCH_ENABLED', true),
+    // Desligado no ambiente local (logs ficam so no arquivo do Laravel), mesmo com NIGHTWATCH_ENABLED=true.
+    'enabled' => env('APP_ENV', 'production') !== 'local' && env('NIGHTWATCH_ENABLED', true),
     'token' => env('NIGHTWATCH_TOKEN'),
     'deployment' => env('NIGHTWATCH_DEPLOY', env('LARAVEL_CLOUD_DEPLOY_UUID', env('FORGE_DEPLOY_COMMIT', env('VAPOR_COMMIT_HASH')))),
     'server' => env('NIGHTWATCH_SERVER', (string) gethostname()),

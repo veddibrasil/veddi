@@ -5,6 +5,10 @@ use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
 use Monolog\Processor\PsrLogMessageProcessor;
 
+// Nightwatch so fora do ambiente local: em dev os logs ficam apenas nos
+// arquivos de storage/logs (o pacote tambem fica desligado em config/nightwatch.php).
+$nightwatch = env('APP_ENV', 'production') !== 'local' ? ['nightwatch'] : [];
+
 return [
 
     /*
@@ -54,9 +58,13 @@ return [
 
         'stack' => [
             'driver' => 'stack',
-            // 'nightwatch' sempre incluso para que todo log, independente do
-            // canal ou nivel, chegue ao dashboard do Nightwatch.
-            'channels' => array_unique([...explode(',', (string) env('LOG_STACK', 'single')), 'nightwatch']),
+            // Fora do local, 'nightwatch' sempre incluso para que todo log,
+            // independente do canal ou nivel, chegue ao dashboard do Nightwatch.
+            // No local ele e removido mesmo que venha em LOG_STACK.
+            'channels' => array_values(array_unique([
+                ...array_diff(explode(',', (string) env('LOG_STACK', 'single')), ['nightwatch']),
+                ...$nightwatch,
+            ])),
             'ignore_exceptions' => false,
         ],
 
@@ -77,7 +85,7 @@ return [
 
         'discord' => [
             'driver' => 'stack',
-            'channels' => ['discord_target', 'nightwatch'],
+            'channels' => ['discord_target', ...$nightwatch],
             'ignore_exceptions' => false,
         ],
 
@@ -97,7 +105,7 @@ return [
         // em 'error' em produção) para que o log de sucesso também apareça.
         'discord_pix' => [
             'driver' => 'stack',
-            'channels' => ['discord_pix_target', 'nightwatch'],
+            'channels' => ['discord_pix_target', ...$nightwatch],
             'ignore_exceptions' => false,
         ],
 
@@ -159,7 +167,7 @@ return [
 
         'orders' => [
             'driver' => 'stack',
-            'channels' => ['orders_target', 'nightwatch'],
+            'channels' => ['orders_target', ...$nightwatch],
             'ignore_exceptions' => false,
             'tap' => [\App\Logging\DiscordWebhookTap::class],
         ],
@@ -173,7 +181,7 @@ return [
 
         'payments' => [
             'driver' => 'stack',
-            'channels' => ['payments_target', 'nightwatch'],
+            'channels' => ['payments_target', ...$nightwatch],
             'ignore_exceptions' => false,
             'tap' => [\App\Logging\DiscordWebhookTap::class],
         ],
@@ -187,7 +195,7 @@ return [
 
         'chat' => [
             'driver' => 'stack',
-            'channels' => ['chat_target', 'nightwatch'],
+            'channels' => ['chat_target', ...$nightwatch],
             'ignore_exceptions' => false,
             'tap' => [\App\Logging\DiscordWebhookTap::class],
         ],
@@ -201,14 +209,14 @@ return [
 
         'webhook' => [
             'driver' => 'stack',
-            'channels' => ['webhook_target', 'nightwatch'],
+            'channels' => ['webhook_target', ...$nightwatch],
             'ignore_exceptions' => false,
             'tap' => [\App\Logging\DiscordWebhookTap::class],
         ],
 
         'ifood' => [
             'driver' => 'stack',
-            'channels' => ['ifood_target', 'nightwatch'],
+            'channels' => ['ifood_target', ...$nightwatch],
             'ignore_exceptions' => false,
             'tap' => [\App\Logging\DiscordWebhookTap::class],
         ],
@@ -229,7 +237,7 @@ return [
 
         'fiscal' => [
             'driver' => 'stack',
-            'channels' => ['fiscal_target', 'nightwatch'],
+            'channels' => ['fiscal_target', ...$nightwatch],
             'ignore_exceptions' => false,
         ],
 
@@ -243,7 +251,7 @@ return [
 
         'audit' => [
             'driver' => 'stack',
-            'channels' => ['audit_target', 'nightwatch'],
+            'channels' => ['audit_target', ...$nightwatch],
             'ignore_exceptions' => false,
         ],
 
@@ -257,7 +265,7 @@ return [
 
         'whatsapp' => [
             'driver' => 'stack',
-            'channels' => ['whatsapp_target', 'nightwatch'],
+            'channels' => ['whatsapp_target', ...$nightwatch],
             'ignore_exceptions' => false,
         ],
 
