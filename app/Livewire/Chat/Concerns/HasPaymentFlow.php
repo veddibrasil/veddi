@@ -70,9 +70,18 @@ trait HasPaymentFlow
                         in_array($existing->status, ['pending', 'awaiting_payment']) => strtoupper($existing->payment_method) === 'CARD' ? 'PAYMENT_CARD_FORM' : 'PAYMENT_PIX',
                         default => 'ORDER_CONFIRMED',
                     });
+
+                    return;
                 }
 
-                return;
+                // Pedido gravado com esta chave sem acesso desta sessão (falha antes do grant ou
+                // acesso perdido). Sair calado deixava o botão sem efeito para sempre: o pedido
+                // antigo fica abandonado, como em retryOrder(), e a confirmação segue com chave nova.
+                Log::channel('chat')->warning('confirmOrder: checkout_key de pedido sem acesso, gerando nova chave', [
+                    'company_id' => $this->companyId,
+                    'order_id' => $existing->id,
+                ]);
+                $this->checkoutKey = \Illuminate\Support\Str::random(64);
             }
             $this->placeConfirmedOrder();
         });

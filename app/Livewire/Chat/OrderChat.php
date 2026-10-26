@@ -330,6 +330,8 @@ class OrderChat extends Component
         }
         if ($this->orderId && ! $this->findOwnOrder()) {
             $this->orderId = null;
+            // Chave nova: com a antiga, confirmOrder() reencontraria o pedido sem acesso.
+            $this->checkoutKey = \Illuminate\Support\Str::random(64);
             $this->reset('pixQrCode', 'pixCopyPaste', 'paymentId', 'expiresAt', 'trackingLink', 'trackingSummary', 'messages');
             $this->step = 'MENU_BROWSE';
         }
