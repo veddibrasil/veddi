@@ -323,7 +323,11 @@ class VindiService
                 'payload' => $safePayload,
             ]);
 
-            throw new \RuntimeException("Vindi API error {$response->status()}: {$response->body()}");
+            $message = "Vindi API error {$response->status()}: {$response->body()}";
+
+            throw $response->status() === 422 && $validationErrors !== []
+                ? new \App\Exceptions\VindiValidationException($message)
+                : new \RuntimeException($message);
         }
 
         if ($response->failed() && $fallbackToken) {

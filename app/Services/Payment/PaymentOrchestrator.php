@@ -648,7 +648,7 @@ class PaymentOrchestrator
 
         return [
             'street' => $first($order->delivery_address, $customer->address, $branch?->address),
-            'number' => $first($order->delivery_number, $customer->number, $branch?->number),
+            'number' => $first($order->delivery_number, $customer->number, $branch?->number) ?? 'S/N',
             'complement' => $first($order->delivery_complement, $customer->complement, $branch?->complement),
             'neighborhood' => $first($order->delivery_neighborhood, $customer->neighborhood, $branch?->neighborhood),
             'city' => $first($order->delivery_city, $customer->city, $branch?->city),

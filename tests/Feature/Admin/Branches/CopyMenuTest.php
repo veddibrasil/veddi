@@ -36,6 +36,7 @@ function cmBranch(Company $company, string $name = 'Filial Centro', array $overr
         'address' => 'Rua A, 1',
         'city' => 'Maringá',
         'state' => 'PR',
+        'cep' => '87013-000',
         'active' => true,
     ], $overrides));
 }
@@ -89,7 +90,8 @@ function cmFillNewBranch(\Livewire\Features\SupportTesting\Testable $component, 
         ->set('name', $name)
         ->set('address', 'Av. Brasil')
         ->set('city', 'Maringá')
-        ->set('state', 'PR');
+        ->set('state', 'PR')
+        ->set('cep', '87013-000');
 }
 
 // ─── Criação copiando o cardápio ────────────────────────────────────────────

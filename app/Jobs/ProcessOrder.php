@@ -120,6 +120,16 @@ class ProcessOrder implements ShouldBeUnique, ShouldQueue
             ]);
 
             OrderStatusUpdated::dispatch($this->order->fresh());
+        } catch (\App\Exceptions\VindiValidationException $e) {
+            // Dado recusado pela Vindi (ex.: endereço incompleto): retentar falha igual e deixava o
+            // cliente minutos em "Gerando PIX...". Falha de vez; o failed() cancela e avisa o chat.
+            Log::channel('discord')->error('Vindi recusou a cobrança — sem nova tentativa', [
+                'channel' => 'payments',
+                'order_id' => $this->order->id,
+                'attempt' => $this->attempts(),
+                'error' => $e->getMessage(),
+            ]);
+            $this->fail($e);
         } catch (\Throwable $e) {
             // Não cancela aqui: a fila retenta, e cancelar a cada falha fazia o cliente receber
             // "cancelado" e depois "aguardando pagamento" no mesmo pedido. Quem cancela é o failed().

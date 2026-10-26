@@ -554,3 +554,51 @@ test('PIX de visitante na retirada usa o endereço da filial quando o checkout g
         'postal_code' => '88360-000',
     ]);
 });
+
+test('422 com erro de validação da Vindi vira VindiValidationException; outras falhas seguem RuntimeException', function (int $status, array $body, string $exception) {
+    config()->set('payments.vindi_token_account', 'tok_test');
+    Http::fake(['*/transactions/payment' => Http::response($body, $status)]);
+    $ctx = vindiPixContext();
+
+    $thrown = null;
+    try {
+        app(VindiService::class)->createPixCharge(amount: 50, externalRef: 'ref-1', customer: $ctx['customer']);
+    } catch (\Throwable $e) {
+        $thrown = $e;
+    }
+
+    expect($thrown)->not->toBeNull()
+        ->and($thrown::class)->toBe($exception);
+})->with([
+    'validação' => [422, ['error_response' => ['validation_errors' => [['field' => 'person_addresses.postal_code', 'message' => 'não possui o tamanho esperado']]]], \App\Exceptions\VindiValidationException::class],
+    'fora do ar' => [500, ['error' => 'x'], RuntimeException::class],
+]);
+
+test('filial sem número manda S/N no endereço da cobrança', function () {
+    config()->set('payments.vindi_token_account', 'tok_test');
+    $capturedPayload = null;
+    Http::fake([
+        '*/transactions/payment' => function ($request) use (&$capturedPayload) {
+            $capturedPayload = $request->data();
+
+            return Http::response([
+                'data_response' => ['transaction' => ['token_transaction' => 'tok_sn', 'status_name' => 'Aguardando Pagamento', 'payment' => ['qrcode_original_path' => '000201', 'qrcode_path' => null]]],
+                'message_response' => ['message' => 'success'],
+            ], 200);
+        },
+    ]);
+    $ctx = vindiPixContext();
+    $ctx['branch']->update(['state' => 'SC', 'cep' => '88360-000']);
+    $order = Order::withoutGlobalScopes()->create([
+        'company_id' => $ctx['company']->id, 'branch_id' => $ctx['branch']->id, 'customer_id' => null,
+        'subtotal' => 50.00, 'total' => 50.00, 'status' => 'pending', 'payment_method' => 'pix',
+        'order_type' => 'pickup', 'order_number' => 'VPX-2026-00003',
+        'buyer_data' => ['name' => 'Visitante', 'phone' => '47999990001', 'tax_id' => '12345678909', 'address' => null, 'number' => '', 'city' => '', 'cep' => ''],
+    ]);
+
+    app(PaymentOrchestrator::class)->processPix($order, $order->customer, $ctx['company']);
+
+    assert(is_array($capturedPayload));
+
+    expect($capturedPayload['customer']['addresses'][0]['number'])->toBe('S/N');
+});
