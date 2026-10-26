@@ -515,19 +515,18 @@ a.bg-amber-600:hover, button.bg-amber-600:hover {
 
 /* ─── Step progress indicator ────────────────────────────────────────────── */
 .mc-step-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
+    width: 28px;
+    height: 4px;
+    border-radius: 2px;
     background: rgba(255,255,255,0.35);
     transition: all 0.2s;
 }
 .mc-step-dot.active {
-    width: 18px;
-    border-radius: 3px;
+    width: 40px;
     background: white;
 }
 .mc-step-dot.done {
-    background: rgba(255,255,255,0.65);
+    background: rgba(255,255,255,0.8);
 }
 
 /* ─── Pulse animation for loading dots ──────────────────────────────────── */
@@ -637,6 +636,27 @@ a.bg-amber-600:hover, button.bg-amber-600:hover {
     background: #f9fafb;
     border-color: #9ca3af;
     color: #374151;
+}
+
+/* Alvo de toque mínimo (44px) e foco visível pelo teclado em todos os botões do chat */
+.mc-btn-primary,
+.mc-btn-secondary,
+.mc-btn-outline,
+.mc-btn-outline-neutral,
+input.mc-input {
+    min-height: 44px;
+}
+.mc-btn-outline,
+.mc-btn-outline-neutral {
+    font-size: 14px;
+}
+.mc-btn-primary:focus-visible,
+.mc-btn-secondary:focus-visible,
+.mc-btn-outline:focus-visible,
+.mc-btn-outline-neutral:focus-visible,
+.mc-card-hover:focus-visible {
+    outline: 2px solid var(--mc-red);
+    outline-offset: 2px;
 }
 
 /* ─── Card chevron animation on parent hover ─────────────────────────────── */

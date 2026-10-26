@@ -67,7 +67,15 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(\App\Services\Payment\AsaasCircuitBreaker::class);
 
-        $this->app->bind(\App\Contracts\ChatCodeSender::class, \App\Services\Chat\WhatsAppCodeSender::class);
+        $this->app->bind(\App\Contracts\ChatCodeSender::class, function () {
+            return match (config('chat_security.code_channel')) {
+                'email' => new \App\Services\Chat\EmailCodeSender,
+                'whatsapp' => config('chat_security.whatsapp_auth_enabled')
+                    ? new \App\Services\Chat\WhatsAppCodeSender
+                    : new \App\Services\Chat\UnavailableCodeSender,
+                default => new \App\Services\Chat\UnavailableCodeSender,
+            };
+        });
 
         $this->app->bind(AsaasServiceInterface::class, AsaasService::class);
         $this->app->bind(OrderServiceInterface::class, OrderService::class);

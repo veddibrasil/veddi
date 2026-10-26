@@ -92,7 +92,39 @@ trait HasPaymentFlow
     {
         $this->paymentMethod = '';
         $this->cardFeeBreakdown = [];
+        $this->needsChange = false;
+        $this->cashChange = '';
         $this->transitionTo('CHECKOUT_PAYMENT_METHOD');
+    }
+
+    /**
+     * Troco vira uma linha nas observações: a loja já lê as observações no painel e na impressão.
+     */
+    private function notesWithCashChange(): string
+    {
+        if ($this->paymentMethod !== 'CASH' || ! $this->needsChange) {
+            return $this->notes;
+        }
+
+        $raw = preg_replace('/[^\d,.]/', '', $this->cashChange);
+        $amount = (float) (str_contains($raw, ',') ? str_replace(['.', ','], ['', '.'], $raw) : $raw);
+        $total = (float) $this->orderTotal;
+        $formattedTotal = number_format($total, 2, ',', '.');
+
+        if ($amount < $total) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'cashChange' => "Informe um valor igual ou maior que o total (R$ {$formattedTotal}).",
+            ]);
+        }
+        if ($amount > max($total * 2, $total + 200)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'cashChange' => 'Confira o valor: parece alto demais para o troco deste pedido.',
+            ]);
+        }
+
+        $line = 'Troco para R$ '.number_format($amount, 2, ',', '.');
+
+        return $this->notes === '' ? $line : "{$this->notes}\n{$line}";
     }
 
     private function recalculateCardFee(): void
@@ -290,6 +322,7 @@ trait HasPaymentFlow
                 'cep' => ['required', 'regex:/^\d{5}-?\d{3}$/'],
             ] : []),
         ]);
+        $orderNotes = $this->notesWithCashChange();
         $identity = $this->verifiedCustomer();
         $this->customerId = $this->useSavedProfile && $identity?->phone === $this->phone ? $identity?->id : null;
 
@@ -333,7 +366,7 @@ trait HasPaymentFlow
                 $this->customerId,
                 $this->selectedBranchId,
                 $this->cart,
-                $this->notes,
+                $orderNotes,
                 $this->paymentMethod,
                 $this->orderType,
                 $initialStatus,
@@ -381,6 +414,33 @@ trait HasPaymentFlow
         }
 
         $this->orderId = $order->id;
+
+        if ($order->customer_id === null) {
+            try {
+                $deviceProfile = app(\App\Services\Chat\DeviceProfile::class);
+                if ($this->rememberDeviceData) {
+                    $buyer = $this->checkoutBuyerData();
+                    $deviceProfile->save($this->companyId, $this->phone, [
+                        ...$buyer,
+                        'address' => $this->address,
+                        'taxId' => $buyer['tax_id'],
+                        'customer_latitude' => $buyer['latitude'],
+                        'customer_longitude' => $buyer['longitude'],
+                    ]);
+                } else {
+                    $deviceProfile->forget($this->companyId);
+                }
+            } catch (\Throwable $exception) {
+                // Remembering data is optional: the order is already committed.
+                // Clear the local token even if revoking its database record failed.
+                \Illuminate\Support\Facades\Cookie::queue(\Illuminate\Support\Facades\Cookie::forget("chat_device_profile_{$this->companyId}"));
+                Log::channel('chat')->warning('Falha ao persistir dados do aparelho após criar pedido', [
+                    'company_id' => $this->companyId,
+                    'order_id' => $order->id,
+                    'exception_type' => $exception::class,
+                ]);
+            }
+        }
 
         app(\App\Services\Chat\ChatAccess::class)->grantOrder($order);
         $this->trackingLink = app(\App\Services\Chat\ChatAccess::class)->orderLink($order);
