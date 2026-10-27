@@ -777,3 +777,21 @@ a.bg-amber-600:hover, button.bg-amber-600:hover {
 /* ─── PDV fullscreen mode (sidebar hidden) ──────────────────────────────── */
 body.pdv-fullscreen [data-flux-sidebar] { display: none !important; }
 body.pdv-fullscreen [data-flux-header] { display: none !important; }
+
+/* ─── Toasts de pedido empilhados (livewire/admin/notifications) ─────────── */
+/* --depth: 0 = mais novo (na frente). Recolhido, os anteriores aparecem como "cartas" atrás;
+   com hover a pilha abre em lista. */
+.notif-toast {
+    transform: translateY(calc(var(--depth, 0) * -8px)) scale(calc(1 - var(--depth, 0) * 0.05));
+    transform-origin: bottom center;
+    transition: transform 300ms ease, opacity 300ms ease;
+}
+.notif-toast[data-buried] { opacity: 0; pointer-events: none; }
+.notif-stack:hover .notif-toast {
+    transform: translateY(calc(var(--depth, 0) * (-100% - 8px)));
+    opacity: 1;
+    pointer-events: auto;
+}
+/* Cobre o vão entre os toasts abertos pra pilha não fechar ao passar de um pro outro. */
+.notif-toast::after { content: ''; position: absolute; inset: 100% 0 auto 0; height: 8px; }
+.notif-stack:hover .notif-count { opacity: 0; }
