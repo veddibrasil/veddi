@@ -1,4 +1,4 @@
-<x-layouts::app.sidebar body-class="h-dvh overflow-hidden">
+<x-layouts::app.sidebar body-class="h-dvh overflow-hidden" :order-notifications="false">
     <div data-flux-main class="[grid-area:main] overflow-hidden flex flex-col">
         @include('partials.overdue-banner')
 

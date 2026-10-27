@@ -1,4 +1,4 @@
-@props(['bodyClass' => 'min-h-screen'])
+@props(['bodyClass' => 'min-h-screen', 'orderNotifications' => true])
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
     <head>
@@ -304,7 +304,8 @@
         {{ $slot }}
 
         @auth
-            @if(!$isWaiterOnly && !$isCashier)
+            {{-- PDV desliga os toasts de pedido (orderNotifications=false): atrapalham a operação do caixa. --}}
+            @if($orderNotifications && !$isWaiterOnly && !$isCashier)
                 <livewire:admin.notifications />
             @endif
             <livewire:admin.profile-modal />
