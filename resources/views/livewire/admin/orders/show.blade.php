@@ -1135,6 +1135,10 @@
         </div>
     @endif
 
+    @if ($food99CancelOrderId)
+        @include('livewire.admin.orders.partials.food99-cancel-modal')
+    @endif
+
     @if ($showIfoodCancelModal)
         @include('livewire.admin.orders.partials.ifood-cancel-modal', ['accepted' => ! $order->ifoodDetails()?->awaitingConfirmation()])
     @endif

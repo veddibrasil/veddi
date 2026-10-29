@@ -5,6 +5,7 @@ namespace App\Livewire\Admin\Orders;
 use App\Enums\OrderChannel;
 use App\Events\OrderStatusUpdated;
 use App\Exceptions\IfoodApiException;
+use App\Livewire\Admin\Orders\Concerns\HandlesFood99Orders;
 use App\Models\Company;
 use App\Models\IfoodDispute;
 use App\Models\IfoodIntegration;
@@ -24,7 +25,7 @@ use Throwable;
 
 class Index extends Component
 {
-    use WithPagination;
+    use HandlesFood99Orders, WithPagination;
 
     public string $statusFilter = '';
 
@@ -143,6 +144,8 @@ class Index extends Component
             "echo-private:orders.{$this->companyId},OrderItemsUpdated" => '$refresh',
             "echo-private:orders.{$this->companyId},IfoodOrderUpdated" => '$refresh',
             "echo-private:orders.{$this->companyId},IfoodOrderNotImported" => '$refresh',
+            "echo-private:orders.{$this->companyId},Food99OrderUpdated" => '$refresh',
+            "echo-private:orders.{$this->companyId},Food99OrderNotImported" => '$refresh',
         ];
 
         // "Minha fila" é a tela que cozinha/bar realmente usa no dia a dia (não tem
@@ -296,6 +299,12 @@ class Index extends Component
         // Cancelamento exige motivo fechado (modal); conclusão é sempre do iFood.
         if ($order->channel === OrderChannel::Ifood->value) {
             $this->updateIfoodOrderStatus($order, $newStatus);
+
+            return;
+        }
+
+        if ($order->channel === OrderChannel::Food99->value) {
+            $this->updateFood99OrderStatus($order, $newStatus);
 
             return;
         }
@@ -688,6 +697,16 @@ class Index extends Component
     }
 
     /** Some o aviso de um pedido do iFood que não entrou no painel (já resolvido no Gestor de Pedidos). */
+    protected function food99ActionableOrder(int $orderId): Order
+    {
+        return $this->findActionableOrder($orderId);
+    }
+
+    protected function canOperateFood99(): bool
+    {
+        return $this->canUpdate;
+    }
+
     /**
      * Pedido em que o usuário pode agir: super admin vê todas as empresas; papel restrito a uma
      * filial só age nos pedidos dela (o id chega do navegador e pode ser de outra filial).

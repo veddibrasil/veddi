@@ -533,6 +533,10 @@
     @include('livewire.admin.orders.partials.ifood-cancel-modal', ['accepted' => $ifoodCancelAccepted])
 @endif
 
+@if ($food99CancelOrderId)
+    @include('livewire.admin.orders.partials.food99-cancel-modal')
+@endif
+
 @if ($cancelOrderId)
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
         <div class="bg-white dark:bg-zinc-800 rounded-xl shadow-xl p-6 w-full max-w-md mx-4 space-y-5">

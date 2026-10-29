@@ -237,6 +237,13 @@ readonly class Food99OrderDTO
             'reported_service_fee' => $this->serviceFee,
             'reported_total' => $this->reportedTotal,
             'raw_prices' => $this->rawPrices,
+            // Linhas da 99 (mdu_id) pro cancelamento parcial.
+            'order_items' => array_map(fn (array $item) => [
+                'mdu_id' => $item['mduId'],
+                'app_item_id' => $item['appItemId'],
+                'name' => $item['name'],
+                'amount' => $item['quantity'],
+            ], $this->items),
         ];
     }
 

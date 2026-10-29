@@ -9,6 +9,7 @@ use App\Events\OrderStatusUpdated;
 use App\Exceptions\IfoodApiException;
 use App\Exceptions\InsufficientStockException;
 use App\Jobs\IssueFiscalNote;
+use App\Livewire\Admin\Orders\Concerns\HandlesFood99Orders;
 use App\Models\IfoodDispute;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -27,6 +28,7 @@ use Throwable;
 class Show extends Component
 {
     use \App\Livewire\Concerns\HasFiscalRecipient;
+    use HandlesFood99Orders;
 
     public Order $order;
 
@@ -168,6 +170,7 @@ class Show extends Component
             "echo-private:order.{$this->order->id},OrderStatusUpdated" => '$refresh',
             "echo-private:order.{$this->order->id},OrderItemsUpdated" => '$refresh',
             "echo-private:order.{$this->order->id},IfoodOrderUpdated" => '$refresh',
+            "echo-private:order.{$this->order->id},Food99OrderUpdated" => '$refresh',
         ];
     }
 
@@ -287,6 +290,14 @@ class Show extends Component
             return;
         }
 
+        if ($this->order->channel === OrderChannel::Food99->value) {
+            if ($this->updateFood99OrderStatus($this->order, $status)) {
+                $this->order->refresh();
+            }
+
+            return;
+        }
+
         // Cancelamento exige motivo obrigatório — abre modal em vez de aplicar direto.
         if ($status === 'cancelled') {
             if ($previousStatus !== 'cancelled') {
@@ -363,6 +374,19 @@ class Show extends Component
             'ready' => 'iFood avisado: pedido pronto.',
             default => 'Pedido despachado no iFood.',
         });
+    }
+
+    /** A tela só opera o próprio pedido (o id vem do navegador nas ações do trait 99Food). */
+    protected function food99ActionableOrder(int $orderId): Order
+    {
+        abort_unless($orderId === $this->order->id, 404);
+
+        return $this->order;
+    }
+
+    protected function canOperateFood99(): bool
+    {
+        return $this->canUpdate && ! $this->userStation;
     }
 
     public function openCancelModal(): void

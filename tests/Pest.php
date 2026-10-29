@@ -875,3 +875,20 @@ function receiveFood99Order(\Illuminate\Foundation\Testing\TestCase $test, array
         ->where('external_order_id', (string) $info['order_id'])
         ->firstOrFail();
 }
+
+/** API da 99Food falsa: tudo responde errno 0; o detalhe devolve $detail (ou o próprio pedido). */
+function fakeFood99Api(array $detail = [], array $extra = []): void
+{
+    \Illuminate\Support\Facades\Http::fake(array_merge($extra, [
+        '*/v1/order/order/detail*' => \Illuminate\Support\Facades\Http::response(food99Ok($detail), 200),
+        '*' => \Illuminate\Support\Facades\Http::response(food99Ok(), 200),
+    ]));
+}
+
+/** Caminhos chamados na API da 99Food (na ordem). */
+function food99Calls(): array
+{
+    return collect(\Illuminate\Support\Facades\Http::recorded())
+        ->map(fn ($pair) => parse_url($pair[0]->url(), PHP_URL_PATH))
+        ->values()->all();
+}
