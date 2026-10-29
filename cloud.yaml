@@ -87,4 +87,3 @@ environments:
       MAIL_MAILER: smtp
       MAIL_HOST: smtp.titan.email
       MAIL_PORT: "587"
-      MAIL_ENCRYPTION: tls

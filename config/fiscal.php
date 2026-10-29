@@ -18,11 +18,6 @@ return [
     'crt' => (int) env('FISCAL_CRT', 1),
     'nfce_serie' => (int) env('FISCAL_NFCE_SERIE', 1),
 
-    'certificate' => [
-        'path' => env('FISCAL_CERT_PATH'),
-        'password' => env('FISCAL_CERT_PASSWORD'),
-    ],
-
     'addon_monthly_price' => (float) env('FISCAL_ADDON_PRICE', 149.00),
 
 ];
