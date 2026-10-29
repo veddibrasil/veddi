@@ -15,8 +15,6 @@ return [
     'partner_client_secret' => env('IFOOD_PARTNER_CLIENT_SECRET'),
     'timezone' => env('IFOOD_TIMEZONE', 'America/Sao_Paulo'),
     'api_base_url' => env('IFOOD_API_BASE_URL', 'https://merchant-api.ifood.com.br'),
-    'webhook_enabled' => (bool) env('IFOOD_WEBHOOK_ENABLED', true),
-    'polling_fallback_interval' => (int) env('IFOOD_POLLING_FALLBACK_INTERVAL', 30),
 
     /*
     | Ferramentas de homologação na tela da integração (Client ID, respostas completas da API,

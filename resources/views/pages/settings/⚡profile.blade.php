@@ -1,6 +1,7 @@
 <?php
 
 use App\Concerns\ProfileValidationRules;
+use App\Services\Marketing\SuppressionService;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Session;
@@ -13,6 +14,7 @@ new #[Title('Configurações de perfil')] class extends Component {
 
     public string $name = '';
     public string $email = '';
+    public bool $marketingOptIn = false;
 
     /**
      * Mount the component.
@@ -21,6 +23,28 @@ new #[Title('Configurações de perfil')] class extends Component {
     {
         $this->name = Auth::user()->name;
         $this->email = Auth::user()->email;
+        // Com legítimo interesse (require_opt_in=false) recebe quem não saiu, mesmo sem aceite gravado.
+        $this->marketingOptIn = config('marketing.require_opt_in')
+            ? Auth::user()->wantsMarketingEmails()
+            : Auth::user()->marketing_opt_out_at === null;
+    }
+
+    /**
+     * Aceite de e-mail marketing (LGPD): grava a data do consentimento ou da saída. Voltar a
+     * aceitar também tira o e-mail da supressão por descadastro (bounce/spam continuam valendo).
+     */
+    public function updatedMarketingOptIn(bool $value): void
+    {
+        $user = Auth::user();
+
+        if ($value) {
+            app(SuppressionService::class)->resubscribe($user->email);
+            $user->forceFill(['marketing_opt_in_at' => now(), 'marketing_opt_out_at' => null])->save();
+        } else {
+            $user->forceFill(['marketing_opt_out_at' => now()])->save();
+        }
+
+        $this->dispatch('marketing-preference-updated');
     }
 
     /**
@@ -118,6 +142,12 @@ new #[Title('Configurações de perfil')] class extends Component {
                 </x-action-message>
             </div>
         </form>
+
+        <div class="my-6 w-full space-y-3 border-t border-zinc-200 pt-6 dark:border-zinc-700">
+            <flux:heading size="sm">{{ __('Comunicações') }}</flux:heading>
+            <flux:switch wire:model.live="marketingOptIn" :label="__('Receber novidades, dicas e lançamentos da Veddi por e-mail')" :description="__('E-mails sobre pedidos, cobrança e segurança da conta continuam chegando normalmente.')" />
+            <x-action-message on="marketing-preference-updated">{{ __('Preferência salva.') }}</x-action-message>
+        </div>
 
         {{-- @if ($this->showDeleteUser)
             <livewire:pages::settings.delete-user-form />

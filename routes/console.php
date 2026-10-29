@@ -156,3 +156,25 @@ Schedule::call(function () {
 })->name('chat-security-prune')->daily()->withoutOverlapping()->onOneServer();
 
 Schedule::job(new \App\Jobs\ArchiveFiscalDocuments)->hourly()->withoutOverlapping()->onOneServer();
+
+// E-mail marketing: inicia campanhas agendadas, decide teste A/B e retoma lotes (inclusive após o
+// limite diário de aquecimento). Os envios em si rodam na fila 'marketing'.
+Schedule::command('marketing:dispatch-scheduled')
+    ->name('marketing-dispatch-scheduled')
+    ->everyMinute()
+    ->withoutOverlapping(expiresAt: 5)
+    ->onOneServer();
+
+// E-mail marketing: automações (cadastro abandonado, empresa sem pedidos).
+Schedule::command('marketing:run-automations')
+    ->name('marketing-run-automations')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping(expiresAt: 30)
+    ->onOneServer();
+
+// E-mail marketing: eventos (aberturas, cliques, entregas) com mais de 12 meses.
+Schedule::command('marketing:prune-events')
+    ->name('marketing-prune-events')
+    ->dailyAt('03:30')
+    ->withoutOverlapping()
+    ->onOneServer();

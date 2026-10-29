@@ -15,6 +15,7 @@ readonly class OnboardingDTO
         public string $userEmail,
         public string $userPassword,
         public string $paymentMethod = 'PIX',
+        public bool $marketingOptIn = false,
     ) {}
 
     public static function fromArray(array $data): self
@@ -30,6 +31,7 @@ readonly class OnboardingDTO
             userEmail: $data['user_email'],
             userPassword: $data['user_password'],
             paymentMethod: $data['payment_method'] ?? 'PIX',
+            marketingOptIn: (bool) ($data['marketing_opt_in'] ?? false),
         );
     }
 }

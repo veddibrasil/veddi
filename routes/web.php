@@ -3,8 +3,11 @@
 use App\Helpers\Validation;
 use App\Http\Controllers\AsaasSimulatePaymentController;
 use App\Http\Controllers\AsaasWebhookController;
+use App\Http\Controllers\EmailProviderWebhookController;
 use App\Http\Controllers\FiscalWebhookController;
 use App\Http\Controllers\IfoodWebhookController;
+use App\Http\Controllers\MarketingTrackingController;
+use App\Http\Controllers\MarketingUnsubscribeController;
 use App\Http\Controllers\RegisterCompanyController;
 use App\Http\Controllers\VindiSimulatePaymentController;
 use App\Http\Controllers\VindiWebhookController;
@@ -64,6 +67,22 @@ Route::get('/webhooks/whatsapp', [WhatsAppWebhookController::class, 'verify'])
 Route::post('/webhooks/whatsapp', [WhatsAppWebhookController::class, 'receive'])
     ->middleware('throttle:1200,1')
     ->name('webhook.whatsapp');
+
+// --- Webhook do provedor de e-mail marketing (sem auth, sem CSRF — coberto por webhooks/*) ---
+Route::post('/webhooks/email', EmailProviderWebhookController::class)
+    ->middleware('throttle:600,1')
+    ->name('webhook.email');
+
+// --- E-mail marketing: links públicos assinados por destinatário (sem login) ---
+// POST do descadastro é o One-Click (List-Unsubscribe-Post), fora do CSRF em bootstrap/app.php.
+Route::get('/email/u/{recipient}', [MarketingUnsubscribeController::class, 'show'])
+    ->whereNumber('recipient')->middleware('throttle:marketing-links')->name('marketing.unsubscribe');
+Route::post('/email/u/{recipient}', [MarketingUnsubscribeController::class, 'store'])
+    ->whereNumber('recipient')->middleware('throttle:marketing-links')->name('marketing.unsubscribe.store');
+Route::get('/email/o/{recipient}', [MarketingTrackingController::class, 'open'])
+    ->whereNumber('recipient')->middleware('throttle:marketing-links')->name('marketing.open');
+Route::get('/email/c/{recipient}', [MarketingTrackingController::class, 'click'])
+    ->whereNumber('recipient')->middleware('throttle:marketing-links')->name('marketing.click');
 
 // --- API pública ---
 Route::post('/api/validate-cpf', function (Request $request) {
@@ -191,6 +210,24 @@ Route::middleware(['auth', 'verified', 'super.admin'])
         Route::get('/users/{user}/permissions', \App\Livewire\SuperAdmin\Permissions\UserPermissions::class)->name('users.permissions');
         Route::get('/permissions', \App\Livewire\SuperAdmin\Permissions\Index::class)->name('permissions.index');
         Route::get('/whatsapp', \App\Livewire\SuperAdmin\WhatsApp\Connections::class)->name('whatsapp.index');
+
+        // E-mail marketing (público: usuários das empresas; nunca clientes finais dos restaurantes)
+        Route::prefix('marketing')->name('marketing.')->group(function () {
+            Route::redirect('/', '/superadmin/marketing/campaigns')->name('index');
+            Route::get('/campaigns', \App\Livewire\SuperAdmin\Marketing\Campaigns\Index::class)->name('campaigns.index');
+            Route::get('/campaigns/create', \App\Livewire\SuperAdmin\Marketing\Campaigns\Wizard::class)->name('campaigns.create');
+            Route::get('/campaigns/{campaign}/edit', \App\Livewire\SuperAdmin\Marketing\Campaigns\Wizard::class)->name('campaigns.edit');
+            Route::get('/campaigns/{campaign}/export', \App\Http\Controllers\SuperAdmin\MarketingCampaignExportController::class)->name('campaigns.export');
+            Route::get('/campaigns/{campaign}', \App\Livewire\SuperAdmin\Marketing\Campaigns\Show::class)->name('campaigns.show');
+            Route::get('/templates', \App\Livewire\SuperAdmin\Marketing\Templates\Index::class)->name('templates.index');
+            Route::get('/templates/create', \App\Livewire\SuperAdmin\Marketing\Templates\Form::class)->name('templates.create');
+            Route::get('/templates/{template}/edit', \App\Livewire\SuperAdmin\Marketing\Templates\Form::class)->name('templates.edit');
+            Route::get('/segments', \App\Livewire\SuperAdmin\Marketing\Segments\Index::class)->name('segments.index');
+            Route::get('/automations', \App\Livewire\SuperAdmin\Marketing\Automations\Index::class)->name('automations.index');
+            Route::get('/automations/create', \App\Livewire\SuperAdmin\Marketing\Automations\Form::class)->name('automations.create');
+            Route::get('/automations/{automation}/edit', \App\Livewire\SuperAdmin\Marketing\Automations\Form::class)->name('automations.edit');
+            Route::get('/suppressions', \App\Livewire\SuperAdmin\Marketing\Suppressions\Index::class)->name('suppressions.index');
+        });
 
         Route::post('/simulate/asaas-payment', AsaasSimulatePaymentController::class)->name('simulate.asaas-payment');
         Route::post('/simulate/vindi-payment', VindiSimulatePaymentController::class)->name('simulate.vindi-payment');

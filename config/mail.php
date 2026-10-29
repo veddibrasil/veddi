@@ -97,6 +97,20 @@ return [
             'retry_after' => 60,
         ],
 
+        // E-mail marketing (config/marketing.php): domínio e credenciais próprios, nunca os do
+        // transacional. Sem configuração cai no log, para nada sair por engano.
+        'marketing' => [
+            'transport' => env('MARKETING_MAIL_TRANSPORT', 'log'),
+            'scheme' => env('MARKETING_MAIL_SCHEME'),
+            'url' => env('MARKETING_MAIL_URL'),
+            'host' => env('MARKETING_MAIL_HOST', '127.0.0.1'),
+            'port' => env('MARKETING_MAIL_PORT', 2525),
+            'username' => env('MARKETING_MAIL_USERNAME'),
+            'password' => env('MARKETING_MAIL_PASSWORD'),
+            'timeout' => 30,
+            'channel' => env('MAIL_LOG_CHANNEL'),
+        ],
+
     ],
 
     /*

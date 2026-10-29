@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Contracts\AsaasServiceInterface;
 use App\Contracts\CnpjLookupInterface;
+use App\Contracts\EmailMarketingProviderInterface;
 use App\Contracts\FiscalNoteProviderInterface;
 use App\Contracts\IfoodGatewayContract;
 use App\Contracts\OrderServiceInterface;
@@ -36,6 +37,8 @@ use App\Services\Finance\TransactionService;
 use App\Services\Finance\WalletService;
 use App\Services\Fiscal\FocusNfeService;
 use App\Services\Ifood\IfoodGatewayService;
+use App\Services\Marketing\Providers\MailMarketingProvider;
+use App\Services\Marketing\Providers\ResendProvider;
 use App\Services\Messaging\MetaCloudApiProvider;
 use App\Services\Order\OrderService;
 use App\Services\Payment\AsaasService;
@@ -44,10 +47,12 @@ use App\Services\Refund\RefundService;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Auth\Notifications\VerifyEmail;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 use Laravel\Nightwatch\Facades\Nightwatch;
@@ -104,6 +109,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(IfoodGatewayContract::class, IfoodGatewayService::class);
         $this->app->bind(WhatsAppProviderInterface::class, MetaCloudApiProvider::class);
         $this->app->bind(WhatsAppManagementInterface::class, MetaCloudApiProvider::class);
+        $this->app->bind(EmailMarketingProviderInterface::class, fn () => match (config('marketing.provider')) {
+            'resend' => new ResendProvider,
+            default => new MailMarketingProvider,
+        });
     }
 
     /**
@@ -127,6 +136,19 @@ class AppServiceProvider extends ServiceProvider
 
         FiscalNote::observe(FiscalNoteObserver::class);
         Product::observe(ProductObserver::class);
+
+        // E-mail marketing: envios por segundo somando todos os workers (conforme o plano do provedor).
+        RateLimiter::for('marketing-send', function () {
+            $perSecond = (int) config('marketing.sending.rate_per_second', 10);
+
+            return $perSecond > 0 ? Limit::perSecond($perSecond) : Limit::none();
+        });
+
+        // Links públicos do e-mail (pixel, clique, descadastro One-Click): chave por destinatário + IP.
+        // O throttle padrão é só por IP, e proxy de imagem do Gmail/Apple ou NAT corporativo
+        // concentra muita gente no mesmo IP — o descadastro One-Click não pode virar 429.
+        RateLimiter::for('marketing-links', fn (\Illuminate\Http\Request $request) => Limit::perMinute(60)
+            ->by('marketing-links|'.$request->route('recipient').'|'.$request->ip()));
     }
 
     /**

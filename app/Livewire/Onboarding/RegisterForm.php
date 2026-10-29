@@ -70,6 +70,9 @@ class RegisterForm extends Component
     // (Alpine lendo $wire.userPassword), a senha não vai ao servidor a cada tecla.
     public string $userPassword = '';
 
+    // Aceite de e-mail marketing (LGPD): opcional, desmarcado por padrão.
+    public bool $marketingOptIn = false;
+
     // Step 4: Plan
     public string $plan = 'free';
 
@@ -427,6 +430,7 @@ class RegisterForm extends Component
                 userEmail: $this->userEmail,
                 userPassword: $this->userPassword,
                 paymentMethod: $this->paymentMethod,
+                marketingOptIn: $this->marketingOptIn,
             );
 
             $company = app(OnboardingService::class)->handle($dto);

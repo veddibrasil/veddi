@@ -277,6 +277,21 @@ return [
             'replace_placeholders' => true,
         ],
 
+        // E-mail marketing: só ids e códigos (nunca e-mail de destinatário nem chave do provedor).
+        'marketing' => [
+            'driver' => 'stack',
+            'channels' => ['marketing_target', ...$nightwatch],
+            'ignore_exceptions' => false,
+        ],
+
+        'marketing_target' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/marketing.log'),
+            'level' => 'debug',
+            'days' => 14,
+            'replace_placeholders' => true,
+        ],
+
     ],
 
 ];

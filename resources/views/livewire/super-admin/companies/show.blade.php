@@ -1,17 +1,17 @@
 <div class="space-y-6">
-    <div class="flex items-center justify-between">
-        <div class="flex items-center gap-3">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex min-w-0 items-center gap-3">
             @if($company->logo_path)
-                <img src="{{ $company->logo_url }}" class="w-10 h-10 rounded-full object-cover">
+                <img src="{{ $company->logo_url }}" alt="" class="w-10 h-10 shrink-0 rounded-full object-cover">
             @else
-                <div class="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold"
+                <div aria-hidden="true" class="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold"
                      style="background: {{ $company->primary_color }}">
                     {{ mb_substr($company->name, 0, 1) }}
                 </div>
             @endif
-            <div>
-                <h1 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100">{{ $company->name }}</h1>
-                <p class="text-xs text-neutral-500 font-mono dark:text-neutral-400">{{ $company->slug }}</p>
+            <div class="min-w-0">
+                <h1 class="break-words text-2xl font-bold text-neutral-800 dark:text-neutral-100">{{ $company->name }}</h1>
+                <p class="break-all text-xs text-neutral-500 font-mono dark:text-neutral-400">{{ $company->slug }}</p>
             </div>
         </div>
         <div class="flex items-center gap-3">
@@ -25,6 +25,8 @@
             </a>
         </div>
     </div>
+
+    @include('livewire.super-admin.companies._commercial')
 
     {{-- Status geral --}}
     <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -164,7 +166,9 @@
                 <p class="text-xs text-neutral-500 uppercase tracking-wide dark:text-neutral-400">Assinatura</p>
                 @if($subscription)
                     <p class="text-sm font-bold mt-1 text-neutral-800 dark:text-neutral-100">{{ $subscription->status }}</p>
+                    <p class="text-sm mt-1 text-neutral-700 dark:text-neutral-300">R$ {{ number_format($subscription->amount, 2, ',', '.') }} · {{ $subscription->billing_cycle }}</p>
                     <p class="text-xs text-neutral-500 mt-0.5 dark:text-neutral-400">Próx. venc.: {{ $subscription->next_due_date?->format('d/m/Y') ?? '—' }}</p>
+                    <p class="text-xs text-neutral-500 mt-0.5 dark:text-neutral-400">Último pagamento: {{ $subscription->last_payment_at?->format('d/m/Y H:i') ?? 'Não registrado' }}</p>
                 @else
                     <p class="text-sm text-neutral-400 mt-1 dark:text-neutral-500">Sem assinatura</p>
                 @endif
@@ -175,7 +179,7 @@
     {{-- Usuários --}}
     <div>
         <h2 class="text-lg font-semibold text-neutral-700 dark:text-neutral-200 mb-3">Usuários ({{ $users->count() }})</h2>
-        <div class="bg-white border rounded-xl shadow-sm overflow-hidden dark:bg-zinc-800 dark:border-zinc-700">
+        <div class="bg-white border rounded-xl shadow-sm overflow-x-auto dark:bg-zinc-800 dark:border-zinc-700">
             <table class="w-full text-sm">
                 <thead class="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide dark:bg-zinc-700/50 dark:text-neutral-400">
                     <tr>

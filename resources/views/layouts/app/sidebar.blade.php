@@ -47,6 +47,9 @@
                         <flux:sidebar.item icon="chat-bubble-left-ellipsis" :href="route('superadmin.whatsapp.index')" :current="request()->routeIs('superadmin.whatsapp.*')" wire:navigate>
                             WhatsApp
                         </flux:sidebar.item>
+                        <flux:sidebar.item icon="envelope" :href="route('superadmin.marketing.campaigns.index')" :current="request()->routeIs('superadmin.marketing.*')" wire:navigate>
+                            E-mail marketing
+                        </flux:sidebar.item>
                     </flux:sidebar.group>
                 @else
                     @if($isWaiterOnly)

@@ -47,6 +47,13 @@ environments:
         processes: 2
         tries: 3
         timeout: 120
+      # E-mail marketing: worker próprio para um disparo grande não atrasar pedido nem
+      # webhook de pagamento. Os jobs controlam retry sozinhos (retryUntil + release).
+      - connection: redis
+        queue: marketing
+        processes: 1
+        tries: 3
+        timeout: 120
 
     reverb:
       enabled: true
@@ -87,4 +94,3 @@ environments:
       MAIL_MAILER: smtp
       MAIL_HOST: smtp.titan.email
       MAIL_PORT: "587"
-      MAIL_ENCRYPTION: tls
