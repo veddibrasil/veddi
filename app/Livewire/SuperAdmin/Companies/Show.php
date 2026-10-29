@@ -5,7 +5,9 @@ namespace App\Livewire\SuperAdmin\Companies;
 use App\Livewire\SuperAdmin\Concerns\RequiresSuperAdmin;
 use App\Models\Company;
 use App\Models\Order;
+use App\Models\Scopes\CompanyScope;
 use App\Services\Finance\BalanceService;
+use App\Services\SuperAdmin\CompanyCommercialInsights;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Livewire\Component;
@@ -30,7 +32,7 @@ class Show extends Component
             "superadmin:company:{$company->id}:show",
             now()->addMinutes(5),
             function () use ($company, $paidStatuses) {
-                $ordersQuery = Order::query()->where('company_id', $company->id);
+                $ordersQuery = Order::withoutGlobalScope(CompanyScope::class)->where('company_id', $company->id);
 
                 $totalOrders = (clone $ordersQuery)->count();
 
@@ -86,8 +88,8 @@ class Show extends Component
                     ->sortKeys()
                     ->values();
 
-                $branchesCount = $company->branches()->count();
-                $productsCount = $company->products()->count();
+                $branchesCount = $company->branches()->withoutGlobalScope(CompanyScope::class)->count();
+                $productsCount = $company->products()->withoutGlobalScope(CompanyScope::class)->count();
 
                 return compact(
                     'totalOrders', 'ordersByStatus', 'paidOrdersCount', 'totalRevenue', 'totalNetValue',
@@ -103,7 +105,12 @@ class Show extends Component
 
         $balance = app(BalanceService::class)->calculateBalance($company);
 
-        $subscription = $company->subscriptions()->latest('id')->first();
+        $subscription = $company->subscriptions()
+            ->when($company->asaas_subscription_id, fn ($query, $id) => $query->where('asaas_subscription_id', $id))
+            ->latest('id')->first();
+        $commercial = app(CompanyCommercialInsights::class)->forCompany($company);
+        $contacts = $users->filter(fn ($user) => $user->pivot->role === 'company_admin');
+        $branches = $company->branches()->withoutGlobalScope(CompanyScope::class)->orderBy('name')->get(['id', 'name', 'phone']);
 
         return view('livewire.super-admin.companies.show', [
             'company' => $company,
@@ -124,6 +131,9 @@ class Show extends Component
             'users' => $users,
             'balance' => $balance,
             'subscription' => $subscription,
+            'commercial' => $commercial,
+            'contacts' => $contacts,
+            'branches' => $branches,
         ])->layout('layouts.app', ['title' => 'Super Admin — '.$company->name]);
     }
 }

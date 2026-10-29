@@ -2,9 +2,12 @@
 
 namespace App\Livewire\SuperAdmin\Companies;
 
+use App\Enums\Plan;
 use App\Livewire\SuperAdmin\Concerns\RequiresSuperAdmin;
 use App\Models\Company;
+use App\Models\Order;
 use App\Models\Scopes\CompanyScope;
+use App\Services\Company\AddonModulePricing;
 use App\Services\SuperAdmin\AuditLog;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -16,7 +19,26 @@ class Index extends Component
 
     public string $search = '';
 
+    public string $planFilter = '';
+
+    public string $missingModule = '';
+
     public ?int $deletingId = null;
+
+    public function updatedSearch(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedPlanFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedMissingModule(): void
+    {
+        $this->resetPage();
+    }
 
     public function confirmDelete(int $id): void
     {
@@ -76,9 +98,18 @@ class Index extends Component
 
     public function render()
     {
+        $moduleColumn = AddonModulePricing::MODULES[$this->missingModule]['column'] ?? null;
         $companies = Company::withoutGlobalScope(CompanyScope::class)
             ->when($this->search, fn ($q) => $q->where('name', 'like', "%{$this->search}%"))
-            ->withCount('branches', 'orders')
+            ->when(in_array($this->planFilter, Plan::values(), true), fn ($q) => $q->where('plan', $this->planFilter))
+            ->when($moduleColumn, fn ($q) => $q->where(fn ($modules) => $modules->where($moduleColumn, false)->orWhereNull($moduleColumn)))
+            ->withCount([
+                'branches' => fn ($q) => $q->withoutGlobalScope(CompanyScope::class),
+                'orders' => fn ($q) => $q->withoutGlobalScope(CompanyScope::class),
+                'orders as confirmed_orders_this_month' => fn ($q) => $q->withoutGlobalScope(CompanyScope::class)
+                    ->whereIn('status', Order::CONFIRMED_STATUSES)
+                    ->whereBetween('created_at', [now()->startOfMonth(), now()]),
+            ])
             ->orderBy('name')
             ->paginate(20);
 
