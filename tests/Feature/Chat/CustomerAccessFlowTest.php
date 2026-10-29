@@ -270,7 +270,7 @@ test('limite da empresa aceita sessenta códigos por dez minutos e bloqueia o se
     $key = "chat-otp:company:{$companyId}";
     app()->instance(ChatCodeSender::class, new class implements ChatCodeSender
     {
-        public function send(int $companyId, string $phone, string $code): void {}
+        public function send(int $companyId, string $phone, string $code, ?string $challengeId = null): void {}
     });
     for ($i = 0; $i < 59; $i++) {
         RateLimiter::hit($key, 600);

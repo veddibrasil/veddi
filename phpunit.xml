@@ -31,6 +31,9 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="CHAT_WHATSAPP_META_ENABLED" value="true" force="true"/>
+        <env name="CHAT_WHATSAPP_WUZAPI_FALLBACK_ENABLED" value="false" force="true"/>
+        <env name="WUZAPI_SESSION_TOKEN" value="" force="true"/>
         <env name="DISCORD_LOG_WEBHOOK_URL" value=""/>
         <env name="DISCORD_PIX_LOG_WEBHOOK_URL" value=""/>
         <env name="VINDI_TOKEN_ACCOUNT" value=""/>

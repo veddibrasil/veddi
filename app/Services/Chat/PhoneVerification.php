@@ -28,7 +28,8 @@ class PhoneVerification
         }
         $scope = $this->scope($companyId, $phone);
 
-        return Cache::lock('chat-code-send:'.$scope, 15)->block(3, function () use ($companyId, $phone, $scope) {
+        // Covers Meta preflight + send, or preflight + WuzAPI fallback (bounded HTTP timeouts).
+        return Cache::lock('chat-code-send:'.$scope, 45)->block(3, function () use ($companyId, $phone, $scope) {
             $phoneHash = hash_hmac('sha256', $phone, config('app.key'));
             $limits = [
                 ["chat-otp:session:{$scope}", 1, 60],
@@ -56,7 +57,7 @@ class PhoneVerification
                 ]);
             });
             try {
-                app(ChatCodeSender::class)->send($companyId, $phone, $code);
+                app(ChatCodeSender::class)->send($companyId, $phone, $code, $id);
             } catch (\Throwable) {
                 DB::table('chat_phone_challenges')->where('id', $id)->update(['consumed_at' => now()]);
                 throw new RuntimeException('Não foi possível enviar o código. Você pode continuar preenchendo seus dados.');

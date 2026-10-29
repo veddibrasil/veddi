@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Mail;
 
 class EmailCodeSender implements ChatCodeSender
 {
-    public function send(int $companyId, #[\SensitiveParameter] string $phone, #[\SensitiveParameter] string $code): void
+    public function send(int $companyId, #[\SensitiveParameter] string $phone, #[\SensitiveParameter] string $code, ?string $challengeId = null): void
     {
         $startedAt = hrtime(true);
 

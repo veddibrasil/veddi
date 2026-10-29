@@ -7,7 +7,7 @@ use RuntimeException;
 
 class UnavailableCodeSender implements ChatCodeSender
 {
-    public function send(int $companyId, string $phone, string $code): void
+    public function send(int $companyId, string $phone, string $code, ?string $challengeId = null): void
     {
         throw new RuntimeException('Canal de autenticação indisponível.');
     }

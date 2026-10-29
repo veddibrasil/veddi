@@ -70,7 +70,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(\App\Contracts\ChatCodeSender::class, function () {
             return match (config('chat_security.code_channel')) {
                 'email' => new \App\Services\Chat\EmailCodeSender,
-                'whatsapp' => config('chat_security.whatsapp_auth_enabled')
+                'whatsapp' => \App\Services\Chat\WhatsAppCodeSender::isEnabled()
                     ? new \App\Services\Chat\WhatsAppCodeSender
                     : new \App\Services\Chat\UnavailableCodeSender,
                 default => new \App\Services\Chat\UnavailableCodeSender,

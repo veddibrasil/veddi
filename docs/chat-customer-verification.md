@@ -20,7 +20,7 @@ Desmarcar o checkbox e concluir o pedido visitante revoga o registro anterior. A
 | Valor | Comportamento |
 | --- | --- |
 | `email` (padrão) | Código para o e-mail válido do cliente na própria empresa. |
-| `whatsapp` | Exige também `CHAT_WHATSAPP_AUTH_ENABLED=true` e template aprovado. |
+| `whatsapp` | Exige `CHAT_WHATSAPP_AUTH_ENABLED=true`. Prioriza a Meta com template aprovado; pode usar o fallback WuzAPI temporário descrito abaixo. |
 | `none` ou valor desconhecido | Sem envio de código; dados do aparelho continuam disponíveis. |
 
 Sem cliente ou e-mail válido, o canal de e-mail retorna sem enviar e mantém a mesma etapa e mensagem. O chat não mostra endereço mascarado. O serviço aplica um tempo mínimo de 100 ms para reduzir diferenças usuais de consulta e enfileiramento; isso não é garantia de tempo constante sob carga.
@@ -67,18 +67,49 @@ Configure também host, porta, credenciais e demais parâmetros do provedor de e
 
 Execute a migration `2026_10_26_000001_create_chat_device_profiles_table.php` no deploy. Mantenha HTTPS para os cookies Secure, uma fila assíncrona (por exemplo, a conexão Redis já indicada em `.env.example`) e um worker consumindo `default`. O `cloud.yaml` já declara essa fila. Recarregue o cache de configuração e reinicie os workers/Horizon após alterar o ambiente. Não altere `APP_KEY` sem planejar a migração dos dados criptografados e dos hashes de telefone.
 
-### Voltar para WhatsApp
+### WhatsApp com fallback temporário WuzAPI
+
+O fallback usa a máquina existente do Barberya, `https://wa.locufybr.com` (WuzAPI self-hosted, não o serviço `wuapi.dev`). A sessão `veddi-auth` deve ter token e pareamento próprios da Veddi. Nunca reaproveite tokens de barbearias ou altere seus webhooks. O token administrativo é necessário apenas para criar a sessão na máquina; não é usado nem armazenado pela integração de envio.
+
+```dotenv
+CHAT_CODE_CHANNEL=whatsapp
+CHAT_WHATSAPP_AUTH_ENABLED=true
+CHAT_WHATSAPP_META_ENABLED=true
+CHAT_WHATSAPP_WUZAPI_FALLBACK_ENABLED=true
+WUZAPI_BASE_URL=https://wa.locufybr.com
+WUZAPI_SESSION_TOKEN=<token da sessão veddi-auth>
+```
+
+Mantenha os segredos no ambiente de destino. O `.env` local não configura o Laravel Cloud. Recarregue o cache de configuração e reinicie os workers após mudar o ambiente.
+
+`CHAT_WHATSAPP_AUTH_ENABLED` é a chave geral. `CHAT_WHATSAPP_META_ENABLED` controla somente a API oficial (padrão `true` para preservar instalações existentes); pode ficar `false` enquanto o onboarding da Meta estiver em preparação. Sem Meta habilitada e sem fallback configurado, a opção de acessar o perfil salvo fica indisponível.
+
+Com a Meta habilitada, o fallback é selecionado **somente antes de enviar** quando não há remetente oficial, falta WABA, ou o template consultado não está aprovado na categoria/idioma esperados. Erros de consulta, token inválido, falhas de envio, respostas sem confirmação e timeouts não acionam outro provedor. Não há retentativas HTTP automáticas: um timeout pode significar que o código já foi enviado.
+
+O cliente WuzAPI exige HTTPS, não segue redirects, consulta `GET /session/status` e exige `connected=true` e `loggedIn=true`. Só então envia `POST /chat/send/text`, com header `token` e campos `Phone`, `Body` e `Id`. Usa `55` + o telefone nacional exato, sem alterar o nono dígito. O `Id` é derivado do identificador do desafio, sem código ou telefone. Isso identifica a mensagem, mas não pressupõe garantia de idempotência do servidor. O bloqueio e os limites de `PhoneVerification` impedem solicitações concorrentes/repetidas do mesmo escopo.
+
+Cada chamada WuzAPI tem timeout de quatro segundos (conexão: dois segundos). O lock do desafio dura 45 segundos para cobrir também o caminho de consulta da Meta e posterior fallback. Respostas e exceções do provedor são sanitizadas, sem registrar código, telefone ou token; o Nightwatch registra apenas metadados da chamada de saída. A criação, expiração de cinco minutos, tentativas, consumo único e isolamento por empresa/sessão continuam em `PhoneVerification`. Falha de envio invalida o desafio.
+
+Use a sessão apenas para autenticação, com histórico desabilitado (`history=0`), sem webhook e sem assinatura de mensagens recebidas. O envio WuzAPI é síncrono; não utiliza a fila de envio do serviço `wuapi.dev`. Não há recebimento de mensagens ou fallback de notificações de pedidos, PIX, marketing ou status. Os avisos de pedido e o consentimento continuam seguindo exclusivamente a configuração da Cloud API oficial.
+
+Antes de ativar, verifique a sessão e conclua o pareamento no WhatsApp do número da Veddi. Os testes automatizados simulam a API e não enviam mensagens reais.
+
+### Migrar para a API oficial
 
 Após aprovação da Meta:
 
 ```dotenv
 CHAT_CODE_CHANNEL=whatsapp
 CHAT_WHATSAPP_AUTH_ENABLED=true
+CHAT_WHATSAPP_META_ENABLED=true
+CHAT_WHATSAPP_WUZAPI_FALLBACK_ENABLED=false
 CHAT_WHATSAPP_AUTH_TEMPLATE=veddi_confirmar_telefone
 CHAT_WHATSAPP_AUTH_LANGUAGE=pt_BR
 ```
 
 O nome e idioma devem corresponder ao template aprovado na categoria **AUTHENTICATION**, com botão **COPY_CODE**, na WABA do remetente que a empresa utiliza. Recarregue a configuração e os workers. O código continua validando remotamente a aprovação do template antes de enviar.
+
+Após homologar o envio oficial, desabilite o fallback e retire o token WuzAPI do ambiente. A sessão dedicada pode ser desconectada posteriormente sem afetar as sessões dos outros projetos.
 
 ## Validação
 

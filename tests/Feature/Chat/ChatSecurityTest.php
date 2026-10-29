@@ -128,7 +128,7 @@ function captureSecurityCode(): object
     {
         public string $code = '';
 
-        public function send(int $companyId, string $phone, string $code): void
+        public function send(int $companyId, string $phone, string $code, ?string $challengeId = null): void
         {
             $this->code = $code;
         }

@@ -439,7 +439,7 @@ class OrderChat extends Component
     public function savedProfileAvailable(): bool
     {
         return config('chat_security.code_channel') === 'email'
-            || (config('chat_security.code_channel') === 'whatsapp' && config('chat_security.whatsapp_auth_enabled'));
+            || (config('chat_security.code_channel') === 'whatsapp' && \App\Services\Chat\WhatsAppCodeSender::isEnabled());
     }
 
     // -------------------------------------------------------------------------
