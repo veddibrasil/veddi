@@ -17,6 +17,7 @@ class Customer extends Model
         'name',
         'phone',
         'ifood_customer_id',
+        'food99_customer_id',
         'email',
         'tax_id',
         'address_id',

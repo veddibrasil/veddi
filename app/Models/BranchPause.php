@@ -16,10 +16,13 @@ class BranchPause extends Model
         'starts_at',
         'ends_at',
         'ifood_interruption_id',
+        'food99_sync',
+        'food99_sync_state',
     ];
 
     protected $casts = [
         'recurring_annual' => 'boolean',
+        'food99_sync' => 'boolean',
         'starts_at' => 'datetime',
         'ends_at' => 'datetime',
     ];

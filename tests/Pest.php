@@ -730,3 +730,87 @@ function marketingMember(array $company = [], string $role = 'company_admin', ar
 
     return $member;
 }
+
+/*
+|--------------------------------------------------------------------------
+| 99Food helpers
+|--------------------------------------------------------------------------
+|
+| Empresa + filial + produto + Food99Integration ativa (token válido e cardápio
+| publicado), espelhando ifoodContext().
+|
+*/
+
+const FOOD99_TEST_APP_ID = '3458764573578035295';
+const FOOD99_TEST_APP_SECRET = '87b69bab1a1548c1516189a5fb75e705';
+
+function food99Config(array $overrides = []): void
+{
+    config(array_merge([
+        'food99.enabled' => true,
+        'food99.app_id' => FOOD99_TEST_APP_ID,
+        'food99.app_secret' => FOOD99_TEST_APP_SECRET,
+        'food99.api_base_url' => 'https://openapi.99food.test',
+    ], $overrides));
+}
+
+function food99Context(string $suffix = 'A', array $integration = []): array
+{
+    food99Config();
+
+    $company = \App\Models\Company::create([
+        'name' => "Empresa 99 {$suffix}",
+        'slug' => "empresa-99-ctx-{$suffix}-".uniqid(),
+        'order_prefix' => 'N9'.strtoupper(substr($suffix, 0, 1)),
+        'active' => true,
+    ]);
+
+    app()->instance('current.company', $company);
+
+    $branch = \App\Models\Branch::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => "Filial {$suffix}",
+        'address' => 'Rua X, 1',
+        'city' => 'SP',
+        'active' => true,
+        'opens_at' => '00:00:00',
+        'closes_at' => '23:59:59',
+    ]);
+
+    $category = \App\Models\ProductCategory::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Salgados',
+        'active' => true,
+        'sort_order' => 1,
+    ]);
+
+    $product = \App\Models\Product::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'product_category_id' => $category->id,
+        'name' => 'Coxinha',
+        'price' => 8.00,
+        'active' => true,
+        'available_in_99food' => true,
+        'sort_order' => 1,
+    ]);
+
+    \Illuminate\Support\Facades\DB::table('branch_product')->insert([
+        'branch_id' => $branch->id,
+        'product_id' => $product->id,
+        'available' => 1,
+    ]);
+
+    $integration = \App\Models\Food99Integration::create(array_merge([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'app_shop_id' => \App\Models\Food99Integration::appShopIdFor($company->id, $branch->id),
+        'shop_id' => '57630'.str_pad((string) (ord($suffix) * 1000 + $branch->id), 14, '0', STR_PAD_LEFT),
+        'shop_name' => "Loja 99 {$suffix}",
+        'auth_token' => "token-99-{$suffix}",
+        'token_expires_at' => now()->addHours(6),
+        'status' => 'active',
+        'catalog_published_at' => now(),
+    ], $integration));
+
+    return compact('company', 'branch', 'category', 'product', 'integration');
+}
