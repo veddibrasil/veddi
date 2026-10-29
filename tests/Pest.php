@@ -814,3 +814,15 @@ function food99Context(string $suffix = 'A', array $integration = []): array
 
     return compact('company', 'branch', 'category', 'product', 'integration');
 }
+
+/** Envelope de sucesso da 99Food. */
+function food99Ok(mixed $data = null, string $requestId = 'req-test'): array
+{
+    return ['errno' => 0, 'errmsg' => 'ok', 'requestId' => $requestId, 'time' => now()->getTimestamp(), 'data' => $data];
+}
+
+/** Envelope de erro da 99Food. */
+function food99Error(int $errno, string $errmsg = 'erro', string $requestId = 'req-err'): array
+{
+    return ['errno' => $errno, 'errmsg' => $errmsg, 'requestId' => $requestId, 'time' => now()->getTimestamp(), 'data' => null];
+}
