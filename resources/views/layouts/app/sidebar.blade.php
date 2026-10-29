@@ -219,7 +219,7 @@
                                     Integrações
                                 </flux:sidebar.item>
                             @endif
-                            @if (!app()->environment('Production'))
+                            @if (!app()->environment('production'))
                                  @if($user?->isCompanyAdmin($company))
                                 <flux:sidebar.item icon="chat-bubble-left-ellipsis" :href="route('admin.settings.whatsapp')" :current="request()->routeIs('admin.settings.whatsapp')" wire:navigate>
                                     WhatsApp
