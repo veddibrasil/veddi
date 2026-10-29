@@ -50,13 +50,14 @@ class OrderService implements OrderServiceInterface
     ): Order {
         $currentCompany = app()->bound('current.company') ? app('current.company') : null;
 
-        $channelColumn = $channel === OrderChannel::Ifood->value
-            ? 'available_in_ifood'
-            : ($orderType === 'pdv' ? 'available_in_pdv' : 'available_in_delivery');
+        $isMarketplace = OrderChannel::isMarketplaceValue($channel);
+        $channelColumn = OrderChannel::tryFrom($channel)?->availabilityColumn()
+            ?? ($orderType === 'pdv' ? 'available_in_pdv' : 'available_in_delivery');
         $products = $this->resolveProducts(
-            array_filter($cart, fn ($item) => ! self::isUnlinkedIfoodItem($item, $channel)),
+            array_filter($cart, fn ($item) => ! self::isUnlinkedMarketplaceItem($item, $channel)),
             $branchId,
             $channelColumn,
+            $isMarketplace,
         );
 
         $customer = \App\Models\Customer::withoutGlobalScopes()->find($customerId);
@@ -82,8 +83,8 @@ class OrderService implements OrderServiceInterface
             // obrigatória ou sem preço. PDV (atendente) e iFood têm o próprio fluxo e ficam fora.
             $enforceSelfServiceRules = $orderType !== 'pdv' && $channel === OrderChannel::Chat->value;
             foreach ($cart as $cartKey => $item) {
-                if (self::isUnlinkedIfoodItem($item, $channel)) {
-                    $subtotal += self::unlinkedItemLine($item)['subtotal'];
+                if (self::isUnlinkedMarketplaceItem($item, $channel)) {
+                    $subtotal += self::unlinkedItemLine($item, $channel)['subtotal'];
 
                     continue;
                 }
@@ -191,8 +192,8 @@ class OrderService implements OrderServiceInterface
             }
 
             foreach ($cart as $cartKey => $item) {
-                if (self::isUnlinkedIfoodItem($item, $channel)) {
-                    OrderItem::create(['order_id' => $order->id, 'product_id' => null, ...self::unlinkedItemLine($item)]);
+                if (self::isUnlinkedMarketplaceItem($item, $channel)) {
+                    OrderItem::create(['order_id' => $order->id, 'product_id' => null, ...self::unlinkedItemLine($item, $channel)]);
 
                     continue;
                 }
@@ -522,23 +523,24 @@ class OrderService implements OrderServiceInterface
     }
 
     /**
-     * Item avulso do iFood (sem produto ligado no VEDDI, ver IfoodOrderMapper): nome, preço e
-     * complementos vêm do pedido que a API do iFood devolveu, já pago lá. Só o canal iFood aceita —
-     * no chat e no PDV o carrinho vem do navegador e o preço tem de sair do cadastro.
+     * Item avulso de marketplace (sem produto ligado no VEDDI, ver IfoodOrderMapper e
+     * Food99OrderMapper): nome, preço e complementos vêm do pedido que a API da plataforma
+     * devolveu, já pago lá. Só canal de marketplace aceita — no chat e no PDV o carrinho vem do
+     * navegador e o preço tem de sair do cadastro.
      */
-    private static function isUnlinkedIfoodItem(mixed $item, string $channel): bool
+    private static function isUnlinkedMarketplaceItem(mixed $item, string $channel): bool
     {
-        return $channel === OrderChannel::Ifood->value && is_array($item) && ($item['unlinked'] ?? false) === true;
+        return OrderChannel::isMarketplaceValue($channel) && is_array($item) && ($item['unlinked'] ?? false) === true;
     }
 
     /** @return array{product_name: string, unit_price: float, quantity: int, subtotal: float, options: ?array, notes: ?string} */
-    private static function unlinkedItemLine(array $item): array
+    private static function unlinkedItemLine(array $item, string $channel): array
     {
         $name = trim((string) ($item['name'] ?? ''));
         $notes = trim((string) ($item['notes'] ?? ''));
 
         return [
-            'product_name' => mb_substr($name !== '' ? $name : 'Item iFood', 0, 255),
+            'product_name' => mb_substr($name !== '' ? $name : 'Item '.OrderChannel::from($channel)->label(), 0, 255),
             'unit_price' => max(0.0, round((float) ($item['unit_price'] ?? 0), 2)),
             'quantity' => max(1, (int) ($item['qty'] ?? 1)),
             'subtotal' => max(0.0, round((float) ($item['subtotal'] ?? 0), 2)),
@@ -547,7 +549,7 @@ class OrderService implements OrderServiceInterface
         ];
     }
 
-    private function resolveProducts(array $cart, int $branchId, string $channelColumn): Collection
+    private function resolveProducts(array $cart, int $branchId, string $channelColumn, bool $fromMarketplace = false): Collection
     {
         $productIds = array_unique(array_values(array_map(
             fn ($item, $key) => (int) ($item['product_id'] ?? explode('_', (string) $key)[0]),
@@ -555,17 +557,17 @@ class OrderService implements OrderServiceInterface
             array_keys($cart)
         )));
 
-        // Pedido do iFood já foi feito (e pago) lá: o item só precisa existir nesta filial. Pausa,
-        // estoque ou canal desligado aqui chegam ao iFood com atraso, e recusar perderia o pedido.
-        $fromIfood = $channelColumn === 'available_in_ifood';
+        // Pedido de marketplace já foi feito (e pago) lá: o item só precisa existir nesta filial.
+        // Pausa, estoque ou canal desligado aqui chegam à plataforma com atraso, e recusar
+        // perderia o pedido.
 
         $products = Product::withoutGlobalScopes()
             ->whereIn('id', $productIds)
             ->whereHas('branches', fn ($q) => $q
                 ->where('branches.id', $branchId)
-                ->when(! $fromIfood, fn ($q) => $q->where('branch_product.available', true))
+                ->when(! $fromMarketplace, fn ($q) => $q->where('branch_product.available', true))
             )
-            ->when(! $fromIfood, fn ($q) => $q->where('active', true)->where($channelColumn, true))
+            ->when(! $fromMarketplace, fn ($q) => $q->where('active', true)->where($channelColumn, true))
             ->with('optionGroups')
             ->get()
             ->keyBy('id');

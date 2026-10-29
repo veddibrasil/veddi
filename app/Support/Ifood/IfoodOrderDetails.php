@@ -3,6 +3,7 @@
 namespace App\Support\Ifood;
 
 use App\Models\Order;
+use App\Support\Marketplace\MarketplaceOrderDetails;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Str;
@@ -13,7 +14,7 @@ use Illuminate\Support\Str;
  * IfoodOrderActionService usam esta classe, pra que "pode despachar?" ou "falta aceitar?"
  * tenham uma resposta só.
  */
-class IfoodOrderDetails
+class IfoodOrderDetails implements MarketplaceOrderDetails
 {
     /** Prazo do iFood pra confirmar um pedido imediato antes do cancelamento automático. */
     public const CONFIRMATION_MINUTES = 8;
@@ -66,6 +67,11 @@ class IfoodOrderDetails
     public function get(string $key, mixed $default = null): mixed
     {
         return $this->order->external_metadata[$key] ?? $default;
+    }
+
+    public function channelLabel(): string
+    {
+        return 'iFood';
     }
 
     public function displayId(): string
@@ -142,6 +148,11 @@ class IfoodOrderDetails
         return $this->placedAt()->copy()->addMinutes(self::CONFIRMATION_MINUTES);
     }
 
+    public function confirmationMinutes(): int
+    {
+        return self::CONFIRMATION_MINUTES;
+    }
+
     public function confirmationExpired(): bool
     {
         $deadline = $this->confirmationDeadline();
@@ -172,6 +183,11 @@ class IfoodOrderDetails
     public function isDeliveredByIfood(): bool
     {
         return $this->isDelivery() && $this->get('delivered_by') === 'IFOOD';
+    }
+
+    public function isDeliveredByPlatform(): bool
+    {
+        return $this->isDeliveredByIfood();
     }
 
     /** Despacho pela API só existe pra entrega feita pela própria loja; entrega iFood é despachada pelo entregador. */

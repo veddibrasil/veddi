@@ -100,18 +100,18 @@
         @forelse ($orders as $order)
             @php
                 $addrFull = $order->deliveryFullAddress();
-                // iFood: o contato é o 0800 do pedido (o cadastro guarda um marcador interno).
-                $rawPhone = preg_replace('/\D/', '', $order->channel === 'ifood' ? ($order->ifoodDetails()->customerPhone() ?? '') : ($order->customer?->phone ?? ''));
+                // Marketplace: o contato é o 0800/número virtual do pedido (o cadastro guarda um marcador interno).
+                $rawPhone = preg_replace('/\D/', '', $order->isMarketplaceOrder() ? ($order->marketplaceDetails()->customerPhone() ?? '') : ($order->customer?->phone ?? ''));
                 $whatsappPhone = strlen($rawPhone) <= 11 ? '55'.$rawPhone : $rawPhone;
             @endphp
             <div wire:key="entrega-card-{{ $order->id }}" class="bg-white border rounded-xl shadow-sm overflow-hidden dark:bg-zinc-800 dark:border-zinc-700">
                 <a href="{{ route('admin.orders.show', $order) }}" wire:navigate class="block px-4 pt-4 pb-3">
                     <div class="flex items-start justify-between gap-2">
                         <div class="min-w-0">
-                            <p class="font-mono font-semibold text-xs text-neutral-400 dark:text-neutral-500">{{ $order->channel === 'ifood' ? 'iFood #'.$order->ifoodDetails()->displayId() : $order->order_number }}</p>
+                            <p class="font-mono font-semibold text-xs text-neutral-400 dark:text-neutral-500">{{ $order->displayNumber() }}</p>
                             <p class="text-base font-semibold text-neutral-800 dark:text-neutral-100 truncate">{{ $order->customer->name ?? '—' }}</p>
-                            @if ($order->channel === 'ifood' && $order->ifoodDetails()->phoneLocalizer())
-                                <p class="text-xs text-neutral-500 dark:text-neutral-400">Localizador {{ $order->ifoodDetails()->phoneLocalizer() }}</p>
+                            @if ($order->marketplaceDetails()?->phoneLocalizer())
+                                <p class="text-xs text-neutral-500 dark:text-neutral-400">Localizador {{ $order->marketplaceDetails()->phoneLocalizer() }}</p>
                             @endif
                             @if ($addrFull)
                                 <p class="text-sm text-neutral-500 dark:text-neutral-400 truncate">{{ $addrFull }}</p>
@@ -139,12 +139,12 @@
                 </a>
 
                 @if ($addrFull || $rawPhone)
-                    <div class="grid {{ $order->channel === 'ifood' ? 'grid-cols-2' : 'grid-cols-3' }} border-t dark:border-zinc-700 divide-x dark:divide-zinc-700">
+                    <div class="grid {{ $order->isMarketplaceOrder() ? 'grid-cols-2' : 'grid-cols-3' }} border-t dark:border-zinc-700 divide-x dark:divide-zinc-700">
                         <a href="tel:{{ $rawPhone }}"
                            class="flex items-center justify-center gap-1.5 py-3 text-xs font-medium text-neutral-600 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-zinc-700/50 transition-colors">
                             📞 Ligar
                         </a>
-                        @if ($order->channel !== 'ifood')
+                        @if (! $order->isMarketplaceOrder())
                         <a href="https://wa.me/{{ $whatsappPhone }}" target="_blank"
                            class="flex items-center justify-center gap-1.5 py-3 text-xs font-medium text-green-700 dark:text-green-400 hover:bg-neutral-50 dark:hover:bg-zinc-700/50 transition-colors">
                             💬 WhatsApp
@@ -157,16 +157,16 @@
                     </div>
                 @endif
 
-                @if ($order->channel === 'ifood')
-                    {{-- iFood: despacho só depois do "pronto" e só na entrega própria; conclusão é do iFood. --}}
-                    @if ($canUpdate && $order->ifoodDetails()->canDispatch())
+                @if ($order->isMarketplaceOrder())
+                    {{-- Marketplace: despacho só depois do "pronto" e só na entrega própria; conclusão é da plataforma. --}}
+                    @if ($canUpdate && $order->marketplaceDetails()->canDispatch())
                         <button wire:click="updateOrderStatus({{ $order->id }}, 'out_for_delivery')"
                                 wire:loading.attr="disabled"
                                 class="w-full py-3.5 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 active:bg-purple-800 disabled:opacity-50 transition-colors border-t dark:border-zinc-700">
                             Saiu para entrega
                         </button>
-                    @elseif ($order->ifoodDetails()->waitingMessage())
-                        <p class="px-4 py-3 text-xs text-neutral-500 border-t dark:border-zinc-700 dark:text-neutral-400">{{ $order->ifoodDetails()->waitingMessage() }}</p>
+                    @elseif ($order->marketplaceDetails()->waitingMessage())
+                        <p class="px-4 py-3 text-xs text-neutral-500 border-t dark:border-zinc-700 dark:text-neutral-400">{{ $order->marketplaceDetails()->waitingMessage() }}</p>
                     @endif
                 @elseif ($canUpdate && in_array($order->status, ['paid', 'preparing', 'ready']))
                     <button wire:click="updateOrderStatus({{ $order->id }}, 'out_for_delivery')"
@@ -247,6 +247,9 @@
             <flux:select.option value="pdv">PDV</flux:select.option>
             <flux:select.option value="delivery">Entrega</flux:select.option>
             <flux:select.option value="ifood">iFood</flux:select.option>
+            @if (config('food99.enabled'))
+                <flux:select.option value="99food">99Food</flux:select.option>
+            @endif
         </flux:select>
         @if($viewMode === 'list')
         <flux:select wire:model.live="statusFilter" placeholder="Todos os status" class="w-full sm:w-44 shrink-0">
@@ -298,8 +301,8 @@
                         class="flex-1 flex flex-col items-start gap-2 min-w-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                         <div class="min-w-0">
                             <p class="font-mono font-semibold text-sm text-neutral-800 dark:text-neutral-100">
-                                @if ($order->channel === 'ifood')
-                                    iFood #{{ $order->ifoodDetails()->displayId() }} <span class="font-normal text-xs text-neutral-400">{{ $order->order_number }}</span>
+                                @if ($order->isMarketplaceOrder())
+                                    {{ $order->displayNumber() }} <span class="font-normal text-xs text-neutral-400">{{ $order->order_number }}</span>
                                 @else
                                     {{ $order->order_number }}
                                 @endif
@@ -313,7 +316,8 @@
                                 <span @class([
                                     'ml-1 px-1.5 py-0.5 rounded',
                                     'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400' => $order->channel === 'ifood',
-                                    'bg-neutral-100 text-neutral-500 dark:bg-zinc-700 dark:text-neutral-400' => $order->channel !== 'ifood',
+                                    'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' => $order->channel === '99food',
+                                    'bg-neutral-100 text-neutral-500 dark:bg-zinc-700 dark:text-neutral-400' => ! $order->isMarketplaceOrder(),
                                 ])>{{ $order->origin_label }}</span>
                             </p>
                             @if ($order->scheduled_at)
@@ -414,7 +418,7 @@
                     <div class="flex items-start justify-between gap-2 mb-1">
                         <a href="{{ route('admin.orders.show', $order) }}"
                            class="font-mono text-xs font-semibold text-neutral-800 dark:text-neutral-100 hover:underline">
-                            {{ $order->channel === 'ifood' ? 'iFood #'.$order->ifoodDetails()->displayId() : $order->order_number }}
+                            {{ $order->displayNumber() }}
                         </a>
                         <a href="{{ route('admin.orders.receipt', $userStation ? ['order' => $order->id, 'station' => $userStation] : $order) }}" target="_blank"
                            title="{{ $userStation ? 'Imprimir cupom '.$userStation : 'Imprimir cupom' }}"
@@ -429,12 +433,13 @@
                     <span @class([
                         'inline-block text-xs px-1.5 py-0.5 rounded',
                         'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400' => $order->channel === 'ifood',
-                        'bg-neutral-100 text-neutral-500 dark:bg-zinc-700 dark:text-neutral-400' => $order->channel !== 'ifood',
-                    ])>{{ $order->channel === 'ifood' ? 'iFood · '.$order->ifoodDetails()->orderTypeLabel() : $order->origin_label }}</span>
-                    @if ($order->channel === 'ifood' && $order->ifoodDetails()->awaitingConfirmation() && $order->ifoodDetails()->confirmationExpired())
-                        <p class="mt-2 rounded-lg bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 dark:bg-red-900/20 dark:text-red-300">Prazo de aceite encerrado: confira no Gestor de Pedidos</p>
-                    @elseif ($order->channel === 'ifood' && $order->ifoodDetails()->awaitingConfirmation())
-                        @php $cardDeadline = $order->ifoodDetails()->confirmationDeadline(); @endphp
+                        'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' => $order->channel === '99food',
+                        'bg-neutral-100 text-neutral-500 dark:bg-zinc-700 dark:text-neutral-400' => ! $order->isMarketplaceOrder(),
+                    ])>{{ ($marketplace = $order->marketplaceDetails()) ? $marketplace->channelLabel().' · '.$marketplace->orderTypeLabel() : $order->origin_label }}</span>
+                    @if ($marketplace && $marketplace->awaitingConfirmation() && $marketplace->confirmationExpired())
+                        <p class="mt-2 rounded-lg bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 dark:bg-red-900/20 dark:text-red-300">Prazo de aceite encerrado: confira no {{ $order->channel === 'ifood' ? 'Gestor de Pedidos' : 'app da '.$marketplace->channelLabel() }}</p>
+                    @elseif ($marketplace && $marketplace->awaitingConfirmation())
+                        @php $cardDeadline = $marketplace->confirmationDeadline(); @endphp
                         <div class="mt-2 flex items-center justify-between gap-2 rounded-lg bg-red-50 px-2 py-1 dark:bg-red-900/20">
                             <span class="text-xs font-semibold text-red-700 dark:text-red-300">Aguardando aceite</span>
                             @if ($cardDeadline)
@@ -444,11 +449,11 @@
                             @endif
                         </div>
                         @if ($canUpdate)
-                            <button wire:click.stop="acceptIfoodOrder({{ $order->id }})"
-                                    wire:loading.attr="disabled" wire:target="acceptIfoodOrder({{ $order->id }})"
+                            <button wire:click.stop="acceptMarketplaceOrder({{ $order->id }})"
+                                    wire:loading.attr="disabled" wire:target="acceptMarketplaceOrder({{ $order->id }})"
                                     class="w-full mt-2 py-1 text-xs font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 transition-colors">
-                                <span wire:loading.remove wire:target="acceptIfoodOrder({{ $order->id }})">Aceitar pedido</span>
-                                <span wire:loading wire:target="acceptIfoodOrder({{ $order->id }})">Aceitando…</span>
+                                <span wire:loading.remove wire:target="acceptMarketplaceOrder({{ $order->id }})">Aceitar pedido</span>
+                                <span wire:loading wire:target="acceptMarketplaceOrder({{ $order->id }})">Aceitando…</span>
                             </button>
                         @endif
                     @endif

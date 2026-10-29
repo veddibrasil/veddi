@@ -341,12 +341,18 @@ class Company extends Model
         return (bool) $this->fiscal_notes_enabled;
     }
 
-    public function canUseIfoodIntegration(): bool
+    /** Integrações de marketplace (iFood, 99Food): plano pago ou algum módulo extra contratado. */
+    public function canUseMarketplaceIntegrations(): bool
     {
         return ! $this->isFree()
             || (bool) $this->pdv_module_enabled
             || (bool) $this->fiscal_notes_enabled
             || (bool) $this->waiter_module_enabled;
+    }
+
+    public function canUseIfoodIntegration(): bool
+    {
+        return $this->canUseMarketplaceIntegrations();
     }
 
     /**

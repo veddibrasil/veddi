@@ -1335,8 +1335,8 @@ class Show extends Component
 
     public function openManualRefundModal(): void
     {
-        // Reembolso de pedido iFood é feito pelo iFood (cancelamento ou negociação).
-        abort_unless($this->canUpdate && ! $this->userStation && $this->order->channel !== OrderChannel::Ifood->value, 403);
+        // Reembolso de pedido de marketplace é feito pela plataforma (cancelamento ou negociação).
+        abort_unless($this->canUpdate && ! $this->userStation && ! $this->order->isMarketplaceOrder(), 403);
 
         $this->order->loadMissing('payments');
 
@@ -1358,7 +1358,7 @@ class Show extends Component
 
     public function manualRefund(): void
     {
-        abort_unless($this->canUpdate && ! $this->userStation && $this->order->channel !== OrderChannel::Ifood->value, 403);
+        abort_unless($this->canUpdate && ! $this->userStation && ! $this->order->isMarketplaceOrder(), 403);
 
         $this->validate([
             'manualRefundType' => ['required', 'in:gateway,offline'],

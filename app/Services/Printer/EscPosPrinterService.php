@@ -72,9 +72,9 @@ class EscPosPrinterService implements PrinterServiceInterface
             $printer->setJustification(Printer::JUSTIFY_LEFT);
         }
 
-        $ifood = $order->ifoodDetails();
+        $marketplace = $order->marketplaceDetails();
 
-        if ($order->scheduled_at && ! $ifood) {
+        if ($order->scheduled_at && ! $marketplace) {
             $printer->setJustification(Printer::JUSTIFY_CENTER);
             $printer->setEmphasis(true);
             $printer->text('*** AGENDADO: '.$order->scheduled_at->setTimezone(config('app.timezone'))->format('d/m/Y H:i')." ***\n");
@@ -82,7 +82,7 @@ class EscPosPrinterService implements PrinterServiceInterface
             $printer->setJustification(Printer::JUSTIFY_LEFT);
         }
 
-        $printer->text($ifood ? "Pedido: iFood #{$ifood->displayId()} ({$order->order_number})\n" : "Pedido: {$order->order_number}\n");
+        $printer->text($marketplace ? "Pedido: {$marketplace->channelLabel()} #{$marketplace->displayId()} ({$order->order_number})\n" : "Pedido: {$order->order_number}\n");
 
         if ($order->table_label) {
             $printer->text("Mesa/Comanda: {$order->table_label}\n");
@@ -93,9 +93,9 @@ class EscPosPrinterService implements PrinterServiceInterface
         $isDeliveryTicket = $station === 'entrega';
         $isGeneralReceipt = $station === 'geral';
 
-        if ($ifood) {
+        if ($marketplace) {
             $this->divider($printer);
-            foreach ($ifood->receiptLines($station) as $line) {
+            foreach ($marketplace->receiptLines($station) as $line) {
                 $printer->setEmphasis($line['bold']);
                 $printer->text($line['text']."\n");
             }
@@ -161,8 +161,8 @@ class EscPosPrinterService implements PrinterServiceInterface
         if ($isGeneralReceipt) {
             $this->divider($printer);
             $this->printTotals($printer, $order);
-            // Pedido iFood: forma de pagamento, troco e valor a cobrar já saíram no bloco iFood.
-            if (! $ifood) {
+            // Pedido de marketplace: forma de pagamento, troco e valor a cobrar já saíram no bloco da plataforma.
+            if (! $marketplace) {
                 $this->divider($printer);
                 $this->printPayment($printer, $order);
             }
@@ -379,7 +379,7 @@ class EscPosPrinterService implements PrinterServiceInterface
         }
 
         if ((float) ($order->manual_discount ?? 0) > 0) {
-            $printer->text(($order->channel === 'ifood' ? 'Cupom iFood' : 'Desconto operador').': - R$ '.number_format((float) $order->manual_discount, 2, ',', '.')."\n");
+            $printer->text(($order->marketplaceDetails() ? 'Cupom '.$order->marketplaceDetails()->channelLabel() : 'Desconto operador').': - R$ '.number_format((float) $order->manual_discount, 2, ',', '.')."\n");
         }
 
         $printer->setEmphasis(true);
@@ -438,9 +438,9 @@ class EscPosPrinterService implements PrinterServiceInterface
             $printer->text($order->customer->name."\n");
             $printer->setEmphasis(false);
 
-            // Cadastro iFood guarda um marcador interno no telefone; o contato (0800 +
-            // localizador) já saiu no bloco iFood.
-            if ($order->channel !== 'ifood') {
+            // Cadastro de marketplace guarda um marcador interno no telefone; o contato
+            // (0800/virtual + localizador) já saiu no bloco da plataforma.
+            if (! $order->isMarketplaceOrder()) {
                 $printer->text($order->customer->phone."\n");
             }
         }

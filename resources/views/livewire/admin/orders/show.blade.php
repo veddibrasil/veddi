@@ -1,5 +1,5 @@
 <div class="space-y-4 {{ $userStation === 'entrega' ? 'pb-24 lg:pb-4' : '' }}" x-data="stationPrintListener()">
-    <x-admin.page-header :back-route="route('admin.orders.index')" :title="$order->channel === 'ifood' ? 'iFood #'.$order->ifoodDetails()->displayId() : $order->order_number" title-class="font-mono whitespace-nowrap">
+    <x-admin.page-header :back-route="route('admin.orders.index')" :title="$order->displayNumber()" title-class="font-mono whitespace-nowrap">
         <x-slot:actions>
             <div class="flex flex-wrap items-center gap-1.5">
             @if (! $userStation)
@@ -72,7 +72,7 @@
         @include('livewire.admin.orders.partials.ifood-disputes')
     @endif
 
-    @if ($order->scheduled_at && $order->channel !== 'ifood')
+    @if ($order->scheduled_at && ! $order->isMarketplaceOrder())
         <div class="flex items-center gap-3 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 dark:bg-amber-900/20 dark:border-amber-700">
             <span class="text-2xl shrink-0">🕐</span>
             <div>
@@ -96,11 +96,11 @@
                 <x-admin.form-card padding="p-4">
                     <p class="text-xs text-neutral-400 uppercase tracking-wide mb-2 dark:text-neutral-500">Cliente</p>
                     <p class="font-semibold text-neutral-800 dark:text-neutral-100">{{ $order->customer->name }}</p>
-                    @if ($order->channel === 'ifood')
-                        {{-- O telefone do cadastro iFood é interno; o contato é o 0800 + localizador do pedido. --}}
-                        @if ($order->ifoodDetails()->customerPhone())
+                    @if ($marketplace = $order->marketplaceDetails())
+                        {{-- O telefone do cadastro de marketplace é interno; o contato é o 0800/número virtual + localizador do pedido. --}}
+                        @if ($marketplace->customerPhone())
                             <p class="text-sm text-neutral-500 dark:text-neutral-400">
-                                {{ $order->ifoodDetails()->customerPhone() }}@if ($order->ifoodDetails()->phoneLocalizer()) · localizador {{ $order->ifoodDetails()->phoneLocalizer() }}@endif
+                                {{ $marketplace->customerPhone() }}@if ($marketplace->phoneLocalizer()) · localizador {{ $marketplace->phoneLocalizer() }}@endif
                             </p>
                         @endif
                     @else
@@ -140,11 +140,11 @@
                     ]));
                     $googleMapsUrl = 'https://maps.google.com/?q=' . urlencode($addrFull);
 
-                    // Pedido iFood não tem telefone real do cliente (é 0800 + localizador) e,
-                    // na entrega pelo iFood, não há motoboy da loja pra chamar.
-                    $rawPhone = $order->channel === 'ifood' ? '' : preg_replace('/\D/', '', $order->customer?->phone ?? '');
+                    // Pedido de marketplace não tem telefone real do cliente (é 0800/virtual + localizador)
+                    // e, na entrega pela plataforma, não há motoboy da loja pra chamar.
+                    $rawPhone = $order->isMarketplaceOrder() ? '' : preg_replace('/\D/', '', $order->customer?->phone ?? '');
                     $whatsappPhone = $rawPhone === '' ? null : (strlen($rawPhone) <= 11 ? '55' . $rawPhone : $rawPhone);
-                    $showMotoboyLink = ! $order->ifoodDetails()?->isDeliveredByIfood();
+                    $showMotoboyLink = ! $order->marketplaceDetails()?->isDeliveredByPlatform();
                     $whatsappUrl = 'https://wa.me/' . $whatsappPhone;
 
                     $motoboyMsg = "🛵 *Entrega #{$order->order_number}*\n\n📍 *Endereço:* {$addrFull} \n\n {$googleMapsUrl}" ;
@@ -479,7 +479,7 @@
                             @endif
                             @if ($order->manual_discount > 0)
                                 <div class="flex items-center justify-between text-sm text-green-600 dark:text-green-400">
-                                    <span>{{ $order->channel === 'ifood' ? 'Cupom/desconto iFood' : 'Desconto manual' }}</span>
+                                    <span>{{ $order->isMarketplaceOrder() ? 'Cupom/desconto '.$order->marketplaceDetails()->channelLabel() : 'Desconto manual' }}</span>
                                     <span>− R$ {{ number_format($order->manual_discount, 2, ',', '.') }}</span>
                                 </div>
                             @endif
@@ -566,7 +566,7 @@
                             @endif
                             @if ($order->manual_discount > 0)
                                 <div class="flex items-center justify-between text-sm text-green-600 dark:text-green-400">
-                                    <span>{{ $order->channel === 'ifood' ? 'Cupom/desconto iFood' : 'Desconto manual' }}</span>
+                                    <span>{{ $order->isMarketplaceOrder() ? 'Cupom/desconto '.$order->marketplaceDetails()->channelLabel() : 'Desconto manual' }}</span>
                                     <span>− R$ {{ number_format($order->manual_discount, 2, ',', '.') }}</span>
                                 </div>
                             @endif
@@ -742,7 +742,7 @@
 
             @if ($order->notes)
                 <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 dark:bg-amber-900/20 dark:border-amber-700">
-                    <p class="text-xs font-semibold text-amber-700 mb-1 dark:text-amber-400">{{ $order->channel === 'ifood' ? 'Observações do pedido' : 'Observações do cliente' }}</p>
+                    <p class="text-xs font-semibold text-amber-700 mb-1 dark:text-amber-400">{{ $order->isMarketplaceOrder() ? 'Observações do pedido' : 'Observações do cliente' }}</p>
                     <p class="text-sm text-amber-800 dark:text-amber-300">{{ $order->notes }}</p>
                 </div>
             @endif
@@ -787,6 +787,7 @@
                         @elseif ($order->payment_method === 'cash') Dinheiro
                         @elseif ($order->payment_method === 'split') Dividido
                         @elseif ($order->payment_method === 'ifood') iFood
+                        @elseif ($order->payment_method === '99food') 99Food
                         @else {{ $order->payment_method }}
                         @endif
                     </div>
@@ -816,7 +817,7 @@
                                     @if ($partPayment->payment_gateway === 'cash') Dinheiro
                                     @elseif ($partPayment->payment_gateway === 'card_machine') Cartão
                                     @elseif ($partPayment->payment_gateway === 'pix_manual') PIX
-                                    @elseif ($partPayment->payment_gateway === 'ifood') {{ $partPayment->status === 'paid' ? 'iFood (online)' : 'iFood (na entrega)' }}
+                                    @elseif (\App\Enums\OrderChannel::isMarketplaceValue($partPayment->payment_gateway)) {{ \App\Enums\OrderChannel::from($partPayment->payment_gateway)->label() }} {{ $partPayment->status === 'paid' ? '(online)' : '(na entrega)' }}
                                     @else {{ $partPayment->payment_gateway }}
                                     @endif
                                 </span>
@@ -841,7 +842,7 @@
                         </button>
                     </div>
                 @endif
-                @if ($order->payments->where('status', 'paid')->isNotEmpty() && $order->channel !== 'ifood')
+                @if ($order->payments->where('status', 'paid')->isNotEmpty() && ! $order->isMarketplaceOrder())
                     <button wire:click="openManualRefundModal"
                             class="mt-3 w-full text-sm bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 px-4 py-2 rounded-lg transition-colors">
                         Iniciar Reembolso
@@ -923,7 +924,7 @@
                                         <span class="text-xs text-neutral-400 dark:text-neutral-500 shrink-0">{{ $history->created_at->format('d/m/Y H:i') }}</span>
                                     </div>
                                     <p class="text-xs text-neutral-500 dark:text-neutral-400">
-                                        Por {{ $history->user->name ?? (($history->metadata['source'] ?? '') === 'ifood_event' ? 'iFood' : 'Cliente') }}
+                                        Por {{ $history->user->name ?? (match ($history->metadata['source'] ?? '') { 'ifood_event' => 'iFood', 'food99_event' => '99Food', default => 'Cliente' }) }}
                                     </p>
                                     @if ($history->reason)
                                         <p class="text-xs text-neutral-600 dark:text-neutral-300 mt-1">Motivo: {{ $history->reason }}</p>

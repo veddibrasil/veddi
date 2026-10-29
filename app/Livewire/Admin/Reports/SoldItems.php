@@ -50,7 +50,7 @@ class SoldItems extends Component
         'name' => 'Nome',
     ];
 
-    public const CHANNELS = ['chat' => 'Chat', 'pdv' => 'PDV', 'ifood' => 'iFood'];
+    public const CHANNELS = ['chat' => 'Chat', 'pdv' => 'PDV', 'ifood' => 'iFood', '99food' => '99Food'];
 
     private const PER_PAGE = 25;
 

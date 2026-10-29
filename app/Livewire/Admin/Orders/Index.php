@@ -213,7 +213,7 @@ class Index extends Component
             ->when($this->channelFilter === 'pdv', fn ($q) => $q->where('order_type', 'pdv'))
             ->when($this->channelFilter === 'chat', fn ($q) => $q->whereIn('order_type', ['delivery', 'pickup']))
             ->when($this->channelFilter === 'delivery', fn ($q) => $q->deliveryOnly())
-            ->when($this->channelFilter === 'ifood', fn ($q) => $q->where('channel', 'ifood'));
+            ->when(OrderChannel::isMarketplaceValue($this->channelFilter), fn ($q) => $q->where('channel', $this->channelFilter));
     }
 
     public function setViewMode(string $mode): void
@@ -430,9 +430,15 @@ class Index extends Component
     }
 
     /** Botão "Aceitar" do card/alerta de pedido iFood aguardando aceite. */
-    public function acceptIfoodOrder(int $orderId): void
+    /** Aceite de pedido de marketplace: a etapa "preparando" passa pela API da plataforma. */
+    public function acceptMarketplaceOrder(int $orderId): void
     {
         $this->updateOrderStatus($orderId, 'preparing');
+    }
+
+    public function acceptIfoodOrder(int $orderId): void
+    {
+        $this->acceptMarketplaceOrder($orderId);
     }
 
     private function updateIfoodOrderStatus(Order $order, string $newStatus): void

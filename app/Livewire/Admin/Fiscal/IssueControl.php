@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Admin\Fiscal;
 
+use App\Enums\OrderChannel;
 use App\Jobs\IssueFiscalNote;
 use App\Models\Branch;
 use App\Models\CompanyNotification;
@@ -347,7 +348,7 @@ class IssueControl extends Component
     private function channelLabel(Order $order): string
     {
         return match (true) {
-            $order->channel === 'ifood' => 'iFood',
+            $order->isMarketplaceOrder() => OrderChannel::from($order->channel)->label(),
             $order->order_type === 'pdv' && $order->table_label !== null => 'Comanda · '.$order->table_label,
             $order->order_type === 'pdv' => 'Balcão',
             default => 'Chat',
@@ -422,8 +423,8 @@ class IssueControl extends Component
         match ($this->channelFilter) {
             'balcao' => $query->where('order_type', 'pdv')->whereNull('table_label'),
             'comanda' => $query->where('order_type', 'pdv')->whereNotNull('table_label'),
-            'chat' => $query->where('order_type', '!=', 'pdv')->where('channel', '!=', 'ifood'),
-            'ifood' => $query->where('channel', 'ifood'),
+            'chat' => $query->where('order_type', '!=', 'pdv')->whereNotIn('channel', OrderChannel::marketplaceValues()),
+            'ifood', '99food' => $query->where('channel', $this->channelFilter),
             default => null,
         };
     }

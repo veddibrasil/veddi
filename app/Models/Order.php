@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use App\Enums\OrderChannel;
 use App\Models\Concerns\BelongsToCompany;
 use App\Support\Ifood\IfoodOrderDetails;
+use App\Support\Marketplace\MarketplaceOrderDetails;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -341,12 +343,12 @@ class Order extends Model
     }
 
     /**
-     * Returns the status codes that allow admin editing of address and items. Pedido iFood
-     * nunca é editável aqui: itens, valores e endereço são do iFood.
+     * Returns the status codes that allow admin editing of address and items. Pedido de
+     * marketplace (iFood, 99Food) nunca é editável aqui: itens, valores e endereço são da plataforma.
      */
     public function isEditable(): bool
     {
-        return $this->channel !== 'ifood'
+        return ! $this->isMarketplaceOrder()
             && in_array($this->status, ['pending', 'awaiting_payment', 'paid', 'preparing', 'ready', 'scheduled']);
     }
 
@@ -361,12 +363,12 @@ class Order extends Model
 
     public function getStatusLabelAttribute(): string
     {
-        if ($ifood = $this->ifoodDetails()) {
+        if ($marketplace = $this->marketplaceDetails()) {
             if ($this->status === 'delivered') {
                 return 'Concluído';
             }
 
-            if ($ifood->awaitingConfirmation()) {
+            if ($marketplace->awaitingConfirmation()) {
                 return $this->status === 'scheduled' ? 'Agendado (aguardando aceite)' : 'Aguardando aceite';
             }
         }
@@ -378,6 +380,26 @@ class Order extends Model
     public function ifoodDetails(): ?IfoodOrderDetails
     {
         return IfoodOrderDetails::for($this);
+    }
+
+    /** Pedido que nasceu num marketplace (iFood, 99Food). */
+    public function isMarketplaceOrder(): bool
+    {
+        return OrderChannel::isMarketplaceValue($this->channel);
+    }
+
+    /** Snapshot e regras do pedido de marketplace, qualquer que seja a plataforma; null pros demais canais. */
+    public function marketplaceDetails(): ?MarketplaceOrderDetails
+    {
+        return $this->ifoodDetails();
+    }
+
+    /** Número pra exibir: "iFood #1234"/"99Food #12" no marketplace, order_number nos demais. */
+    public function displayNumber(): string
+    {
+        $marketplace = $this->marketplaceDetails();
+
+        return $marketplace ? $marketplace->channelLabel().' #'.$marketplace->displayId() : (string) $this->order_number;
     }
 
     public static function statusLabel(string $status): string
@@ -435,8 +457,8 @@ class Order extends Model
     /** Human-readable label for the order's origin/channel (chat, PDV balcão, mesa/comanda, delivery via PDV). */
     public function getOriginLabelAttribute(): string
     {
-        if ($this->channel === 'ifood') {
-            return 'iFood';
+        if ($this->isMarketplaceOrder()) {
+            return OrderChannel::from($this->channel)->label();
         }
 
         if ($this->order_type === 'pdv') {

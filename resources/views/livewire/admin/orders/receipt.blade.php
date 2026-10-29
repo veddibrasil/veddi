@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Cupom {{ $order->order_number }}</title>
-    @php $ifood = $order->ifoodDetails(); @endphp
+    @php $marketplace = $order->marketplaceDetails(); @endphp
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: DejaVu Sans Mono, monospace; font-size: 9px; color: #1a0025; background: #fff; padding: 10px 10px; }
@@ -49,7 +49,7 @@
         <div class="type-banner">RETIRADA NO LOCAL</div>
     @endif
 
-    @if ($order->scheduled_at && ! $ifood)
+    @if ($order->scheduled_at && ! $marketplace)
         <div class="type-banner" style="background-color: #b45309;">
             AGENDADO: {{ $order->scheduled_at->setTimezone(config('app.timezone'))->format('d/m/Y H:i') }}
         </div>
@@ -59,9 +59,9 @@
     <table class="row">
         <tr>
             <td>Pedido</td>
-            <td class="right order-number">{{ $ifood ? 'iFood #'.$ifood->displayId() : $order->order_number }}</td>
+            <td class="right order-number">{{ $marketplace ? $marketplace->channelLabel().' #'.$marketplace->displayId() : $order->order_number }}</td>
         </tr>
-        @if ($ifood)
+        @if ($marketplace)
             <tr>
                 <td class="sm muted">Sistema</td>
                 <td class="right sm muted">{{ $order->order_number }}</td>
@@ -79,9 +79,9 @@
         @endif
     </table>
 
-    @if ($ifood)
+    @if ($marketplace)
         <div class="divider"></div>
-        @foreach ($ifood->receiptLines('geral') as $line)
+        @foreach ($marketplace->receiptLines('geral') as $line)
             <div class="{{ $line['bold'] ? 'bold' : '' }}">{{ $line['text'] }}</div>
         @endforeach
     @endif
@@ -162,7 +162,7 @@
         @endif
         @if (($order->manual_discount ?? 0) > 0)
             <tr>
-                <td>{{ $ifood ? 'Cupom iFood' : 'Desconto operador' }}</td>
+                <td>{{ $marketplace ? 'Cupom '.$marketplace->channelLabel() : 'Desconto operador' }}</td>
                 <td class="right">- R$ {{ number_format($order->manual_discount, 2, ',', '.') }}</td>
             </tr>
         @endif
@@ -174,8 +174,8 @@
 
     <div class="divider"></div>
 
-    {{-- Pagamento (pedido iFood: forma de pagamento, troco e cobrança ficam no bloco iFood acima) --}}
-    @unless ($ifood)
+    {{-- Pagamento (pedido de marketplace: forma de pagamento, troco e cobrança ficam no bloco da plataforma acima) --}}
+    @unless ($marketplace)
     <table class="row">
         <tr>
             <td>Pagamento</td>
@@ -227,7 +227,7 @@
     <table class="row">
         <tr>
             <td class="bold">Pagamento</td>
-            <td class="right bold">{{ $ifood->pendingAmount() > 0 ? 'COBRAR R$ '.number_format($ifood->pendingAmount(), 2, ',', '.') : 'PAGO NO IFOOD' }}</td>
+            <td class="right bold">{{ $marketplace->pendingAmount() > 0 ? 'COBRAR R$ '.number_format($marketplace->pendingAmount(), 2, ',', '.') : 'PAGO NO '.mb_strtoupper($marketplace->channelLabel()) }}</td>
         </tr>
     </table>
     @endunless
@@ -238,7 +238,7 @@
     @php $isGuestCustomer = $order->customer->phone === 'pdv-guest'; @endphp
     @if (!$isGuestCustomer)
         <div class="bold">{{ $order->customer->name }}</div>
-        @unless ($ifood)
+        @unless ($marketplace)
             <div class="sm muted">{{ $order->customer->phone }}</div>
         @endunless
     @else

@@ -55,7 +55,8 @@ class StockService
             $deducted = $item->quantity;
 
             if ($pivot->quantity < $item->quantity) {
-                if ($order->channel !== OrderChannel::Ifood->value) {
+                $marketplace = OrderChannel::tryFrom((string) $order->channel);
+                if (! $marketplace?->isMarketplace()) {
                     throw new InsufficientStockException(
                         $item->product,
                         $pivot->quantity,
@@ -63,10 +64,10 @@ class StockService
                     );
                 }
 
-                // O pedido do iFood já foi feito (e pago) lá: recusar aqui só perderia o pedido.
-                // Baixa o que houver; o estoque fica zerado e o item sai de venda no iFood.
+                // Pedido de marketplace já foi feito (e pago) lá: recusar aqui só perderia o pedido.
+                // Baixa o que houver; o estoque fica zerado e o item sai de venda na plataforma.
                 $deducted = max(0, $pivot->quantity);
-                Log::channel('ifood')->warning('iFood: pedido com item acima do estoque da filial', [
+                Log::channel($marketplace->logChannel())->warning($marketplace->label().': pedido com item acima do estoque da filial', [
                     'order_id' => $order->id,
                     'branch_id' => $order->branch_id,
                     'product_id' => $item->product_id,

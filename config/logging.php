@@ -228,6 +228,20 @@ return [
             'replace_placeholders' => true,
         ],
 
+        'food99' => [
+            'driver' => 'stack',
+            'channels' => ['food99_target', ...$nightwatch],
+            'ignore_exceptions' => false,
+            'tap' => [\App\Logging\DiscordWebhookTap::class],
+        ],
+
+        'food99_target' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/laravel.log'),
+            'level' => 'debug',
+            'replace_placeholders' => true,
+        ],
+
         'webhook_target' => [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),

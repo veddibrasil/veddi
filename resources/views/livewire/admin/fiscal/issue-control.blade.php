@@ -64,6 +64,7 @@
             <option value="comanda">Comanda / mesa</option>
             <option value="chat">Chat</option>
             <option value="ifood">iFood</option>
+            <option value="99food">99Food</option>
         </flux:select>
         <flux:select wire:model.live="paymentFilter" label="Pagamento">
             <option value="">Todas as formas</option>

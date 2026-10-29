@@ -3,6 +3,7 @@
 namespace App\Services\Sales;
 
 use App\DTOs\SoldItemsFilters;
+use App\Enums\OrderChannel;
 use App\Models\Branch;
 use App\Models\Order;
 use App\Models\Product;
@@ -38,7 +39,7 @@ class SoldItemsReportService
         Cache::forget($filters->cacheKey($companyId));
     }
 
-    /** Chave estável do produto; item avulso do iFood (sem product_id) agrupa pelo nome. */
+    /** Chave estável do produto; item avulso de marketplace (sem product_id) agrupa pelo nome. */
     public static function productKey(?int $productId, ?string $productName): string
     {
         return $productId
@@ -48,8 +49,8 @@ class SoldItemsReportService
 
     public static function channelOf(?string $channel, ?string $orderType): string
     {
-        if ($channel === 'ifood') {
-            return 'ifood';
+        if (OrderChannel::isMarketplaceValue($channel)) {
+            return $channel;
         }
 
         return $orderType === 'pdv' ? 'pdv' : 'chat';
@@ -121,15 +122,17 @@ class SoldItemsReportService
             ->when($filters->channel, fn ($q) => $this->applyChannel($q, $filters->channel));
     }
 
-    /** Mesma precedência de channelOf(): iFood > PDV > chat. */
+    /** Mesma precedência de channelOf(): marketplace (iFood, 99Food) > PDV > chat. */
     private function applyChannel(Builder $query, string $channel): void
     {
+        $marketplaces = OrderChannel::marketplaceValues();
+
         match ($channel) {
-            'ifood' => $query->where('o.channel', 'ifood'),
+            'ifood', '99food' => $query->where('o.channel', $channel),
             'pdv' => $query->where('o.order_type', 'pdv')
-                ->where(fn ($q) => $q->whereNull('o.channel')->orWhere('o.channel', '<>', 'ifood')),
+                ->where(fn ($q) => $q->whereNull('o.channel')->orWhereNotIn('o.channel', $marketplaces)),
             default => $query
-                ->where(fn ($q) => $q->whereNull('o.channel')->orWhere('o.channel', '<>', 'ifood'))
+                ->where(fn ($q) => $q->whereNull('o.channel')->orWhereNotIn('o.channel', $marketplaces))
                 ->where(fn ($q) => $q->whereNull('o.order_type')->orWhere('o.order_type', '<>', 'pdv')),
         };
     }

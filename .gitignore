@@ -21,3 +21,7 @@ yarn-error.log
 /.nova
 /.vscode
 /.zed
+
+# 99Food: documentação do parceiro coberta por NDA (repositório público)
+/docs/plano-integracao99.md
+/docs/99food/

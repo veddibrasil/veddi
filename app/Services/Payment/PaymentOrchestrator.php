@@ -594,15 +594,21 @@ class PaymentOrchestrator
         ];
     }
 
+    /** @return array<int, array{id: int, status: string, gateway: string, amount: float}> */
+    public function processIfoodPayments(Order $order, float $prepaidAmount, float $pendingAmount): array
+    {
+        return $this->processMarketplacePayments($order, 'ifood', $prepaidAmount, $pendingAmount);
+    }
+
     /**
-     * Pedido iFood: quem cobra o cliente é o iFood, aqui só fica o registro. A parte paga
-     * online entra como paga; a parte a cobrar na entrega (dinheiro ou maquininha) fica
-     * pendente e é dada como recebida quando o iFood conclui o pedido
-     * (IfoodOrderStatusSync). Nunca chama gateway de cobrança.
+     * Pedido de marketplace (iFood, 99Food): quem cobra o cliente é a plataforma, aqui só fica
+     * o registro. A parte paga online entra como paga; a parte a cobrar na entrega (dinheiro ou
+     * maquininha) fica pendente e é dada como recebida quando a plataforma conclui o pedido
+     * (IfoodOrderStatusSync, Food99OrderStatusSync). Nunca chama gateway de cobrança.
      *
      * @return array<int, array{id: int, status: string, gateway: string, amount: float}>
      */
-    public function processIfoodPayments(Order $order, float $prepaidAmount, float $pendingAmount): array
+    public function processMarketplacePayments(Order $order, string $gateway, float $prepaidAmount, float $pendingAmount): array
     {
         $total = (float) $order->total;
         $pending = min($total, max(0.0, round($pendingAmount, 2)));
@@ -619,19 +625,20 @@ class PaymentOrchestrator
         foreach ($parts as $status => $amount) {
             $payment = Payment::create([
                 'order_id' => $order->id,
-                'payment_gateway' => 'ifood',
+                'payment_gateway' => $gateway,
                 'amount' => $amount,
                 'pix_fee' => 0.0,
                 'status' => $status,
                 'paid_at' => $status === 'paid' ? now() : null,
-                'payment_token' => hash('sha256', 'ifood'.$order->id.$status.now()->timestamp.Str::random(8)),
+                'payment_token' => hash('sha256', $gateway.$order->id.$status.now()->timestamp.Str::random(8)),
             ]);
 
-            $created[] = ['id' => $payment->id, 'status' => $status, 'gateway' => 'ifood', 'amount' => $amount];
+            $created[] = ['id' => $payment->id, 'status' => $status, 'gateway' => $gateway, 'amount' => $amount];
         }
 
-        Log::channel('payments')->info('Pagamento iFood registrado', [
+        Log::channel('payments')->info('Pagamento de marketplace registrado', [
             'order_id' => $order->id,
+            'gateway' => $gateway,
             'amount' => $total,
             'prepaid_reported' => $prepaidAmount,
             'pending' => $pending,
