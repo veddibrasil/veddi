@@ -102,6 +102,9 @@ class Form extends Component
 
     public string $fiscalTaxes = '';
 
+    /** Promoção ligada por um atalho das sugestões de venda (só muda o aviso exibido). */
+    public bool $promoFromSuggestion = false;
+
     protected function rules(): array
     {
         return [
@@ -277,6 +280,7 @@ class Form extends Component
             $this->promo_price_enabled = (bool) $product->promo_price_enabled;
             $this->promo_price_type = (string) ($product->promo_price_type ?: 'fixed');
             $this->promo_price_value = $product->promo_price_value !== null ? (string) $product->promo_price_value : '';
+            $this->applySuggestionPromo();
             $this->selectedBranches = $product->branches->pluck('id')->map(fn ($id) => (string) $id)->toArray();
 
             $this->optionGroups = $product->optionGroups->map(function ($group) {
@@ -318,6 +322,24 @@ class Form extends Component
                 ->map(fn ($id) => (string) $id)
                 ->toArray();
         }
+    }
+
+    /**
+     * Atalho "Testar X% de desconto" das sugestões de venda: liga a promoção percentual no
+     * formulário, sem salvar. Não mexe em variante nem em promoção já configurada.
+     */
+    private function applySuggestionPromo(): void
+    {
+        $promo = filter_var(request()->query('promo'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 50]]);
+
+        if ($promo === false || ! $this->canSave || $this->isVariant || $this->promo_price_enabled) {
+            return;
+        }
+
+        $this->promo_price_enabled = true;
+        $this->promo_price_type = 'percentage';
+        $this->promo_price_value = (string) $promo;
+        $this->promoFromSuggestion = true;
     }
 
     public function openCategoryModal(): void

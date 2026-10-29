@@ -139,6 +139,7 @@ Route::middleware(['auth', 'verified', 'company.active'])
             Route::get('/settings/whatsapp', \App\Livewire\Admin\Settings\WhatsAppSettings::class)->name('settings.whatsapp');
             Route::get('/settings/ifood', \App\Livewire\Admin\Settings\IfoodIntegrationSettings::class)->name('settings.ifood');
             Route::get('/integrations', \App\Livewire\Admin\Integrations\Index::class)->name('integrations.index');
+            Route::get('/reports/sold-items', \App\Livewire\Admin\Reports\SoldItems::class)->name('reports.sold-items');
 
             Route::get('/roles', \App\Livewire\Admin\Roles\Index::class)->name('roles.index');
 

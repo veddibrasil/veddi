@@ -19,6 +19,8 @@
         </div>
     @endif
 
+    <x-admin.sales-suggestions context="stock" :branch-id="$branchFilter ?: null" />
+
     {{-- Filtros --}}
     <div class="bg-white border rounded-xl shadow-sm p-4 dark:bg-zinc-800 dark:border-zinc-700">
         <div class="flex flex-wrap gap-3 items-end">

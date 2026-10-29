@@ -46,6 +46,8 @@
         </x-slot:actions>
     </x-admin.page-header>
 
+    <x-admin.sales-suggestions context="orders" :order-id="$order->id" />
+
     {{-- Avisos antes do resumo iFood: o resultado de aceitar/recusar não pode ficar escondido lá embaixo. --}}
     @if (session('status'))
         <div role="status" class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm dark:bg-green-900/30 dark:border-green-700 dark:text-green-400">

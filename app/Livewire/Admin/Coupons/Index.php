@@ -8,6 +8,7 @@ use App\Models\ProductCategory;
 use App\Models\Scopes\CompanyScope;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
@@ -61,6 +62,9 @@ class Index extends Component
 
     public bool $active = true;
 
+    /** Formulário aberto por um atalho das sugestões de venda (só muda o aviso exibido). */
+    public bool $prefilledFromSuggestion = false;
+
     #[Locked]
     public bool $isSuperAdmin = false;
 
@@ -88,6 +92,91 @@ class Index extends Component
             $this->canUpdate = $user->hasPermission('coupons.update', $company);
             $this->canDelete = $user->hasPermission('coupons.delete', $company);
         }
+
+        $this->applySuggestionPrefill();
+    }
+
+    /**
+     * Atalho das sugestões de venda (Itens vendidos): abre o formulário de novo cupom preenchido
+     * pela query string. Só preenche; nada é gravado até o save(), que valida tudo de novo.
+     */
+    private function applySuggestionPrefill(): void
+    {
+        $query = fn (string $key) => is_string($value = request()->query($key)) ? trim($value) : null;
+
+        if (! $query('sugestao') || ! $this->canCreate || ! app()->bound('current.company')) {
+            return;
+        }
+
+        $productIds = [];
+        if ($query('escopo') === 'product') {
+            $ids = array_filter(array_map('intval', explode(',', (string) $query('produtos'))));
+            // Só produtos ativos do tenant: id de outra empresa na URL é descartado.
+            $productIds = Product::withoutGlobalScope(CompanyScope::class)
+                ->where('company_id', app('current.company')->id)
+                ->where('active', true)
+                ->whereIn('id', $ids ?: [0])
+                ->pluck('id')
+                ->map(fn ($id) => (string) $id)
+                ->all();
+
+            // Sem produto válido não pré-preenche: cair para o escopo "pedido" daria desconto em tudo.
+            if (! $productIds) {
+                return;
+            }
+        }
+
+        $this->openModal();
+        $this->prefilledFromSuggestion = true;
+        $this->type = 'percentage';
+
+        if ($productIds) {
+            $this->scope = 'product';
+            $this->scope_ids = $productIds;
+        }
+
+        $value = filter_var($query('valor'), FILTER_VALIDATE_FLOAT);
+        if ($value !== false && $value >= 1 && $value <= 100) {
+            $this->discount_value = $value;
+        }
+
+        foreach (['inicio' => 'starts_at', 'fim' => 'expires_at'] as $param => $field) {
+            $date = $query($param) ? \DateTimeImmutable::createFromFormat('!Y-m-d\TH:i', $query($param)) : false;
+            if ($date && $date->format('Y-m-d\TH:i') === $query($param)) {
+                $this->{$field} = $query($param);
+            }
+        }
+        if ($this->starts_at && $this->expires_at && $this->expires_at < $this->starts_at) {
+            $this->expires_at = null;
+        }
+
+        $this->name = Str::limit(strip_tags((string) $query('nome')), 100, '');
+        $this->code = $this->availableCouponCode(substr(preg_replace('/[^A-Z0-9]/', '', strtoupper(Str::ascii((string) $query('codigo')))), 0, 20));
+
+        $maxUses = filter_var($query('max_usos'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 100000]]);
+        if ($maxUses !== false) {
+            $this->max_uses = $maxUses;
+        }
+    }
+
+    /** A mesma sugestão volta em outro mês: código já usado ganha sufixo (PEDEDIRETO2, ...). */
+    private function availableCouponCode(string $code): string
+    {
+        if ($code === '') {
+            return '';
+        }
+
+        $taken = Coupon::withoutGlobalScope(CompanyScope::class)
+            ->where('company_id', app('current.company')->id)
+            ->where('code', 'like', substr($code, 0, 17).'%')
+            ->pluck('code')
+            ->all();
+
+        for ($candidate = $code, $suffix = 2; in_array($candidate, $taken, true) && $suffix < 1000; $suffix++) {
+            $candidate = substr($code, 0, 20 - strlen((string) $suffix)).$suffix;
+        }
+
+        return $candidate;
     }
 
     public function updatingFilterStatus(): void
@@ -281,6 +370,7 @@ class Index extends Component
         $this->active = true;
         $this->scope = 'order';
         $this->type = 'percentage';
+        $this->prefilledFromSuggestion = false;
         $this->resetErrorBag();
     }
 

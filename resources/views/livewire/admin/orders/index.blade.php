@@ -206,6 +206,8 @@
         @endif
     </div>
 
+    <x-admin.sales-suggestions context="orders" />
+
     @if ($canManageClosing)
         {{-- ── Fechamento do dia ───────────────────────────────────────────────── --}}
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">

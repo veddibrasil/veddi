@@ -6,6 +6,10 @@
         </h1>
     </div>
 
+    @if ($isEditing && $product)
+        <x-admin.sales-suggestions context="products" :product-id="$product->id" />
+    @endif
+
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
 
         {{-- Coluna principal --}}
@@ -73,6 +77,15 @@
                             <span class="text-xs text-neutral-400 dark:text-neutral-500 ml-1">(por valor ou %)</span>
                         </label>
                     </div>
+
+                    @if ($promoFromSuggestion && $promo_price_enabled)
+                        <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                            Desconto de {{ $promo_price_value }}% pré-preenchido por uma sugestão de vendas. Nada muda até você salvar.
+                            @if ($this->ifoodEnabled && $available_in_ifood)
+                                Ao salvar, o preço promocional também vai para o iFood.
+                            @endif
+                        </div>
+                    @endif
 
                     @if($promo_price_enabled)
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">

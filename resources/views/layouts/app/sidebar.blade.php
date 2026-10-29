@@ -92,6 +92,13 @@
                         </flux:sidebar.item>
                     @endif
 
+                    {{-- Rota só de company_admin, sem chave de permissão: papel customizado nunca vê nem acessa. --}}
+                    @if($company && $user?->isCompanyAdmin($company))
+                        <flux:sidebar.item icon="presentation-chart-line" :href="route('admin.reports.sold-items')" :current="request()->routeIs('admin.reports.sold-items')" wire:navigate>
+                            Itens vendidos
+                        </flux:sidebar.item>
+                    @endif
+
                     @if($can('pdv.operate') && $company?->pdv_module_enabled)
                         <flux:sidebar.group heading="PDV" class="grid">
                                 <flux:sidebar.item icon="computer-desktop" :href="route('admin.pdv')" :current="request()->routeIs('admin.pdv') || request()->routeIs('admin.pdv.checkout') || request()->routeIs('admin.pdv.tabs')" wire:navigate>
@@ -212,12 +219,15 @@
                                     Integrações
                                 </flux:sidebar.item>
                             @endif
-                            {{-- A rota é só de company_admin (route middleware): quem tem company.settings por papel customizado levaria 403. --}}
-                            @if($user?->isCompanyAdmin($company))
+                            @if (!app()->environment('Production'))
+                                 @if($user?->isCompanyAdmin($company))
                                 <flux:sidebar.item icon="chat-bubble-left-ellipsis" :href="route('admin.settings.whatsapp')" :current="request()->routeIs('admin.settings.whatsapp')" wire:navigate>
                                     WhatsApp
                                 </flux:sidebar.item>
                             @endif
+                            @endif
+                            {{-- A rota é só de company_admin (route middleware): quem tem company.settings por papel customizado levaria 403. --}}
+                           
                         </flux:sidebar.group>
                     @endif
 
