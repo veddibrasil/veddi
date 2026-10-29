@@ -798,6 +798,50 @@ input.mc-input {
 body.pdv-fullscreen [data-flux-sidebar] { display: none !important; }
 body.pdv-fullscreen [data-flux-header] { display: none !important; }
 
+/* ─── PDV checkout (modal de pagamento da venda direta e das comandas) ───── */
+/* Operação rápida no caixa: a opção escolhida e os campos precisam ser lidos de relance.
+   Os padrões do Flux ficam abaixo do AA aqui (segmentado selecionado 1.1:1 no claro,
+   placeholder 2.5:1, bordas ~1.2:1). */
+.pdv-checkout ui-radio[data-flux-radio-segmented][data-checked] {
+    background-color: var(--color-accent);
+    color: var(--color-accent-foreground);
+    font-weight: 700;
+}
+/* Dark: o roxo sobre o trilho escuro fica em ~1.9:1; o contorno claro leva a 3:1+. */
+.dark .pdv-checkout ui-radio[data-flux-radio-segmented][data-checked] {
+    box-shadow: inset 0 0 0 1px var(--color-amber-300);
+}
+
+.pdv-checkout :is(input, textarea)::placeholder {
+    color: var(--color-zinc-500);
+}
+.dark .pdv-checkout :is(input, textarea)::placeholder {
+    color: var(--color-zinc-400);
+}
+
+/* !important: o select nativo já tem borda global quase branca com !important (ver "Light: select borders"). */
+.pdv-checkout :is(input, textarea, select)[data-flux-control]:not([data-invalid]),
+.pdv-checkout ui-checkbox:not([data-checked]) [data-flux-checkbox-indicator] {
+    border-color: color-mix(in srgb, var(--color-zinc-500) 80%, transparent) !important;
+}
+.dark .pdv-checkout :is(input, textarea, select)[data-flux-control]:not([data-invalid]),
+.dark .pdv-checkout ui-checkbox:not([data-checked]) [data-flux-checkbox-indicator] {
+    border-color: rgb(255 255 255 / 0.35) !important;
+}
+
+.pdv-checkout ui-switch:not([data-checked]) {
+    background-color: color-mix(in srgb, var(--color-zinc-800) 50%, transparent);
+}
+.dark .pdv-checkout ui-switch:not([data-checked]) {
+    background-color: transparent;
+    border-color: rgb(255 255 255 / 0.4);
+}
+
+/* Dark: o roxo global de span.text-amber-600 (#9B10C8) fica em 2.6:1 no fundo do modal ("Falta receber"). */
+.dark .pdv-checkout span.text-amber-600 {
+    color: var(--color-amber-300) !important;
+}
+
 /* ─── Toasts de pedido empilhados (livewire/admin/notifications) ─────────── */
 /* --depth: 0 = mais novo (na frente). Recolhido, os anteriores aparecem como "cartas" atrás;
    com hover a pilha abre em lista. */
