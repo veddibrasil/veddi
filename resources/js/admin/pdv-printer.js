@@ -209,21 +209,21 @@ export function autoPrintFiscalNote(orderId, onError) {
 // tiver impressora configurada (404) ou o QZ Tray falhar por qualquer motivo,
 // cai pro comportamento antigo (abre a tela/PDF de impressao manual) em vez
 // de deixar o operador sem cupom nenhum.
-async function printOrFallback(url, fallbackUrl) {
+async function printOrFallback(url, fallbackUrl, fallback = () => window.open(fallbackUrl, '_blank')) {
     let res;
 
     try {
         res = await fetch(url, { headers: { Accept: 'application/json' } });
     } catch (err) {
         console.warn('[print] falha de rede ao buscar payload, abrindo impressao manual', url, err);
-        window.open(fallbackUrl, '_blank');
+        fallback();
 
         return;
     }
 
     if (!res.ok) {
         console.warn('[print] sem impressora configurada, abrindo impressao manual', url, res.status);
-        window.open(fallbackUrl, '_blank');
+        fallback();
 
         return;
     }
@@ -233,7 +233,45 @@ async function printOrFallback(url, fallbackUrl) {
         await sendToPrinter(printer, payload);
     } catch (err) {
         console.warn('[print] falha ao imprimir (QZ Tray fechado/offline?), abrindo impressao manual', url, err);
-        window.open(fallbackUrl, '_blank');
+        fallback();
+    }
+}
+
+// Abre a caixa de impressao do navegador ja com o PDF, sem nova aba: o PDF vem
+// como blob (mesma origem) num iframe invisivel e o print() sai sozinho. Se nao
+// vier PDF (sessao expirada, nota indisponivel), abre a URL numa aba pra mostrar
+// o motivo em vez de imprimir uma pagina de erro.
+async function printPdfInBrowser(url) {
+    try {
+        const res = await fetch(url, { headers: { Accept: 'application/pdf' } });
+
+        if (!res.ok || !(res.headers.get('content-type') || '').includes('pdf')) {
+            throw new Error(`resposta sem PDF (${res.status})`);
+        }
+
+        const blobUrl = URL.createObjectURL(await res.blob());
+        const frame = document.createElement('iframe');
+        frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+        frame.onload = () => {
+            try {
+                frame.contentWindow.focus();
+                frame.contentWindow.print();
+            } catch (err) {
+                // Navegador que nao imprime PDF de iframe (Safari): abre o PDF pronto pra imprimir.
+                console.warn('[print] navegador recusou imprimir o PDF no iframe, abrindo em nova aba', err);
+                window.open(blobUrl, '_blank');
+            }
+            // Alguns navegadores seguem lendo o PDF depois do print() — remove so bem depois.
+            setTimeout(() => {
+                frame.remove();
+                URL.revokeObjectURL(blobUrl);
+            }, 60000);
+        };
+        frame.src = blobUrl;
+        document.body.appendChild(frame);
+    } catch (err) {
+        console.warn('[print] falha ao imprimir PDF pelo navegador, abrindo em nova aba', url, err);
+        window.open(url, '_blank');
     }
 }
 
@@ -243,6 +281,19 @@ export function printStationReceipt(orderId, station, fallbackUrl) {
 
 export function printClosingReport(query, fallbackUrl) {
     return printOrFallback(`/admin/pdv/print/closing${query}`, fallbackUrl);
+}
+
+// Botao "Imprimir" da nota (pedido, notas fiscais, controle de notas). NFC-e sai
+// direto na termica da filial com o mesmo payload ESC/POS da impressao automatica
+// do PDV (impressora marcada pra nota ou a do balcao); sem termica ou com o QZ Tray
+// fora, abre a impressao do navegador com o DANFE em bobina. NF-e (A4) vai direto
+// pra impressao do navegador com o PDF do DANFE.
+export function printFiscalNote(orderId, model, pdfUrl) {
+    if (model === '55') {
+        return printPdfInBrowser(pdfUrl);
+    }
+
+    return printOrFallback(`/admin/pdv/print/fiscal-note/${orderId}?manual=1`, pdfUrl, () => printPdfInBrowser(pdfUrl));
 }
 
 // Assina o canal do pedido so ate a nota autorizar ou falhar (ou por no maximo

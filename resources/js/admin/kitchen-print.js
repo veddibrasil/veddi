@@ -1,4 +1,4 @@
-import { autoPrintTabOrderTicket, printStationReceipt, printClosingReport } from './pdv-printer.js';
+import { autoPrintTabOrderTicket, printStationReceipt, printClosingReport, printFiscalNote } from './pdv-printer.js';
 
 // Fila de cozinha/bar ("Minha fila", fora do PDV) — versão mínima do binding de
 // impressão que o Terminal/Mesas usa (pdv-app.js). Sem carrinho, código de barras
@@ -30,6 +30,14 @@ const registerStationPrintListener = () => {
         },
         printClosing(query, fallbackUrl) {
             printClosingReport(query, fallbackUrl);
+        },
+    }));
+
+    // Botão "Imprimir" da nota fiscal — fica no próprio link, então serve em qualquer tela
+    // (pedido, notas fiscais, controle de notas) sem depender do stationPrintListener.
+    Alpine.data('fiscalNotePrinter', () => ({
+        printFiscalNote(orderId, model, pdfUrl) {
+            printFiscalNote(orderId, model, pdfUrl);
         },
     }));
 };

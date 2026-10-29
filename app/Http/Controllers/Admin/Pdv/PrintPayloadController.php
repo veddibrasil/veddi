@@ -91,7 +91,7 @@ class PrintPayloadController extends Controller
         ]);
     }
 
-    public function fiscalNote(Order $order)
+    public function fiscalNote(Request $request, Order $order)
     {
         $this->authorizeAccess();
 
@@ -102,6 +102,12 @@ class PrintPayloadController extends Controller
         abort_unless($note && $note->status === 'authorized' && $note->model !== '55', 404);
 
         $printer = $order->branch->printers->firstWhere('print_fiscal_note', true);
+
+        // Botão "Imprimir nota" (?manual=1): sem impressora marcada pra nota, usa a do
+        // balcão — a marcação só decide a impressão automática ao autorizar.
+        if (! $printer && $request->boolean('manual')) {
+            $printer = $order->branch->printerForStation('geral');
+        }
 
         abort_unless($printer && $printer->active, 404);
 

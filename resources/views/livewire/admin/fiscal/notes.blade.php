@@ -97,6 +97,10 @@
                                         <button wire:click="openCorrection({{ $note->id }})" class="text-blue-600 text-xs">Carta de correção</button>
                                     @endif
                                 @endif
+                                @include('livewire.admin.fiscal._print-button', [
+                                    'note' => $note,
+                                    'class' => 'text-blue-600 hover:text-blue-800 dark:text-blue-400 font-medium text-xs',
+                                ])
                                 @if($note->danfe_url)
                                     <a href="{{ route('admin.fiscal.document', ['note' => $note->id, 'type' => 'danfe']) }}" target="_blank"
                                         class="text-blue-600 hover:text-blue-800 dark:text-blue-400 font-medium text-xs">
