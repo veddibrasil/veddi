@@ -2,7 +2,9 @@
 
 namespace App\Livewire\Admin;
 
+use App\Models\Company;
 use App\Models\CompanyNotification;
+use Illuminate\Database\Eloquent\Builder;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
 
@@ -21,6 +23,9 @@ class NotificationBell extends Component
     /** Alertas de conexão (iFood/WhatsApp) levam a telas só de administrador. */
     #[Locked]
     public bool $canOpenIntegrationSettings = false;
+
+    /** Memo por requisição de seesAdminOnly() (propriedade privada não vai para o snapshot). */
+    private ?bool $seesAdminOnly = null;
 
     public function mount(): void
     {
@@ -63,7 +68,7 @@ class NotificationBell extends Component
 
     public function markRead(int $id): void
     {
-        CompanyNotification::where('company_id', $this->companyId)
+        $this->visibleNotifications()
             ->where('id', $id)
             ->whereNull('read_at')
             ->update(['read_at' => now()]);
@@ -71,15 +76,14 @@ class NotificationBell extends Component
 
     public function markAllRead(): void
     {
-        CompanyNotification::where('company_id', $this->companyId)
-            ->when($this->stationNotificationColumn(), fn ($q, $column) => $q->where($column, true))
+        $this->visibleNotifications()
             ->whereNull('read_at')
             ->update(['read_at' => now()]);
     }
 
     public function delete(int $id): void
     {
-        CompanyNotification::where('company_id', $this->companyId)
+        $this->visibleNotifications()
             ->where('id', $id)
             ->delete();
     }
@@ -97,9 +101,36 @@ class NotificationBell extends Component
     public function clearAll(): void
     {
         $this->confirmingClearAll = false;
-        CompanyNotification::where('company_id', $this->companyId)
+        $this->visibleNotifications()->delete();
+    }
+
+    /**
+     * Notificações que o usuário pode ver e mexer: as da estação (cozinha/bar/entrega) e, só para
+     * company_admin, as marcadas is_admin_only (ex.: vendas). Sem isso o gerente veria faturamento
+     * e "Limpar tudo" apagaria os avisos do administrador.
+     */
+    private function visibleNotifications(): Builder
+    {
+        return CompanyNotification::where('company_id', $this->companyId)
             ->when($this->stationNotificationColumn(), fn ($q, $column) => $q->where($column, true))
-            ->delete();
+            ->when(! $this->seesAdminOnly(), fn ($q) => $q->where('is_admin_only', false));
+    }
+
+    /**
+     * Mesma regra das telas só de admin (User::isCompanyAdmin), recalculada a cada requisição e não
+     * no mount: admin rebaixado com a aba aberta deixa de ver.
+     */
+    private function seesAdminOnly(): bool
+    {
+        if ($this->seesAdminOnly !== null) {
+            return $this->seesAdminOnly;
+        }
+
+        $company = app()->bound('current.company') && app('current.company')->id === $this->companyId
+            ? app('current.company')
+            : Company::find($this->companyId);
+
+        return $this->seesAdminOnly = (bool) ($company && auth()->user()?->isCompanyAdmin($company));
     }
 
     /** Coluna de flag de notificação (is_delivery/is_kitchen/is_bar) pra estação do usuário, ou null se não restrito. */
@@ -115,8 +146,7 @@ class NotificationBell extends Component
 
     public function render()
     {
-        $notifications = CompanyNotification::where('company_id', $this->companyId)
-            ->when($this->stationNotificationColumn(), fn ($q, $column) => $q->where($column, true))
+        $notifications = $this->visibleNotifications()
             ->latest()
             ->limit(30)
             ->get();
