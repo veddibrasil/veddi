@@ -1,0 +1,27 @@
+{
+    "order_id": 5764607523034934817,
+    "order_index": 14,
+    "status": 100,
+    "delivery_type": 0,
+    "fulfillment_mode": 1,
+    "create_time": 1761740000,
+    "uid": 650000000000999999,
+    "pay_method": 1,
+    "pay_channel": 212,
+    "order_price": 800,
+    "items_discount": 0,
+    "takeaway_code": "ABCD",
+    "receive_address": {"first_name": "Ana", "last_name": "Lima"},
+    "order_items": [
+        {
+            "app_item_id": "veddi-p{PRODUCT_ID}",
+            "mdu_id": 7000000000000000004,
+            "name": "Coxinha",
+            "sku_price": 800,
+            "total_price": 800,
+            "amount": 1,
+            "real_price": 800,
+            "sub_item_list": []
+        }
+    ]
+}

@@ -1,0 +1,47 @@
+{
+    "order_id": 5764607523034934816,
+    "order_index": 13,
+    "status": 100,
+    "delivery_type": 2,
+    "fulfillment_mode": 0,
+    "create_time": 1761740000,
+    "uid": 0,
+    "pay_method": 2,
+    "pay_channel": 153,
+    "change_for": 5000,
+    "order_price": 1600,
+    "delivery_price": 500,
+    "delivery_discount": 0,
+    "items_discount": 0,
+    "real_price": 2100,
+    "real_pay_price": 2100,
+    "customer_need_paying_money": 2100,
+    "others_fees": {"small_order_price": 0, "total_tip_money": 0, "service_price": 0, "coupon_discount": 0, "meal_top_up_price": 0},
+    "locator": "77001",
+    "virtual_phone_number": "+55 11 4000-9999",
+    "receive_address": {
+        "first_name": "privacy protection",
+        "name": "João",
+        "street_name": "privacy protection",
+        "poi_address": "Rua das Flores, 10 - Centro",
+        "district": "Centro",
+        "city": "Goiânia",
+        "state": "GO",
+        "postal_code": "74000000",
+        "poi_lat": -16.69,
+        "poi_lng": -49.28
+    },
+    "order_items": [
+        {
+            "app_item_id": "veddi-p{PRODUCT_ID}",
+            "mdu_id": 7000000000000000003,
+            "name": "Coxinha",
+            "sku_price": 800,
+            "total_price": 1600,
+            "amount": 2,
+            "real_price": 1600,
+            "sub_item_list": []
+        }
+    ],
+    "promotions": []
+}

@@ -849,3 +849,29 @@ function food99Callback(?\App\Models\Food99Integration $integration, string $typ
         'data' => $data,
     ], $overrides);
 }
+
+/** order_info de fixture (tests/Fixtures/food99/{name}.json) com o produto do contexto. */
+function food99OrderInfo(array $ctx, string $fixture = 'order-platform-delivery', array $overrides = []): array
+{
+    $raw = file_get_contents(base_path("tests/Fixtures/food99/{$fixture}.json"));
+    $raw = str_replace('{PRODUCT_ID}', (string) $ctx['product']->id, $raw);
+    $info = json_decode($raw, true, 512, JSON_BIGINT_AS_STRING);
+    $info['create_time'] = now()->subMinute()->getTimestamp();
+    unset($info['pay_time']);
+
+    return array_replace_recursive($info, $overrides);
+}
+
+/** Recebe um orderNew pelo webhook e roda o job (fila sync nos testes). */
+function receiveFood99Order(\Illuminate\Foundation\Testing\TestCase $test, array $ctx, array $info): \App\Models\Order
+{
+    postFood99Webhook($test, food99Callback($ctx['integration'], 'orderNew', [
+        'order_id' => $info['order_id'],
+        'order_info' => $info,
+    ]))->assertOk()->assertJson(['errno' => 0]);
+
+    return \App\Models\Order::withoutGlobalScopes()
+        ->where('channel', '99food')
+        ->where('external_order_id', (string) $info['order_id'])
+        ->firstOrFail();
+}

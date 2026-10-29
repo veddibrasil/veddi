@@ -1,0 +1,70 @@
+{
+    "order_id": 5764607523034934815,
+    "order_index": 12,
+    "shop_id": 5763000000000012345,
+    "status": 100,
+    "delivery_type": 1,
+    "fulfillment_mode": 0,
+    "create_time": 1761740000,
+    "pay_time": 1761740010,
+    "timezone": "America/Sao_Paulo",
+    "uid": 650000000000123456,
+    "pay_method": 1,
+    "pay_channel": 150,
+    "order_price": 2000,
+    "items_discount": 200,
+    "delivery_discount": 0,
+    "shop_paid_money": 0,
+    "refund_price": 0,
+    "meal_top_up_price": 0,
+    "service_price": 0,
+    "remark": "Sem cebola, por favor",
+    "need_cutlery": 1,
+    "c_cancel_preference": 5,
+    "handover_code": "4821",
+    "locator": "88123",
+    "virtual_phone_number": "+55 11 4000-1234",
+    "receive_address": {
+        "first_name": "Maria",
+        "last_name": "Souza",
+        "street_name": "Av. T-2",
+        "street_number": "1922",
+        "district": "Setor Bueno",
+        "city": "Goiânia",
+        "state": "GO",
+        "postal_code": "74210-010",
+        "complement": "Apto 3",
+        "reference": "Perto da praça",
+        "poi_lat": -16.6918214,
+        "poi_lng": -49.2811349,
+        "phone": "000****1406"
+    },
+    "order_items": [
+        {
+            "app_item_id": "veddi-p{PRODUCT_ID}",
+            "mdu_id": 7000000000000000001,
+            "name": "Coxinha",
+            "sku_price": 800,
+            "total_price": 1600,
+            "amount": 2,
+            "real_price": 1600,
+            "remark": "bem frita",
+            "sub_item_list": []
+        },
+        {
+            "app_item_id": "item-montado-na-99",
+            "mdu_id": 7000000000000000002,
+            "name": "Refrigerante lata",
+            "sku_price": 400,
+            "total_price": 400,
+            "amount": 1,
+            "real_price": 400,
+            "sub_item_list": [
+                {"app_item_id": "gelo", "name": "Com gelo", "sku_price": 0, "amount": 1, "app_content_id": "g1"}
+            ]
+        }
+    ],
+    "promotions": [
+        {"promo_type": 1, "promo_name": "Desconto da loja", "promo_discount": 200, "shop_subside_price": 200}
+    ]
+}

@@ -41,9 +41,13 @@ class Food99WebhookEvent extends Model
         'attempts' => 'integer',
     ];
 
+    /**
+     * Sem escopo de empresa: o evento é processado fora de request (job), onde o
+     * current.company pode ainda não ser o da integração. O dono é a própria integração.
+     */
     public function food99Integration(): BelongsTo
     {
-        return $this->belongsTo(Food99Integration::class);
+        return $this->belongsTo(Food99Integration::class)->withoutGlobalScopes();
     }
 
     public function order(): BelongsTo

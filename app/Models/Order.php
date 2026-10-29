@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\OrderChannel;
 use App\Models\Concerns\BelongsToCompany;
+use App\Support\Food99\Food99OrderDetails;
 use App\Support\Ifood\IfoodOrderDetails;
 use App\Support\Marketplace\MarketplaceOrderDetails;
 use Illuminate\Database\Eloquent\Model;
@@ -382,6 +383,12 @@ class Order extends Model
         return IfoodOrderDetails::for($this);
     }
 
+    /** Snapshot e regras do pedido 99Food; null pra pedidos de outros canais. */
+    public function food99Details(): ?Food99OrderDetails
+    {
+        return Food99OrderDetails::for($this);
+    }
+
     /** Pedido que nasceu num marketplace (iFood, 99Food). */
     public function isMarketplaceOrder(): bool
     {
@@ -391,7 +398,7 @@ class Order extends Model
     /** Snapshot e regras do pedido de marketplace, qualquer que seja a plataforma; null pros demais canais. */
     public function marketplaceDetails(): ?MarketplaceOrderDetails
     {
-        return $this->ifoodDetails();
+        return $this->ifoodDetails() ?? $this->food99Details();
     }
 
     /** Número pra exibir: "iFood #1234"/"99Food #12" no marketplace, order_number nos demais. */
