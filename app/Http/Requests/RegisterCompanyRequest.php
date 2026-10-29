@@ -26,6 +26,7 @@ class RegisterCompanyRequest extends FormRequest
             'user_name' => ['required', 'string', 'max:100'],
             'user_email' => ['required', 'email', 'unique:users,email'],
             'user_password' => ['required', Password::min(8)->letters()->numbers()],
+            'marketing_opt_in' => ['nullable', 'boolean'],
         ];
     }
 

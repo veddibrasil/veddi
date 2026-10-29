@@ -52,7 +52,15 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_super_admin' => 'boolean',
+            'marketing_opt_in_at' => 'datetime',
+            'marketing_opt_out_at' => 'datetime',
         ];
+    }
+
+    /** Aceita receber e-mail marketing da plataforma (LGPD: consentimento com data). */
+    public function wantsMarketingEmails(): bool
+    {
+        return $this->marketing_opt_in_at !== null && $this->marketing_opt_out_at === null;
     }
 
     public function companies(): BelongsToMany

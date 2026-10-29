@@ -225,11 +225,12 @@ return [
         // (sem 'whatsapp' e 'critical' as notificações e o onboarding do WhatsApp nunca rodam).
         'local' => [
             'supervisor-1' => [
-                'queue' => ['critical', 'default', 'whatsapp', 'low'],
+                'queue' => ['critical', 'default', 'whatsapp', 'low', 'marketing'],
                 'maxProcesses' => 3,
                 // Mesmas filas dos workers do cloud.yaml — só 'default' deixa parado o lote
                 // do Controle de notas ('low'), o onboarding do WhatsApp ('critical') e os envios.
-                'queue' => ['critical', 'default', 'whatsapp', 'low'],
+                // 'marketing' por último: disparo de campanha nunca passa na frente de pedido.
+                'queue' => ['critical', 'default', 'whatsapp', 'low', 'marketing'],
             ],
         ],
     ],

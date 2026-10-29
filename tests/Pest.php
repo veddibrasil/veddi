@@ -674,3 +674,59 @@ function verifiedChatFixture(\App\Livewire\Chat\OrderChat $chat, \App\Models\Cus
     $chat->city = $customer->city ?? 'São Paulo';
     $chat->cep = $customer->cep ?? '01001000';
 }
+
+/*
+|--------------------------------------------------------------------------
+| E-mail marketing helpers
+|--------------------------------------------------------------------------
+*/
+
+/** Config mínima para o checklist passar e o provedor fake no lugar do real. */
+function marketingSetup(): \Tests\Fakes\FakeEmailMarketingProvider
+{
+    config([
+        'marketing.verified_domains' => ['news.veddi.com.br'],
+        'marketing.legal' => ['company_name' => 'Veddi Tecnologia LTDA', 'document' => '00.000.000/0001-00', 'address' => 'Rua Teste, 1'],
+        'marketing.require_opt_in' => true,
+        'marketing.sending.daily_limit' => 0,
+        'marketing.sending.rate_per_second' => 0,
+    ]);
+
+    $fake = new \Tests\Fakes\FakeEmailMarketingProvider;
+    app()->instance(\App\Contracts\EmailMarketingProviderInterface::class, $fake);
+
+    return $fake;
+}
+
+function marketingSuperAdmin(): \App\Models\User
+{
+    return \App\Models\User::factory()->create(['is_super_admin' => true]);
+}
+
+/**
+ * Usuário vinculado a uma empresa (público do e-mail marketing), com opt-in por padrão.
+ *
+ * @param  array<string, mixed>  $company
+ * @param  array<string, mixed>  $user
+ */
+function marketingMember(array $company = [], string $role = 'company_admin', array $user = []): \App\Models\User
+{
+    $companyModel = $company['model'] ?? \App\Models\Company::create(array_merge([
+        'name' => 'Empresa '.uniqid(),
+        'slug' => 'mkt-'.uniqid(),
+        'order_prefix' => 'MKT',
+        'active' => true,
+        'plan' => 'pro',
+        'status' => 'ACTIVE',
+    ], \Illuminate\Support\Arr::except($company, ['model'])));
+
+    $member = \App\Models\User::factory()->create(\Illuminate\Support\Arr::except($user, ['marketing_opt_in_at', 'marketing_opt_out_at']));
+    $member->forceFill([
+        'marketing_opt_in_at' => array_key_exists('marketing_opt_in_at', $user) ? $user['marketing_opt_in_at'] : now()->subDay(),
+        'marketing_opt_out_at' => $user['marketing_opt_out_at'] ?? null,
+    ])->save();
+
+    $companyModel->users()->attach($member->id, ['role' => $role]);
+
+    return $member;
+}

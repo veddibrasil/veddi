@@ -74,6 +74,11 @@ class OnboardingService
                 'password' => Hash::make($dto->userPassword),
             ]);
 
+            // Consentimento de e-mail marketing com data (LGPD); fora do fillable de propósito.
+            if ($dto->marketingOptIn) {
+                $user->forceFill(['marketing_opt_in_at' => now()])->save();
+            }
+
             $company->users()->attach($user->id, [
                 'role' => 'company_admin',
                 'branch_id' => null,

@@ -235,6 +235,9 @@
                 @enderror
             </div>
 
+            {{-- LGPD: consentimento opcional e desmarcado; gravado com data em users.marketing_opt_in_at. --}}
+            <flux:checkbox wire:model="marketingOptIn" label="Quero receber novidades, dicas e lançamentos da Veddi por e-mail" description="Opcional. Você pode sair a qualquer momento pelo link no e-mail." />
+
             <div class="flex gap-3 mt-2">
                 <button wire:click="prevStep"
                     class="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-600 hover:bg-zinc-50 transition-colors">

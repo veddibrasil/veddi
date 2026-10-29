@@ -23,7 +23,8 @@ return Application::configure(basePath: dirname(__DIR__))
                 \Illuminate\Http\Request::HEADER_X_FORWARDED_PORT |
                 \Illuminate\Http\Request::HEADER_X_FORWARDED_PROTO,
         );
-        $csrfExcept = ['webhooks/*'];
+        // email/u/*: descadastro One-Click (RFC 8058) vem do cliente de e-mail, sem token; o link é assinado.
+        $csrfExcept = ['webhooks/*', 'email/u/*'];
         if (filter_var(env('APP_DEBUG', false), FILTER_VALIDATE_BOOLEAN)) {
             $csrfExcept[] = 'dev/simulate/*';
         }

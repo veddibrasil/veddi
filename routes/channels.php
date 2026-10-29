@@ -37,3 +37,8 @@ Broadcast::channel('order.{orderId}', function ($user, $orderId) {
 
     return $order && $user->companies()->where('companies.id', $order->company_id)->exists();
 });
+
+// Progresso das campanhas de e-mail marketing (telas /superadmin/marketing).
+Broadcast::channel('superadmin.marketing', function ($user) {
+    return (bool) $user?->isSuperAdmin();
+});

@@ -16,7 +16,8 @@ Tambem ha integracoes de pagamento e webhook:
 - Asaas para onboarding, taxa de ativacao e cobrancas recorrentes;
 - Vindi para PIX e parte do fluxo financeiro;
 - carteira (historico e saldo interno por empresa) e conciliacao; saque e antecipacao sao feitos no portal Vindi. O split do pagamento e calculado uma vez em `PaymentSplitCalculator`, gravado no `Payment` (`platform_fee`, `company_net_amount`) e reusado pela carteira e pelas transacoes;
-- WhatsApp Cloud API (Meta) para avisar o cliente a cada etapa do pedido, com numero proprio de cada empresa (detalhes na secao "Notificacoes por WhatsApp").
+- WhatsApp Cloud API (Meta) para avisar o cliente a cada etapa do pedido, com numero proprio de cada empresa (detalhes na secao "Notificacoes por WhatsApp");
+- e-mail marketing da plataforma para os usuarios das empresas, com provedor atras de Contract (detalhes na secao "E-mail marketing").
 
 ## Stack principal
 
@@ -41,6 +42,8 @@ Tambem ha integracoes de pagamento e webhook:
 - `POST /webhooks/vindi`: eventos financeiros do Vindi
 - `POST /webhooks/fiscal`: eventos de nota fiscal
 - `GET|POST /webhooks/whatsapp`: verificacao do endpoint e eventos da WhatsApp Cloud API (assinatura `X-Hub-Signature-256`)
+- `POST /webhooks/email`: eventos do provedor de e-mail marketing (Resend, assinatura Svix)
+- `GET|POST /email/u/{recipient}`, `GET /email/o/{recipient}`, `GET /email/c/{recipient}`: descadastro (One-Click), pixel e redirect de clique do e-mail marketing, todos com URL assinada
 
 ### Painel administrativo da empresa
 
@@ -75,6 +78,7 @@ Principais modulos:
 - taxas/cartoes
 - simulacao de pagamento
 - conexoes de WhatsApp de todas as empresas (`/superadmin/whatsapp`)
+- e-mail marketing: campanhas, templates, segmentos, automacoes e supressoes (`/superadmin/marketing`)
 
 ## Estrutura do codigo
 
@@ -208,9 +212,31 @@ Comandos e operacao:
 - `php artisan whatsapp:send-test {telefone} [--company=]`: envia um template de teste (ignora opt-in);
 - `php artisan whatsapp:sync-templates [--company=] [--platform] [--pending]`: recria/sincroniza templates e atualiza qualidade/limite (`--platform` inscreve o app e cria os templates na WABA do numero da plataforma; `--pending` so conexoes aguardando templates, agendado a cada 30 min para recuperar webhook perdido);
 - `php artisan whatsapp:check-connections`: monitoramento diario (agendado as 09:00 em `routes/console.php`; antes atualiza qualidade/limite dos numeros ativos na Graph API); avisa os `company_admin` por sino do painel e e-mail quando a coexistencia fica sem uso do app por 12+ dias, a conexao entra em erro ou a qualidade do numero fica vermelha;
-- localmente `composer dev` e o Horizon (ambiente `local`) consomem `critical,default,whatsapp,low`; em producao os workers estao no `cloud.yaml`.
+- localmente `composer dev` e o Horizon (ambiente `local`) consomem `critical,default,whatsapp,low,marketing`; em producao os workers estao no `cloud.yaml`.
 
 Pendencia conhecida: o evento `awaiting_payment` (codigo PIX por WhatsApp) ainda nao tem template nem gatilho; o toggle aparece desabilitado como "em breve".
+
+### E-mail marketing
+
+Campanhas do super admin para os usuarios das empresas (`company_admin` e `branch_manager`); clientes finais dos restaurantes nunca entram. Guia completo (fluxo, filas, provedor, variaveis de ambiente, entregabilidade): `docs/email-marketing.md`.
+
+Onde esta cada coisa:
+
+- `app/Services/Marketing`: `AudienceResolver` (publico, cruza empresas com Query Builder de proposito), `TemplateRenderer` + `EmailHtmlSanitizer` + `Placeholders` (blocos -> HTML, variaveis), `CampaignService` (ciclo e checklist), `SuppressionService`, `TrackingService`, `CampaignStatsService`, `AutomationService`; modelos prontos em `DefaultEmailTemplates`, `DefaultEmailSegments`, `DefaultEmailCampaigns`, `DefaultEmailAutomations` (instalam por nome, sem sobrescrever) e `SuppressionCleanup` (limpeza da lista); provedores em `Providers/` atras de `EmailMarketingProviderInterface` (`MARKETING_EMAIL_PROVIDER=mail|resend`);
+- `app/Jobs`: `BuildCampaignRecipients`, `DispatchCampaignBatch`, `SendCampaignEmail`, `ProcessEmailProviderWebhook`, `RefreshCampaignStats` (fila `marketing`, worker proprio);
+- `app/Models`: `EmailTemplate`, `EmailSegment`, `EmailCampaign` (`kind=automation` para passos de automacao), `EmailCampaignRecipient`, `EmailEvent`, `EmailSuppression`, `EmailAutomation*`; enums `Email*` em `app/Enums`;
+- telas: `app/Livewire/SuperAdmin/Marketing/*`; config em `config/marketing.php`; mailer `marketing` em `config/mail.php`.
+
+Regras que nao podem quebrar:
+
+- conteudo do usuario nunca e compilado como Blade; variaveis so da lista fechada (`TemplateRenderer::VARIABLES`), substituidas com escape;
+- uma mensagem por pessoa por campanha (`unique(campaign_id, email)`, transicoes de status com UPDATE condicional, reserva `queued -> sending`, `Idempotency-Key`, `provider_event_id` unico);
+- supressao (descadastro, bounce permanente, spam) e opt-out conferidos ao montar o publico e de novo antes de cada envio; com `MARKETING_REQUIRE_OPT_IN=true` so recebe quem tem `users.marketing_opt_in_at`;
+- todo e-mail leva link de descadastro assinado e `List-Unsubscribe-Post: List-Unsubscribe=One-Click`; o redirect de clique so aceita links do HTML da campanha;
+- o banco guarda datas no fuso da aplicacao (`America/Sao_Paulo`), nunca converter para UTC antes de gravar;
+- logs do canal `marketing` so levam ids e contagens: nunca e-mail de destinatario, chave ou segredo do provedor.
+
+Comandos: `marketing:dispatch-scheduled` (a cada minuto), `marketing:run-automations` (a cada 15 min) e `marketing:prune-events` (diario), agendados em `routes/console.php`.
 
 ## Boas praticas para contribuir neste projeto
 
