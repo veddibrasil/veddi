@@ -1,7 +1,7 @@
 <div class="space-y-6">
     @include('livewire.super-admin.marketing.partials.header', [
         'title' => 'E-mail marketing',
-        'description' => 'Campanhas para os usuários das empresas: rascunho, teste, disparo e relatório.',
+        'description' => 'Campanhas para empresas cadastradas ou possíveis clientes de listas externas: teste, disparo e relatório.',
         'actionRoute' => 'superadmin.marketing.campaigns.create',
         'actionLabel' => 'Nova campanha',
     ])

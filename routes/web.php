@@ -223,6 +223,8 @@ Route::middleware(['auth', 'verified', 'super.admin'])
             Route::get('/templates/create', \App\Livewire\SuperAdmin\Marketing\Templates\Form::class)->name('templates.create');
             Route::get('/templates/{template}/edit', \App\Livewire\SuperAdmin\Marketing\Templates\Form::class)->name('templates.edit');
             Route::get('/segments', \App\Livewire\SuperAdmin\Marketing\Segments\Index::class)->name('segments.index');
+            Route::get('/contacts', \App\Livewire\SuperAdmin\Marketing\Contacts\Index::class)->name('contacts.index');
+            Route::get('/contacts/{list}', \App\Livewire\SuperAdmin\Marketing\Contacts\Show::class)->name('contacts.show');
             Route::get('/automations', \App\Livewire\SuperAdmin\Marketing\Automations\Index::class)->name('automations.index');
             Route::get('/automations/create', \App\Livewire\SuperAdmin\Marketing\Automations\Form::class)->name('automations.create');
             Route::get('/automations/{automation}/edit', \App\Livewire\SuperAdmin\Marketing\Automations\Form::class)->name('automations.edit');

@@ -15,16 +15,51 @@ use Illuminate\Support\Facades\DB;
  * Consulta direta em company_user/companies/users (Query Builder): o módulo é da plataforma e
  * cruza empresas de propósito, então o CompanyScope não se aplica. Clientes finais dos
  * restaurantes (customers) nunca entram: os dados são de cada empresa.
+ *
+ * Listas de contatos podem somar os donos das empresas. Quem já tem conta só entra pelo público
+ * de usuários, com as preferências atuais de consentimento; nunca pela cópia importada.
  */
 class AudienceResolver
 {
     public function query(AudienceFilterData $filters, ?CarbonInterface $companyCreatedBefore = null): Builder
     {
+        if ($filters->isContacts()) {
+            if ($filters->includeOwners) {
+                $contacts = $this->contactsQuery($filters)->select([
+                    DB::raw('NULL as user_id'),
+                    'email_contacts.name as user_name',
+                    'email_contacts.email as email',
+                    DB::raw('NULL as company_id'),
+                    'email_contacts.company_name as company_name',
+                    DB::raw('NULL as plan'),
+                    'email_contacts.id as contact_id',
+                ]);
+                $owners = $this->usersQuery($filters, $companyCreatedBefore, ['company_admin'])->select([
+                    'users.id as user_id',
+                    'users.name as user_name',
+                    DB::raw('LOWER(TRIM(users.email)) as email'),
+                    'companies.id as company_id',
+                    'companies.name as company_name',
+                    'companies.plan as plan',
+                    DB::raw('NULL as contact_id'),
+                ]);
+
+                return DB::query()->fromSub($contacts->unionAll($owners), 'audience');
+            }
+
+            return $this->contactsQuery($filters);
+        }
+
+        return $this->usersQuery($filters, $companyCreatedBefore);
+    }
+
+    private function usersQuery(AudienceFilterData $filters, ?CarbonInterface $companyCreatedBefore = null, ?array $roles = null): Builder
+    {
         return DB::table('company_user')
             ->join('users', 'users.id', '=', 'company_user.user_id')
             ->join('companies', 'companies.id', '=', 'company_user.company_id')
             ->whereNull('users.deleted_at')
-            ->whereIn('company_user.role', $filters->effectiveRoles())
+            ->whereIn('company_user.role', $roles ?? $filters->effectiveRoles())
             ->when($filters->plans !== [], fn (Builder $query) => $query->whereIn('companies.plan', $filters->plans))
             ->when($filters->companyStatuses !== [], fn (Builder $query) => $query->whereIn('companies.status', $filters->companyStatuses))
             ->when($filters->companyActive !== null, fn (Builder $query) => $query->where('companies.active', $filters->companyActive))
@@ -47,16 +82,21 @@ class AudienceResolver
                 ->whereRaw('email_suppressions.email = LOWER(TRIM(users.email))'));
     }
 
-    /** Pessoas únicas (o mesmo e-mail em duas empresas conta uma vez). */
+    /** Pessoas únicas (o mesmo e-mail em duas empresas, ou em duas listas, conta uma vez). */
     public function count(AudienceFilterData $filters): int
     {
-        return (int) $this->query($filters)->selectRaw('COUNT(DISTINCT LOWER(TRIM(users.email))) as total')->value('total');
+        // Contato já é gravado normalizado na importação.
+        $email = $filters->isContacts()
+            ? ($filters->includeOwners ? 'audience.email' : 'email_contacts.email')
+            : 'LOWER(TRIM(users.email))';
+
+        return (int) $this->query($filters)->selectRaw("COUNT(DISTINCT {$email}) as total")->value('total');
     }
 
     /** @return Collection<int, object> */
     public function sample(AudienceFilterData $filters, int $limit = 5): Collection
     {
-        return $this->rows($this->query($filters))->limit($limit * 3)->get()->unique('email')->take($limit)->values();
+        return $this->rows($this->query($filters), $filters)->limit($limit * 3)->get()->unique('email')->take($limit)->values();
     }
 
     /**
@@ -67,19 +107,48 @@ class AudienceResolver
      */
     public function chunk(AudienceFilterData $filters, int $size, callable $callback, ?CarbonInterface $companyCreatedBefore = null): void
     {
-        $this->rows($this->query($filters, $companyCreatedBefore))->chunk($size, function (Collection $rows) use ($callback) {
+        $this->rows($this->query($filters, $companyCreatedBefore), $filters)->chunk($size, function (Collection $rows) use ($callback) {
             return $callback($rows->unique(fn (object $row) => SuppressionService::normalize($row->email))->values());
         });
     }
 
-    /** Variáveis congeladas para o destinatário (primeira empresa da pessoa). */
+    /** Variáveis congeladas para o destinatário (primeira empresa da pessoa; contato não tem plano). */
     public static function variablesFor(object $row): array
     {
-        return TemplateRenderer::variablesFor($row->user_name, $row->company_name, $row->plan);
+        return TemplateRenderer::variablesFor($row->user_name, $row->company_name, $row->plan ?? null);
     }
 
-    private function rows(Builder $query): Builder
+    private function contactsQuery(AudienceFilterData $filters): Builder
     {
+        return DB::table('email_contacts')
+            ->whereIn('email_contacts.list_id', $filters->contactLists)
+            // Quem já tem conta não é possível cliente: recebe pelo público de usuários, com o
+            // consentimento e o descadastro de lá.
+            ->whereNotExists(fn (Builder $users) => $users->selectRaw('1')
+                ->from('users')
+                ->whereRaw('LOWER(TRIM(users.email)) = email_contacts.email'))
+            ->whereNotExists(fn (Builder $suppressions) => $suppressions->selectRaw('1')
+                ->from('email_suppressions')
+                ->whereColumn('email_suppressions.email', 'email_contacts.email'));
+    }
+
+    private function rows(Builder $query, AudienceFilterData $filters): Builder
+    {
+        if ($filters->isContacts() && $filters->includeOwners) {
+            return $query->select('audience.*')->orderBy('user_id')->orderBy('company_id')->orderBy('contact_id');
+        }
+
+        if ($filters->isContacts()) {
+            return $query
+                ->select([
+                    'email_contacts.id as contact_id',
+                    'email_contacts.name as user_name',
+                    'email_contacts.email as email',
+                    'email_contacts.company_name as company_name',
+                ])
+                ->orderBy('email_contacts.id');
+        }
+
         return $query
             ->select([
                 'users.id as user_id',

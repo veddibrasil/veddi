@@ -3,11 +3,14 @@
 namespace App\DTOs;
 
 use App\Enums\Plan;
+use App\Models\EmailContactList;
 use Illuminate\Support\Carbon;
 
 /**
  * Filtros de público do e-mail marketing (segmento salvo ou filtros da própria campanha).
- * fromArray é tolerante: valor fora da lista fechada é descartado, nunca vira SQL.
+ * Listas de contatos podem incluir também os donos cadastrados nas empresas. Os filtros de
+ * empresa se aplicam somente aos donos. fromArray é tolerante: valor fora da lista fechada é descartado,
+ * nunca vira SQL.
  */
 readonly class AudienceFilterData
 {
@@ -27,6 +30,7 @@ readonly class AudienceFilterData
      * @param  list<string>  $plans
      * @param  list<string>  $companyStatuses
      * @param  list<string>  $roles
+     * @param  list<int>  $contactLists
      */
     public function __construct(
         public array $plans = [],
@@ -38,6 +42,8 @@ readonly class AudienceFilterData
         public ?bool $pdvEnabled = null,
         public ?bool $fiscalEnabled = null,
         public ?int $inactiveDays = null,
+        public array $contactLists = [],
+        public bool $includeOwners = false,
     ) {}
 
     public static function fromArray(array $data): self
@@ -52,6 +58,8 @@ readonly class AudienceFilterData
             pdvEnabled: self::toBool($data['pdv_enabled'] ?? null),
             fiscalEnabled: self::toBool($data['fiscal_enabled'] ?? null),
             inactiveDays: self::toPositiveInt($data['inactive_days'] ?? null),
+            contactLists: self::toIds($data['contact_lists'] ?? []),
+            includeOwners: self::toBool($data['include_owners'] ?? false) ?? false,
         );
     }
 
@@ -68,7 +76,15 @@ readonly class AudienceFilterData
             'pdv_enabled' => $this->pdvEnabled,
             'fiscal_enabled' => $this->fiscalEnabled,
             'inactive_days' => $this->inactiveDays,
+            'contact_lists' => $this->contactLists,
+            ...($this->isContacts() ? ['include_owners' => $this->includeOwners] : []),
         ];
+    }
+
+    /** Público com contatos externos (listas importadas), opcionalmente junto dos donos. */
+    public function isContacts(): bool
+    {
+        return $this->contactLists !== [];
     }
 
     /** Formato dos campos do formulário Livewire (selects tri-estado usam '', '1' e '0'). */
@@ -120,6 +136,17 @@ readonly class AudienceFilterData
     /** @return list<string> Resumo legível dos filtros, para listas e revisão. */
     public function describe(): array
     {
+        if ($this->isContacts()) {
+            $names = EmailContactList::whereIn('id', $this->contactLists)->orderBy('name')->pluck('name');
+
+            $parts = ['Contatos externos: '.($names->isEmpty() ? 'lista removida' : $names->implode(', '))];
+            if ($this->includeOwners) {
+                $parts[] = 'Também os donos das empresas (administradores), sem e-mails duplicados';
+            }
+
+            return $parts;
+        }
+
         $parts = [];
 
         if ($this->plans !== []) {
@@ -161,6 +188,19 @@ readonly class AudienceFilterData
         return array_values(array_unique(array_filter(
             array_map('strval', array_filter($values, 'is_scalar')),
             fn (string $value) => in_array($value, $allowed, true),
+        )));
+    }
+
+    /** @return list<int> */
+    private static function toIds(mixed $values): array
+    {
+        if (! is_array($values)) {
+            return [];
+        }
+
+        return array_values(array_unique(array_filter(
+            array_map('intval', array_filter($values, 'is_numeric')),
+            fn (int $id) => $id > 0,
         )));
     }
 

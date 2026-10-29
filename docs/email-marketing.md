@@ -2,6 +2,12 @@
 
 O super admin cria, segmenta, testa, agenda e dispara campanhas de e-mail para os **usuários das empresas** (`company_admin` e `branch_manager`), com métricas de entrega, abertura, clique e descadastro. Clientes finais dos restaurantes (`customers`) nunca entram: os dados são de cada empresa. Este documento é interno.
 
+Em **Contatos externos**, crie uma lista e importe um CSV (e-mail, nome e empresa, separados por vírgula, ponto e vírgula ou tab) ou cole os contatos, um por linha. Só o e-mail é obrigatório. O botão **Criar campanha para esta lista** abre o editor com a lista selecionada, sem incluir usuários cadastrados.
+
+Em **Colar lista de e-mails**, escolha **Só e-mails** para colar endereços separados por linhas, espaços, vírgulas ou ponto e vírgula. Use **Nome e empresa** para linhas de planilha/CSV com dados adicionais. A conferência mostra novos contatos, e-mails já na lista, repetidos e itens para revisão antes de adicionar. A prévia não grava dados; importações com itens ignorados mantêm o texto para correção.
+
+No passo **Público**, a opção **Contatos externos (possíveis clientes)** permite selecionar listas externas. Marque **Incluir também os donos das empresas** para somar os administradores (`company_admin`), se desejar. Campanhas de listas já salvas mantêm a escolha anterior. O total da prévia conta e-mails únicos, e cada endereço recebe uma vez por campanha, mesmo que apareça em várias listas ou empresas. Donos seguem as preferências atuais de consentimento, descadastro e supressão; a cópia de um e-mail importado não contorna essas preferências.
+
 Telas: `/superadmin/marketing` (Campanhas, Templates, Segmentos, Automações, Supressões).
 
 ## Fluxo de uma campanha

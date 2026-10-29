@@ -92,8 +92,9 @@ class CampaignService
         $domain = Str::lower(Str::after((string) ($campaign->from_email ?: config('marketing.from.address')), '@'));
         $verified = collect(config('marketing.verified_domains', []))->map(fn ($item) => Str::lower($item));
         $unknown = $this->renderer->unknownVariables($campaign->subject, $campaign->preheader, $campaign->html, $campaign->ab_subject_b);
+        $audience = $campaign->audienceFilter();
         $pendingEdits = $this->renderer->pendingEdits($campaign->subject, $campaign->preheader, $campaign->html, $campaign->ab_subject_b);
-        $audienceCount ??= $this->audience->count($campaign->audienceFilter());
+        $audienceCount ??= $this->audience->count($audience);
         $legal = config('marketing.legal');
 
         $items = [
@@ -148,6 +149,20 @@ class CampaignService
                 'hint' => 'Envie um teste no passo de revisão (refazer após mudar o conteúdo).',
             ],
         ];
+
+        // Contato externo não tem conta: {{plano}} sairia vazio e {{link_painel}} levaria ao login.
+        if ($audience->isContacts()) {
+            $customerOnly = $this->renderer->customerOnlyVariables($campaign->subject, $campaign->preheader, $campaign->html, $campaign->ab_subject_b);
+
+            $items[] = [
+                'key' => 'contact_variables',
+                'label' => 'Sem variáveis de quem já é cliente',
+                'ok' => $customerOnly === [],
+                'hint' => 'Contato externo não tem plano nem painel. Tire '
+                    .implode(', ', array_map(fn ($name) => '{{'.$name.'}}', $customerOnly))
+                    .' (para o botão, use {{link_cadastro}}).',
+            ];
+        }
 
         if (filled($campaign->ab_subject_b) || $campaign->ab_sample_percent) {
             $items[] = [
@@ -288,6 +303,7 @@ class CampaignService
                 'campaign_id' => $campaign->id,
                 'user_id' => $pair[0]->user_id ?? null,
                 'company_id' => $pair[0]->company_id ?? null,
+                'contact_id' => $pair[0]->contact_id ?? null,
                 'email' => $email,
                 'name' => Str::limit((string) ($pair[0]->user_name ?? ''), 250, '') ?: null,
                 'variables' => json_encode(AudienceResolver::variablesFor($pair[0]), JSON_UNESCAPED_UNICODE),

@@ -95,9 +95,13 @@
                 <div>
                     <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Público</h2>
                     <p class="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-                        Usuários das empresas (dono e gerentes).
+                        @if($audienceMode === 'contacts')
+                            Contatos das listas selecionadas{{ $includeOwners ? ' e donos das empresas cadastradas' : '' }}, sem e-mails duplicados.
+                        @else
+                            Usuários das empresas (dono e gerentes).
+                        @endif
                         @if(config('marketing.require_opt_in'))
-                            Só quem aceitou receber comunicações.
+                            Usuários só entram se aceitaram receber comunicações.
                         @endif
                         Supressões e descadastros já estão descontados.
                     </p>
@@ -108,9 +112,10 @@
                 </div>
             </div>
 
-            <flux:radio.group wire:model.live="audienceMode" variant="segmented" label="Origem do público">
+            <flux:radio.group wire:model.live="audienceMode" label="Origem do público">
                 <flux:radio value="filters" label="Filtros desta campanha" />
                 <flux:radio value="segment" label="Segmento salvo" />
+                <flux:radio value="contacts" label="Contatos externos (possíveis clientes)" />
             </flux:radio.group>
 
             @if($audienceMode === 'segment')
@@ -125,6 +130,22 @@
                     @if($segments->isEmpty())
                         <p class="text-xs text-neutral-400 mt-1">Nenhum segmento ainda. <a href="{{ route('superadmin.marketing.segments.index') }}" class="underline" wire:navigate>Criar segmento</a>.</p>
                     @endif
+                </div>
+            @elseif($audienceMode === 'contacts')
+                <fieldset class="space-y-3">
+                    <legend class="mb-2 text-sm font-medium text-neutral-700 dark:text-neutral-300">Listas de contatos</legend>
+                    @forelse($contactLists as $list)
+                        <flux:checkbox wire:model.live="contactListIds" value="{{ $list->id }}" label="{{ $list->name }} ({{ $list->contacts_count }} contatos)" />
+                    @empty
+                        <p class="text-sm text-neutral-500 dark:text-neutral-400">Nenhuma lista de contatos cadastrada.</p>
+                    @endforelse
+                    @error('contactListIds') <p class="text-red-500 text-xs">{{ $message }}</p> @enderror
+                    @error('contactListIds.*') <p class="text-red-500 text-xs">{{ $message }}</p> @enderror
+                </fieldset>
+                <flux:button :href="route('superadmin.marketing.contacts.index')" wire:navigate icon="user-plus">Cadastrar ou importar contatos</flux:button>
+                <p class="text-xs text-neutral-500 dark:text-neutral-400">Somente os contatos das listas selecionadas recebem. Nome e empresa são opcionais; os contatos não precisam de uma conta na VEDDI.</p>
+                <div class="rounded-lg border border-neutral-200 p-4 dark:border-zinc-700">
+                    <flux:checkbox wire:model.live="includeOwners" label="Incluir também os donos das empresas" description="Soma os administradores cadastrados às listas selecionadas. Cada e-mail recebe uma única vez, respeitando consentimento e descadastro." />
                 </div>
             @else
                 @include('livewire.super-admin.marketing.partials.audience-filters')
