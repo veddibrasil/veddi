@@ -21,6 +21,7 @@ class EmailCampaignRecipient extends Model
         'campaign_id',
         'user_id',
         'company_id',
+        'contact_id',
         'email',
         'name',
         'variables',
@@ -69,6 +70,11 @@ class EmailCampaignRecipient extends Model
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class)->withoutGlobalScopes();
+    }
+
+    public function contact(): BelongsTo
+    {
+        return $this->belongsTo(EmailContact::class, 'contact_id');
     }
 
     public function events(): HasMany

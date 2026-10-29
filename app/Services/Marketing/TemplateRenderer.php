@@ -22,7 +22,14 @@ class TemplateRenderer
         'empresa' => 'Nome da empresa',
         'plano' => 'Plano da empresa',
         'link_painel' => 'Link para entrar no painel',
+        'link_cadastro' => 'Link para criar a conta (possíveis clientes)',
     ];
+
+    // Variáveis que podem ser o link inteiro de um botão, imagem ou <a> (as demais vêm do cadastro).
+    public const LINK_VARIABLES = ['link_painel', 'link_cadastro'];
+
+    // Só fazem sentido para quem já tem conta: contato externo não tem plano nem painel.
+    public const CUSTOMER_ONLY_VARIABLES = ['plano', 'link_painel'];
 
     public const BLOCK_TYPES = [
         'header' => 'Cabeçalho',
@@ -59,7 +66,7 @@ class TemplateRenderer
         return ['key' => Str::random(8), 'type' => $type] + $block;
     }
 
-    /** Mantém só tipos e campos conhecidos; texto sanitizado, URLs só http(s) ou {{link_painel}}. */
+    /** Mantém só tipos e campos conhecidos; texto sanitizado, URLs só http(s) ou variável de link. */
     public function normalizeBlocks(array $blocks): array
     {
         $normalized = [];
@@ -203,6 +210,14 @@ class TemplateRenderer
         return $used->reject(fn (string $name) => array_key_exists($name, self::VARIABLES))->unique()->values()->all();
     }
 
+    /** @return list<string> variáveis usadas que só existem para quem já é cliente */
+    public function customerOnlyVariables(?string ...$texts): array
+    {
+        $used = collect($texts)->filter()->flatMap(fn (string $text) => Placeholders::names($text));
+
+        return $used->intersect(self::CUSTOMER_ONLY_VARIABLES)->unique()->values()->all();
+    }
+
     /** @return list<string> trechos "[EDITAR: ...]" dos modelos padrão que ainda não foram trocados */
     public function pendingEdits(?string ...$texts): array
     {
@@ -223,6 +238,7 @@ class TemplateRenderer
             'empresa' => (string) $companyName,
             'plano' => $planLabel,
             'link_painel' => self::publicUrl(route('login', absolute: false)),
+            'link_cadastro' => self::publicUrl(route('register.create', absolute: false)),
         ];
     }
 

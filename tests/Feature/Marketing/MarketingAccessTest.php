@@ -2,6 +2,7 @@
 
 use App\Models\EmailAutomation;
 use App\Models\EmailCampaign;
+use App\Models\EmailContactList;
 use App\Models\EmailTemplate;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -13,6 +14,7 @@ function marketingRoutes(): array
     $campaign = EmailCampaign::factory()->create();
     $template = EmailTemplate::factory()->create();
     $automation = EmailAutomation::create(['name' => 'Recuperar', 'trigger' => 'abandoned_signup']);
+    $list = EmailContactList::create(['name' => 'Interessados', 'source' => 'Formulário', 'consent_confirmed_at' => now()]);
 
     return [
         route('superadmin.marketing.campaigns.index'),
@@ -24,6 +26,8 @@ function marketingRoutes(): array
         route('superadmin.marketing.templates.create'),
         route('superadmin.marketing.templates.edit', $template),
         route('superadmin.marketing.segments.index'),
+        route('superadmin.marketing.contacts.index'),
+        route('superadmin.marketing.contacts.show', $list),
         route('superadmin.marketing.automations.index'),
         route('superadmin.marketing.automations.create'),
         route('superadmin.marketing.automations.edit', $automation),

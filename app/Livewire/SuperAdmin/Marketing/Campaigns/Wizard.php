@@ -9,6 +9,7 @@ use App\Livewire\SuperAdmin\Marketing\Concerns\EditsAudienceFilters;
 use App\Livewire\SuperAdmin\Marketing\Concerns\EditsEmailBlocks;
 use App\Models\Company;
 use App\Models\EmailCampaign;
+use App\Models\EmailContactList;
 use App\Models\EmailSegment;
 use App\Models\EmailTemplate;
 use App\Services\Marketing\AudienceResolver;
@@ -55,6 +56,10 @@ class Wizard extends Component
     public string $audienceMode = 'filters';
 
     public ?int $segmentId = null;
+
+    public array $contactListIds = [];
+
+    public bool $includeOwners = false;
 
     public bool $abEnabled = false;
 
@@ -103,6 +108,12 @@ class Wizard extends Component
             TemplateRenderer::newBlock('button'),
         ];
         $this->resetFilters();
+
+        if ($listId = request()->integer('lista')) {
+            $list = EmailContactList::findOrFail($listId);
+            $this->audienceMode = 'contacts';
+            $this->contactListIds = [$list->id];
+        }
     }
 
     public function loadTemplate(): void
@@ -285,6 +296,7 @@ class Wizard extends Component
         return view('livewire.super-admin.marketing.campaigns.wizard', [
             'templates' => EmailTemplate::orderBy('name')->get(['id', 'name']),
             'segments' => EmailSegment::orderBy('name')->get(['id', 'name', 'last_count']),
+            'contactLists' => EmailContactList::orderBy('name')->withCount('contacts')->get(),
             'campaign' => $this->campaign(),
         ])->layout('layouts.app', ['title' => 'Super Admin — Campanha de e-mail']);
     }
@@ -337,12 +349,18 @@ class Wizard extends Component
     private function saveAudience(): bool
     {
         $rules = [
-            'audienceMode' => ['required', 'in:segment,filters'],
+            'audienceMode' => ['required', 'in:segment,filters,contacts'],
             'abEnabled' => ['boolean'],
         ];
 
         if ($this->audienceMode === 'segment') {
             $rules['segmentId'] = ['required', 'integer', 'exists:email_segments,id'];
+        } elseif ($this->audienceMode === 'contacts') {
+            $rules += [
+                'contactListIds' => ['required', 'array', 'min:1'],
+                'contactListIds.*' => ['required', 'integer', 'distinct', 'exists:email_contact_lists,id'],
+                'includeOwners' => ['boolean'],
+            ];
         } else {
             $rules += AudienceFilterData::rules('filters');
         }
@@ -361,7 +379,7 @@ class Wizard extends Component
 
         return $this->persist([
             'segment_id' => $this->audienceMode === 'segment' ? $this->segmentId : null,
-            'filters' => $this->audienceMode === 'filters' ? $this->filterData()->toArray() : null,
+            'filters' => $this->audienceMode !== 'segment' ? $this->currentAudience()->toArray() : null,
             'ab_subject_b' => $this->abEnabled ? $this->abSubjectB : null,
             'ab_sample_percent' => $this->abEnabled ? $this->abSamplePercent : null,
             'ab_wait_hours' => $this->abEnabled ? $this->abWaitHours : null,
@@ -400,6 +418,16 @@ class Wizard extends Component
             return $this->segmentId ? EmailSegment::find($this->segmentId)?->filterData() : null;
         }
 
+        if ($this->audienceMode === 'contacts') {
+            // Sem lista, não cair no público padrão de todos os usuários.
+            $filters = AudienceFilterData::fromArray([
+                'contact_lists' => $this->contactListIds,
+                'include_owners' => $this->includeOwners,
+            ]);
+
+            return $filters->isContacts() ? $filters : null;
+        }
+
         return $this->filterData();
     }
 
@@ -430,7 +458,10 @@ class Wizard extends Component
         $this->replyTo = (string) $campaign->reply_to;
         $this->templateId = $campaign->template_id;
         $this->blocks = $campaign->blocks ?? [];
-        $this->audienceMode = $campaign->segment_id ? 'segment' : 'filters';
+        $audience = AudienceFilterData::fromArray($campaign->filters ?? []);
+        $this->audienceMode = $campaign->segment_id ? 'segment' : ($audience->isContacts() ? 'contacts' : 'filters');
+        $this->contactListIds = $audience->contactLists;
+        $this->includeOwners = $audience->includeOwners;
         $this->segmentId = $campaign->segment_id;
         $this->resetFilters(AudienceFilterData::fromArray($campaign->filters ?? []));
         $this->abEnabled = filled($campaign->ab_subject_b);

@@ -1,6 +1,7 @@
 @php
     $links = [
         ['route' => 'superadmin.marketing.campaigns.index', 'match' => 'superadmin.marketing.campaigns.*', 'label' => 'Campanhas'],
+        ['route' => 'superadmin.marketing.contacts.index', 'match' => 'superadmin.marketing.contacts.*', 'label' => 'Contatos externos'],
         ['route' => 'superadmin.marketing.templates.index', 'match' => 'superadmin.marketing.templates.*', 'label' => 'Templates'],
         ['route' => 'superadmin.marketing.segments.index', 'match' => 'superadmin.marketing.segments.*', 'label' => 'Segmentos'],
         ['route' => 'superadmin.marketing.automations.index', 'match' => 'superadmin.marketing.automations.*', 'label' => 'Automações'],

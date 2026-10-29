@@ -82,7 +82,7 @@ class EmailHtmlSanitizer
         return Placeholders::restore($clean);
     }
 
-    /** URL de botão/imagem: só http(s) absoluto ou a variável {{link_painel}}. */
+    /** URL de botão/imagem: só http(s) absoluto ou uma variável de link ({{link_painel}}, {{link_cadastro}}). */
     public static function safeUrl(?string $url): ?string
     {
         $url = trim((string) $url);
@@ -91,8 +91,8 @@ class EmailHtmlSanitizer
             return null;
         }
 
-        if (preg_match('/^\{\{\s*link_painel\s*\}\}$/', $url)) {
-            return '{{link_painel}}';
+        if (preg_match('/^\{\{\s*([a-z_]+)\s*\}\}$/', $url, $match) && in_array($match[1], TemplateRenderer::LINK_VARIABLES, true)) {
+            return '{{'.$match[1].'}}';
         }
 
         $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
@@ -160,9 +160,9 @@ class EmailHtmlSanitizer
     {
         $url = trim($url);
 
-        // Variável como link inteiro só a do painel: {{empresa}} etc. vêm do cadastro do restaurante.
+        // Variável como link inteiro só as de link: {{empresa}} etc. vêm do cadastro do restaurante.
         if (Placeholders::isProtected($url)) {
-            return $url === Placeholders::protect('{{link_painel}}');
+            return collect(TemplateRenderer::LINK_VARIABLES)->contains(fn (string $name) => $url === Placeholders::protect('{{'.$name.'}}'));
         }
 
         $scheme = parse_url($url, PHP_URL_SCHEME);
