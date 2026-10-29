@@ -826,3 +826,26 @@ function food99Error(int $errno, string $errmsg = 'erro', string $requestId = 'r
 {
     return ['errno' => $errno, 'errmsg' => $errmsg, 'requestId' => $requestId, 'time' => now()->getTimestamp(), 'data' => null];
 }
+
+/** POST assinado no callback da 99Food (corpo bruto + didi-header-sign). */
+function postFood99Webhook(\Illuminate\Foundation\Testing\TestCase $test, array|string $payload, ?string $signature = null): \Illuminate\Testing\TestResponse
+{
+    $raw = is_string($payload) ? $payload : json_encode($payload, JSON_UNESCAPED_UNICODE);
+
+    return $test->call('POST', '/webhooks/99food', [], [], [], [
+        'CONTENT_TYPE' => 'application/json',
+        'HTTP_DIDI_HEADER_SIGN' => $signature ?? md5($raw.config('food99.app_secret')),
+    ], $raw);
+}
+
+/** Envelope de callback da 99Food pra uma integração. */
+function food99Callback(?\App\Models\Food99Integration $integration, string $type, array $data, array $overrides = []): array
+{
+    return array_merge([
+        'app_id' => FOOD99_TEST_APP_ID,
+        'app_shop_id' => $integration?->app_shop_id,
+        'type' => $type,
+        'timestamp' => now()->getTimestamp(),
+        'data' => $data,
+    ], $overrides);
+}

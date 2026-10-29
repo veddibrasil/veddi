@@ -5,6 +5,7 @@ use App\Http\Controllers\AsaasSimulatePaymentController;
 use App\Http\Controllers\AsaasWebhookController;
 use App\Http\Controllers\EmailProviderWebhookController;
 use App\Http\Controllers\FiscalWebhookController;
+use App\Http\Controllers\Food99WebhookController;
 use App\Http\Controllers\IfoodWebhookController;
 use App\Http\Controllers\MarketingTrackingController;
 use App\Http\Controllers\MarketingUnsubscribeController;
@@ -57,6 +58,12 @@ Route::post('/webhooks/fiscal', FiscalWebhookController::class)
 Route::post('/webhooks/ifood', IfoodWebhookController::class)
     ->middleware('throttle:120,1')
     ->name('webhook.ifood');
+
+// --- Webhook 99Food (sem auth, sem CSRF — coberto por webhooks/* em bootstrap/app.php) ---
+// Hub único: todos os callbacks de todas as lojas chegam dos servidores da 99, daí o limite maior.
+Route::post('/webhooks/99food', Food99WebhookController::class)
+    ->middleware('throttle:600,1')
+    ->name('webhook.99food');
 
 // --- Webhook WhatsApp Cloud API (sem auth, sem CSRF — coberto por webhooks/* em bootstrap/app.php) ---
 // GET = verificação do endpoint pela Meta; POST = eventos de todas as WABAs (assinatura X-Hub-Signature-256).
