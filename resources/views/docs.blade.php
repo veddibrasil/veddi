@@ -9,6 +9,19 @@
             }
             return null;
         };
+
+        // Números dos planos vêm de config/plans.php, a mesma fonte da cobrança e do painel.
+        $free = \App\Enums\Plan::Free;
+        $essencial = \App\Enums\Plan::Essencial;
+        $pro = \App\Enums\Plan::Pro;
+        $freeLimit = $free->maxOrdersPerMonth();
+        $overLimitFee = (float) config('plans.free.fee_percentage_over_limit', 0.03);
+        $money = fn (float $value): string => 'R$ '.number_format($value, 2, ',', '.');
+        $percent = fn (float $rate): string => str_replace('.', ',', rtrim(rtrim(number_format($rate * 100, 2, '.', ''), '0'), '.')).'%';
+        $branchesLabel = fn (\App\Enums\Plan $plan): string => $plan->maxBranches() === 1 ? '1 filial' : 'Até '.$plan->maxBranches().' filiais';
+        $feeLabel = fn (\App\Enums\Plan $plan): string => $plan->feePercentage() > 0
+            ? 'Taxa da plataforma de <strong>'.$percent($plan->feePercentage()).'</strong> por pedido'
+            : '<strong>Zero taxa</strong> da plataforma por pedido';
     @endphp
 
 {{-- Header --}}
@@ -182,13 +195,13 @@
                     <div class="flex gap-3 items-start">
                         <span class="step-num">4</span>
                         <div>
-                            <p class="font-semibold text-sm text-zinc-700">Planos pagos: aguarde o pagamento da taxa de adesão</p>
-                            <p class="text-sm text-zinc-500 mt-0.5">Uma taxa de adesão única é cobrada via PIX. A tela exibe o QR Code e o código copia e cola. O sistema monitora o pagamento automaticamente e libera o acesso assim que confirmado — sem você precisar fazer nada.</p>
+                            <p class="font-semibold text-sm text-zinc-700">Planos pagos: pagamento no cartão</p>
+                            <p class="text-sm text-zinc-500 mt-0.5">Ao escolher Essencial ou PRO, a tela de pagamento abre logo depois do cadastro: taxa de ativação + 1º mês ({{ $money($essencial->setupFee() + $essencial->monthlyPrice()) }} no Essencial, {{ $money($pro->setupFee() + $pro->monthlyPrice()) }} no PRO), no cartão de crédito. Com o pagamento aprovado, a empresa é ativada na hora.</p>
                         </div>
                     </div>
                 </div>
                 <div class="mt-4 info-box-amber">
-                    <p class="text-xs text-amber-700"><strong>Atenção:</strong> A taxa de adesão é cobrada uma única vez ao se cadastrar em plano pago. Downgrades para o plano Grátis não recebem reembolso dessa taxa.</p>
+                    <p class="text-xs text-amber-700"><strong>Atenção:</strong> A taxa de ativação é cobrada uma única vez. Downgrades para o plano Grátis não recebem reembolso dessa taxa. Se o pagamento não for concluído, a empresa fica com o status <strong>Pagamento pendente</strong>: fale com a equipe Veddi para concluir a ativação.</p>
                 </div>
 
                     <div class="doc-media">
@@ -227,35 +240,31 @@
                     <div class="info-box">
                         <p class="sub-title">Grátis</p>
                         <ul class="list">
-                            <li>Até <strong>50 pedidos por mês</strong></li>
-                            <li>Apenas <strong>1 filial</strong></li>
-                            <li>Taxa por pedido (percentual sobre as vendas)</li>
-                            <li>Sem mensalidade</li>
+                            <li>Até <strong>{{ $freeLimit }} pedidos por mês</strong> na taxa normal</li>
+                            <li>{!! $feeLabel($free) !!} ({{ $percent($overLimitFee) }} depois do limite)</li>
+                            <li><strong>{{ $branchesLabel($free) }}</strong></li>
+                            <li>Sem mensalidade e sem taxa de ativação</li>
                             <li>Sem personalização de cores e logo</li>
-                            <li>Sem entrega por distância</li>
                         </ul>
                     </div>
                     <div class="info-box border-purple-200 bg-purple-50">
                         <p class="sub-title text-purple-800">Essencial</p>
                         <ul class="list">
                             <li>Pedidos <strong>ilimitados</strong></li>
-                            <li>Até <strong>2 filiais</strong></li>
-                            <li>Taxa por pedido (menor que o Grátis)</li>
-                            <li>Mensalidade recorrente</li>
-                            <li>Personalização completa de marca</li>
-                            <li>Antecipação de recebíveis disponível</li>
+                            <li>{!! $feeLabel($essencial) !!}</li>
+                            <li><strong>{{ $branchesLabel($essencial) }}</strong></li>
+                            <li>Mensalidade de <strong>{{ $money($essencial->monthlyPrice()) }}</strong></li>
+                            <li>Personalização de marca: cores, logo e destaques do chat</li>
                         </ul>
                     </div>
                     <div class="info-box border-yellow-200 bg-yellow-50">
                         <p class="sub-title text-yellow-800">PRO</p>
                         <ul class="list">
                             <li>Pedidos <strong>ilimitados</strong></li>
-                            <li>Filiais <strong>ilimitadas</strong></li>
-                            <li>Menor taxa por pedido</li>
-                            <li>Mensalidade recorrente</li>
-                            <li>Personalização completa de marca</li>
-                            <li>Entrega por distância (km) habilitada</li>
-                            <li>Antecipação de recebíveis disponível</li>
+                            <li>{!! $feeLabel($pro) !!}</li>
+                            <li><strong>{{ $branchesLabel($pro) }}</strong></li>
+                            <li>Mensalidade de <strong>{{ $money($pro->monthlyPrice()) }}</strong></li>
+                            <li>Personalização de marca: cores, logo e destaques do chat</li>
                         </ul>
                     </div>
                 </div>
@@ -268,11 +277,11 @@
                             </tr>
                         </thead>
                         <tbody class="text-zinc-600 divide-y divide-zinc-100">
-                            <tr><td class="py-2 pr-4 font-medium text-zinc-700">Mensalidade</td><td class="py-2">Valor fixo pago todo mês para usar o sistema. Cobrado automaticamente via Asaas.</td></tr>
-                            <tr><td class="py-2 pr-4 font-medium text-zinc-700">Taxa por pedido</td><td class="py-2">Percentual descontado de cada venda. Calculado sobre o subtotal dos produtos (não inclui frete).</td></tr>
-                            <tr><td class="py-2 pr-4 font-medium text-zinc-700">Taxa de adesão</td><td class="py-2">Cobrada uma única vez ao migrar do Grátis para um plano pago.</td></tr>
-                            <tr><td class="py-2 pr-4 font-medium text-zinc-700">Limite de pedidos</td><td class="py-2">No plano Grátis, ao atingir 50 pedidos no mês, o sistema envia um alerta. Novos pedidos ainda entram, mas você receberá notificações para fazer upgrade.</td></tr>
-                            <tr><td class="py-2 pr-4 font-medium text-zinc-700">Limite de filiais</td><td class="py-2">Número máximo de unidades que você pode cadastrar. Ao tentar criar além do limite, o botão de criar fica desabilitado.</td></tr>
+                            <tr><td class="py-2 pr-4 font-medium text-zinc-700">Mensalidade</td><td class="py-2">Valor fixo dos planos pagos, cobrado todo mês no cartão de crédito via Asaas.</td></tr>
+                            <tr><td class="py-2 pr-4 font-medium text-zinc-700">Taxa por pedido</td><td class="py-2">Percentual da plataforma sobre cada pedido, sem contar a taxa de entrega. Nos pagamentos online, já sai descontado no repasse (veja <a href="#carteira" class="text-purple-700 underline">Carteira</a>).</td></tr>
+                            <tr><td class="py-2 pr-4 font-medium text-zinc-700">Taxa de ativação</td><td class="py-2">Valor único de {{ $money($essencial->setupFee()) }} dos planos pagos, cobrado junto com o 1º mês: no cadastro ou no upgrade a partir do Grátis. A troca entre planos pagos não cobra de novo.</td></tr>
+                            <tr><td class="py-2 pr-4 font-medium text-zinc-700">Limite de pedidos</td><td class="py-2">No plano Grátis, depois de {{ $freeLimit }} pedidos confirmados no mês os pedidos continuam entrando, mas a taxa da plataforma passa de {{ $percent($free->feePercentage()) }} para {{ $percent($overLimitFee) }} e o painel avisa uma vez no mês, sugerindo o upgrade.</td></tr>
+                            <tr><td class="py-2 pr-4 font-medium text-zinc-700">Limite de filiais</td><td class="py-2">Número máximo de unidades do plano. Ao atingir o limite, a tela de Filiais mostra o aviso com o link para ver os planos.</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -420,7 +429,7 @@
                         <ul class="list">
                             <li>Painel inicial com resumo do dia: total de pedidos, receita e saldo disponível na carteira</li>
                             <li>Quantos pedidos estão pendentes neste momento</li>
-                            <li>Empresas no plano Grátis visualizam quanto do limite mensal de 50 pedidos já foi utilizado</li>
+                            <li>Empresas no plano Grátis visualizam quanto do limite mensal de {{ $freeLimit }} pedidos já foi utilizado</li>
                             <li>Os números são atualizados automaticamente — sem precisar recarregar a página</li>
                             <li>Gerentes de unidade visualizam apenas os dados da sua filial</li>
                         </ul>
@@ -707,7 +716,7 @@
                                 <li>Horário de funcionamento: hora de abertura e fechamento</li>
                                 <li>Ative ou pause uma filial sem precisar excluí-la</li>
                                 <li>Ao criar uma filial, copie os produtos e categorias de outra filial da empresa — o estoque não é copiado e começa zerado</li>
-                                <li>O número máximo de filiais depende do plano (Grátis: 1, Essencial: 2, PRO: ilimitadas)</li>
+                                <li>O número máximo de filiais depende do plano (Grátis: {{ $free->maxBranches() }}, Essencial: {{ $essencial->maxBranches() }}, PRO: até {{ $pro->maxBranches() }})</li>
                                 <li>A empresa precisa ter ao menos 1 filial ativa — a exclusão da última é bloqueada</li>
                             </ul>
                         </div>
@@ -718,9 +727,9 @@
                     </div>
 
                     <div class="info-box">
-                        <p class="sub-title">Configurações de entrega <span class="badge bg-yellow-100 text-yellow-700 ml-1">PRO</span> <span class="font-mono text-purple-700 text-xs font-normal">/admin/branches/{id}/delivery</span></p>
-                        <p class="text-sm text-zinc-600 mb-3">Disponível apenas no plano PRO. Defina como a taxa de entrega da filial é calculada:</p>
-                        <div class="grid sm:grid-cols-3 gap-2">
+                        <p class="sub-title">Configurações de entrega <span class="font-mono text-purple-700 text-xs font-normal">/admin/branches/{id}/delivery</span></p>
+                        <p class="text-sm text-zinc-600 mb-3">Disponível em todos os planos. Defina como a taxa de entrega da filial é calculada:</p>
+                        <div class="grid sm:grid-cols-2 gap-2">
                             <div class="bg-white rounded-lg border border-zinc-200 p-3">
                                 <p class="font-semibold text-xs text-zinc-700 mb-1">Taxa fixa</p>
                                 <p class="text-xs text-zinc-500">Um único valor de frete para todos os pedidos, independente da distância ou localização.</p>
@@ -732,6 +741,10 @@
                             <div class="bg-white rounded-lg border border-zinc-200 p-3">
                                 <p class="font-semibold text-xs text-zinc-700 mb-1">Por distância (km)</p>
                                 <p class="text-xs text-zinc-500">Faixas de distância com taxas diferentes. Informe as coordenadas GPS da filial e defina o valor por faixa de km.</p>
+                            </div>
+                            <div class="bg-white rounded-lg border border-zinc-200 p-3">
+                                <p class="font-semibold text-xs text-zinc-700 mb-1">Por área no mapa</p>
+                                <p class="text-xs text-zinc-500">Desenhe no mapa as áreas atendidas e defina o nome e o valor de frete de cada uma.</p>
                             </div>
                         </div>
                         <div class="mt-3 space-y-1">
@@ -1215,7 +1228,7 @@
                             <p class="sub-title">Status da conta</p>
                             <ul class="list">
                                 <li><strong>Ativo:</strong> tudo funcionando normalmente</li>
-                                <li><strong>Pagamento pendente:</strong> aguardando confirmação da taxa de adesão</li>
+                                <li><strong>Pagamento pendente:</strong> aguardando o pagamento da taxa de ativação</li>
                                 <li><strong>Em atraso:</strong> mensalidade não paga — funcionalidades podem ser limitadas</li>
                                 <li><strong>Bloqueado:</strong> conta suspensa por inadimplência</li>
                             </ul>
@@ -1224,8 +1237,8 @@
                     <div class="info-box">
                         <p class="sub-title">Mudar de plano</p>
                         <ul class="list">
-                            <li><strong>Upgrade (Grátis → pago):</strong> cobra a taxa de adesão + primeiro mês pelo cartão. A assinatura recorrente começa no mês seguinte</li>
-                            <li><strong>Troca entre planos pagos:</strong> cancela a assinatura atual e cria uma nova com o novo valor. Sem taxa de adesão adicional</li>
+                            <li><strong>Upgrade (Grátis → pago):</strong> cobra a taxa de ativação + primeiro mês pelo cartão. A assinatura recorrente começa no mês seguinte</li>
+                            <li><strong>Troca entre planos pagos:</strong> cria a assinatura do novo plano, cobra o 1º mês dele na hora pelo cartão e cancela a anterior. Sem nova taxa de ativação</li>
                             <li><strong>Downgrade para Grátis:</strong> cancela a assinatura recorrente. A conta permanece ativa</li>
                         </ul>
                     </div>
@@ -1569,7 +1582,7 @@
                         <div class="info-box">
                             <p class="sub-title">Asaas — cobranças da plataforma</p>
                             <ul class="list">
-                                <li>Cria e cobra a taxa de adesão no cadastro de novas empresas</li>
+                                <li>Cria e cobra a taxa de ativação no cadastro de novas empresas</li>
                                 <li>Gerencia a assinatura mensal de cada empresa</li>
                                 <li>Processa pagamentos de cartão de crédito no checkout transparente</li>
                                 <li>Envia notificações de cobrança e confirmações via webhook</li>
