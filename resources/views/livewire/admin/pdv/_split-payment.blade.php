@@ -31,8 +31,8 @@
                 @if (filled($cashReceivedInput))
                     @php $cashReceivedValue = \App\Support\MoneyInput::toFloat($cashReceivedInput); @endphp
                     @if ($cashReceivedValue >= $this->cartTotalAfterDiscount)
-                        <div class="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 dark:bg-amber-900/20 dark:border-amber-700">
-                            <p class="text-sm text-amber-700 dark:text-amber-300 font-semibold">
+                        <div class="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 dark:bg-amber-400/10 dark:border-amber-400/40">
+                            <p class="text-base text-amber-700 dark:text-amber-300 font-bold">
                                 Troco: R$ {{ number_format($cashReceivedValue - $this->cartTotalAfterDiscount, 2, ',', '.') }}
                             </p>
                         </div>
@@ -99,7 +99,7 @@
                             $partReceived = \App\Support\MoneyInput::toFloat($part['cash_received']);
                         @endphp
                         @if ($partReceived >= $partAmount)
-                            <div class="w-full bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5 dark:bg-amber-900/20 dark:border-amber-700">
+                            <div class="w-full bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5 dark:bg-amber-400/10 dark:border-amber-400/40">
                                 <p class="text-xs text-amber-700 dark:text-amber-300 font-semibold">
                                     Troco: R$ {{ number_format($partReceived - $partAmount, 2, ',', '.') }}
                                 </p>

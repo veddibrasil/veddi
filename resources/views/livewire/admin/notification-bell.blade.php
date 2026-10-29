@@ -93,13 +93,19 @@
                     ])>
                         {{-- Icon --}}
                         @php($isError = in_array($notif->type, ['refund_failed', 'fiscal_note_failed', 'order_failed', 'whatsapp_alert', 'ifood_alert'], true))
+                        @php($isSales = in_array($notif->type, ['sales_alert', 'sales_summary'], true))
                         <div @class([
                             'w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5',
                             'bg-green-100 dark:bg-green-900/40' => $notif->type === 'order',
                             'bg-red-100 dark:bg-red-900/40' => $isError,
-                            'bg-neutral-100 dark:bg-zinc-700/60' => $notif->type !== 'order' && ! $isError,
+                            'bg-amber-100 dark:bg-amber-900/40' => $isSales,
+                            'bg-neutral-100 dark:bg-zinc-700/60' => $notif->type !== 'order' && ! $isError && ! $isSales,
                         ])>
-                            @if($notif->type === 'order')
+                            @if($isSales)
+                                <svg class="w-4 h-4 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18M7 15l4-4 3 3 5-6"/>
+                                </svg>
+                            @elseif($notif->type === 'order')
                                 <svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 11H4L5 9z"/>
                                 </svg>

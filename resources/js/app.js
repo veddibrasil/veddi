@@ -2,6 +2,7 @@ import QRCode from 'qrcode';
 window.QRCode = QRCode;
 
 import './admin/order-show.js';
+import './admin/report-tooltip.js';
 import './admin/pdv-app.js';
 import './admin/orders-kanban.js';
 import './admin/ifood-countdown.js';

@@ -3,6 +3,8 @@
     {{-- ══════════════ CHECKLIST DE CONFIGURAÇÃO INICIAL ══════════════ --}}
     <livewire:admin.setup-checklist />
 
+    <x-admin.sales-suggestions />
+
     {{-- ══════════════ BANNER DE USO MENSAL (somente plano FREE) ══════════════ --}}
     @if($monthlyOrderLimit !== null)
         @php

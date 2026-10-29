@@ -3,53 +3,38 @@
 namespace App\Services\Chat;
 
 use App\Contracts\ChatCodeSender;
+use App\Exceptions\WhatsAppAuthenticationNotReady;
 use App\Models\Company;
-use App\Services\Messaging\MetaGraphClient;
-use App\Services\Messaging\WhatsAppService;
 use RuntimeException;
 
 class WhatsAppCodeSender implements ChatCodeSender
 {
-    public function send(int $companyId, string $phone, #[\SensitiveParameter] string $code): void
+    /** Configuration only: rendering the chat must not contact a provider. */
+    public static function isEnabled(): bool
     {
-        if (! config('chat_security.whatsapp_auth_enabled')) {
+        return config('chat_security.whatsapp_auth_enabled')
+            && (config('chat_security.whatsapp_meta_enabled') || WuzapiCodeSender::isConfigured());
+    }
+
+    public function send(int $companyId, #[\SensitiveParameter] string $phone, #[\SensitiveParameter] string $code, ?string $challengeId = null): void
+    {
+        if (! self::isEnabled()) {
             throw new RuntimeException('Autenticação pelo WhatsApp ainda não habilitada.');
         }
-        $company = Company::findOrFail($companyId);
-        $sender = app(WhatsAppService::class)->resolveSender($company);
-        // Do not add/remove the ninth digit for authentication: verify exactly the submitted phone.
-        if (! $sender || ! preg_match('/^\d{10,11}$/', $phone)) {
-            throw new RuntimeException('Remetente indisponível.');
+        // Authentication must preserve the exact phone and the six-digit code, including zeros.
+        if (! preg_match('/^\d{10,11}$/', $phone) || ! preg_match('/^\d{6}$/', $code)) {
+            throw new RuntimeException('Dados de autenticação inválidos.');
         }
-        $client = app(MetaGraphClient::class);
-        $name = config('chat_security.whatsapp_auth_template');
-        $language = config('chat_security.whatsapp_auth_language');
-        // Validate category and approval remotely; notification templates cannot authenticate.
-        // WABA comes from the active tenant connection, or explicit platform configuration.
-        $wabaId = $sender->connectionId
-            ? \App\Models\WhatsAppConnection::withoutGlobalScopes()->where('company_id', $companyId)->whereKey($sender->connectionId)->value('waba_id')
-            : config('services.whatsapp.platform.waba_id');
-        if (! $wabaId) {
-            throw new RuntimeException('WABA de autenticação não configurada.');
-        }
-        $templates = $client->request('get', $wabaId.'/message_templates', [
-            'name' => $name, 'fields' => 'name,language,status,category,components', 'limit' => 100,
-        ], $sender->accessToken);
-        $approved = collect($templates['data'] ?? [])->first(fn ($t) => ($t['name'] ?? '') === $name
-            && ($t['language'] ?? '') === $language && ($t['status'] ?? '') === 'APPROVED'
-            && ($t['category'] ?? '') === 'AUTHENTICATION');
-        if (! $approved) {
-            throw new RuntimeException('Template de autenticação ainda não aprovado.');
-        }
-        $response = $client->request('post', $sender->phoneNumberId.'/messages', [
-            'messaging_product' => 'whatsapp', 'to' => '55'.$phone, 'type' => 'template',
-            'template' => ['name' => $name, 'language' => ['code' => $language], 'components' => [
-                ['type' => 'body', 'parameters' => [['type' => 'text', 'text' => $code]]],
-                ['type' => 'button', 'sub_type' => 'url', 'index' => '0', 'parameters' => [['type' => 'text', 'text' => $code]]],
-            ]],
-        ], $sender->accessToken, sensitiveResponse: true);
-        if (empty($response['messages'][0]['id'])) {
-            throw new RuntimeException('Envio não confirmado.');
+        Company::findOrFail($companyId);
+
+        try {
+            app(MetaWhatsAppCodeSender::class)->send($companyId, $phone, $code, $challengeId);
+        } catch (WhatsAppAuthenticationNotReady $e) {
+            // Never catch send failures/timeouts here: Meta may already have accepted the code.
+            if (! WuzapiCodeSender::isConfigured()) {
+                throw $e;
+            }
+            app(WuzapiCodeSender::class)->send($companyId, $phone, $code, $challengeId);
         }
     }
 }

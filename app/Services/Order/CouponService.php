@@ -5,6 +5,7 @@ namespace App\Services\Order;
 use App\Exceptions\CouponException;
 use App\Models\Coupon;
 use App\Models\CouponUsage;
+use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Scopes\CompanyScope;
@@ -19,7 +20,7 @@ class CouponService
      *
      * @throws CouponException
      */
-    public function validate(string $code, ?int $customerId, array $cart, float $subtotal): Coupon
+    public function validate(string $code, ?int $customerId, array $cart, float $subtotal, #[\SensitiveParameter] ?string $buyerPhone = null): Coupon
     {
         $normalizedCode = strtoupper(trim($code));
         $companyId = app('current.company')->id;
@@ -47,19 +48,38 @@ class CouponService
             throw new CouponException('Limite de usos deste cupom foi atingido.');
         }
 
-        if ($customerId === null && $coupon->max_uses_per_customer !== null) {
-            throw new CouponException('Confirme seu telefone para usar este benefício pessoal.');
-        }
-
-        if ($customerId !== null && $coupon->hasReachedMaxUsesForCustomer($customerId)) {
-            throw new CouponException('Você já utilizou este cupom o número máximo de vezes.');
-        }
+        $this->assertBuyerCanUse($coupon, $customerId, $buyerPhone);
 
         if ($coupon->type === 'free_product' && ! $coupon->free_product_id) {
             throw new CouponException('Cupom de produto grátis inválido.');
         }
 
         return $coupon;
+    }
+
+    /**
+     * Limite por cliente: visitante é identificado pelo telefone do pedido; cliente cadastrado conta
+     * também os usos feitos como visitante com o mesmo telefone.
+     *
+     * @throws CouponException
+     */
+    private function assertBuyerCanUse(Coupon $coupon, ?int $customerId, #[\SensitiveParameter] ?string $buyerPhone): void
+    {
+        if ($coupon->max_uses_per_customer === null) {
+            return;
+        }
+
+        if ($customerId !== null && ($buyerPhone === null || $buyerPhone === '')) {
+            $buyerPhone = Customer::withoutGlobalScopes()->whereKey($customerId)->value('phone');
+        }
+
+        if ($customerId === null && ! preg_match('/^\d{10,11}$/', preg_replace('/\D/', '', (string) $buyerPhone))) {
+            throw new CouponException('Informe seu telefone para usar este cupom.');
+        }
+
+        if ($coupon->hasReachedMaxUsesForBuyer($customerId, $buyerPhone)) {
+            throw new CouponException('Você já utilizou este cupom o número máximo de vezes.');
+        }
     }
 
     /**
@@ -71,7 +91,7 @@ class CouponService
      *
      * @throws CouponException
      */
-    public function revalidateForOrder(int $couponId, ?int $customerId, float $subtotal, ?string $paymentMethod = null): Coupon
+    public function revalidateForOrder(int $couponId, ?int $customerId, float $subtotal, ?string $paymentMethod = null, #[\SensitiveParameter] ?string $buyerPhone = null): Coupon
     {
         $coupon = Coupon::whereKey($couponId)->lockForUpdate()->first();
 
@@ -96,13 +116,7 @@ class CouponService
             throw new CouponException('Limite de usos deste cupom foi atingido.');
         }
 
-        if ($customerId === null && $coupon->max_uses_per_customer !== null) {
-            throw new CouponException('Confirme seu telefone para usar este benefício pessoal.');
-        }
-
-        if ($customerId !== null && $coupon->hasReachedMaxUsesForCustomer($customerId)) {
-            throw new CouponException('Você já utilizou este cupom o número máximo de vezes.');
-        }
+        $this->assertBuyerCanUse($coupon, $customerId, $buyerPhone);
 
         if ($coupon->type === 'free_product' && ! $coupon->free_product_id) {
             throw new CouponException('Cupom de produto grátis inválido.');

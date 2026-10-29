@@ -77,16 +77,24 @@ function _mapOpenAt(prefix, lat, lng) {
     var s = _mapStates[prefix];
     s.lat = lat;
     s.lng = lng;
-    _mapShow(_mapEl(prefix, 'container'), true);
+    s.autoContinue = false;
+    var container = _mapEl(prefix, 'container');
+    _mapShow(container, true);
+    window.dispatchEvent(new CustomEvent('map-picker-toggle', { detail: { prefix: prefix, open: true } }));
     requestAnimationFrame(function () {
         requestAnimationFrame(function () {
             _mapBuild(prefix, lat, lng);
+            // The map opens below the address fields; bring it into view on small screens.
+            if (container) container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         });
     });
 }
 
+// Opened by the server after geocoding the typed address: confirming the pin finishes the
+// address step, so the customer does not have to press "Confirmar endereço" a second time.
 window.mapPickerOpenAt = function (prefix, lat, lng) {
     _mapOpenAt(prefix, lat, lng);
+    _mapStates[prefix].autoContinue = true;
 };
 
 window.mapPickerSearch = async function (prefix) {
@@ -162,6 +170,7 @@ window.mapPickerUseLocation = function (prefix) {
 window.mapPickerCloseMap = function (prefix) {
     _mapShow(_mapEl(prefix, 'container'), false);
     _mapDestroy(prefix);
+    window.dispatchEvent(new CustomEvent('map-picker-toggle', { detail: { prefix: prefix, open: false } }));
 };
 
 window.mapPickerConfirmLocation = async function (prefix, wire) {
@@ -186,26 +195,31 @@ window.mapPickerConfirmLocation = async function (prefix, wire) {
         var data = await res.json();
         var a = data.address || {};
 
-        var street = a.road || a.pedestrian || a.footway || '';
-        var num    = a.house_number || '';
-        if (street) wire.set('address', street);
-        if (num) wire.set('number', num);
+        // Only fill what the customer left blank: reverse geocoding is approximate and used to
+        // replace a typed house number, CEP or neighbourhood with the nearest building's.
+        var fill = function (prop, value) {
+            if (value && !String(wire.get(prop) || '').trim()) wire.set(prop, value);
+        };
 
-        var bairro = a.suburb || a.neighbourhood || a.city_district || a.quarter || '';
-        if (bairro) wire.set('neighborhood', bairro);
-
-        var cidade = a.city || a.town || a.village || a.municipality || '';
-        if (cidade) wire.set('city', cidade);
+        fill('address', a.road || a.pedestrian || a.footway || '');
+        fill('number', a.house_number || '');
+        fill('neighborhood', a.suburb || a.neighbourhood || a.city_district || a.quarter || '');
+        fill('city', a.city || a.town || a.village || a.municipality || '');
 
         if (a.postcode) {
             var digits = a.postcode.replace(/\D/g, '').slice(0, 8);
-            wire.set('cep', digits.length === 8 ? digits.slice(0,5) + '-' + digits.slice(5) : digits);
+            fill('cep', digits.length === 8 ? digits.slice(0,5) + '-' + digits.slice(5) : digits);
         }
     } catch (e) {
-        _mapSetError(prefix, 'Erro ao buscar o endereço. Arraste o pin e tente novamente.');
+        _mapSetError(prefix, 'Erro ao buscar o endereço. Arraste o pino e tente novamente.');
         _mapSetGeocoding(prefix, false);
         return;
     }
     _mapSetGeocoding(prefix, false);
+    var autoContinue = s.autoContinue;
     window.mapPickerCloseMap(prefix);
+    if (autoContinue) {
+        s.autoContinue = false;
+        wire.call('confirmDeliveryAddress');
+    }
 };

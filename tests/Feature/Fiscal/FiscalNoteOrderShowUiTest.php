@@ -142,7 +142,9 @@ test('nota fiscal autorizada aparece na tela do pedido com link pro DANFE', func
     Livewire::actingAs($admin)
         ->test(Show::class, ['order' => $order])
         ->assertSee('Autorizada')
-        ->assertSee('Baixar DANFE');
+        ->assertSee('Ver DANFE')
+        ->assertSee('Imprimir nota')
+        ->assertSeeHtml('printFiscalNote('.$order->id);
 });
 
 test('empresa sem módulo fiscal não mostra seção de nota fiscal', function () {

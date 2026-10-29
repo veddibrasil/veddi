@@ -133,7 +133,7 @@ test('digitar telefone não altera consentimentos mesmo marcando o checkbox', fu
     $chat->submitPhone();
     expect($customer->fresh()->getAttributes())->toBe($original)
         ->and($chat->customerId)->toBeNull()
-        ->and($chat->step)->toBe('REGISTER_NAME');
+        ->and($chat->step)->toBe('CUSTOMER_OPTIONS');
 })->with([[false, false], [true, false], [true, true]]);
 
 test('preencher compra não cria perfil nem opt-in permanente', function () {

@@ -84,8 +84,12 @@ class Index extends Component
             $this->branchFilter = $fixedBranchId;
         } else {
             $branches = Branch::where('active', true)->get();
+            // ?filial= vem dos atalhos das sugestões de venda; só vale filial ativa do tenant.
+            $requested = filter_var(request()->query('filial'), FILTER_VALIDATE_INT);
             if ($branches->count() === 1) {
                 $this->branchFilter = $branches->first()->id;
+            } elseif ($requested && $branches->contains('id', $requested)) {
+                $this->branchFilter = $requested;
             }
         }
     }

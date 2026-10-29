@@ -18,11 +18,15 @@ class ArchiveFiscalDocuments implements ShouldQueue
             ->whereNull('data->archived_at')->chunkById(100, function ($notes) use ($documents) {
                 foreach ($notes as $note) {
                     try {
-                        if (! $note->xml_url || ! $note->danfe_url) {
+                        // DANFE da NFC-e é página HTML da Focus, não arquivo — só o XML é guardado.
+                        $archivesDanfe = ! $documents->danfeIsHtml($note);
+                        if (! $note->xml_url || ($archivesDanfe && ! $note->danfe_url)) {
                             continue;
                         }
                         $documents->store($note, 'xml');
-                        $documents->store($note, 'danfe');
+                        if ($archivesDanfe) {
+                            $documents->store($note, 'danfe');
+                        }
                         // JSON path update avoids overwriting a concurrent webhook's data.
                         FiscalNote::withoutGlobalScopes()->whereKey($note->id)->update(['data->archived_at' => now()->toIso8601String()]);
                     } catch (\Throwable $e) {

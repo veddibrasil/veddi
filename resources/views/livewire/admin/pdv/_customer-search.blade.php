@@ -13,7 +13,7 @@
     <flux:button wire:click="lookupCustomer" variant="outline" icon="magnifying-glass" size="sm" aria-label="Buscar cliente" />
 </div>
 @if ($customerFound)
-    <p class="text-xs text-green-600 dark:text-green-400">✓ {{ $customerName }}</p>
+    <p class="text-xs font-semibold text-green-700 dark:text-green-400">✓ {{ $customerName }}</p>
 @elseif (!empty($customerResults))
     <div class="border rounded-xl overflow-hidden dark:border-zinc-600 max-h-32 overflow-y-auto">
         @foreach ($customerResults as $result)

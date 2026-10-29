@@ -60,6 +60,12 @@ return [
         'fallback_to_platform' => env('WHATSAPP_FALLBACK_TO_PLATFORM', false),
     ],
 
+    // Existing self-hosted WuzAPI. Session dedicated to chat verification codes.
+    'wuzapi' => [
+        'base_url' => env('WUZAPI_BASE_URL'),
+        'session_token' => env('WUZAPI_SESSION_TOKEN'),
+    ],
+
     // Par de chaves do QZ Tray em base64 (evita problema de newline em env
     // var). Usado como alternativa aos arquivos em storage/app/private/qz/
     // pra ambientes sem acesso a shell (ex.: Laravel Cloud).

@@ -60,7 +60,7 @@
                             href="{{ $this->supportWhatsAppUrl }}"
                             target="_blank"
                             rel="noopener noreferrer"
-                            class="text-white/70 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
+                            class="text-white/70 hover:text-white transition-colors p-3 rounded-lg hover:bg-white/10"
                             title="Falar no WhatsApp"
                         >
                             <svg class="w-5 h-5" viewBox="0 0 32 32" fill="currentColor" aria-hidden="true">
@@ -69,14 +69,24 @@
                         </a>
                     @endif
 
-                    @if ($customerId)
-                        <button wire:click="forgetDevice" class="text-xs text-white p-2">Sair e esquecer este aparelho</button>
+                    {{-- Forget device --}}
+                    @if ($customerId || $hasDeviceData)
+                        <button
+                            wire:click="forgetDevice"
+                            class="text-white/70 hover:text-white transition-colors p-3 rounded-lg hover:bg-white/10"
+                            title="Não sou eu / esquecer este aparelho"
+                            aria-label="Não sou eu / esquecer este aparelho"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                            </svg>
+                        </button>
                     @endif
                     {{-- Order history --}}
                     @if ($customerId && !in_array($step, ['IDENTIFY_PHONE', 'CLOSED', 'EDIT_PROFILE', 'ORDER_HISTORY']))
                         <button
                             wire:click="goToOrderHistory"
-                            class="text-white/70 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
+                            class="text-white/70 hover:text-white transition-colors p-3 rounded-lg hover:bg-white/10"
                             title="Meus pedidos"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -89,7 +99,7 @@
                     @if ($customerId && !in_array($step, ['ORDER_CONFIRMED', 'EDIT_PROFILE']))
                         <button
                             wire:click="openEditProfile"
-                            class="text-white/70 hover:text-white transition-colors p-2.5 rounded-lg hover:bg-white/10"
+                            class="text-white/70 hover:text-white transition-colors p-3 rounded-lg hover:bg-white/10"
                             title="Editar perfil"
                             aria-label="Editar perfil"
                         >
@@ -103,7 +113,7 @@
                     @if (!in_array($step, ['ORDER_CONFIRMED']))
                         <button
                             wire:click="startNewOrder"
-                            class="text-white/70 hover:text-white transition-colors p-2.5 rounded-lg hover:bg-white/10"
+                            class="text-white/70 hover:text-white transition-colors p-3 rounded-lg hover:bg-white/10"
                             title="Recomeçar"
                             aria-label="Recomeçar pedido"
                         >
@@ -147,29 +157,38 @@
             @endif
         </div>
 
-        {{-- Step progress dots --}}
+        {{-- Step progress: 4 etapas com nome, para o cliente saber onde está e quanto falta --}}
         @php
+            $progressStages = ['Escolher', 'Seus dados', $orderType === 'pickup' ? 'Retirada' : 'Entrega', 'Pagamento'];
             $currentIdx = match(true) {
-                $step === 'BRANCH_SELECT'                                            => 0,
-                $step === 'MENU_BROWSE'                                              => 1,
-                $step === 'CART_REVIEW'                                              => 2,
-                in_array($step, ['IDENTIFY_PHONE','CUSTOMER_OPTIONS','VERIFY_PHONE','RECOVER_ORDER',
-                    'REGISTER_NAME','REGISTER_EMAIL','REGISTER_ADDRESS',
-                    'CHECKOUT_COUPON','CHECKOUT_ORDER_TYPE',
-                    'CHECKOUT_DELIVERY_ADDRESS','CHECKOUT_DELIVERY_FEE',
-                    'CHECKOUT_SCHEDULE','CHECKOUT_NOTES','CHECKOUT_CPF',
-                    'CHECKOUT_PAYMENT_METHOD','CHECKOUT_CONFIRM',
-                    'EDIT_PROFILE','ORDER_HISTORY'])                                 => 3,
-                in_array($step, ['PAYMENT_PIX','PAYMENT_CARD_FORM','ORDER_FAILED']) => 4,
-                in_array($step, ['ORDER_CONFIRMED','ORDER_CANCELLED'])               => 5,
-                default                                                              => 0,
+                in_array($step, ['BRANCH_SELECT', 'MENU_BROWSE', 'CART_REVIEW'])                => 0,
+                in_array($step, ['CHECKOUT_ORDER_TYPE', 'IDENTIFY_PHONE', 'CUSTOMER_OPTIONS', 'VERIFY_PHONE',
+                    'RECOVER_ORDER', 'REGISTER_NAME', 'REGISTER_EMAIL', 'REGISTER_ADDRESS',
+                    'CHECKOUT_COUPON', 'EDIT_PROFILE', 'ORDER_HISTORY'])                       => 1,
+                in_array($step, ['CHECKOUT_DELIVERY_ADDRESS', 'CHECKOUT_DELIVERY_FEE',
+                    'CHECKOUT_SCHEDULE', 'CHECKOUT_NOTES'])                                     => 2,
+                in_array($step, ['CHECKOUT_PAYMENT_METHOD', 'CHECKOUT_CPF', 'CHECKOUT_CONFIRM',
+                    'PAYMENT_PIX', 'PAYMENT_CARD_FORM', 'ORDER_FAILED'])                       => 3,
+                in_array($step, ['ORDER_CONFIRMED', 'ORDER_CANCELLED', 'ORDER_TRACKING'])       => 4,
+                default                                                                         => null,
             };
         @endphp
-        <div class="flex items-center justify-center gap-1.5 pb-3 px-4">
-            @for ($i = 0; $i < 5; $i++)
-                <div class="mc-step-dot {{ $i < $currentIdx ? 'done' : ($i === $currentIdx ? 'active' : '') }}"></div>
-            @endfor
-        </div>
+        @if ($currentIdx !== null)
+            <div class="flex flex-col items-center gap-1 pb-2.5 px-4" aria-live="polite">
+                <div class="flex items-center justify-center gap-1.5" aria-hidden="true">
+                    @for ($i = 0; $i < 4; $i++)
+                        <div class="mc-step-dot {{ $i < $currentIdx ? 'done' : ($i === $currentIdx ? 'active' : '') }}"></div>
+                    @endfor
+                </div>
+                <p class="text-xs font-medium text-white">
+                    @if ($currentIdx === 4)
+                        Pedido enviado ✓
+                    @else
+                        Etapa {{ $currentIdx + 1 }} de 4 · {{ $progressStages[$currentIdx] }}
+                    @endif
+                </p>
+            </div>
+        @endif
     </div>
 
     {{-- ══════════════════════════ MESSAGE HISTORY ═══════════════════════════ --}}
@@ -195,7 +214,7 @@
 
                 <div class="max-w-[75%] {{ $msg['from'] === 'bot' ? 'mc-bubble-bot text-gray-800' : 'mc-bubble-user text-white' }} px-3 py-2">
                     <p class="text-sm leading-relaxed whitespace-pre-line">{{ $msg['text'] }}</p>
-                    <span class="block text-[10px] mt-0.5 text-right {{ $msg['from'] === 'bot' ? 'text-gray-400' : 'text-white/60' }}">
+                    <span class="block text-[11px] mt-0.5 text-right {{ $msg['from'] === 'bot' ? 'text-gray-500' : 'text-white/85' }}">
                         {{ $msg['time'] }}
                     </span>
                 </div>
@@ -222,9 +241,21 @@
     <div class="border-t border-gray-100 bg-white px-4 py-3 shrink-0 overflow-y-auto max-h-[60vh] mc-scrollbar">
 
         @if ($trackingLink)
-            <div class="mb-3 space-y-2">
-                <label for="chat-tracking-link" class="block text-xs text-gray-500">Guarde este link para acompanhar o pedido por 7 dias</label>
-                <input id="chat-tracking-link" type="text" readonly value="{{ $trackingLink }}" class="mc-input" x-on:click="$event.target.select()" />
+            <div class="mb-3 space-y-2" x-data="{ copied: false, canShare: !!navigator.share }">
+                <label for="chat-tracking-link" class="block text-sm font-semibold text-gray-700">Link para acompanhar seu pedido</label>
+                <input id="chat-tracking-link" type="text" readonly value="{{ $trackingLink }}" class="mc-input text-xs" x-on:click="$event.target.select()" aria-describedby="chat-tracking-link-hint" />
+                <p id="chat-tracking-link-hint" class="text-xs text-gray-500">Guarde o link: ele mostra o andamento do pedido por 7 dias.</p>
+                <div class="flex gap-2">
+                    <button type="button" class="mc-btn-outline flex-1"
+                        x-on:click="navigator.clipboard?.writeText(@js($trackingLink)).then(() => { copied = true; setTimeout(() => copied = false, 2500) })">
+                        <span x-show="!copied">Copiar link</span>
+                        <span x-show="copied" style="display:none" role="status">Link copiado ✓</span>
+                    </button>
+                    <button type="button" x-show="canShare" style="display:none" class="mc-btn-outline flex-1"
+                        x-on:click="navigator.share({ title: @js('Meu pedido — '.($currentCompany->name ?? config('app.name'))), url: @js($trackingLink) }).catch(() => {})">
+                        Compartilhar
+                    </button>
+                </div>
             </div>
         @endif
 
@@ -240,20 +271,23 @@
             </div>
         @elseif ($step === 'IDENTIFY_PHONE')
             <div wire:key="step-identify-phone" class="space-y-2.5">
-                <p class="text-xs text-center text-gray-500 pb-1">Informe seu telefone para continuar com o pedido</p>
                 <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Telefone com DDD</label>
+                    <label for="chat-phone" class="block text-sm font-semibold text-gray-700 mb-1.5">Telefone com DDD</label>
                     <input
+                        id="chat-phone"
                         wire:model="phone"
                         type="tel"
-                        placeholder="(44) 99999-9999"
+                        placeholder="(11) 99999-9999"
                         class="mc-input"
                         wire:keydown.enter="submitPhone"
                         autocomplete="tel"
                         inputmode="numeric"
+                        aria-describedby="chat-phone-hint"
+                        x-init="$nextTick(() => $el.focus({ preventScroll: true }))"
                         x-on:input="$event.target.value = formatPhone($event.target.value)"
                     />
-                    @error('phone') <p class="text-red-600 text-xs mt-1 flex items-center gap-1"><span>⚠</span> {{ $message }}</p> @enderror
+                    <p id="chat-phone-hint" class="text-xs text-gray-500 mt-1">Usamos só para falar com você sobre este pedido.</p>
+                    @error('phone') <p role="alert" class="text-red-600 text-sm mt-1 flex items-center gap-1"><span aria-hidden="true">⚠</span> {{ $message }}</p> @enderror
                 </div>
                 {{-- Opt-in de notificações por WhatsApp desligado até a integração ser validada em produção.
                 @if ($this->whatsappAvailable)
@@ -265,29 +299,79 @@
                         </span>
                     </label>
                 @endif --}}
-                <button wire:click="submitPhone" class="mc-btn-primary" wire:loading.attr="disabled" wire:target="submitPhone">
-                    <span wire:loading.remove wire:target="submitPhone">Continuar →</span>
-                    <span wire:loading wire:target="submitPhone">Verificando...</span>
-                </button>
+                <div class="flex gap-2">
+                    <button wire:click="backToOrderType" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
+                    <button wire:click="submitPhone" class="mc-btn-primary flex-1" wire:loading.attr="disabled" wire:target="submitPhone">
+                        <span wire:loading.remove wire:target="submitPhone">Continuar →</span>
+                        <span wire:loading wire:target="submitPhone">Verificando...</span>
+                    </button>
+                </div>
             </div>
 
         @elseif ($step === 'CUSTOMER_OPTIONS' || $step === 'VERIFY_PHONE')
             <div wire:key="step-customer-access" class="space-y-3">
                 @if ($step === 'CUSTOMER_OPTIONS')
-                    <p class="text-sm text-gray-600">Como deseja continuar esta compra?</p>
-                    <button wire:click="continueAsGuest" class="mc-btn-primary">Preencher meus dados</button>
-                    {{-- <button wire:click="useSavedData" wire:loading.attr="disabled" class="mc-btn-secondary w-full">Usar meus dados salvos</button>
-                    <p class="text-xs text-gray-500">Enviaremos um código pelo WhatsApp para {{ $phone }}. Você pode comprar sem código escolhendo preencher seus dados.</p> --}}
+                    @if ($hasDeviceData)
+                        {{-- Dados que este navegador digitou numa compra anterior (DeviceProfile) --}}
+                        <p class="text-sm font-semibold text-gray-700">Que bom te ver de novo!</p>
+                        <button wire:click="useDeviceData" wire:loading.attr="disabled" class="mc-btn-primary">
+                            Continuar como {{ $deviceDataName !== '' ? $deviceDataName : 'na última compra' }}
+                        </button>
+                        <p class="text-xs text-gray-500 -mt-1">Usa o nome e o endereço da sua última compra neste aparelho.</p>
+                        <button wire:click="continueAsGuest" class="mc-btn-secondary w-full">Preencher meus dados</button>
+                    @else
+                        <p class="text-sm font-semibold text-gray-700">Agora, seus dados para o pedido.</p>
+                        <button wire:click="continueAsGuest" class="mc-btn-primary">Preencher meus dados</button>
+                    @endif
+                    @if ($this->savedProfileAvailable)
+                        <div class="pt-1 border-t border-gray-100 text-center">
+                            <button wire:click="useSavedData" wire:loading.attr="disabled" class="w-full min-h-11 text-sm font-semibold mc-text-primary rounded-lg hover:bg-gray-50">
+                                Já tenho cadastro: usar meus dados salvos
+                            </button>
+                            <p class="text-xs text-gray-500">
+                                @if (config('chat_security.code_channel') === 'email')
+                                    Enviaremos um código para o e-mail cadastrado.
+                                @else
+                                    Enviaremos um código pelo WhatsApp.
+                                @endif
+                            </p>
+                        </div>
+                    @endif
                 @else
-                    <label for="chat-verification-code" class="block text-sm font-semibold">Código enviado pelo WhatsApp para {{ $phone }}</label>
-                    <input id="chat-verification-code" wire:model="verificationCode" wire:keydown.enter="submitVerificationCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" class="mc-input" />
-                    <label class="flex gap-2 text-sm"><input type="checkbox" wire:model="rememberDevice" /> Lembrar neste aparelho por até 30 dias</label>
-                    <button wire:click="submitVerificationCode" wire:loading.attr="disabled" class="mc-btn-primary">Confirmar código</button>
-                    <button wire:click="requestVerificationCode" wire:loading.attr="disabled" class="mc-btn-outline">Reenviar código</button>
-                    <button wire:click="continueAsGuest" class="mc-btn-secondary w-full">Continuar preenchendo meus dados</button>
+                    <div x-data="{ wait: 60, timer: null, start() { this.wait = 60; clearInterval(this.timer); this.timer = setInterval(() => { if (this.wait > 0) this.wait--; else clearInterval(this.timer) }, 1000) } }"
+                        x-init="start()" class="space-y-3">
+                        <div>
+                            <label for="chat-verification-code" class="block text-sm font-semibold text-gray-700 mb-1.5">Digite o código de 6 números</label>
+                            <input id="chat-verification-code" wire:model="verificationCode" wire:keydown.enter="submitVerificationCode"
+                                type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000"
+                                aria-describedby="chat-verification-hint"
+                                x-init="$nextTick(() => $el.focus({ preventScroll: true }))"
+                                class="mc-input text-center text-xl font-bold tracking-[0.4em]" />
+                            <p id="chat-verification-hint" class="text-xs text-gray-500 mt-1">
+                                @if (config('chat_security.code_channel') === 'email')
+                                    Se houver um e-mail cadastrado para este telefone, enviamos um código. Ele vale por 5 minutos. Não chegou? Olhe também a caixa de spam.
+                                @else
+                                    Código enviado pelo WhatsApp para {{ $phone }}. Vale por 5 minutos.
+                                @endif
+                            </p>
+                            @error('verificationCode') <p role="alert" class="text-sm text-red-600 mt-1">{{ $message }}</p> @enderror
+                        </div>
+                        <label class="flex items-center gap-2.5 text-sm text-gray-700 min-h-11 cursor-pointer">
+                            <input type="checkbox" wire:model="rememberDevice" class="w-5 h-5 rounded border-gray-300 shrink-0" />
+                            Lembrar neste aparelho por até 30 dias
+                        </label>
+                        <button wire:click="submitVerificationCode" wire:loading.attr="disabled" class="mc-btn-primary">Confirmar código</button>
+                        <button wire:click="requestVerificationCode" wire:loading.attr="disabled" class="mc-btn-outline"
+                            x-on:click="start()" :disabled="wait > 0">
+                            Reenviar código<span x-show="wait > 0" x-text="' em ' + wait + 's'"></span>
+                        </button>
+                        <button wire:click="continueAsGuest" class="w-full min-h-11 text-sm font-semibold text-gray-600 rounded-lg hover:bg-gray-50">Continuar preenchendo meus dados</button>
+                    </div>
                 @endif
-                @error('verificationCode') <p role="alert" class="text-sm text-red-600">{{ $message }}</p> @enderror
-                <button wire:click="backToIdentifyPhone" class="mc-btn-outline">Alterar telefone</button>
+                @if ($step === 'CUSTOMER_OPTIONS')
+                    @error('verificationCode') <p role="alert" class="text-sm text-red-600">{{ $message }}</p> @enderror
+                @endif
+                <button wire:click="backToIdentifyPhone" class="w-full min-h-11 text-sm text-gray-600 rounded-lg hover:bg-gray-50">← Alterar telefone</button>
             </div>
 
         {{-- ── RECOVER_ORDER ── --}}
@@ -376,10 +460,11 @@
         @elseif ($step === 'REGISTER_NAME')
             <div wire:key="step-register-name" class="space-y-2.5">
                 <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Seu nome completo</label>
-                    <input wire:model="name" type="text" placeholder="Ex: João Silva" class="mc-input"
-                        wire:keydown.enter="submitName" autocomplete="name" />
-                    @error('name') <p class="text-red-600 text-xs mt-1 flex items-center gap-1"><span>⚠</span> {{ $message }}</p> @enderror
+                    <label for="chat-name" class="block text-sm font-semibold text-gray-700 mb-1.5">Seu nome completo</label>
+                    <input id="chat-name" wire:model="name" type="text" placeholder="Ex: João Silva" class="mc-input"
+                        wire:keydown.enter="submitName" autocomplete="name"
+                        x-init="$nextTick(() => $el.focus({ preventScroll: true }))" />
+                    @error('name') <p role="alert" class="text-red-600 text-sm mt-1 flex items-center gap-1"><span aria-hidden="true">⚠</span> {{ $message }}</p> @enderror
                 </div>
                 <div class="flex gap-2">
                     <button wire:click="backToIdentifyPhone" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
@@ -506,6 +591,7 @@
 
         {{-- ── CART_REVIEW ── --}}
         @elseif ($step === 'CART_REVIEW')
+            <p class="text-sm font-semibold text-gray-700 text-center mb-2">Confira seu carrinho</p>
             <div class="max-h-52 overflow-y-auto mc-scrollbar space-y-1.5 pr-0.5 mb-2">
                 @foreach ($cart as $cartKey => $item)
                     <x-chat.cart-item :item="$item" :cart-key="$cartKey" :editable="true" />
@@ -519,7 +605,7 @@
 
             <div class="flex gap-2">
                 <button wire:click="backToMenu" class="mc-btn-secondary flex-1">← Voltar</button>
-                <button wire:click="confirmCart" class="mc-btn-primary flex-1">Confirmar →</button>
+                <button wire:click="confirmCart" class="mc-btn-primary flex-1">Continuar →</button>
             </div>
 
         {{-- ── CHECKOUT_COUPON ── --}}
@@ -531,7 +617,7 @@
                     {{-- Cupom aplicado --}}
                     <div class="flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl px-3.5 py-3">
                         <div class="flex-1 min-w-0">
-                            <p class="text-xs font-semibold text-green-600 uppercase tracking-wide">Cupom aplicado</p>
+                            <p class="text-xs font-semibold text-green-700 uppercase tracking-wide">Cupom aplicado</p>
                             <p class="font-bold text-green-800 text-sm">{{ $appliedCoupon['code'] }}</p>
                             @if ($appliedCoupon['type'] === 'free_delivery')
                                 <p class="text-xs text-green-700">Frete grátis</p>
@@ -541,7 +627,7 @@
                                 </p>
                             @endif
                         </div>
-                        <button wire:click="removeCoupon" class="text-gray-400 hover:text-red-500 transition-colors text-lg leading-none">✕</button>
+                        <button wire:click="removeCoupon" aria-label="Remover cupom" class="w-11 h-11 -mr-2 flex items-center justify-center text-gray-500 hover:text-red-600 transition-colors text-lg leading-none">✕</button>
                     </div>
                     <button wire:click="skipCoupon" class="mc-btn-primary w-full">
                         Continuar →
@@ -549,7 +635,9 @@
                 @else
                     {{-- Campo para inserir cupom --}}
                     <div class="flex gap-2">
+                        <label for="chat-coupon" class="sr-only">Código do cupom</label>
                         <input
+                            id="chat-coupon"
                             wire:model.defer="couponInput"
                             wire:keydown.enter="applyCoupon"
                             type="text"
@@ -564,14 +652,14 @@
                         </button>
                     </div>
                     @if ($couponError)
-                        <p class="text-xs text-red-500 px-1">{{ $couponError }}</p>
+                        <p role="alert" class="text-sm text-red-600 px-1">{{ $couponError }}</p>
                     @endif
                     <button wire:click="skipCoupon" class="mc-btn-outline">
                         Continuar sem cupom →
                     </button>
                     @endif
 
-                <button wire:click="backToCartReview" class="w-full text-xs text-center text-gray-400 hover:text-gray-600 py-1">
+                <button wire:click="backToCartReview" class="w-full min-h-11 text-sm text-center text-gray-600 hover:text-gray-800 rounded-lg">
                     ← Voltar ao carrinho
                 </button>
             </div>
@@ -581,20 +669,20 @@
             <div class="space-y-3">
                 <p class="text-sm font-semibold text-gray-700 text-center">Como deseja receber seu pedido?</p>
                 <button wire:click="selectOrderType('delivery')" class="w-full flex items-center gap-3 p-4 rounded-xl mc-card-hover">
-                    <span class="text-2xl">🛵</span>
+                    <span class="text-2xl" aria-hidden="true">🛵</span>
                     <div class="text-left">
                         <p class="font-bold text-gray-800">Entrega</p>
-                        <p class="text-xs text-gray-500">Receba em seu endereço</p>
+                        <p class="text-sm text-gray-600">Receba no seu endereço</p>
                     </div>
                 </button>
                 <button wire:click="selectOrderType('pickup')" class="w-full flex items-center gap-3 p-4 rounded-xl mc-card-hover">
-                    <span class="text-2xl">🏪</span>
-                    <div class="text-left">
+                    <span class="text-2xl" aria-hidden="true">🏪</span>
+                    <div class="text-left min-w-0">
                         <p class="font-bold text-gray-800">Retirada no local</p>
-                        <p class="text-xs text-gray-500">Retire na filial</p>
+                        <p class="text-sm text-gray-600">{{ $this->pickupAddress ? 'Retire em: '.$this->pickupAddress : 'Retire na loja' }}</p>
                     </div>
                 </button>
-                <button wire:click="backToCartReview" class="w-full text-xs text-center text-gray-400 hover:text-gray-600 py-1">
+                <button wire:click="backToCartReview" class="w-full min-h-11 text-sm text-center text-gray-600 hover:text-gray-800 rounded-lg">
                     ← Voltar ao carrinho
                 </button>
             </div>
@@ -603,22 +691,16 @@
         @elseif ($step === 'CHECKOUT_DELIVERY_ADDRESS')
             <div wire:key="step-checkout-delivery-address" class="space-y-2"
                 x-on:chat-geocoded.window="mapPickerOpenAt('chk', $event.detail.lat, $event.detail.lng)">
-                <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Endereço de entrega</p>
-
-                {{-- Endereço atual em destaque --}}
-                @if ($address)
-                    <div class="bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5 mb-1">
-                        <p class="text-xs font-semibold text-blue-700 mb-0.5">Endereço cadastrado</p>
-                        <p class="text-sm text-gray-800 font-medium">{{ $address }}@if($complement), {{ $complement }}@endif</p>
-                        <p class="text-xs text-gray-500">{{ $neighborhood }}, {{ $city }}@if($cep) — CEP {{ $cep }}@endif</p>
-                    </div>
-                @endif
-
-                <x-chat.map-picker prefix="chk" label="Usar minha localização atual" />
+                <p class="text-sm font-semibold text-gray-700 text-center mb-1">Onde vamos entregar?</p>
 
                 <x-chat.address-fields />
 
-                <div class="flex gap-2 mt-1">
+                <x-chat.map-picker prefix="chk" label="Usar minha localização atual" :collapsible="true" />
+
+                {{-- Fixo no rodapé da área rolável (o formulário é longo em telas pequenas); some com o mapa
+                     aberto para não cobrir o "Confirmar local". --}}
+                <div class="flex gap-2 pt-2 pb-1 sticky bottom-0 bg-white"
+                    x-data="{ mapOpen: false }" x-on:map-picker-toggle.window="mapOpen = $event.detail.open" x-show="!mapOpen">
                     <button wire:click="backToOrderType" class="mc-btn-secondary flex-shrink-0">← Voltar</button>
                     <button wire:click="confirmDeliveryAddress" class="mc-btn-primary flex-1"
                         wire:loading.attr="disabled" wire:target="confirmDeliveryAddress">
@@ -635,14 +717,14 @@
 
                 {{-- Endereço de entrega --}}
                 <div class="flex items-start gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5">
-                    <span class="text-base mt-0.5">📍</span>
+                    <span class="text-base mt-0.5" aria-hidden="true">📍</span>
                     <div class="flex-1 min-w-0">
-                        <p class="text-xs font-semibold text-gray-500 mb-0.5">Entregando em</p>
-                        <p class="text-sm text-gray-800 font-medium truncate">{{ $address }}@if($complement), {{ $complement }}@endif</p>
-                        <p class="text-xs text-gray-500">{{ $neighborhood }}, {{ $city }}</p>
+                        <p class="text-xs font-semibold text-gray-600 mb-0.5">Entregando em</p>
+                        <p class="text-sm text-gray-800 font-medium break-words">{{ $address }}, {{ $number }}@if($complement), {{ $complement }}@endif</p>
+                        <p class="text-xs text-gray-600">{{ $neighborhood }}, {{ $city }}</p>
                     </div>
                     <button wire:click="backToDeliveryAddress"
-                        class="text-xs text-blue-600 hover:text-blue-800 font-medium shrink-0 mt-0.5">
+                        class="min-h-11 px-3 -my-2 -mr-2 text-sm text-blue-700 hover:text-blue-900 font-semibold shrink-0 rounded-lg">
                         Alterar
                     </button>
                 </div>
@@ -655,13 +737,13 @@
                     <div class="flex justify-between text-sm">
                         <span class="text-gray-600">Taxa de entrega</span>
                         @if ($freeDelivery || ($appliedCoupon && $appliedCoupon['type'] === 'free_delivery') || $deliveryFee == 0)
-                            <span class="font-bold text-green-600">Grátis</span>
+                            <span class="font-bold text-green-700">Grátis</span>
                         @else
                             <span class="font-bold text-gray-800">R$ {{ number_format($deliveryFee, 2, ',', '.') }}</span>
                         @endif
                     </div>
                     @if ($appliedCoupon && $appliedCoupon['type'] !== 'free_delivery' && $this->couponDiscount > 0)
-                        <div class="flex justify-between text-sm text-green-600">
+                        <div class="flex justify-between text-sm text-green-700">
                             <span>Desconto ({{ $appliedCoupon['code'] }})</span>
                             <span>- R$ {{ number_format($this->couponDiscount, 2, ',', '.') }}</span>
                         </div>
@@ -673,14 +755,14 @@
                 </div>
 
                 @if ($freeDelivery)
-                    <p class="text-xs text-green-600 text-center font-medium">Frete grátis para este pedido!</p>
+                    <p class="text-xs text-green-700 text-center font-medium">Frete grátis para este pedido!</p>
                 @endif
 
                 <button wire:click="confirmDeliveryFee" class="mc-btn-primary">
                     Confirmar e continuar →
                 </button>
                 <button wire:click="selectOrderType('pickup')"
-                    class="w-full text-xs text-center text-gray-500 hover:text-gray-700 py-1">
+                    class="w-full min-h-11 text-sm text-center text-gray-600 hover:text-gray-800 rounded-lg">
                     Prefiro retirar no local (sem frete)
                 </button>
             </div>
@@ -692,15 +774,13 @@
 
                 @if (!$showScheduleForm)
                     <div class="space-y-2">
-                        <div class="flex gap-2">
-                            <button wire:click="selectScheduleOption('now')" class="mc-btn-primary flex-1 !py-2 !px-3 !text-xs">
-                                ⚡ Agora, o mais rápido possível
-                            </button>
-                            <button wire:click="$set('showScheduleForm', true)" class="mc-btn-secondary flex-1 !py-2 !px-3 !text-xs">
-                                🕐 Agendar para outro horário
-                            </button>
-                        </div>
-                        <button wire:click="backFromSchedule" class="mc-btn-outline w-full">← Voltar</button>
+                        <button wire:click="selectScheduleOption('now')" class="mc-btn-primary">
+                            <span aria-hidden="true">⚡</span> Agora, o mais rápido possível
+                        </button>
+                        <button wire:click="$set('showScheduleForm', true)" class="mc-btn-secondary w-full">
+                            <span aria-hidden="true">🕐</span> Escolher dia e horário
+                        </button>
+                        <button wire:click="backFromSchedule" class="w-full min-h-11 text-sm text-center text-gray-600 hover:text-gray-800 rounded-lg">← Voltar</button>
                     </div>
                 @else
                     <div class="space-y-3">
@@ -749,8 +829,9 @@
         @elseif ($step === 'CHECKOUT_NOTES')
             <div class="space-y-2.5">
                 <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Observações (opcional)</label>
+                    <label for="chat-notes" class="block text-sm font-semibold text-gray-700 mb-1.5">Observações <span class="font-normal text-gray-500">(opcional)</span></label>
                     <textarea
+                        id="chat-notes"
                         wire:model="notes"
                         rows="3"
                         placeholder="Ex: Capricha no recheio! Sem pimenta..."
@@ -763,26 +844,25 @@
                 {{-- Resumo do endereço de entrega --}}
                 @if ($orderType === 'delivery' && $address)
                     <div class="flex items-start gap-1.5 bg-gray-50 border border-gray-100 rounded-lg px-2.5 py-2">
-                        <span class="text-xs mt-0.5">📍</span>
+                        <span class="text-xs mt-0.5" aria-hidden="true">📍</span>
                         <div class="flex-1 min-w-0">
-                            <p class="text-xs font-semibold text-gray-500">Entregando em</p>
-                            <p class="text-xs text-gray-700 truncate">{{ $address }}@if($complement), {{ $complement }}@endif </p>
-                            <p class="text-xs text-gray-700 truncate"> {{ $neighborhood }}, {{ $city }} </p>
-
+                            <p class="text-xs font-semibold text-gray-600">Entregando em</p>
+                            <p class="text-sm text-gray-800 break-words">{{ $address }}, {{ $number }}@if($complement), {{ $complement }}@endif</p>
+                            <p class="text-xs text-gray-600">{{ $neighborhood }}, {{ $city }}</p>
                         </div>
-                        <button wire:click="backToDeliveryAddress" class="text-xs text-blue-600 hover:text-blue-800 font-medium shrink-0">Alterar</button>
+                        <button wire:click="backToDeliveryAddress" class="min-h-11 px-3 -my-2 -mr-1 text-sm text-blue-700 hover:text-blue-900 font-semibold shrink-0 rounded-lg">Alterar</button>
                     </div>
                 @endif
 
                 @if ($appliedCoupon && $this->couponDiscount > 0)
                     <div class="flex items-center justify-between bg-green-50 border border-green-100 rounded-lg px-3 py-1.5">
                         <span class="text-xs text-green-700 font-medium">Desconto ({{ $appliedCoupon['code'] }})</span>
-                        <span class="text-sm font-bold text-green-600">- R$ {{ number_format($this->couponDiscount, 2, ',', '.') }}</span>
+                        <span class="text-sm font-bold text-green-700">- R$ {{ number_format($this->couponDiscount, 2, ',', '.') }}</span>
                     </div>
                 @elseif ($appliedCoupon && $appliedCoupon['type'] === 'free_delivery')
                     <div class="flex items-center justify-between bg-green-50 border border-green-100 rounded-lg px-3 py-1.5">
                         <span class="text-xs text-green-700 font-medium">Frete grátis ({{ $appliedCoupon['code'] }})</span>
-                        <span class="text-sm font-bold text-green-600">Aplicado</span>
+                        <span class="text-sm font-bold text-green-700">Aplicado</span>
                     </div>
                 @endif
                 <div class="flex items-center justify-between mc-bg-primary-light rounded-lg px-3 py-2">
@@ -806,12 +886,7 @@
                         wire:loading.attr="disabled"
                         wire:target="proceedFromNotes"
                     >
-                    <span wire:loading.remove wire:target="proceedFromNotes" class="flex items-center gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-                        </svg>
-                        Continuar →
-                    </span>
+                    <span wire:loading.remove wire:target="proceedFromNotes">Continuar →</span>
                     <span wire:loading wire:target="proceedFromNotes" class="flex items-center gap-2">
                         <svg class="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -928,10 +1003,10 @@
                     </div>
                     <div>
                         <p class="font-bold text-gray-800 text-sm">Dinheiro</p>
-                        <p class="text-xs text-gray-500">Pagamento na entrega</p>
+                        <p class="text-xs text-gray-600">{{ $orderType === 'pickup' ? 'Pague na retirada' : 'Pague ao receber' }}</p>
                     </div>
                     <div class="ml-auto">
-                        <span class="text-xs font-bold text-yellow-700 bg-yellow-100 px-2 py-0.5 rounded-full">Na entrega</span>
+                        <span class="text-xs font-bold text-yellow-800 bg-yellow-100 px-2 py-0.5 rounded-full">{{ $orderType === 'pickup' ? 'Na retirada' : 'Na entrega' }}</span>
                     </div>
                 </button>
 
@@ -958,7 +1033,7 @@
                         </p>
                     </div>
                     <div class="ml-auto">
-                        <span class="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full">Instantâneo</span>
+                        <span class="text-xs font-bold text-green-800 bg-green-100 px-2 py-0.5 rounded-full">Instantâneo</span>
                     </div>
                 </button>
 
@@ -989,7 +1064,7 @@
                 </div>
 
                 <button wire:click="backToNotes"
-                    class="w-full text-xs text-center text-gray-400 hover:text-gray-600 py-1">
+                    class="w-full min-h-11 text-sm text-center text-gray-600 hover:text-gray-800 rounded-lg">
                     ← Voltar
                 </button>
             </div>
@@ -997,7 +1072,7 @@
         {{-- ── CHECKOUT_CONFIRM ── --}}
         @elseif ($step === 'CHECKOUT_CONFIRM')
             <div wire:key="step-confirm" class="space-y-3">
-                <p class="text-xs font-semibold text-gray-500 text-center uppercase tracking-wider">Confirme seu pedido</p>
+                <p class="text-sm font-semibold text-gray-700 text-center">Confira e confirme seu pedido</p>
 
                 @if($currentCompany?->canUseFiscalNotes() && $customerId)
                     @include('livewire.partials.fiscal-recipient')
@@ -1021,7 +1096,7 @@
                         <div class="flex justify-between text-sm text-gray-600">
                             <span>Taxa de entrega</span>
                             @if ($freeDelivery || ($appliedCoupon && $appliedCoupon['type'] === 'free_delivery'))
-                                <span class="text-green-600 font-semibold">Grátis</span>
+                                <span class="text-green-700 font-semibold">Grátis</span>
                             @else
                                 <span>R$ {{ number_format($deliveryFee, 2, ',', '.') }}</span>
                             @endif
@@ -1029,7 +1104,7 @@
                     @endif
 
                     @if ($appliedCoupon && $appliedCoupon['discount'] > 0)
-                        <div class="flex justify-between text-sm text-green-600">
+                        <div class="flex justify-between text-sm text-green-700">
                             <span>Cupom ({{ $appliedCoupon['code'] }})</span>
                             <span>− R$ {{ number_format($appliedCoupon['discount'], 2, ',', '.') }}</span>
                         </div>
@@ -1060,30 +1135,82 @@
                     </div>
                 </div>
 
-                {{-- Detalhes do pedido --}}
-                <div class="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5 space-y-1">
-                    <div class="flex justify-between text-xs text-gray-600">
-                        <span class="font-medium">Pagamento</span>
-                        <span>
+                {{-- Detalhes do pedido: tudo o que o cliente precisa conferir antes de enviar --}}
+                <dl class="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5 space-y-1.5 text-sm">
+                    <div class="flex justify-between gap-3">
+                        <dt class="text-gray-600 shrink-0">Nome</dt>
+                        <dd class="text-gray-800 text-right break-words">{{ $name }}</dd>
+                    </div>
+                    <div class="flex justify-between gap-3">
+                        <dt class="text-gray-600 shrink-0">Telefone</dt>
+                        <dd class="text-gray-800 text-right">{{ preg_replace('/^(\d{2})(\d{4,5})(\d{4})$/', '($1) $2-$3', $phone) }}</dd>
+                    </div>
+                    <div class="flex justify-between gap-3">
+                        <dt class="text-gray-600 shrink-0">{{ $orderType === 'delivery' ? 'Entrega em' : 'Retirada em' }}</dt>
+                        <dd class="text-gray-800 text-right break-words">
+                            @if ($orderType === 'delivery')
+                                {{ $address }}, {{ $number }}@if($complement), {{ $complement }}@endif — {{ $neighborhood }}, {{ $city }}
+                            @else
+                                {{ $this->pickupAddress ?? 'Na loja' }}
+                            @endif
+                        </dd>
+                    </div>
+                    <div class="flex justify-between gap-3">
+                        <dt class="text-gray-600 shrink-0">Quando</dt>
+                        <dd class="text-gray-800 text-right">{{ $scheduledAt ? \Illuminate\Support\Carbon::parse($scheduledAt)->format('d/m').' às '.\Illuminate\Support\Carbon::parse($scheduledAt)->format('H:i') : 'Agora, o mais rápido possível' }}</dd>
+                    </div>
+                    <div class="flex justify-between gap-3">
+                        <dt class="text-gray-600 shrink-0">Pagamento</dt>
+                        <dd class="text-gray-800 text-right">
                             @if ($paymentMethod === 'CASH') Dinheiro
                             @elseif ($paymentMethod === 'CARD') Cartão de Crédito
                             @else PIX
                             @endif
-                        </span>
-                    </div>
-                    <div class="flex justify-between text-xs text-gray-600">
-                        <span class="font-medium">Tipo</span>
-                        <span>{{ $orderType === 'delivery' ? 'Entrega' : 'Retirada' }}</span>
+                        </dd>
                     </div>
                     @if ($notes)
-                        <div class="flex justify-between text-xs text-gray-600 gap-2">
-                            <span class="font-medium shrink-0">Obs.</span>
-                            <span class="text-right text-gray-500 truncate">{{ $notes }}</span>
+                        <div class="flex justify-between gap-3">
+                            <dt class="text-gray-600 shrink-0">Obs.</dt>
+                            <dd class="text-gray-800 text-right break-words">{{ $notes }}</dd>
                         </div>
                     @endif
-                </div>
+                </dl>
 
-                <div class="flex gap-2">
+                @if ($paymentMethod === 'CASH')
+                    <fieldset class="rounded-xl border border-yellow-200 bg-yellow-50 px-3 py-2.5 space-y-2">
+                        <legend class="sr-only">Troco</legend>
+                        <p class="text-sm font-semibold text-gray-800" aria-hidden="true">Vai precisar de troco?</p>
+                        <div class="flex gap-2">
+                            <label class="flex-1 flex items-center gap-2 min-h-11 px-3 rounded-lg border bg-white cursor-pointer {{ ! $needsChange ? 'border-yellow-500' : 'border-gray-200' }}">
+                                <input type="radio" wire:model.live="needsChange" value="0" name="needs-change" class="w-5 h-5" />
+                                <span class="text-sm">Não preciso</span>
+                            </label>
+                            <label class="flex-1 flex items-center gap-2 min-h-11 px-3 rounded-lg border bg-white cursor-pointer {{ $needsChange ? 'border-yellow-500' : 'border-gray-200' }}">
+                                <input type="radio" wire:model.live="needsChange" value="1" name="needs-change" class="w-5 h-5" />
+                                <span class="text-sm">Sim</span>
+                            </label>
+                        </div>
+                        @if ($needsChange)
+                            <div>
+                                <label for="chat-cash-change" class="block text-sm text-gray-700 mb-1">Troco para quanto? (R$)</label>
+                                <input id="chat-cash-change" wire:model="cashChange" type="text" inputmode="decimal" placeholder="Ex: 50" class="mc-input" />
+                                @error('cashChange') <p role="alert" class="text-sm text-red-600 mt-1">{{ $message }}</p> @enderror
+                            </div>
+                        @endif
+                    </fieldset>
+                @endif
+
+                @if (! $customerId)
+                    <label class="flex items-start gap-2.5 min-h-11 cursor-pointer">
+                        <input type="checkbox" wire:model="rememberDeviceData" class="mt-0.5 w-5 h-5 rounded border-gray-300 shrink-0" />
+                        <span class="text-sm text-gray-700 leading-snug">
+                            Lembrar meus dados neste aparelho
+                            <span class="block text-xs text-gray-500">Na próxima compra neste celular você não precisa digitar tudo de novo.</span>
+                        </span>
+                    </label>
+                @endif
+
+                <div class="flex gap-2 pt-2 pb-1 sticky bottom-0 bg-white">
                     <button wire:click="backToPaymentMethod"
                         wire:loading.attr="disabled"
                         class="mc-btn-secondary flex-1">← Voltar</button>
@@ -1168,13 +1295,13 @@
                                 <span>+ R$ {{ number_format($deliveryFee, 2, ',', '.') }}</span>
                             </div>
                         @elseif ($orderType === 'delivery' && ($freeDelivery || ($appliedCoupon && $appliedCoupon['type'] === 'free_delivery')))
-                            <div class="flex justify-between text-xs text-green-600">
+                            <div class="flex justify-between text-xs text-green-700">
                                 <span>Taxa de entrega</span>
                                 <span>Grátis</span>
                             </div>
                         @endif
                         @if ($appliedCoupon && $appliedCoupon['type'] !== 'free_delivery' && $this->couponDiscount > 0)
-                            <div class="flex justify-between text-xs text-green-600">
+                            <div class="flex justify-between text-xs text-green-700">
                                 <span>Desconto ({{ $appliedCoupon['code'] }})</span>
                                 <span>- R$ {{ number_format($this->couponDiscount, 2, ',', '.') }}</span>
                             </div>
@@ -1437,8 +1564,14 @@
                     🎉
                 </div>
                 <div>
-                    <p class="font-black text-green-600 text-lg">Pedido confirmado!</p>
-                    <p class="text-sm text-gray-500 mt-0.5">Seu pedido já estará sendo preparado. 🥟</p>
+                    <p class="font-black text-green-700 text-lg">Pedido enviado!</p>
+                    <p class="text-sm text-gray-600 mt-0.5">
+                        @if ($scheduledAt)
+                            A loja recebeu seu pedido agendado. Avisaremos aqui quando ele andar.
+                        @else
+                            A loja recebeu seu pedido. Acompanhe o andamento por aqui ou pelo link acima.
+                        @endif
+                    </p>
                 </div>
 
                 {{-- Confirmação de cancelamento --}}
@@ -1463,7 +1596,7 @@
                     </div>
                 @else
                     @if ($canCancel)
-                        <button wire:click="requestCancelOrder" class="w-full border border-red-300 text-red-600 hover:bg-red-50 text-sm font-medium py-2 rounded-lg transition-colors">
+                        <button wire:click="requestCancelOrder" class="w-full min-h-11 border border-red-300 text-red-700 hover:bg-red-50 text-sm font-medium py-2 rounded-lg transition-colors">
                             Cancelar pedido
                         </button>
                     @endif
@@ -1471,10 +1604,10 @@
 
                 <div class="space-y-2">
                     <button wire:click="startNewOrderKeepHistory" class="mc-btn-primary w-full">
-                        Fazer novo pedido
+                        Fazer outro pedido
                     </button>
-                    <button wire:click="startNewOrder" class="mc-btn-secondary w-full text-xs">
-                        Novo pedido e apagar histórico
+                    <button wire:click="startNewOrder" class="w-full min-h-11 text-sm text-gray-600 hover:text-gray-800 rounded-lg">
+                        Começar do zero (apaga esta conversa)
                     </button>
                 </div>
 
@@ -1674,7 +1807,7 @@
             <p class="text-white font-bold text-sm">Cardápio</p>
             <button
                 @click="productSidebarOpen = false"
-                class="text-white/70 hover:text-white transition-colors p-2.5 -mr-2 rounded-lg hover:bg-white/10"
+                class="text-white/70 hover:text-white transition-colors p-3 -mr-2 rounded-lg hover:bg-white/10"
                 title="Fechar"
                 aria-label="Fechar cardápio"
             >
@@ -1697,7 +1830,7 @@
                     aria-label="Buscar produto no cardápio"
                     autocomplete="off"
                     enterkeyhint="search"
-                    class="w-full text-sm bg-gray-100 border border-gray-200 rounded-xl pl-9 pr-8 py-2.5 focus:outline-none focus:ring-2 focus:ring-red-200"
+                    class="w-full text-sm bg-gray-100 border border-gray-200 rounded-xl pl-9 pr-8 py-3 focus:outline-none focus:ring-2 focus:ring-red-200"
                 >
                 <button
                     type="button"
@@ -1861,7 +1994,7 @@
 	                                                @if ($sbCartQty > 0)
 	                                                    <button type="button" wire:click="decrementProductFromCart({{ $product->id }})"
 	                                                        aria-label="Remover uma unidade de {{ $product->name }}"
-	                                                        class="w-9 h-9 rounded-full mc-bg-primary-light mc-text-primary font-bold text-base flex items-center justify-center">−</button>
+	                                                        class="w-11 h-11 rounded-full mc-bg-primary-light mc-text-primary font-bold text-lg flex items-center justify-center">−</button>
 	                                                    <span class="w-6 text-center text-xs font-bold text-gray-800" aria-live="polite">{{ $sbCartQty }}</span>
 	                                                @endif
 	                                                @if ($sbCartQty > 0)
@@ -1870,7 +2003,7 @@
                                                             @click="addOrOpenOptionSelector(@js($productData), $wire)"
                                                         @endif
                                                         @disabled($sbInsufficientStock)
-                                                        aria-label="Adicionar mais uma unidade de {{ $product->name }}" class="w-9 h-9 rounded-full font-bold text-base flex items-center justify-center transition-colors {{ $sbInsufficientStock ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white active:scale-90' }}"
+                                                        aria-label="Adicionar mais uma unidade de {{ $product->name }}" class="w-11 h-11 rounded-full font-bold text-lg flex items-center justify-center transition-colors {{ $sbInsufficientStock ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white active:scale-90' }}"
                                                     >+</button>
                                                 @else
                                                     <button
@@ -1878,7 +2011,7 @@
                                                             @click="addOrOpenOptionSelector(@js($productData), $wire)"
                                                         @endif
                                                         @disabled($sbInsufficientStock)
-                                                        aria-label="Adicionar {{ $product->name }}" class="px-3.5 h-10 rounded-full font-bold text-xs flex items-center justify-center gap-1 transition-colors {{ $sbInsufficientStock ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white active:scale-95' }}"
+                                                        aria-label="Adicionar {{ $product->name }}" class="px-3.5 h-11 rounded-full font-bold text-xs flex items-center justify-center gap-1 transition-colors {{ $sbInsufficientStock ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white active:scale-95' }}"
                                                     >
                                                         <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
                                                             <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
@@ -1891,7 +2024,7 @@
                                                 @if ($sbCartQty > 0)
                                                     <button type="button" wire:click="updateCartQty('{{ $product->id }}', {{ $sbCartQty - 1 }})"
                                                         aria-label="Remover uma unidade de {{ $product->name }}"
-                                                        class="w-9 h-9 rounded-full mc-bg-primary-light mc-text-primary font-bold text-base flex items-center justify-center">−</button>
+                                                        class="w-11 h-11 rounded-full mc-bg-primary-light mc-text-primary font-bold text-lg flex items-center justify-center">−</button>
                                                     <span class="w-6 text-center text-xs font-bold text-gray-800" aria-live="polite">{{ $sbCartQty }}</span>
                                                 @endif
                                                 <button
@@ -1899,7 +2032,7 @@
                                                         wire:click="addToCart({{ $product->id }})"
                                                     @endif
                                                     @disabled($sbInsufficientStock)
-                                                    aria-label="Adicionar mais uma unidade de {{ $product->name }}" class="w-9 h-9 rounded-full font-bold text-base flex items-center justify-center transition-colors {{ $sbInsufficientStock ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white active:scale-90' }}"
+                                                    aria-label="Adicionar mais uma unidade de {{ $product->name }}" class="w-11 h-11 rounded-full font-bold text-lg flex items-center justify-center transition-colors {{ $sbInsufficientStock ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white active:scale-90' }}"
                                                 >+</button>
                                             @endif
                                         @else
@@ -2039,7 +2172,7 @@
                                                         <button type="button"
                                                             @click="decrementOption(group, option)"
                                                             :aria-label="'Remover ' + option.name"
-                                                            class="w-9 h-9 rounded-full mc-bg-primary-light mc-text-primary font-bold text-base flex items-center justify-center">−</button>
+                                                            class="w-11 h-11 rounded-full mc-bg-primary-light mc-text-primary font-bold text-lg flex items-center justify-center">−</button>
                                                         <span class="w-7 text-center text-sm font-bold text-gray-800" aria-live="polite"
                                                             x-text="pendingSelections[group.id]?.[option.id] || 0"></span>
                                                         <button type="button"
@@ -2047,7 +2180,7 @@
                                                             :aria-label="'Adicionar ' + option.name"
                                                             :disabled="getGroupTotal(group.id) >= group.total_qty || (option.max_qty && (pendingSelections[group.id]?.[option.id] || 0) >= option.max_qty)"
                                                             :class="(getGroupTotal(group.id) >= group.total_qty || (option.max_qty && (pendingSelections[group.id]?.[option.id] || 0) >= option.max_qty)) ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'mc-bg-primary text-white'"
-                                                            class="w-9 h-9 rounded-full font-bold text-base flex items-center justify-center">+</button>
+                                                            class="w-11 h-11 rounded-full font-bold text-lg flex items-center justify-center">+</button>
                                                     </div>
                                                 </template>
                                             </div>
@@ -2076,7 +2209,10 @@
         {{-- Sidebar footer: go to cart --}}
         @if ($step === 'MENU_BROWSE')
             <div class="shrink-0 border-t border-gray-100 px-3 py-3">
-                <button wire:click="proceedToCheckout" @click="productSidebarOpen = false" class="mc-btn-primary flex items-center justify-center gap-2">
+                @if ($this->cartCount === 0)
+                    <p class="text-sm text-center text-gray-600 mb-2">Toque em <strong>+</strong> para adicionar itens ao carrinho.</p>
+                @endif
+                <button wire:click="proceedToCheckout" @click="productSidebarOpen = false" @disabled($this->cartCount === 0) class="mc-btn-primary flex items-center justify-center gap-2">
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>

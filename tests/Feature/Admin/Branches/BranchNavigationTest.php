@@ -36,6 +36,7 @@ function bnBranch(Company $company, string $name = 'Filial Centro', array $overr
         'address' => 'Rua A, 1',
         'city' => 'Maringá',
         'state' => 'PR',
+        'cep' => '87013-000',
         'active' => true,
     ], $overrides));
 }
@@ -239,6 +240,7 @@ test('criar filial redireciona para a edição com o próximo passo', function (
         ->set('address', 'Av. Brasil')
         ->set('city', 'Maringá')
         ->set('state', 'PR')
+        ->set('cep', '87013-000')
         ->call('save')
         ->assertHasNoErrors();
 
@@ -360,4 +362,19 @@ test('checklist de primeiros passos leva direto ao cadastro de filial', function
     Livewire::actingAs(bnAdmin($company))
         ->test(SetupChecklist::class)
         ->assertSeeHtml('href="'.route('admin.branches.create').'"');
+});
+
+test('filial não salva sem CEP e UF, usados na cobrança de pedido de retirada', function () {
+    $company = bnCompany();
+    $admin = bnAdmin($company);
+
+    Livewire::actingAs($admin)
+        ->test(Form::class)
+        ->set('name', 'Filial Sem CEP')
+        ->set('address', 'Av. Brasil')
+        ->set('city', 'Maringá')
+        ->call('save')
+        ->assertHasErrors(['cep' => 'required', 'state' => 'required']);
+
+    expect(Branch::where('name', 'Filial Sem CEP')->exists())->toBeFalse();
 });

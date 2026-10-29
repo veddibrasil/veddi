@@ -5,6 +5,10 @@
         {{ $situation === 'none' ? 'Emitir' : 'Reemitir' }}
     </button>
 @endif
+@include('livewire.admin.fiscal._print-button', [
+    'note' => $note,
+    'class' => 'text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400',
+])
 @if($note?->danfe_url)
     <a href="{{ route('admin.fiscal.document', ['note' => $note->id, 'type' => 'danfe']) }}" target="_blank"
         class="text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400">DANFE</a>

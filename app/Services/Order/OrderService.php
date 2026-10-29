@@ -114,7 +114,7 @@ class OrderService implements OrderServiceInterface
             if ($coupon) {
                 // Revalida e trava o cupom aqui dentro, nunca confiar no model resolvido
                 // antes da transação (pode vir de um id forjado client-side).
-                $coupon = app(CouponService::class)->revalidateForOrder($coupon->id, $customerId, $subtotal, $paymentMethod);
+                $coupon = app(CouponService::class)->revalidateForOrder($coupon->id, $customerId, $subtotal, $paymentMethod, $buyerData['phone'] ?? null);
                 $discount = app(CouponService::class)->calculateDiscount($coupon, $cart, $subtotal, $deliveryFee);
                 // Frete grátis: zera o delivery_fee no cálculo do total
                 if ($coupon->type === 'free_delivery') {

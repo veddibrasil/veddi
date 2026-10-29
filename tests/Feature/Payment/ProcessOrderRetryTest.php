@@ -121,3 +121,16 @@ test('retentativas cabem na espera do checkout: o cliente vê a falha em minutos
     expect($job->retryUntil()->getTimestamp())->toBeLessThanOrEqual(now()->addMinutes(10)->getTimestamp())
         ->and(array_sum($job->backoff))->toBeLessThan(600);
 });
+
+test('cobrança recusada pela Vindi por dado inválido falha o job de vez, sem nova tentativa', function () {
+    ['order' => $order] = whatsappOrderContext(['status' => 'pending']);
+    $orchestrator = Mockery::mock(PaymentOrchestrator::class);
+    $orchestrator->shouldReceive('process')->once()
+        ->andThrow(new \App\Exceptions\VindiValidationException('Vindi API error 422: CEP em branco'));
+    $job = processOrderJob($order)->withFakeQueueInteractions();
+
+    $job->handle($orchestrator);
+
+    $job->assertFailedWith(\App\Exceptions\VindiValidationException::class);
+    expect($order->fresh()->status)->toBe('pending'); // quem cancela é o failed(), chamado pela fila
+});

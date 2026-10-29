@@ -81,6 +81,41 @@ class Coupon extends Model
         return $this->countedUsages()->where('customer_id', $customerId)->count() >= $this->max_uses_per_customer;
     }
 
+    /**
+     * Limite por cliente no checkout sem cadastro: o telefone do pedido é a identidade disponível.
+     * Conta os usos do cliente identificado, os pedidos visitantes com o mesmo telefone e os usos de
+     * clientes cadastrados com esse telefone — assim visitar e depois se identificar não dobra o uso.
+     */
+    public function hasReachedMaxUsesForBuyer(?int $customerId, ?string $phone): bool
+    {
+        if ($this->max_uses_per_customer === null) {
+            return false;
+        }
+
+        $phone = preg_replace('/\D/', '', (string) $phone);
+
+        $uses = $this->countedUsages()->where(function (\Illuminate\Database\Eloquent\Builder $usage) use ($customerId, $phone) {
+            if ($customerId !== null) {
+                $usage->orWhere('coupon_usages.customer_id', $customerId);
+            }
+            if ($phone !== '') {
+                $usage->orWhereExists(fn (Builder $orders) => $orders
+                    ->selectRaw('1')
+                    ->from('orders')
+                    ->whereColumn('orders.id', 'coupon_usages.order_id')
+                    ->whereNull('orders.customer_id')
+                    ->where('orders.buyer_data->phone', $phone));
+                $usage->orWhereExists(fn (Builder $customers) => $customers
+                    ->selectRaw('1')
+                    ->from('customers')
+                    ->whereColumn('customers.id', 'coupon_usages.customer_id')
+                    ->where('customers.phone', $phone));
+            }
+        })->count();
+
+        return $uses >= $this->max_uses_per_customer;
+    }
+
     public function allowsPaymentMethod(string $paymentMethod): bool
     {
         return $this->payment_method === null || $this->payment_method === $paymentMethod;

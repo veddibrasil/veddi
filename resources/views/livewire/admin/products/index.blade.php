@@ -20,6 +20,10 @@
         </div>
     </div>
 
+    @if (! $reorderMode)
+        <x-admin.sales-suggestions context="products" :category-id="$categoryFilter ?: null" />
+    @endif
+
     @if (session('status'))
         <div role="status" class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm dark:bg-green-900/30 dark:border-green-700 dark:text-green-400">
             {{ session('status') }}

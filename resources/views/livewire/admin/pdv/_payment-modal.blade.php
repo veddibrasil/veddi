@@ -3,7 +3,7 @@
      inteiro (select de filial incluso), senão ele fica clicável/focável
      por trás do modal e mudar de filial no meio do pagamento fecha o
      modal sozinho (updatedSelectedBranchId() zera $step). --}}
-<div class="fixed inset-0 z-30 flex items-center justify-center bg-amber-950/45 p-3 lg:p-6">
+<div class="pdv-checkout fixed inset-0 z-30 flex items-center justify-center bg-amber-950/70 p-3 lg:p-6">
     <div class="flex max-h-full w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900">
         <div class="shrink-0 border-b border-neutral-100 px-4 py-3 dark:border-zinc-800">
             <div class="flex items-center justify-between gap-3">
@@ -45,7 +45,7 @@
                                     <span class="text-sm font-semibold text-green-700 dark:text-green-300">
                                         - R$ {{ number_format($manualDiscountAmount, 2, ',', '.') }}
                                     </span>
-                                    <button wire:click="removeManualDiscount" class="text-xs text-red-500 hover:text-red-700 ml-2">Remover</button>
+                                    <button wire:click="removeManualDiscount" class="text-xs font-semibold text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 ml-2">Remover</button>
                                 </div>
                             @else
                                 <div class="flex gap-2">
@@ -55,7 +55,7 @@
                                     </flux:select>
                                     <flux:input
                                         wire:model.live.debounce.500ms="manualDiscountInput"
-                                        placeholder="{{ $manualDiscountType === 'percent' ? '10' : '5,00' }}"
+                                        placeholder="{{ $manualDiscountType === 'percent' ? '0' : '0,00' }}"
                                         type="number"
                                         step="0.01"
                                         min="0"
@@ -196,7 +196,7 @@
                             <flux:input wire:model.live.debounce.500ms="deliveryCity" placeholder="Cidade" />
                         </div>
                         @if ($deliveryFeeAmount > 0)
-                            <p class="text-sm font-semibold text-green-600 dark:text-green-400">Taxa de entrega: R$ {{ number_format($deliveryFeeAmount, 2, ',', '.') }}</p>
+                            <p class="text-sm font-semibold text-green-700 dark:text-green-400">Taxa de entrega: R$ {{ number_format($deliveryFeeAmount, 2, ',', '.') }}</p>
                         @endif
                         @if ($deliveryFeeError)
                             <p class="text-xs text-red-600 dark:text-red-400">{{ $deliveryFeeError }}</p>
@@ -305,7 +305,7 @@
                                 </div>
                             @endif
                             @if ($manualDiscountAmount > 0)
-                                <div class="flex justify-between text-green-600 dark:text-green-400">
+                                <div class="flex justify-between text-green-700 dark:text-green-400">
                                     <span>Desconto manual</span>
                                     <span>- R$ {{ number_format($manualDiscountAmount, 2, ',', '.') }}</span>
                                 </div>

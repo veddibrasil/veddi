@@ -111,6 +111,7 @@ Route::middleware(['auth', 'verified', 'company.active'])
             Route::get('/orders/report/pdf', \App\Http\Controllers\Admin\Orders\ReportPdfController::class)->name('orders.report.pdf');
             Route::get('/orders/closing/pdf', \App\Http\Controllers\Admin\Orders\OrderClosingPdfController::class)->name('orders.closing.pdf');
             Route::get('/orders/{order}/receipt/{station?}', \App\Http\Controllers\Admin\Orders\ReceiptPdfController::class)->name('orders.receipt');
+            Route::get('/orders/{order}/fiscal-note/print', \App\Http\Controllers\Admin\Orders\FiscalNoteReceiptController::class)->name('orders.fiscal-receipt');
             Route::get('/orders/{order}', \App\Livewire\Admin\Orders\Show::class)->name('orders.show');
             Route::get('/stock', \App\Livewire\Admin\Stock\Index::class)->name('stock.index');
         });
@@ -138,6 +139,7 @@ Route::middleware(['auth', 'verified', 'company.active'])
             Route::get('/settings/whatsapp', \App\Livewire\Admin\Settings\WhatsAppSettings::class)->name('settings.whatsapp');
             Route::get('/settings/ifood', \App\Livewire\Admin\Settings\IfoodIntegrationSettings::class)->name('settings.ifood');
             Route::get('/integrations', \App\Livewire\Admin\Integrations\Index::class)->name('integrations.index');
+            Route::get('/reports/sold-items', \App\Livewire\Admin\Reports\SoldItems::class)->name('reports.sold-items');
 
             Route::get('/roles', \App\Livewire\Admin\Roles\Index::class)->name('roles.index');
 

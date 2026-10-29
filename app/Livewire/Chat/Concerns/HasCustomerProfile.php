@@ -28,12 +28,17 @@ trait HasCustomerProfile
         RateLimiter::hit($rateLimitKey, 600);
 
         $this->clearCheckoutIdentity();
-        $this->addMessage('user', $this->phone);
+        $this->addMessage('user', $this->formattedPhone());
 
-        // Confirmação do telefone por código no WhatsApp desligada até a integração ser validada em
-        // produção: sem ela não há "usar dados salvos", então o cliente segue direto para preencher.
-        // $this->addMessage('bot', 'Você pode preencher os dados desta compra ou confirmar seu telefone para usar dados salvos.');
-        // $this->transitionTo('CUSTOMER_OPTIONS');
+        $deviceData = app(\App\Services\Chat\DeviceProfile::class)->find($this->companyId, $this->phone);
+        $this->hasDeviceData = $deviceData !== null;
+        // Só o primeiro nome que este navegador digitou, para o cliente reconhecer os próprios dados.
+        $this->deviceDataName = \Illuminate\Support\Str::of((string) ($deviceData['name'] ?? ''))->trim()->before(' ')->limit(30, '')->toString();
+        if ($this->hasDeviceData || $this->savedProfileAvailable()) {
+            $this->transitionTo('CUSTOMER_OPTIONS');
+
+            return;
+        }
         $this->continueAsGuest();
     }
 
@@ -47,13 +52,40 @@ trait HasCustomerProfile
 
     public function continueAsGuest(): void
     {
+        // Escolha feita pelo cliente fica no histórico; o desvio automático (sem opções) não.
+        if (in_array($this->step, ['CUSTOMER_OPTIONS', 'VERIFY_PHONE'], true)) {
+            $this->addMessage('user', 'Vou preencher meus dados');
+        }
         $this->clearCheckoutIdentity();
         $this->addMessage('bot', 'Qual é o seu nome completo?');
         $this->transitionTo('REGISTER_NAME');
     }
 
+    public function useDeviceData(): void
+    {
+        $data = app(\App\Services\Chat\DeviceProfile::class)->find($this->companyId, $this->phone);
+        $this->clearCheckoutIdentity();
+        $this->hasDeviceData = $data !== null;
+        if ($data === null) {
+            $this->continueAsGuest();
+
+            return;
+        }
+        foreach (\App\Services\Chat\DeviceProfile::FIELDS as $field) {
+            $this->$field = (string) ($data[$field] ?? '');
+        }
+        $this->checkoutReady = true;
+        $this->addMessage('user', 'Usar os dados deste aparelho');
+        $firstName = \Illuminate\Support\Str::before(trim($this->name), ' ');
+        $this->addMessage('bot', ($firstName !== '' ? "Pronto, {$firstName}! " : 'Pronto! ').'Usamos os dados da sua última compra neste aparelho. Você confere tudo antes de confirmar.');
+        $this->transitionTo(empty($this->cart) ? 'MENU_BROWSE' : 'CHECKOUT_COUPON');
+    }
+
     public function useSavedData(): void
     {
+        if ($this->step === 'CUSTOMER_OPTIONS') {
+            $this->addMessage('user', 'Já tenho cadastro');
+        }
         $customer = $this->verifiedCustomer();
         if ($customer && $customer->phone === $this->phone) {
             $this->useSavedProfile = true;
@@ -116,6 +148,7 @@ trait HasCustomerProfile
 
     public function forgetDevice(): void
     {
+        app(\App\Services\Chat\DeviceProfile::class)->forget($this->companyId);
         app(\App\Services\Chat\RememberedDevice::class)->forget($this->companyId);
         $this->resetState();
         $this->initialize();
@@ -231,6 +264,11 @@ trait HasCustomerProfile
         $this->addMessage('user', $branch->name);
         $this->addMessage('bot', "Ótimo! Aqui está o cardápio da {$branch->name}. Adicione os itens que quiser!");
         $this->transitionTo('MENU_BROWSE');
+    }
+
+    private function formattedPhone(): string
+    {
+        return preg_replace('/^(\d{2})(\d{4,5})(\d{4})$/', '($1) $2-$3', $this->phone) ?? $this->phone;
     }
 
     private function fillCustomerData(Customer $customer): void

@@ -111,6 +111,8 @@ test('usuário com permissão fiscal.settings salva configuração fiscal', func
         ->set('environment', 'producao')
         ->set('nfceSerie', '2')
         ->set('providerToken', 'meu-token-secreto')
+        ->set('cscNfceProducao', 'csc-producao')
+        ->set('idTokenNfceProducao', '000001')
         ->call('save')
         ->assertHasNoErrors();
 
@@ -540,6 +542,61 @@ test('salvar envia inscrição municipal, CSC e telefone/complemento da filial n
             && ($request['complemento'] ?? null) === 'Sala 3'
             && ($request['telefone'] ?? null) === '11988887777';
     });
+});
+
+test('habilitar produção sem CSC e ID do Token barra o salvamento antes da Focus NFe', function () {
+    Http::fake();
+
+    $company = fiscalConfigTestCompany();
+    app()->instance('current.company', $company);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+    grantFiscalSettingsPermission($admin, $company);
+
+    Livewire::actingAs($admin)
+        ->test(Config::class)
+        ->set('enabled', true)
+        ->set('environment', 'producao')
+        ->call('save')
+        ->assertHasErrors(['cscNfceProducao', 'idTokenNfceProducao']);
+
+    expect(CompanyFiscalConfig::where('company_id', $company->id)->exists())->toBeFalse();
+    Http::assertNothingSent();
+});
+
+test('CSC já salvo dispensa redigitar ao manter produção, mas o ID do Token continua obrigatório', function () {
+    fakeFocusNfeEmpresaCreated();
+
+    $company = fiscalConfigTestCompany();
+    app()->instance('current.company', $company);
+
+    CompanyFiscalConfig::create([
+        'company_id' => $company->id,
+        'branch_id' => fiscalConfigTestBranch($company)->id,
+        'is_default' => true,
+        'enabled' => true,
+        'environment' => 'producao',
+        'csc_nfce_producao' => 'csc-salvo',
+    ]);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+    grantFiscalSettingsPermission($admin, $company);
+
+    $component = Livewire::actingAs($admin)
+        ->test(Config::class)
+        ->call('save')
+        ->assertHasErrors(['idTokenNfceProducao'])
+        ->assertHasNoErrors(['cscNfceProducao']);
+
+    $component->set('idTokenNfceProducao', '000001')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    Http::assertSent(fn (\Illuminate\Http\Client\Request $request) => str_contains($request->url(), '/v2/empresas')
+        && ($request['csc_nfce_producao'] ?? null) === 'csc-salvo'
+        && ($request['id_token_nfce_producao'] ?? null) === '000001');
 });
 
 test('com mais de uma filial, usuário escolhe qual delas envia o endereço pro registro na Focus NFe', function () {

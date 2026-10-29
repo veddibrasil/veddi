@@ -128,7 +128,7 @@ function captureSecurityCode(): object
     {
         public string $code = '';
 
-        public function send(int $companyId, string $phone, string $code): void
+        public function send(int $companyId, string $phone, string $code, ?string $challengeId = null): void
         {
             $this->code = $code;
         }
@@ -252,7 +252,9 @@ test('compra visitante completa pelo endpoint Livewire sem código ou endereço 
     expect($data['step'])->toBe('CHECKOUT_ORDER_TYPE');
     $call('selectOrderType', ['pickup']);
     $data = $call('submitPhone', updates: ['phone' => $ctx['customer']->phone]);
-    expect($data['step'])->toBe('REGISTER_NAME')->and($data['name'])->toBe('');
+    expect($data['step'])->toBe('CUSTOMER_OPTIONS')->and($data['name'])->toBe('');
+    $data = $call('continueAsGuest');
+    expect($data['step'])->toBe('REGISTER_NAME');
     $call('submitName', updates: ['name' => 'Pessoa visitante']);
     $data = $call('skipCoupon');
     expect($data['step'])->toBe('CHECKOUT_SCHEDULE');

@@ -33,6 +33,20 @@ Schedule::command('whatsapp:check-connections')
     ->withoutOverlapping()
     ->onOneServer();
 
+// Vendas no sino do admin: "Agir agora" todo dia (estoque acabando, campeão fora de venda, queda forte)
+Schedule::command('sales:notify')
+    ->name('sales-notify-daily')
+    ->dailyAt('08:30')
+    ->withoutOverlapping()
+    ->onOneServer();
+
+// Vendas no sino do admin: resumo da semana anterior, às segundas
+Schedule::command('sales:notify --weekly')
+    ->name('sales-notify-weekly')
+    ->weeklyOn(1, '08:30')
+    ->withoutOverlapping()
+    ->onOneServer();
+
 // Conexões presas aguardando templates: relê o status na Meta. Cobre webhook de aprovação perdido
 // (ou chegado no meio do provisionamento) e templates que falharam ao ser criados.
 Schedule::command('whatsapp:sync-templates --pending')

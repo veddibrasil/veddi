@@ -29,7 +29,10 @@ trait HasOrderFlow
         $this->appliedCoupon = null;
         $this->couponDiscount = 0.0;
         $this->couponError = null;
-        $this->transitionTo('CHECKOUT_ORDER_TYPE');
+        // Identity already resolved (restored profile or back to cart): offer the coupon again,
+        // since the identification steps that normally lead to it will be skipped.
+        $this->orderTypeChosen = false;
+        $this->transitionTo($this->checkoutReady ? 'CHECKOUT_COUPON' : 'CHECKOUT_ORDER_TYPE');
     }
 
     // --- Coupon ---
@@ -52,7 +55,8 @@ trait HasOrderFlow
                 $code,
                 $this->useSavedProfile ? $this->verifiedCustomer()?->id : null,
                 $this->cart,
-                $this->cartTotal
+                $this->cartTotal,
+                $this->phone
             );
 
             // Produto grátis não abate valor: o brinde entra no pedido a R$ 0,00 (OrderService).
@@ -89,7 +93,7 @@ trait HasOrderFlow
                 : '';
 
             $this->addMessage('user', "Cupom: {$coupon->code}");
-            $this->addMessage('bot', "✅ {$discountLabel}{$paymentNote} Escolha o tipo de entrega:");
+            $this->addMessage('bot', "✅ {$discountLabel}{$paymentNote}".($this->orderTypeChosen ? '' : ' Escolha o tipo de entrega:'));
             $this->proceedAfterCoupon();
 
             Log::channel('chat')->info('Cupom aplicado', [
@@ -121,7 +125,7 @@ trait HasOrderFlow
     private function proceedAfterCoupon(): void
     {
         if ($this->orderTypeChosen) {
-            $this->selectOrderType($this->orderType);
+            $this->continueWithOrderType();
 
             return;
         }
@@ -143,16 +147,21 @@ trait HasOrderFlow
         abort_unless(in_array($type, ['delivery', 'pickup'], true), 422);
         $this->orderType = $type;
         $this->orderTypeChosen = true;
+        $this->addMessage('user', $type === 'pickup' ? 'Retirada no local' : 'Entrega');
+        $this->continueWithOrderType();
+    }
+
+    /** Segue para a próxima etapa do tipo já escolhido, sem repetir a escolha no histórico. */
+    private function continueWithOrderType(): void
+    {
         if (! $this->checkoutReady) {
-            $this->addMessage('bot', 'Informe seu telefone com DDD para continuar.');
+            $this->addMessage('bot', 'Qual é o seu telefone com DDD?');
             $this->transitionTo('IDENTIFY_PHONE');
 
             return;
         }
-        $label = $type === 'pickup' ? 'Retirada no local' : 'Entrega';
-        $this->addMessage('user', $label);
 
-        if ($type === 'pickup') {
+        if ($this->orderType === 'pickup') {
             $this->deliveryFee = 0.0;
             $this->freeDelivery = false;
 
@@ -201,24 +210,32 @@ trait HasOrderFlow
             }
         }
 
-        if ($geocodedNow) {
+        // O pin só é pedido quando o frete depende da distância/área; na taxa fixa as coordenadas
+        // encontradas ficam gravadas, mas o cliente segue direto.
+        $settings = Branch::find($this->selectedBranchId)?->deliverySetting;
+        if ($geocodedNow && $settings?->active && $this->deliveryNeedsCoordinates($settings)) {
             $this->dispatch('chat-geocoded',
                 lat: (float) $this->customer_latitude,
                 lng: (float) $this->customer_longitude,
             );
-            $this->addMessage('bot', 'Encontramos seu endereço no mapa 📍 Confira se o pin está no lugar certo. Arraste para ajustar se necessário, confirme no mapa e clique em "Confirmar endereço" novamente.');
+            $this->addMessage('bot', 'Encontramos seu endereço no mapa 📍 Confira se o pino está no lugar certo (arraste se precisar) e toque em "Confirmar local".');
 
             return;
         }
 
-        $addressSummary = $this->address;
-        if ($this->complement) {
-            $addressSummary .= ", {$this->complement}";
-        }
-        $addressSummary .= " — {$this->neighborhood}, {$this->city}";
-        $this->addMessage('user', $addressSummary);
+        $this->addMessage('user', $this->deliveryAddressSummary());
 
         $this->resolveDeliveryFee();
+    }
+
+    private function deliveryAddressSummary(): string
+    {
+        $summary = trim("{$this->address}, {$this->number}", ', ');
+        if ($this->complement) {
+            $summary .= ", {$this->complement}";
+        }
+
+        return "{$summary} — {$this->neighborhood}, {$this->city}";
     }
 
     private function resolveDeliveryFee(): void
@@ -248,7 +265,7 @@ trait HasOrderFlow
                 $this->deliveryNeedsCoordinates($settings)
                 && ($this->customer_latitude === '' || $this->customer_longitude === '')
             ) {
-                $this->addMessage('bot', 'Para calcular o frete, precisamos da sua localização. Use o mapa acima para buscar seu endereço, usar o GPS ou arrastar o pin.');
+                $this->addMessage('bot', 'Para calcular o frete, precisamos saber onde fica seu endereço. Toque em "Marcar no mapa", abaixo dos campos, e posicione o pino na sua casa.');
 
                 return;
             }

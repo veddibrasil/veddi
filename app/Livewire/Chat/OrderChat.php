@@ -46,7 +46,15 @@ class OrderChat extends Component
 
     public string $verificationCode = '';
 
-    public bool $rememberDevice = false;
+    public bool $rememberDevice = true;
+
+    public bool $rememberDeviceData = true;
+
+    #[Locked]
+    public bool $hasDeviceData = false;
+
+    #[Locked]
+    public string $deviceDataName = '';
 
     #[Locked]
     public ?string $trackingLink = null;
@@ -121,6 +129,11 @@ class OrderChat extends Component
     public bool $showScheduleForm = false;
 
     public string $paymentMethod = 'PIX';
+
+    // Troco do pagamento em dinheiro: vira uma linha nas observações do pedido (placeOrder).
+    public bool $needsChange = false;
+
+    public string $cashChange = '';
 
     public string $orderType = 'delivery'; // 'delivery' | 'pickup'
 
@@ -275,6 +288,10 @@ class OrderChat extends Component
                 $this->initialize();
             }
             $this->enforceChatAuthorization();
+            if (! $this->checkoutReady && in_array($this->step, ['MENU_BROWSE', 'BRANCH_SELECT'], true)) {
+                $this->restoreCheckoutProfile();
+                $this->saveToSession();
+            }
 
             // UNAVAILABLE também é reavaliado: a loja pode ter voltado a aceitar pedidos.
             if (in_array($this->step, ['CLOSED', 'UNAVAILABLE'], true)) {
@@ -313,6 +330,8 @@ class OrderChat extends Component
         }
         if ($this->orderId && ! $this->findOwnOrder()) {
             $this->orderId = null;
+            // Chave nova: com a antiga, confirmOrder() reencontraria o pedido sem acesso.
+            $this->checkoutKey = \Illuminate\Support\Str::random(64);
             $this->reset('pixQrCode', 'pixCopyPaste', 'paymentId', 'expiresAt', 'trackingLink', 'trackingSummary', 'messages');
             $this->step = 'MENU_BROWSE';
         }
@@ -382,6 +401,7 @@ class OrderChat extends Component
             return;
         }
 
+        $this->restoreCheckoutProfile();
         $branches = $this->branches;
 
         if ($branches->count() === 1) {
@@ -393,6 +413,33 @@ class OrderChat extends Component
             $this->addMessage('bot', "Olá! Bem-vindo ao {$companyName}! 🏪 Escolha uma filial para ver o cardápio.");
             $this->transitionTo('BRANCH_SELECT');
         }
+    }
+
+    private function restoreCheckoutProfile(): void
+    {
+        $customer = $this->verifiedCustomer();
+        if ($this->checkoutReady || ! $customer || ($this->phone !== '' && $this->phone !== $customer->phone)) {
+            return;
+        }
+        $this->phone = $customer->phone;
+        $this->fillCustomerData($customer);
+        $this->useSavedProfile = true;
+        $this->checkoutReady = true;
+    }
+
+    #[Computed]
+    public function pickupAddress(): ?string
+    {
+        $branch = $this->branches->firstWhere('id', $this->selectedBranchId);
+
+        return $branch ? trim("{$branch->address}, {$branch->city}", ', ') : null;
+    }
+
+    #[Computed]
+    public function savedProfileAvailable(): bool
+    {
+        return config('chat_security.code_channel') === 'email'
+            || (config('chat_security.code_channel') === 'whatsapp' && \App\Services\Chat\WhatsAppCodeSender::isEnabled());
     }
 
     // -------------------------------------------------------------------------
@@ -720,6 +767,12 @@ class OrderChat extends Component
         session(['chat_state' => [
             'securityVersion' => 2,
             'checkoutReady' => $this->checkoutReady,
+            'rememberDevice' => $this->rememberDevice,
+            'rememberDeviceData' => $this->rememberDeviceData,
+            'hasDeviceData' => $this->hasDeviceData,
+            'deviceDataName' => $this->deviceDataName,
+            'needsChange' => $this->needsChange,
+            'cashChange' => $this->cashChange,
             'useSavedProfile' => $this->useSavedProfile,
             'orderTypeChosen' => $this->orderTypeChosen,
             'checkoutKey' => $this->checkoutKey,
@@ -778,6 +831,12 @@ class OrderChat extends Component
         session()->forget('chat_state');
         $this->checkoutKey = \Illuminate\Support\Str::random(64);
         $this->checkoutReady = false;
+        $this->rememberDevice = true;
+        $this->rememberDeviceData = true;
+        $this->hasDeviceData = false;
+        $this->deviceDataName = '';
+        $this->needsChange = false;
+        $this->cashChange = '';
         $this->useSavedProfile = false;
         $this->orderTypeChosen = false;
         $this->challengeId = null;

@@ -36,6 +36,8 @@ if (! function_exists('atnCompany')) {
             'name' => $name,
             'address' => 'Rua A, 1',
             'city' => 'SP',
+            'state' => 'SP',
+            'cep' => '01310-100',
             'active' => true,
             'opens_at' => '00:00:00',
             'closes_at' => '23:59:59',

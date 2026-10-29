@@ -11,7 +11,7 @@ use RuntimeException;
 
 class PhoneVerification
 {
-    private function scope(int $companyId, string $phone): string
+    private function scope(int $companyId, #[\SensitiveParameter] string $phone): string
     {
         $nonce = session('chat_challenge_nonce');
         if (! $nonce) {
@@ -21,20 +21,21 @@ class PhoneVerification
         return hash_hmac('sha256', "saved-profile|{$companyId}|{$phone}|{$nonce}", config('app.key'));
     }
 
-    public function send(int $companyId, string $phone): string
+    public function send(int $companyId, #[\SensitiveParameter] string $phone): string
     {
         if (! preg_match('/^\d{10,11}$/', $phone)) {
             throw new RuntimeException('Telefone inválido.');
         }
         $scope = $this->scope($companyId, $phone);
 
-        return Cache::lock('chat-code-send:'.$scope, 15)->block(3, function () use ($companyId, $phone, $scope) {
+        // Covers Meta preflight + send, or preflight + WuzAPI fallback (bounded HTTP timeouts).
+        return Cache::lock('chat-code-send:'.$scope, 45)->block(3, function () use ($companyId, $phone, $scope) {
             $phoneHash = hash_hmac('sha256', $phone, config('app.key'));
             $limits = [
                 ["chat-otp:session:{$scope}", 1, 60],
                 ["chat-otp:phone:{$companyId}:{$phoneHash}", 5, 600],
                 ['chat-otp:ip:'.hash('sha256', (string) request()->ip()), 20, 600],
-                ["chat-otp:company:{$companyId}", 300, 600],
+                ["chat-otp:company:{$companyId}", 60, 600],
                 ['chat-otp:global', 1000, 600],
             ];
             foreach ($limits as [$key, $max, $seconds]) {
@@ -56,7 +57,7 @@ class PhoneVerification
                 ]);
             });
             try {
-                app(ChatCodeSender::class)->send($companyId, $phone, $code);
+                app(ChatCodeSender::class)->send($companyId, $phone, $code, $id);
             } catch (\Throwable) {
                 DB::table('chat_phone_challenges')->where('id', $id)->update(['consumed_at' => now()]);
                 throw new RuntimeException('Não foi possível enviar o código. Você pode continuar preenchendo seus dados.');
@@ -66,7 +67,7 @@ class PhoneVerification
         });
     }
 
-    public function consume(string $id, int $companyId, string $phone, #[\SensitiveParameter] string $code): bool
+    public function consume(string $id, int $companyId, #[\SensitiveParameter] string $phone, #[\SensitiveParameter] string $code): bool
     {
         $scope = $this->scope($companyId, $phone);
 

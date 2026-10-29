@@ -3,6 +3,7 @@
     x-init="
         $watch(() => $wire.deletingId, val => val ? $flux.modal('confirm-delete-coupon').show() : $flux.modal('confirm-delete-coupon').close());
         $watch(() => $wire.showModal, val => val ? $flux.modal('coupon-form').show() : $flux.modal('coupon-form').close());
+        if ($wire.showModal) $nextTick(() => $flux.modal('coupon-form').show());
     ">
 
     <div class="flex items-center justify-between">
@@ -19,6 +20,8 @@
             {{ session('status') }}
         </div>
     @endif
+
+    <x-admin.sales-suggestions context="coupons" />
 
     {{-- Filters --}}
     <div class="flex flex-wrap gap-3">
@@ -173,6 +176,12 @@
     <flux:modal name="coupon-form" class="max-w-2xl w-full">
         <div class="space-y-5 p-1">
             <flux:heading size="lg">{{ $editingId ? 'Editar Cupom' : 'Novo Cupom' }}</flux:heading>
+
+            @if ($prefilledFromSuggestion)
+                <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                    Pré-preenchido por uma sugestão de vendas. Revise código, desconto e validade antes de salvar. O cupom vale no chat próprio, não no iFood nem no PDV.
+                </div>
+            @endif
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {{-- Código --}}

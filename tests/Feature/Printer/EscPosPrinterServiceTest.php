@@ -168,6 +168,28 @@ test('buildFiscalNoteReceipt monta o DANFE completo com itens, totais e chave de
         ->toContain(chunk_split(str_repeat('1', 44), 4, ' '));
 });
 
+test('buildFiscalNoteReceipt usa o QR Code e o portal de consulta da SEFAZ devolvidos pela Focus', function () {
+    $order = escposTestOrder();
+
+    $note = FiscalNote::create([
+        'company_id' => $order->company_id,
+        'order_id' => $order->id,
+        'status' => 'authorized',
+        'access_key' => 'NFe'.str_repeat('4', 44),
+        'data' => ['raw_response' => [
+            'qrcode_url' => 'http://www.fazenda.pr.gov.br/nfce/qrcode?p=4444|2|2|1|ABC',
+            'url_consulta_nf' => 'http://www.fazenda.pr.gov.br/nfce/consulta',
+        ]],
+    ]);
+
+    $bytes = app(PrinterServiceInterface::class)->buildFiscalNoteReceipt($note, $order);
+
+    expect($bytes)->toContain('http://www.fazenda.pr.gov.br/nfce/qrcode?p=4444|2|2|1|ABC')
+        ->toContain('http://www.fazenda.pr.gov.br/nfce/consulta')
+        ->toContain(chunk_split(str_repeat('4', 44), 4, ' '))
+        ->not->toContain('NFe4444');
+});
+
 test('buildFiscalNoteReceipt indica consumidor nao identificado quando nao ha documento', function () {
     $order = escposTestOrder();
 

@@ -279,6 +279,26 @@ class Config extends Component
         // ação manual — cobre o caso majoritário hoje). Com múltiplas filiais, o
         // usuário escolhe via toggle; não é permitido desmarcar a única default
         // existente sem antes marcar outra, senão a empresa fica sem fallback.
+        // NFC-e em produção exige CSC + ID do Token gerados na SEFAZ: sem eles a Focus aceita
+        // o cadastro, mas rejeita toda nota ("Código CSC não configurado"). Raw original pra
+        // checar o CSC salvo sem decifrar (config antiga cifrada com outra APP_KEY quebra).
+        if ($this->enabled && $this->environment === 'producao') {
+            $missingCsc = $this->cscNfceProducao === '' && blank($config->getRawOriginal('csc_nfce_producao'));
+            $missingIdToken = trim($this->idTokenNfceProducao) === '';
+
+            if ($missingCsc) {
+                $this->addError('cscNfceProducao', 'Informe o CSC de produção (gerado no portal da SEFAZ) para emitir NFC-e em produção.');
+            }
+
+            if ($missingIdToken) {
+                $this->addError('idTokenNfceProducao', 'Informe o ID do Token CSC para emitir NFC-e em produção.');
+            }
+
+            if ($missingCsc || $missingIdToken) {
+                return;
+            }
+        }
+
         $requestedDefault = count($this->branchOptions) > 1 ? $this->isDefault : true;
         $wasDefault = $config->exists && $config->is_default;
 

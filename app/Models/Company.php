@@ -98,6 +98,7 @@ class Company extends Model
         'waiter_module_enabled' => 'boolean',
         'schedule_min_advance_minutes' => 'integer',
         'chat_highlights' => 'array',
+        'sales_notifications_state' => 'array',
         'plan' => Plan::class,
         'pending_plan' => Plan::class,
         'status' => 'string',

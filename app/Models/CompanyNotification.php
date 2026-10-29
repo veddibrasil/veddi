@@ -13,6 +13,7 @@ class CompanyNotification extends Model
         'is_delivery',
         'is_kitchen',
         'is_bar',
+        'is_admin_only',
         'title',
         'subtitle',
         'link',
@@ -24,6 +25,7 @@ class CompanyNotification extends Model
         'is_delivery' => 'boolean',
         'is_kitchen' => 'boolean',
         'is_bar' => 'boolean',
+        'is_admin_only' => 'boolean',
     ];
 
     public function company(): BelongsTo

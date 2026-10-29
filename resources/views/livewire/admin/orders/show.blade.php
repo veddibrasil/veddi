@@ -46,6 +46,8 @@
         </x-slot:actions>
     </x-admin.page-header>
 
+    <x-admin.sales-suggestions context="orders" :order-id="$order->id" />
+
     {{-- Avisos antes do resumo iFood: o resultado de aceitar/recusar não pode ficar escondido lá embaixo. --}}
     @if (session('status'))
         <div role="status" class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm dark:bg-green-900/30 dark:border-green-700 dark:text-green-400">
@@ -998,10 +1000,15 @@
                         <span class="px-2 py-1 rounded-full text-xs font-medium {{ $noteStatusColors[$activeFiscalNote->status] ?? '' }}">
                             {{ $noteStatusLabels[$activeFiscalNote->status] ?? $activeFiscalNote->status }}
                         </span>
+                        @include('livewire.admin.fiscal._print-button', [
+                            'note' => $activeFiscalNote,
+                            'label' => 'Imprimir nota',
+                            'class' => 'inline-flex items-center text-xs font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:hover:bg-purple-900/50 px-3 py-1.5 rounded-lg transition-colors',
+                        ])
                         @if($activeFiscalNote->danfe_url)
                             <a href="{{ route('admin.fiscal.document', ['note' => $activeFiscalNote->id, 'type' => 'danfe']) }}" target="_blank"
                                 class="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium">
-                                Baixar DANFE
+                                {{ $activeFiscalNote->model === '55' ? 'Baixar DANFE' : 'Ver DANFE' }}
                             </a>
                         @endif
                         @if($activeFiscalNote->xml_url)

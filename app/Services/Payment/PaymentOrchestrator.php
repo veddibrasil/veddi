@@ -335,8 +335,9 @@ class PaymentOrchestrator
                         name: $customer->name,
                         email: $customer->email ?? '',
                         cpfCnpj: $cardData['cpfCnpj'] ?? $customer->tax_id ?? '',
-                        postalCode: $cardData['postalCode'] ?? $vindiAddress['postal_code'] ?? '',
-                        addressNumber: $cardData['addressNumber'] ?? $vindiAddress['number'] ?? 'S/N',
+                        // O chat manda '' quando o visitante não tem CEP: cai para o endereço do pedido/filial.
+                        postalCode: $this->firstFilled($cardData['postalCode'] ?? null, $vindiAddress['postal_code']) ?? '',
+                        addressNumber: $this->firstFilled($cardData['addressNumber'] ?? null, $vindiAddress['number']),
                         phone: $customer->phone ?? null,
                         street: $vindiAddress['street'],
                         complement: $vindiAddress['complement'],
@@ -643,15 +644,23 @@ class PaymentOrchestrator
     {
         $branch = $order->branch;
 
+        // Visitante na retirada grava '' no endereço do checkout: '' também cai para a filial,
+        // senão a Vindi recusa a cobrança (422: CEP, cidade, UF e número em branco).
         return [
-            'street' => $order->delivery_address ?? $customer->address ?? $branch?->address,
-            'number' => $order->delivery_number ?? $customer->number ?? $branch?->number,
-            'complement' => $order->delivery_complement ?? $customer->complement ?? $branch?->complement,
-            'neighborhood' => $order->delivery_neighborhood ?? $customer->neighborhood ?? $branch?->neighborhood,
-            'city' => $order->delivery_city ?? $customer->city ?? $branch?->city,
-            'state' => $customer->state ?? $branch?->state,
-            'postal_code' => $order->delivery_cep ?? $customer->cep ?? $branch?->cep,
+            'street' => $this->firstFilled($order->delivery_address, $customer->address, $branch?->address),
+            'number' => $this->firstFilled($order->delivery_number, $customer->number, $branch?->number) ?? 'S/N',
+            'complement' => $this->firstFilled($order->delivery_complement, $customer->complement, $branch?->complement),
+            'neighborhood' => $this->firstFilled($order->delivery_neighborhood, $customer->neighborhood, $branch?->neighborhood),
+            'city' => $this->firstFilled($order->delivery_city, $customer->city, $branch?->city),
+            'state' => $this->firstFilled($customer->state, $branch?->state),
+            'postal_code' => $this->firstFilled($order->delivery_cep, $customer->cep, $branch?->cep),
         ];
+    }
+
+    /** Primeiro valor preenchido: '' e espaços contam como ausentes, ao contrário de ??. */
+    private function firstFilled(mixed ...$values): mixed
+    {
+        return collect($values)->first(fn ($value) => trim((string) $value) !== '');
     }
 
     /**

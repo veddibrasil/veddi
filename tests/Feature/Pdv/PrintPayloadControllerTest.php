@@ -257,6 +257,41 @@ test('nota fiscal retorna payload quando autorizada e há impressora marcada', f
     expect(base64_decode($response['payload']))->toContain('DANFE NFC-e')->toContain('Coxinha');
 });
 
+test('botão imprimir nota usa a impressora do balcão quando nenhuma está marcada para nota fiscal', function () {
+    ['admin' => $admin, 'order' => $order, 'branch' => $branch, 'company' => $company] = printPayloadContext();
+
+    BranchPrinter::create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'station' => 'geral',
+        'ip_address' => '192.168.0.60',
+        'port' => 9100,
+        'paper_width' => 80,
+        'print_fiscal_note' => false,
+        'active' => true,
+    ]);
+
+    FiscalNote::create([
+        'company_id' => $company->id,
+        'order_id' => $order->id,
+        'status' => 'authorized',
+        'access_key' => str_repeat('1', 44),
+    ]);
+
+    // Impressão automática continua respeitando a marcação da impressora.
+    $this->actingAs($admin)
+        ->get(route('admin.pdv.print.fiscal-note', ['order' => $order]))
+        ->assertNotFound();
+
+    $response = $this->actingAs($admin)
+        ->get(route('admin.pdv.print.fiscal-note', ['order' => $order, 'manual' => 1]))
+        ->assertOk()
+        ->json();
+
+    expect($response['printer']['ip'])->toBe('192.168.0.60');
+    expect(base64_decode($response['payload']))->toContain('DANFE NFC-e');
+});
+
 test('fechamento retorna payload quando empresa tem uma única filial ativa com impressora geral', function () {
     ['admin' => $admin, 'branch' => $branch, 'company' => $company] = printPayloadContext();
 

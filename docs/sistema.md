@@ -67,6 +67,7 @@ Requer: `auth`, `verified`, `company.role:company_admin`
 | `admin/dashboard` | Dashboard | Métricas gerais, pedidos recentes |
 | `admin/orders` | Orders/Index | Lista de pedidos com filtros |
 | `admin/orders/report` | Orders/Report | Relatório de vendas com analytics |
+| `admin/reports/sold-items` | Reports/SoldItems | Itens vendidos, ranking e sugestões de venda (company_admin) |
 | `admin/orders/{order}` | Orders/Show | Detalhe do pedido |
 | `admin/stock` | Stock/Index | Gestão de estoque por filial |
 | `admin/categories` | Categories/Index | Categorias de produtos |
@@ -82,6 +83,18 @@ Requer: `auth`, `verified`, `company.role:company_admin`
 | `admin/roles` | Roles/Index | Papéis e permissões |
 | `admin/users` | Users/Index | Usuários da empresa |
 | `admin/users/{user}/permissions` | Users/Permissions | Permissões individuais |
+
+### Sugestões de venda
+
+O relatório de itens vendidos permite filtrar sugestões por prioridade (agir agora, oportunidades e ideias) e tipo. As recomendações mostram o período analisado, os dados que as embasam e atalhos para revisar produtos, promoções, cupons e estoque. A busca do ranking usa o nome atual do produto, inclusive quando o agregado de vendas está em cache.
+
+Indicadores, barras dos gráficos, mapa de horários e valores do ranking exibem detalhes ao passar o mouse, tocar ou ativar com Enter. Os balões explicam cálculos, mostram os valores que os compõem e a comparação com o período anterior quando aplicável. Os gráficos do detalhe do produto têm o mesmo comportamento. Escape ou um toque fora fecham o balão; os dados respeitam os filtros do relatório, sem consultas adicionais ao banco.
+
+O componente `Admin/SalesSuggestions` também aparece no dashboard, produtos, edição do produto, pedidos, detalhe do pedido, estoque e cupons. Ele carrega sob demanda e mostra até três recomendações pertinentes à tela. Na edição, considera apenas o produto; no detalhe do pedido, considera seus produtos na mesma filial. Produtos respeitam o filtro de categoria e estoque respeita a filial selecionada. Os links para o relatório preservam o período e os filtros analisados.
+
+As sugestões exigem pelo menos 20 pedidos com itens vendidos na janela de análise, por padrão de 28 dias. Além das regras de estoque, disponibilidade, tendências e cupons, produtos ativos com pelo menos 10 unidades vendidas podem receber sugestões para completar foto ou descrição. Essas melhorias de cadastro ficam após as demais recomendações da mesma prioridade. Os limites são configuráveis em `config/sales_insights.php`; o contexto é filtrado antes do limite de sugestões para a loja.
+
+O acesso é exclusivo de `company_admin`, revalidado em cada requisição Livewire. Produtos e pedidos são validados contra a empresa atual. Atalhos abrem os formulários para revisão; as alterações só entram em vigor ao salvar. O botão de atualizar descarta o cache de vendas e sugestões do contexto exibido.
 
 ### API Financeira (autenticada)
 | Método | Rota | Descrição |
