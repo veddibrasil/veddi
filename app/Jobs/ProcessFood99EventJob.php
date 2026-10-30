@@ -62,6 +62,8 @@ class ProcessFood99EventJob implements ShouldBeUnique, ShouldQueue
         }
 
         $integration = $event->food99Integration;
+        // Fila sync (dev/testes) roda dentro do request: devolve o tenant que estava antes.
+        $previousCompany = app()->bound('current.company') ? app('current.company') : null;
 
         try {
             if ($integration) {
@@ -107,7 +109,7 @@ class ProcessFood99EventJob implements ShouldBeUnique, ShouldQueue
 
             throw $e;
         } finally {
-            app()->forgetInstance('current.company');
+            $previousCompany ? app()->instance('current.company', $previousCompany) : app()->forgetInstance('current.company');
         }
     }
 

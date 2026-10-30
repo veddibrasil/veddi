@@ -164,6 +164,7 @@ Route::middleware(['auth', 'verified', 'company.active'])
             Route::get('/settings', \App\Livewire\Admin\Settings\CompanySettings::class)->name('settings');
             Route::get('/settings/whatsapp', \App\Livewire\Admin\Settings\WhatsAppSettings::class)->name('settings.whatsapp');
             Route::get('/settings/ifood', \App\Livewire\Admin\Settings\IfoodIntegrationSettings::class)->name('settings.ifood');
+            Route::get('/settings/99food', \App\Livewire\Admin\Settings\Food99IntegrationSettings::class)->name('settings.99food');
             Route::get('/integrations', \App\Livewire\Admin\Integrations\Index::class)->name('integrations.index');
             Route::get('/reports/sold-items', \App\Livewire\Admin\Reports\SoldItems::class)->name('reports.sold-items');
 

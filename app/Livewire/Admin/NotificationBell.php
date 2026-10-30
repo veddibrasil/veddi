@@ -56,6 +56,9 @@ class NotificationBell extends Component
             "echo-private:orders.{$this->companyId},IfoodOrderUpdated" => 'onNewOrder',
             // Pedido do iFood que não entrou no painel (resolver pelo Gestor de Pedidos do iFood).
             "echo-private:orders.{$this->companyId},IfoodOrderNotImported" => 'onNewOrder',
+            // 99Food: solicitação do cliente, entrega interrompida, pedido que não entrou.
+            "echo-private:orders.{$this->companyId},Food99OrderUpdated" => 'onNewOrder',
+            "echo-private:orders.{$this->companyId},Food99OrderNotImported" => 'onNewOrder',
         ];
     }
 
@@ -154,7 +157,7 @@ class NotificationBell extends Component
         $unreadCount = $notifications->whereNull('read_at')->count();
 
         // Sem acesso à tela da integração, o alerta continua no sino mas sem levar a um 403.
-        $adminOnlyPaths = $this->canOpenIntegrationSettings ? [] : [route('admin.settings.ifood', absolute: false), route('admin.settings.whatsapp', absolute: false)];
+        $adminOnlyPaths = $this->canOpenIntegrationSettings ? [] : [route('admin.settings.ifood', absolute: false), route('admin.settings.99food', absolute: false), route('admin.settings.whatsapp', absolute: false)];
 
         return view('livewire.admin.notification-bell', [
             'notifications' => $notifications,

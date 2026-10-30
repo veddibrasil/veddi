@@ -72,6 +72,42 @@
     </div>
 @endif
 
+@if ($this->food99AwaitingOrders->isNotEmpty())
+    {{-- Pedidos 99Food esperando aceite: a 99Food cancela o pedido não confirmado em 5 minutos. --}}
+    <div data-testid="food99-awaiting-alert" class="rounded-xl border border-amber-300 bg-amber-50 p-3 space-y-2 dark:border-amber-800 dark:bg-amber-900/20">
+        <p role="alert" class="text-sm font-bold text-amber-800 dark:text-amber-300">
+            {{ $this->food99AwaitingOrders->count() === 1 ? '1 pedido 99Food aguardando aceite' : $this->food99AwaitingOrders->count().' pedidos 99Food aguardando aceite' }}
+        </p>
+        @foreach ($this->food99AwaitingOrders as $awaiting)
+            @php $awaiting99 = $awaiting->food99Details(); $awaitingDeadline = $awaiting99->confirmationDeadline(); @endphp
+            <div wire:key="food99-awaiting-{{ $awaiting->id }}" class="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-white px-3 py-2 dark:bg-zinc-800">
+                <a href="{{ route('admin.orders.show', $awaiting) }}" class="font-mono font-bold text-neutral-800 hover:underline dark:text-neutral-100">99Food #{{ $awaiting99->displayId() }}</a>
+                <span class="text-sm text-neutral-600 dark:text-neutral-300">{{ $awaiting99->orderTypeLabel() }} · R$ {{ number_format($awaiting->total, 2, ',', '.') }}</span>
+                @if ($awaitingDeadline)
+                    <span x-data="acceptanceCountdown({{ $awaitingDeadline->getTimestampMs() }})" aria-hidden="true"
+                          class="rounded px-2 py-0.5 font-mono text-sm font-bold"
+                          :class="urgent ? 'bg-red-600 text-white' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'"
+                          x-text="label"></span>
+                    <span class="sr-only">Aceitar até {{ $awaitingDeadline->timezone(config('app.timezone'))->format('H:i') }}</span>
+                @endif
+                @if ($canUpdate)
+                    <span class="ml-auto flex gap-2">
+                        <button wire:click="acceptMarketplaceOrder({{ $awaiting->id }})" wire:loading.attr="disabled" wire:target="acceptMarketplaceOrder({{ $awaiting->id }})"
+                                aria-label="Aceitar pedido 99Food #{{ $awaiting99->displayId() }}"
+                                class="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">
+                            <span wire:loading.remove wire:target="acceptMarketplaceOrder({{ $awaiting->id }})">Aceitar</span>
+                            <span wire:loading wire:target="acceptMarketplaceOrder({{ $awaiting->id }})">Aceitando…</span>
+                        </button>
+                        <button wire:click="openFood99CancelModal({{ $awaiting->id }})" wire:loading.attr="disabled"
+                                aria-label="Recusar pedido 99Food #{{ $awaiting99->displayId() }}"
+                                class="rounded-lg bg-red-100 px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-200 disabled:opacity-50 dark:bg-red-900/40 dark:text-red-300">Recusar</button>
+                    </span>
+                @endif
+            </div>
+        @endforeach
+    </div>
+@endif
+
 @if ($userStation === 'entrega')
     {{-- ── ENTREGA: fila mobile em cards, sem kanban ──────────────────────── --}}
     <div class="flex items-center justify-between">

@@ -218,7 +218,7 @@
                             </flux:sidebar.item>
                             {{-- Rota só de company_admin, como a do WhatsApp: papel customizado com company.settings levaria 403. --}}
                             @if($company?->canUseIfoodIntegration() && $user?->isCompanyAdmin($company))
-                                <flux:sidebar.item icon="link" :href="route('admin.integrations.index')" :current="request()->routeIs('admin.integrations.*') || request()->routeIs('admin.settings.ifood')" wire:navigate>
+                                <flux:sidebar.item icon="link" :href="route('admin.integrations.index')" :current="request()->routeIs('admin.integrations.*') || request()->routeIs('admin.settings.ifood') || request()->routeIs('admin.settings.99food')" wire:navigate>
                                     Integrações
                                 </flux:sidebar.item>
                             @endif

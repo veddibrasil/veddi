@@ -785,6 +785,35 @@ class Index extends Component
     }
 
     /**
+     * Pedidos 99Food esperando aceite (a 99 cancela em 5 min), pro alerta no topo da tela.
+     *
+     * @return \Illuminate\Support\Collection<int, Order>
+     */
+    #[\Livewire\Attributes\Computed]
+    public function food99AwaitingOrders(): \Illuminate\Support\Collection
+    {
+        if ($this->userStation || ! $this->canView || ! config('food99.enabled')) {
+            return collect();
+        }
+
+        $query = $this->isSuperAdmin
+            ? Order::withoutGlobalScope(CompanyScope::class)->when($this->companyFilter, fn ($q) => $q->where('company_id', $this->companyFilter))
+            : Order::query();
+
+        return $query
+            ->where('channel', OrderChannel::Food99->value)
+            ->where('status', 'pending')
+            ->where('external_metadata->food99_stage', 'CREATED')
+            ->when($this->userBranchId, fn ($q) => $q->where('branch_id', $this->userBranchId))
+            ->oldest()
+            ->limit(20)
+            ->get()
+            ->reject(fn (Order $order) => $order->food99Details()->confirmationExpired())
+            ->take(10)
+            ->values();
+    }
+
+    /**
      * Pedidos iFood esperando aceite, pro alerta no topo da tela (com contagem do prazo).
      * Cozinha/bar/entrega não aceitam pedido, então não veem o alerta.
      *

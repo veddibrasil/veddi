@@ -266,7 +266,7 @@ class Food99CatalogSyncService implements Food99EventHandler
                 'type' => 'food99_alert',
                 'title' => '99Food: cardápio não foi aceito',
                 'subtitle' => 'A 99Food recusou o envio do cardápio. Confira os itens com erro na integração.',
-                'link' => url('/admin/settings/99food'),
+                'link' => route('admin.settings.99food'),
             ]);
         }
 

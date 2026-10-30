@@ -1,0 +1,517 @@
+<?php
+
+namespace App\Livewire\Admin\Settings;
+
+use App\Contracts\Food99GatewayContract;
+use App\Exceptions\Food99ApiException;
+use App\Jobs\ProcessFood99EventJob;
+use App\Jobs\SyncFood99CatalogJob;
+use App\Models\Branch;
+use App\Models\Company;
+use App\Models\Food99Integration;
+use App\Models\Food99WebhookEvent;
+use App\Services\Food99\Food99AuthService;
+use App\Services\Food99\Food99CatalogSyncService;
+use App\Services\Food99\Food99ShopEventHandler;
+use App\Services\Food99\Food99StoreStatusSync;
+use Illuminate\Support\Facades\Log;
+use Livewire\Attributes\Computed;
+use Livewire\Attributes\Locked;
+use Livewire\Attributes\Url;
+use Livewire\Component;
+use Throwable;
+
+/**
+ * Integração 99Food por filial: conexão (link de autorização + ID da loja), status da loja,
+ * cardápio, solicitações do cliente e diagnóstico. Toda ação relê a integração do banco pela
+ * empresa atual; o estado público serve só pra desenhar a tela.
+ */
+class Food99IntegrationSettings extends Component
+{
+    public const TABS = ['loja', 'cardapio', 'pedidos', 'diagnostico'];
+
+    public ?int $branchId = null;
+
+    /** @var array<int, array{id: int, name: string, state: string}> */
+    #[Locked]
+    public array $branchOptions = [];
+
+    /** not_connected | pending_authorization | connected | error */
+    #[Locked]
+    public string $connectionState = 'not_connected';
+
+    #[Url(as: 'aba', except: 'loja')]
+    public string $tab = 'loja';
+
+    #[Locked]
+    public ?string $authorizationUrl = null;
+
+    #[Locked]
+    public ?string $authorizationUrlExpiresAt = null;
+
+    public string $shopIdInput = '';
+
+    /** @var array<int, array{shop_id: string, shop_name: ?string, app_shop_id: ?string, bound: bool}> */
+    #[Locked]
+    public array $availableShops = [];
+
+    #[Locked]
+    public array $integrationData = [];
+
+    public int $pauseTime = 1;
+
+    public int $pauseReason = 1005;
+
+    public int $busyMinutes = 30;
+
+    public int $busyDelay = 10;
+
+    public bool $receiveCancelApply = true;
+
+    public bool $receiveRefundApply = true;
+
+    public bool $showDisconnectModal = false;
+
+    public bool $showSuspendModal = false;
+
+    public function mount(): void
+    {
+        $company = app('current.company');
+
+        abort_unless(config('food99.enabled'), 404);
+        abort_unless($company->canUseMarketplaceIntegrations(), 403, 'Módulo de Integrações não está habilitado para esta empresa.');
+
+        $branches = Branch::withoutGlobalScopes()->where('company_id', $company->id)->orderBy('name')->get();
+        $integrations = Food99Integration::where('company_id', $company->id)->get()->keyBy('branch_id');
+        $this->branchOptions = $branches->map(fn (Branch $branch) => [
+            'id' => $branch->id,
+            'name' => $branch->name,
+            'state' => $this->branchStateLabel($integrations->get($branch->id)),
+        ])->all();
+
+        $existing = $integrations->sortBy('id')->firstWhere(fn (Food99Integration $integration) => $integration->shop_id !== null) ?? $integrations->sortBy('id')->first();
+        $branch = $existing ? $branches->firstWhere('id', $existing->branch_id) : $branches->first();
+
+        if (! in_array($this->tab, self::TABS, true)) {
+            $this->tab = 'loja';
+        }
+
+        $this->branchId = $branch?->id;
+        $this->loadForBranch($company, $branch);
+    }
+
+    public function updatedBranchId(): void
+    {
+        $company = app('current.company');
+        $branch = $this->currentBranch($company) ?? Branch::withoutGlobalScopes()->where('company_id', $company->id)->orderBy('name')->first();
+        $this->branchId = $branch?->id;
+
+        $this->loadForBranch($company, $branch);
+    }
+
+    public function updatedTab(): void
+    {
+        if (! in_array($this->tab, self::TABS, true)) {
+            $this->tab = 'loja';
+        }
+    }
+
+    // ── Conexão ───────────────────────────────────────────────────────────
+
+    public function connect(): void
+    {
+        [$company, $branch, $integration] = $this->context(createIntegration: true);
+
+        try {
+            app(Food99AuthService::class)->authorizationUrl($integration, force: $integration->status === Food99Integration::STATUS_ERROR);
+        } catch (Throwable $e) {
+            $this->flashFailure($e);
+        }
+
+        $this->loadForBranch($company, $branch);
+    }
+
+    /** Liga a loja pelo ID informado (o restaurante vê no app/portal da 99Food). */
+    public function linkShop(): void
+    {
+        [$company, $branch, $integration] = $this->context(createIntegration: true);
+
+        $this->validate(['shopIdInput' => ['required', 'regex:/^\d{5,20}$/']], [
+            'shopIdInput.required' => 'Informe o ID da loja na 99Food.',
+            'shopIdInput.regex' => 'O ID da loja tem só números.',
+        ]);
+
+        try {
+            $warnings = app(Food99AuthService::class)->selectShop($integration, $this->shopIdInput);
+            session()->flash('status', 'Loja da 99Food conectada a esta filial.'.($warnings !== [] ? ' '.implode(' ', $warnings) : ''));
+            $this->shopIdInput = '';
+        } catch (Throwable $e) {
+            $this->flashFailure($e);
+        }
+
+        $this->loadForBranch($company, $branch);
+    }
+
+    /** Homologação: lista as lojas que autorizaram o app (a lista é da plataforma inteira). */
+    public function loadAuthorizedShops(): void
+    {
+        $this->context();
+        abort_unless(config('food99.homologation_mode') || auth()->user()->isSuperAdmin(), 403);
+
+        try {
+            $this->availableShops = app(Food99AuthService::class)->authorizedShops();
+        } catch (Throwable $e) {
+            $this->flashFailure($e);
+        }
+    }
+
+    public function chooseShop(string $shopId): void
+    {
+        abort_unless(config('food99.homologation_mode') || auth()->user()->isSuperAdmin(), 403);
+
+        $this->shopIdInput = preg_replace('/\D/', '', $shopId);
+        $this->linkShop();
+    }
+
+    public function reapplySettings(): void
+    {
+        [$company, $branch, $integration] = $this->context(requireShop: true);
+
+        try {
+            $warnings = app(Food99AuthService::class)->activate($integration);
+            session()->flash('status', $warnings === [] ? 'Configuração da loja reaplicada na 99Food.' : implode(' ', $warnings));
+        } catch (Throwable $e) {
+            $this->flashFailure($e);
+        }
+
+        $this->loadForBranch($company, $branch);
+    }
+
+    /** Suspende: a loja fecha na 99 e pedidos novos deixam de entrar; os em andamento seguem. */
+    public function suspend(): void
+    {
+        [$company, $branch, $integration] = $this->context(requireShop: true);
+        $this->showSuspendModal = false;
+
+        $integration->update(['status' => Food99Integration::STATUS_PAUSED]);
+        $closed = $this->tryStoreAction(fn () => app(Food99StoreStatusSync::class)->close($integration));
+
+        session()->flash($closed ? 'status' : 'error', $closed
+            ? 'Integração suspensa. A loja fica fechada na 99Food até retomar.'
+            : 'Integração suspensa, mas a 99Food não confirmou o fechamento da loja. Feche pelo app da 99Food.');
+        $this->loadForBranch($company, $branch);
+    }
+
+    public function resume(): void
+    {
+        [$company, $branch, $integration] = $this->context(requireShop: true);
+
+        try {
+            // Enquanto estava suspensa, outra empresa pode ter conectado a mesma loja.
+            app(Food99AuthService::class)->ensureShopAvailable($integration, $integration->shop_id, $integration->app_shop_id);
+        } catch (Throwable $e) {
+            $this->flashFailure($e);
+            $this->loadForBranch($company, $branch);
+
+            return;
+        }
+
+        $integration->update(['status' => Food99Integration::STATUS_ACTIVE]);
+        $this->tryStoreAction(fn () => app(Food99StoreStatusSync::class)->revokeClose($integration));
+        if ($integration->hasPublishedCatalog()) {
+            SyncFood99CatalogJob::debounce($integration->branch_id);
+        }
+
+        session()->flash('status', 'Integração retomada. A loja volta a abrir na 99Food no horário de funcionamento.');
+        $this->loadForBranch($company, $branch);
+    }
+
+    public function confirmDisconnect(): void
+    {
+        $this->context();
+        $this->showDisconnectModal = true;
+    }
+
+    public function disconnect(): void
+    {
+        [$company, $branch, $integration] = $this->context();
+        $this->showDisconnectModal = false;
+
+        if ($integration) {
+            app(Food99AuthService::class)->disconnect($integration);
+            session()->flash('status', 'Integração com a 99Food desconectada.');
+        }
+
+        $this->loadForBranch($company, $branch);
+    }
+
+    // ── Loja ──────────────────────────────────────────────────────────────
+
+    public function refreshStore(): void
+    {
+        [$company, $branch, $integration] = $this->context(requireShop: true);
+
+        $this->tryStoreAction(fn () => app(Food99AuthService::class)->syncShopDetail($integration));
+        $this->loadForBranch($company, $branch);
+    }
+
+    public function storeAction(string $action): void
+    {
+        [$company, $branch, $integration] = $this->context(requireShop: true);
+        $sync = app(Food99StoreStatusSync::class);
+
+        $done = $this->tryStoreAction(fn () => match ($action) {
+            'open' => $sync->open($integration),
+            'pause' => $sync->pause($integration, $this->pauseTime, $this->pauseReason),
+            'close' => $sync->close($integration),
+            'revoke' => $sync->revokeClose($integration),
+            'busy' => $sync->busy($integration, $this->busyMinutes, $this->busyDelay),
+            default => abort(404),
+        });
+
+        if ($done) {
+            session()->flash('status', 'Pedido enviado à 99Food. O status da loja atualiza assim que ela confirmar.');
+        }
+        $this->loadForBranch($company, $branch);
+    }
+
+    // ── Cardápio ──────────────────────────────────────────────────────────
+
+    /** @return array{items: int, groups: int, categories: int, issues: array<int, array{name: string, reason: string}>, warnings: array<int, array{name: string, reason: string}>}|null */
+    #[Computed]
+    public function menuPreview(): ?array
+    {
+        [, , $integration] = $this->context();
+
+        if (! $integration?->shop_id || $this->tab !== 'cardapio') {
+            return null;
+        }
+
+        try {
+            $built = app(Food99CatalogSyncService::class)->buildMenu($integration);
+        } catch (Throwable $e) {
+            return ['items' => 0, 'groups' => 0, 'categories' => 0, 'issues' => [['name' => 'Cardápio', 'reason' => $e->getMessage()]], 'warnings' => []];
+        }
+
+        $names = \App\Models\Product::withoutGlobalScopes()->whereIn('id', array_keys($built['issues'] + $built['warnings']))->pluck('name', 'id');
+        $label = fn (array $list) => collect($list)->map(fn ($reason, $id) => ['name' => $names[$id] ?? "#{$id}", 'reason' => $reason])->values()->all();
+
+        return [
+            'items' => count($built['products']),
+            'groups' => count($built['menu']['modifier_groups']),
+            'categories' => count($built['menu']['categories']),
+            'issues' => $label($built['issues']),
+            'warnings' => $label($built['warnings']),
+        ];
+    }
+
+    public function publishCatalog(): void
+    {
+        $this->queueCatalog(publish: true);
+    }
+
+    public function syncCatalogNow(): void
+    {
+        $this->queueCatalog(publish: false);
+    }
+
+    public function checkCatalogTask(): void
+    {
+        [$company, $branch, $integration] = $this->context(requireShop: true);
+
+        $this->tryStoreAction(fn () => app(Food99CatalogSyncService::class)->refreshTaskStatus($integration));
+        $this->loadForBranch($company, $branch);
+    }
+
+    // ── Pedidos ───────────────────────────────────────────────────────────
+
+    public function saveApplySettings(): void
+    {
+        [$company, $branch, $integration] = $this->context(requireShop: true);
+
+        $done = $this->tryStoreAction(fn () => app(Food99GatewayContract::class)->setApplyConfig($integration, $this->receiveCancelApply, $this->receiveRefundApply));
+        if ($done) {
+            $integration->update(['receive_cancel_apply' => $this->receiveCancelApply, 'receive_refund_apply' => $this->receiveRefundApply]);
+            session()->flash('status', 'Preferências de solicitações do cliente salvas na 99Food.');
+        }
+        $this->loadForBranch($company, $branch);
+    }
+
+    // ── Diagnóstico ───────────────────────────────────────────────────────
+
+    #[Computed]
+    public function recentEvents()
+    {
+        [, , $integration] = $this->context();
+
+        return $integration && $this->tab === 'diagnostico'
+            ? Food99WebhookEvent::where('food99_integration_id', $integration->id)->latest('id')->limit(30)
+                ->get(['id', 'event_type', 'external_order_id', 'status', 'attempts', 'error', 'request_id', 'created_at'])
+            : collect();
+    }
+
+    public function reprocessEvent(int $eventId): void
+    {
+        [, , $integration] = $this->context(requireShop: true);
+
+        $event = Food99WebhookEvent::where('food99_integration_id', $integration->id)
+            ->where('status', Food99WebhookEvent::STATUS_FAILED)
+            ->findOrFail($eventId);
+
+        $event->update(['status' => Food99WebhookEvent::STATUS_PENDING, 'attempts' => 0, 'error' => null]);
+        ProcessFood99EventJob::dispatch($event->id);
+
+        Log::channel('food99')->info('99Food: evento reprocessado pelo admin', [
+            'food99_webhook_event_id' => $event->id,
+            'user_id' => auth()->id(),
+        ]);
+        session()->flash('status', 'Evento enviado para reprocessamento.');
+        unset($this->recentEvents);
+    }
+
+    // ── Internos ──────────────────────────────────────────────────────────
+
+    private function queueCatalog(bool $publish): void
+    {
+        [$company, $branch, $integration] = $this->context(requireShop: true);
+
+        if ($integration->status !== Food99Integration::STATUS_ACTIVE) {
+            session()->flash('error', 'Retome a integração antes de enviar o cardápio.');
+
+            return;
+        }
+        if (! $publish && ! $integration->hasPublishedCatalog()) {
+            session()->flash('error', 'Publique o cardápio primeiro.');
+
+            return;
+        }
+
+        $integration->update(['catalog_sync_status' => 'queued', 'catalog_sync_error' => null]);
+        SyncFood99CatalogJob::dispatch($integration->branch_id, $publish);
+        session()->flash('status', $publish
+            ? 'Cardápio enviado para publicação. Ele substitui o cardápio atual da loja na 99Food.'
+            : 'Envio do cardápio na fila. O resultado aparece aqui em instantes.');
+
+        $this->loadForBranch($company, $branch);
+    }
+
+    /** @return array{0: Company, 1: ?Branch, 2: ?Food99Integration} */
+    private function context(bool $createIntegration = false, bool $requireShop = false): array
+    {
+        $user = auth()->user();
+        $company = app('current.company');
+
+        abort_unless(config('food99.enabled') && $company->canUseMarketplaceIntegrations(), 403);
+        abort_unless($user && ($user->isSuperAdmin() || $user->isCompanyAdmin($company)), 403);
+
+        $branch = $this->currentBranch($company);
+        abort_unless($branch !== null, 404);
+
+        $integration = Food99Integration::where('company_id', $company->id)->where('branch_id', $branch->id)->first();
+
+        if (! $integration && $createIntegration) {
+            $integration = Food99Integration::create([
+                'company_id' => $company->id,
+                'branch_id' => $branch->id,
+                'app_shop_id' => Food99Integration::appShopIdFor($company->id, $branch->id),
+                'status' => Food99Integration::STATUS_DISCONNECTED,
+            ]);
+        }
+
+        abort_if($requireShop && ! $integration?->shop_id, 404);
+
+        return [$company, $branch, $integration];
+    }
+
+    private function currentBranch(Company $company): ?Branch
+    {
+        return $this->branchId ? Branch::withoutGlobalScopes()->where('company_id', $company->id)->find($this->branchId) : null;
+    }
+
+    private function loadForBranch(Company $company, ?Branch $branch): void
+    {
+        $integration = $branch ? Food99Integration::where('company_id', $company->id)->where('branch_id', $branch->id)->first() : null;
+
+        $this->connectionState = match (true) {
+            $integration === null => 'not_connected',
+            $integration->shop_id !== null && $integration->status === Food99Integration::STATUS_ERROR => 'error',
+            $integration->shop_id !== null => 'connected',
+            $integration->status === Food99Integration::STATUS_PENDING_AUTHORIZATION && $integration->isAuthorizationUrlValid() => 'pending_authorization',
+            default => 'not_connected',
+        };
+
+        $this->authorizationUrl = $integration?->isAuthorizationUrlValid() ? $integration->authorization_url : null;
+        $this->authorizationUrlExpiresAt = $integration?->authorization_url_expires_at?->timezone(config('app.timezone'))->format('d/m/Y H:i');
+        $this->receiveCancelApply = (bool) ($integration?->receive_cancel_apply ?? true);
+        $this->receiveRefundApply = (bool) ($integration?->receive_refund_apply ?? true);
+        $this->availableShops = [];
+
+        $this->integrationData = $integration ? [
+            'shop_id' => $integration->shop_id,
+            'shop_name' => $integration->shop_name,
+            'app_shop_id' => $integration->app_shop_id,
+            'status' => $integration->status,
+            'sub_biz_status' => $integration->sub_biz_status,
+            'store_label' => $integration->sub_biz_status !== null ? (Food99ShopEventHandler::SUB_BIZ_STATUS_LABELS[$integration->sub_biz_status] ?? "Status {$integration->sub_biz_status}") : null,
+            'store_updated_at' => $integration->store_status_updated_at?->timezone(config('app.timezone'))->format('d/m H:i'),
+            'token_expires_at' => $integration->token_expires_at?->timezone(config('app.timezone'))->format('d/m/Y H:i'),
+            'last_webhook_at' => $integration->last_webhook_received_at?->timezone(config('app.timezone'))->format('d/m/Y H:i'),
+            'webhook_status' => $integration->webhook_status,
+            'last_request_id' => $integration->last_request_id,
+            'catalog_published' => $integration->hasPublishedCatalog(),
+            'catalog_sync_status' => $integration->catalog_sync_status,
+            'catalog_sync_error' => $integration->catalog_sync_error,
+            'catalog_task_id' => $integration->catalog_task_id,
+            'catalog_synced_at' => $integration->catalog_synced_at?->timezone(config('app.timezone'))->format('d/m/Y H:i'),
+        ] : [];
+
+        unset($this->menuPreview, $this->recentEvents);
+    }
+
+    private function branchStateLabel(?Food99Integration $integration): string
+    {
+        return match (true) {
+            $integration === null || $integration->shop_id === null => 'não conectada',
+            $integration->status === Food99Integration::STATUS_PAUSED => 'suspensa',
+            $integration->status === Food99Integration::STATUS_ERROR => 'reconexão necessária',
+            default => 'conectada',
+        };
+    }
+
+    private function tryStoreAction(callable $action): bool
+    {
+        try {
+            $action();
+
+            return true;
+        } catch (Throwable $e) {
+            $this->flashFailure($e);
+
+            return false;
+        }
+    }
+
+    private function flashFailure(Throwable $e): void
+    {
+        if (! $e instanceof Food99ApiException && ! $e instanceof \RuntimeException && ! $e instanceof \InvalidArgumentException) {
+            report($e);
+        }
+
+        session()->flash('error', Food99ApiException::messageFor($e));
+    }
+
+    public function render()
+    {
+        return view('livewire.admin.settings.food99-integration-settings', [
+            'homologationMode' => (bool) config('food99.homologation_mode'),
+            'tabs' => [
+                'loja' => 'Loja',
+                'cardapio' => 'Cardápio',
+                'pedidos' => 'Pedidos',
+                'diagnostico' => 'Diagnóstico',
+            ],
+            'pauseTimes' => Food99StoreStatusSync::PAUSE_TIMES,
+            'pauseReasons' => Food99StoreStatusSync::PAUSE_REASONS,
+        ])->layout('layouts.app', ['title' => 'Integração 99Food']);
+    }
+}

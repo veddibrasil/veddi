@@ -86,7 +86,7 @@ class Food99ShopEventHandler implements Food99EventHandler
                 'type' => 'food99_alert',
                 'title' => '99Food: loja desvinculada',
                 'subtitle' => 'A 99Food desfez o vínculo da loja com o VEDDI. Pedidos novos não chegam até reconectar.',
-                'link' => url('/admin/settings/99food'),
+                'link' => route('admin.settings.99food'),
             ]);
 
             Log::channel('food99')->warning('99Food: loja desvinculada pela 99', [
@@ -132,7 +132,7 @@ class Food99ShopEventHandler implements Food99EventHandler
             'type' => 'food99_alert',
             'title' => '99Food: a loja não abriu automaticamente',
             'subtitle' => mb_substr("Motivo: {$reason}. Confira a loja na 99Food.", 0, 255),
-            'link' => url('/admin/settings/99food'),
+            'link' => route('admin.settings.99food'),
         ]);
 
         return true;
