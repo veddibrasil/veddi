@@ -82,7 +82,7 @@ class DefaultEmailSegments
             ],
             [
                 'name' => 'Gerentes de filial',
-                'description' => 'Quem opera a filial no dia a dia.',
+                'description' => 'Quem opera a filial no dia a dia, junto com o administrador de cada empresa.',
                 'filters' => $active + ['roles' => ['branch_manager']],
             ],
             [

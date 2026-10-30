@@ -51,8 +51,9 @@ class SuppressionService
             return true;
         }
 
+        // Sem usuário: contato de lista (aceite na importação) ou e-mail da empresa (sem aceite próprio).
         if (! $recipient->user_id) {
-            return false;
+            return $recipient->company_id && config('marketing.require_opt_in');
         }
 
         $user = User::withTrashed()->find($recipient->user_id, ['id', 'deleted_at', 'marketing_opt_in_at', 'marketing_opt_out_at']);

@@ -238,7 +238,7 @@ Regras que nao podem quebrar:
 
 ### E-mail marketing
 
-Campanhas do super admin para os usuarios das empresas (`company_admin` e `branch_manager`); clientes finais dos restaurantes nunca entram. Guia completo (fluxo, filas, provedor, variaveis de ambiente, entregabilidade): `docs/email-marketing.md`.
+Campanhas do super admin para os usuarios das empresas (`company_admin` e `branch_manager`); o `company_admin` entra em todo segmento e `companies.email` soma ao publico quando `MARKETING_REQUIRE_OPT_IN=false`; clientes finais dos restaurantes nunca entram. Guia completo (fluxo, filas, provedor, variaveis de ambiente, entregabilidade): `docs/email-marketing.md`.
 
 Onde esta cada coisa:
 
