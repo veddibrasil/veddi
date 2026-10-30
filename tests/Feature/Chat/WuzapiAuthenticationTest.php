@@ -36,9 +36,19 @@ function wuzapiAuthCompany(): Company
     ]);
 }
 
-function fakeChatWuzapi(array $status = ['connected' => true, 'loggedIn' => true]): void
+function registeredChatWuzapiUser(string $phone): \GuzzleHttp\Promise\PromiseInterface
+{
+    return Http::response(['success' => true, 'data' => ['Users' => [[
+        'Query' => $phone, 'IsInWhatsapp' => true, 'JID' => $phone.'@s.whatsapp.net',
+    ]]]]);
+}
+
+function fakeChatWuzapi(array $status = ['connected' => true, 'loggedIn' => true], ?array $users = null): void
 {
     Http::fake([
+        'wuzapi.test/user/check' => fn ($request) => $users === null
+            ? registeredChatWuzapiUser($request['Phone'][0])
+            : Http::response(['success' => true, 'data' => ['Users' => $users]]),
         'wuzapi.test/session/status' => Http::response(['success' => true, 'data' => $status]),
         'wuzapi.test/chat/send/text' => Http::response(['success' => true, 'data' => ['Id' => 'WU.TEST']]),
     ]);
@@ -58,7 +68,7 @@ test('fallback habilita perfil salvo sem Meta e envia apenas código pelo protoc
     expect(app(ChatCodeSender::class))->toBeInstanceOf(WhatsAppCodeSender::class)
         ->and((new OrderChat)->savedProfileAvailable())->toBeTrue();
     app(ChatCodeSender::class)->send($company->id, $phone, '076259', 'challenge-1');
-    Http::assertSentCount(2);
+    Http::assertSentCount(3);
     $request = wuzapiAuthRequests()->last();
     expect($request->method())->toBe('POST')
         ->and($request->url())->toBe('https://wuzapi.test/chat/send/text')
@@ -70,6 +80,49 @@ test('fallback habilita perfil salvo sem Meta e envia apenas código pelo protoc
         ->and($request['Id'])->not->toContain($phone, '076259')
         ->and(json_encode($logs->getRecords()))->not->toContain($phone, '076259', 'dedicated-veddi-session-token');
 })->with(['11977770001', '1133334444']);
+
+test('envio resolve LID confirmado para o telefone exato e mantém o desafio vinculado ao telefone', function () {
+    $company = wuzapiAuthCompany();
+    fakeChatWuzapi(users: [[
+        'Query' => '5511977770001', 'IsInWhatsapp' => true, 'JID' => '123456789012345@lid',
+    ]]);
+
+    $verification = app(PhoneVerification::class);
+    $id = $verification->send($company->id, '11977770001');
+    $requests = wuzapiAuthRequests();
+    expect($requests)->toHaveCount(3)
+        ->and($requests[1]->url())->toBe('https://wuzapi.test/user/check')
+        ->and($requests[1]['Phone'])->toBe(['5511977770001'])
+        ->and($requests[1]->data())->not->toHaveKeys(['Body', 'Id'])
+        ->and($requests[2]['Phone'])->toBe('123456789012345@lid');
+    preg_match('/é (\d{6})\./u', $requests[2]['Body'], $matches);
+    expect($verification->consume($id, $company->id, '1177770001', $matches[1]))->toBeFalse()
+        ->and($verification->consume($id, $company->id, '11977770001', $matches[1]))->toBeTrue();
+});
+
+test('destinatário não confirmado ou resposta ambígua nunca recebe código', function (array $users) {
+    $company = wuzapiAuthCompany();
+    fakeChatWuzapi(users: $users);
+
+    expect(fn () => app(PhoneVerification::class)->send($company->id, '11977770001'))
+        ->toThrow(RuntimeException::class, 'Não foi possível enviar o código. Você pode continuar preenchendo seus dados.');
+    Http::assertSentCount(2);
+    Http::assertNotSent(fn ($request) => str_ends_with($request->url(), '/chat/send/text'));
+    expect(DB::table('chat_phone_challenges')->sole()->consumed_at)->not->toBeNull();
+})->with([
+    'vazio' => [[]],
+    'telefone diferente' => [[['Query' => '5511977770002', 'IsInWhatsapp' => true, 'JID' => '12345@lid']]],
+    'não registrado' => [[['Query' => '5511977770001', 'IsInWhatsapp' => false, 'JID' => '12345@lid']]],
+    'booleano inválido' => [[['Query' => '5511977770001', 'IsInWhatsapp' => 'true', 'JID' => '12345@lid']]],
+    'jid ausente' => [[['Query' => '5511977770001', 'IsInWhatsapp' => true]]],
+    'grupo' => [[['Query' => '5511977770001', 'IsInWhatsapp' => true, 'JID' => '12345@g.us']]],
+    'telefone alternativo' => [[['Query' => '5511977770001', 'IsInWhatsapp' => true, 'JID' => '551177770001@s.whatsapp.net']]],
+    'lid inválido' => [[['Query' => '5511977770001', 'IsInWhatsapp' => true, 'JID' => 'invalid@lid']]],
+    'múltiplas respostas' => [[
+        ['Query' => '5511977770001', 'IsInWhatsapp' => true, 'JID' => '12345@lid'],
+        ['Query' => '5511977770001', 'IsInWhatsapp' => true, 'JID' => '67890@lid'],
+    ]],
+]);
 
 test('desabilitar autenticação bloqueia fallback mesmo com sessão configurada', function () {
     config(['chat_security.whatsapp_auth_enabled' => false]);
@@ -118,7 +171,7 @@ test('empresa sem remetente oficial usa a sessão dedicada de fallback', functio
     $company = wuzapiAuthCompany();
     fakeChatWuzapi();
     app(ChatCodeSender::class)->send($company->id, '11977770001', '076259');
-    expect(wuzapiAuthRequests())->toHaveCount(2);
+    expect(wuzapiAuthRequests())->toHaveCount(3);
 });
 
 test('WABA ausente usa fallback sem consultar Meta', function () {
@@ -132,7 +185,7 @@ test('WABA ausente usa fallback sem consultar Meta', function () {
     $company = wuzapiAuthCompany();
     fakeChatWuzapi();
     app(ChatCodeSender::class)->send($company->id, '11977770001', '076259');
-    expect(wuzapiAuthRequests())->toHaveCount(2);
+    expect(wuzapiAuthRequests())->toHaveCount(3);
 });
 
 test('template oficial ausente pendente ou de categoria errada seleciona fallback antes de enviar', function (array $templates) {
@@ -140,12 +193,13 @@ test('template oficial ausente pendente ou de categoria errada seleciona fallbac
     $company = whatsappOrderContext()['company'];
     Http::fake([
         'graph.facebook.com/*/message_templates*' => Http::response(['data' => $templates]),
+        'wuzapi.test/user/check' => fn ($request) => registeredChatWuzapiUser($request['Phone'][0]),
         'wuzapi.test/session/status' => Http::response(['success' => true, 'data' => ['connected' => true, 'loggedIn' => true]]),
         'wuzapi.test/chat/send/text' => Http::response(['success' => true, 'data' => ['Id' => 'WU.TEST']]),
     ]);
     app(ChatCodeSender::class)->send($company->id, '11977770001', '076259');
     expect(whatsappMetaRequests('POST messages'))->toHaveCount(0)
-        ->and(wuzapiAuthRequests())->toHaveCount(2);
+        ->and(wuzapiAuthRequests())->toHaveCount(3);
 })->with([
     [[]],
     [[['name' => 'veddi_confirmar_telefone', 'language' => 'pt_BR', 'status' => 'PENDING', 'category' => 'AUTHENTICATION']]],
@@ -192,6 +246,7 @@ test('sessão WuzAPI precisa estar conectada e autenticada', function (array $st
 test('resposta WuzAPI falha inválida ou sem id não confirma envio nem vaza corpo', function (int $status, mixed $body) {
     $company = wuzapiAuthCompany();
     Http::fake([
+        'wuzapi.test/user/check' => fn ($request) => registeredChatWuzapiUser($request['Phone'][0]),
         'wuzapi.test/session/status' => Http::response(['success' => true, 'data' => ['connected' => true, 'loggedIn' => true]]),
         'wuzapi.test/chat/send/text' => Http::response($body, $status),
     ]);
@@ -203,7 +258,7 @@ test('resposta WuzAPI falha inválida ou sem id não confirma envio nem vaza cor
         expect($e->getMessage())->not->toContain('076259', '11977770001', 'dedicated-veddi-session-token')
             ->and($e->getPrevious())->toBeNull();
     }
-    Http::assertSentCount(2);
+    Http::assertSentCount(3);
     expect(json_encode($logs->getRecords()))->not->toContain('076259', '11977770001', 'dedicated-veddi-session-token');
 })->with([
     [401, ['error' => '076259 11977770001 dedicated-veddi-session-token']],
@@ -220,6 +275,9 @@ test('timeout WuzAPI não retenta envio e descarta exceção original sensível'
     Http::fake(function ($request) use (&$attempts) {
         if ($request->method() === 'GET') {
             return Http::response(['success' => true, 'data' => ['connected' => true, 'loggedIn' => true]]);
+        }
+        if (str_ends_with($request->url(), '/user/check')) {
+            return registeredChatWuzapiUser($request['Phone'][0]);
         }
         $attempts++;
         throw new ConnectionException('076259 11977770001 dedicated-veddi-session-token');
@@ -260,7 +318,7 @@ test('solicitação repetida é limitada antes de enviar outro código', functio
     $verification = app(PhoneVerification::class);
     $verification->send($company->id, '11977770001');
     expect(fn () => $verification->send($company->id, '11977770001'))->toThrow(RuntimeException::class, 'Aguarde antes de solicitar outro código.');
-    Http::assertSentCount(2);
+    Http::assertSentCount(3);
 });
 
 test('falha WuzAPI invalida o desafio e preserva erro genérico do chat', function () {
