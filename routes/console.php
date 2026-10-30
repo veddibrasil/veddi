@@ -1,10 +1,15 @@
 <?php
 
+use App\Jobs\ExpireFood99RequestsJob;
 use App\Jobs\MonitorIfoodWebhookHealthJob;
 use App\Jobs\PollIfoodEventsJob;
+use App\Jobs\ReconcileFood99OrdersJob;
 use App\Jobs\ReconcilePendingFiscalNotesJob;
+use App\Jobs\RefreshFood99TokensJob;
 use App\Jobs\ResolveExpiredVindiPaymentsJob;
+use App\Jobs\SyncFood99CatalogJob;
 use App\Jobs\SyncIfoodCatalogJob;
+use App\Models\Food99Integration;
 use App\Models\IfoodIntegration;
 use App\Services\Payment\AsaasCircuitBreaker;
 use App\Services\Payment\AsaasService;
@@ -126,6 +131,80 @@ Schedule::call(function () {
 })
     ->name('sync-ifood-catalog-full')
     ->dailyAt('05:00')
+    ->withoutOverlapping()
+    ->onOneServer();
+
+// ─── 99Food (tudo desligado com FOOD99_ENABLED=false) ───────────────────────
+$food99Enabled = fn () => (bool) config('food99.enabled');
+
+// Avisa restaurantes com 99Food desconectada, loja offline/bloqueada ou sem callbacks; fecha a
+// loja na 99 de empresa que não pode operar.
+Schedule::command('food99:check-connections')
+    ->name('food99-check-connections')
+    ->everyTenMinutes()
+    ->when($food99Enabled)
+    ->withoutOverlapping()
+    ->onOneServer();
+
+// Token da loja renovado antes de vencer (aceite tem prazo de 5 min).
+Schedule::job(new RefreshFood99TokensJob)
+    ->name('refresh-food99-tokens')
+    ->everyTenMinutes()
+    ->when($food99Enabled)
+    ->withoutOverlapping(expiresAt: 9)
+    ->onOneServer();
+
+// Sem polling de eventos na 99: pedidos em aberto são relidos pra cobrir callback perdido.
+Schedule::job(new ReconcileFood99OrdersJob)
+    ->name('reconcile-food99-orders')
+    ->everyThreeMinutes()
+    ->when($food99Enabled)
+    ->withoutOverlapping(expiresAt: 3)
+    ->onOneServer();
+
+// Solicitações do cliente sem resposta no prazo + pausas da filial replicadas na 99.
+Schedule::call(function () {
+    ExpireFood99RequestsJob::dispatch();
+    app(\App\Services\Food99\Food99StoreStatusSync::class)->applyDuePauses();
+})
+    ->name('food99-minutely')
+    ->everyMinute()
+    ->when($food99Enabled)
+    ->withoutOverlapping(expiresAt: 2)
+    ->onOneServer();
+
+// Upload de cardápio sem callback há 15 min: consulta a task direto.
+Schedule::call(function () {
+    Food99Integration::operational()
+        ->where('catalog_sync_status', 'running')
+        ->where('updated_at', '<', now()->subMinutes(15))
+        ->get()
+        ->each(function (Food99Integration $integration) {
+            try {
+                app(\App\Services\Food99\Food99CatalogSyncService::class)->refreshTaskStatus($integration);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        });
+})
+    ->name('food99-catalog-task-check')
+    ->everyFifteenMinutes()
+    ->when($food99Enabled)
+    ->withoutOverlapping()
+    ->onOneServer();
+
+// Cardápio completo de madrugada (fora do horário do iFood), só lojas com cardápio publicado.
+Schedule::call(function () {
+    Food99Integration::operational()
+        ->with('company')
+        ->whereNotNull('catalog_published_at')
+        ->get()
+        ->filter(fn (Food99Integration $integration) => $integration->isOperational())
+        ->each(fn (Food99Integration $integration) => SyncFood99CatalogJob::dispatch($integration->branch_id));
+})
+    ->name('sync-food99-catalog-full')
+    ->dailyAt('04:30')
+    ->when($food99Enabled)
     ->withoutOverlapping()
     ->onOneServer();
 
