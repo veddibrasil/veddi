@@ -3,9 +3,12 @@
 namespace App\Livewire\Admin\Products;
 
 use App\Jobs\DisableIfoodItemJob;
+use App\Jobs\SetFood99ItemStatusJob;
+use App\Jobs\SyncFood99CatalogJob;
 use App\Jobs\SyncIfoodCatalogJob;
 use App\Models\Branch;
 use App\Models\Company;
+use App\Models\Food99Integration;
 use App\Models\IfoodIntegration;
 use App\Models\Product;
 use App\Models\ProductCategory;
@@ -65,6 +68,8 @@ class Form extends Component
     public bool $available_in_delivery = true;
 
     public bool $available_in_ifood = false;
+
+    public bool $available_in_99food = true;
 
     public int $sort_order = 0;
 
@@ -131,6 +136,7 @@ class Form extends Component
             'available_in_pdv' => ['boolean'],
             'available_in_delivery' => ['boolean'],
             'available_in_ifood' => ['boolean'],
+            'available_in_99food' => ['boolean'],
             'sort_order' => ['integer', 'min:0'],
             'image' => ['nullable', 'image', 'max:2048', ...($this->appliesIfoodRules() ? ['mimes:jpg,jpeg,png'] : [])],
             'selectedBranches' => ['array'],
@@ -200,6 +206,37 @@ class Form extends Component
             : (app()->bound('current.company') ? app('current.company') : null);
 
         return (bool) $company?->canUseIfoodIntegration();
+    }
+
+    /** Canal 99Food só aparece com a integração ligada na plataforma e conectada em alguma filial da empresa. */
+    public function getFood99EnabledProperty(): bool
+    {
+        $companyId = $this->isSuperAdmin ? $this->company_id : (app()->bound('current.company') ? app('current.company')->id : null);
+
+        return config('food99.enabled') && $companyId && $this->ifoodEnabled
+            && Food99Integration::withoutGlobalScopes()->where('company_id', $companyId)->whereNotNull('shop_id')->exists();
+    }
+
+    /**
+     * Situação do último envio do produto à 99Food, por filial.
+     *
+     * @return array<int, array{branch: string, status: ?string, error: ?string}>
+     */
+    public function getFood99SyncStatusProperty(): array
+    {
+        if (! $this->isEditing || ! $this->product?->id || ! $this->food99Enabled) {
+            return [];
+        }
+
+        return DB::table('branch_product')
+            ->join('branches', 'branches.id', '=', 'branch_product.branch_id')
+            ->where('branch_product.product_id', $this->product->id)
+            ->where('branches.company_id', $this->product->company_id)
+            ->where(fn ($q) => $q->whereNotNull('branch_product.food99_sync_status')->orWhereNotNull('branch_product.food99_sync_error'))
+            ->orderBy('branches.name')
+            ->get(['branches.name as branch', 'branch_product.food99_sync_status as status', 'branch_product.food99_sync_error as error'])
+            ->map(fn ($row) => ['branch' => $row->branch, 'status' => $row->status, 'error' => $row->error])
+            ->all();
     }
 
     /**
@@ -274,6 +311,7 @@ class Form extends Component
             $this->company_id = $product->company_id;
             $this->fill($product->only('product_category_id', 'name', 'active', 'available_in_pdv', 'available_in_delivery', 'sort_order'));
             $this->available_in_ifood = (bool) ($product->available_in_ifood ?? true);
+            $this->available_in_99food = (bool) ($product->available_in_99food ?? true);
             $this->description = $product->description ?? '';
             $this->price = (string) $product->price;
             $this->isVariant = (bool) $product->is_variant;
@@ -757,6 +795,7 @@ class Form extends Component
             'available_in_pdv' => $this->pdvEnabled ? $validated['available_in_pdv'] : false,
             'available_in_delivery' => $validated['available_in_delivery'],
             'available_in_ifood' => $validated['available_in_ifood'],
+            'available_in_99food' => $validated['available_in_99food'],
             'sort_order' => $validated['sort_order'],
             'image_path' => $imagePath,
             'fiscal_data' => array_replace($this->fiscalData, ['taxes' => $taxes]),
@@ -957,6 +996,14 @@ class Form extends Component
             }
         }
 
+        // 99Food: nome, preço, foto e complementos vão no próximo upload completo (1 por minuto).
+        Food99Integration::withoutGlobalScopes()
+            ->where('company_id', $product->company_id)->where('status', Food99Integration::STATUS_ACTIVE)
+            ->whereNotNull('catalog_published_at')
+            ->whereIn('branch_id', DB::table('branch_product')->where('product_id', $product->id)->select('branch_id'))
+            ->pluck('branch_id')
+            ->each(fn (int $branchId) => SyncFood99CatalogJob::debounce($branchId));
+
         $this->redirect(route('admin.products.index'));
     }
 
@@ -1032,6 +1079,12 @@ class Form extends Component
 
         foreach ($items as $item) {
             DisableIfoodItemJob::dispatch($item->branch_id, $item->ifood_item_id)->afterCommit();
+        }
+
+        $removedBranchIds = DB::table('branch_product')->where('product_id', $product->id)
+            ->whereNotIn('branch_id', $keptBranchIds)->pluck('branch_id')->all();
+        if ($removedBranchIds !== []) {
+            SetFood99ItemStatusJob::forProduct($product->company_id, $product->id, $removedBranchIds, disable: true);
         }
     }
 

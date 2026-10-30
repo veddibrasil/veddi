@@ -16,7 +16,7 @@ use InvalidArgumentException;
  * e as categorias aparecem junto. Editar o produto depois vale para as duas filiais.
  *
  * Estoque é físico e não é copiado: produto com controle de estoque começa zerado e indisponível
- * até alguém lançar a quantidade da nova filial. Vínculo com o iFood (ids/erros de sync) também
+ * até alguém lançar a quantidade da nova filial. Vínculo com iFood e 99Food (ids/erros de sync) também
  * fica de fora — é por loja e só existe depois de conectar a integração da filial.
  */
 class BranchMenuCopier

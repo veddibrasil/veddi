@@ -3,7 +3,10 @@
 namespace App\Observers;
 
 use App\Jobs\DisableIfoodItemJob;
+use App\Jobs\SetFood99ItemStatusJob;
+use App\Jobs\SyncFood99CatalogJob;
 use App\Jobs\SyncIfoodCatalogJob;
+use App\Models\Food99Integration;
 use App\Models\IfoodIntegration;
 use App\Models\Product;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +20,8 @@ class ProductObserver
      */
     public function saved(Product $product): void
     {
+        $this->syncFood99($product);
+
         if (! $product->wasChanged(['active', 'available_in_ifood'])) {
             return;
         }
@@ -30,6 +35,34 @@ class ProductObserver
         foreach ($branchIds as $branchId) {
             SyncIfoodCatalogJob::dispatch($branchId, $product->id);
         }
+    }
+
+    /**
+     * 99Food: pausar/reativar muda o status do item na hora; entrar ou sair do canal muda o
+     * cardápio, que vai no próximo upload completo (o item novo ainda não existe lá).
+     */
+    private function syncFood99(Product $product): void
+    {
+        if (! $product->wasChanged(['active', 'available_in_99food'])) {
+            return;
+        }
+
+        // Pivot direto: o escopo de empresa das filiais pode ser de outra empresa (super admin).
+        $branchIds = DB::table('branch_product')->where('product_id', $product->id)->pluck('branch_id')->all();
+
+        if ($product->wasChanged('available_in_99food')) {
+            Food99Integration::withoutGlobalScopes()
+                ->where('company_id', $product->company_id)
+                ->where('status', Food99Integration::STATUS_ACTIVE)
+                ->whereNotNull('catalog_published_at')
+                ->whereIn('branch_id', $branchIds)
+                ->pluck('branch_id')
+                ->each(fn (int $branchId) => SyncFood99CatalogJob::debounce($branchId));
+
+            return;
+        }
+
+        SetFood99ItemStatusJob::forProduct($product->company_id, $product->id, $branchIds);
     }
 
     /**
@@ -50,5 +83,7 @@ class ProductObserver
         foreach ($items as $item) {
             DisableIfoodItemJob::dispatch($item->branch_id, $item->ifood_item_id)->afterCommit();
         }
+
+        SetFood99ItemStatusJob::forProduct($product->company_id, $product->id, disable: true);
     }
 }

@@ -182,7 +182,18 @@
                             <flux:checkbox wire:model.live="available_in_ifood" label="Disponível no iFood"
                                 description="O iFood aceita nome com até 100 caracteres e foto JPG ou PNG." />
                         @endif
+                        @if ($this->food99Enabled)
+                            <flux:checkbox wire:model="available_in_99food" label="Disponível na 99Food"
+                                description="A 99Food aceita nome com até 180 caracteres e foto JPG ou PNG." />
+                        @endif
                     </div>
+                    @foreach ($this->food99SyncStatus as $sync)
+                        @if ($sync['error'] || in_array($sync['status'], ['failed', 'invalid'], true))
+                            <x-admin.alert variant="warning" icon="exclamation-triangle">
+                                <strong>99Food ({{ $sync['branch'] }}):</strong> {{ $sync['error'] ?? 'Não foi aceito no último envio.' }}
+                            </x-admin.alert>
+                        @endif
+                    @endforeach
                     @foreach ($this->ifoodSyncErrors as $syncError)
                         <x-admin.alert variant="warning" icon="exclamation-triangle">
                             <strong>iFood ({{ $syncError['branch'] }}):</strong> {{ $syncError['error'] }} Corrija e salve para enviar de novo.

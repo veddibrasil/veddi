@@ -4,6 +4,7 @@ namespace App\Services\Order;
 
 use App\Enums\OrderChannel;
 use App\Exceptions\InsufficientStockException;
+use App\Jobs\SetFood99ItemStatusJob;
 use App\Jobs\SyncIfoodCatalogJob;
 use App\Models\Branch;
 use App\Models\IfoodIntegration;
@@ -89,7 +90,7 @@ class StockService
                     'quantity' => $newQty,
                     'available' => $newQty > 0,
                 ]);
-            $this->syncIfoodAvailability($order->branch_id, $item->product_id, (bool) $pivot->available, $newQty > 0);
+            $this->syncMarketplaceAvailability($order->branch_id, $item->product_id, (bool) $pivot->available, $newQty > 0);
 
             StockMovement::withoutGlobalScopes()->create([
                 'company_id' => $order->company_id,
@@ -152,7 +153,7 @@ class StockService
                         'quantity' => $newQty,
                         'available' => true,
                     ]);
-                $this->syncIfoodAvailability($movement->branch_id, $movement->product_id, (bool) $pivot->available, true);
+                $this->syncMarketplaceAvailability($movement->branch_id, $movement->product_id, (bool) $pivot->available, true);
 
                 StockMovement::withoutGlobalScopes()->create([
                     'company_id' => $order->company_id,
@@ -209,7 +210,7 @@ class StockService
                 'quantity' => $newQty,
                 'available' => $newQty > 0,
             ]);
-        $this->syncIfoodAvailability($order->branch_id, $productId, (bool) $pivot->available, $newQty > 0);
+        $this->syncMarketplaceAvailability($order->branch_id, $productId, (bool) $pivot->available, $newQty > 0);
 
         StockMovement::withoutGlobalScopes()->create([
             'company_id' => $order->company_id,
@@ -256,7 +257,7 @@ class StockService
                 'quantity' => $newQty,
                 'available' => true,
             ]);
-        $this->syncIfoodAvailability($order->branch_id, $productId, (bool) $pivot->available, true);
+        $this->syncMarketplaceAvailability($order->branch_id, $productId, (bool) $pivot->available, true);
 
         StockMovement::withoutGlobalScopes()->create([
             'company_id' => $order->company_id,
@@ -301,7 +302,7 @@ class StockService
                     'quantity' => $newQty,
                     'available' => $newQty > 0,
                 ]);
-            $this->syncIfoodAvailability($branch->id, $product->id, (bool) ($pivot?->available ?? false), $newQty > 0);
+            $this->syncMarketplaceAvailability($branch->id, $product->id, (bool) ($pivot?->available ?? false), $newQty > 0);
 
             $type = $quantity >= 0 ? StockMovement::TYPE_MANUAL_ADD : StockMovement::TYPE_MANUAL_REMOVE;
 
@@ -362,7 +363,7 @@ class StockService
                     'quantity' => $safeQty,
                     'available' => $safeQty > 0,
                 ]);
-            $this->syncIfoodAvailability($branch->id, $product->id, (bool) ($pivot?->available ?? false), $safeQty > 0);
+            $this->syncMarketplaceAvailability($branch->id, $product->id, (bool) ($pivot?->available ?? false), $safeQty > 0);
 
             $movement = StockMovement::withoutGlobalScopes()->create([
                 'company_id' => $branch->company_id,
@@ -408,11 +409,11 @@ class StockService
     }
 
     /**
-     * Estoque zerado (ou reposto) muda a disponibilidade do item na filial: avisa o iFood,
-     * senão ele segue vendendo sem estoque. O job sai depois do commit e confere sozinho se o
-     * item já foi publicado.
+     * Estoque zerado (ou reposto) muda a disponibilidade do item na filial: avisa iFood e
+     * 99Food, senão seguem vendendo sem estoque. Os jobs saem depois do commit e conferem
+     * sozinhos se o item já foi publicado.
      */
-    private function syncIfoodAvailability(int $branchId, int $productId, bool $wasAvailable, bool $isAvailable): void
+    private function syncMarketplaceAvailability(int $branchId, int $productId, bool $wasAvailable, bool $isAvailable): void
     {
         if ($wasAvailable === $isAvailable) {
             return;
@@ -425,6 +426,11 @@ class StockService
 
         if ($hasIntegration) {
             SyncIfoodCatalogJob::dispatch($branchId, $productId)->afterCommit();
+        }
+
+        $companyId = DB::table('branches')->where('id', $branchId)->value('company_id');
+        if ($companyId) {
+            SetFood99ItemStatusJob::forProduct((int) $companyId, $productId, [$branchId]);
         }
     }
 

@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Contracts\Food99EventHandler;
 use App\Exceptions\Food99RateLimitedException;
 use App\Models\Food99WebhookEvent;
+use App\Services\Food99\Food99CatalogSyncService;
 use App\Services\Food99\Food99OrderEventProcessor;
 use App\Services\Food99\Food99OrderImporter;
 use App\Services\Food99\Food99RequestService;
@@ -33,6 +34,7 @@ class ProcessFood99EventJob implements ShouldBeUnique, ShouldQueue
         Food99OrderEventProcessor::class,
         Food99RequestService::class,
         Food99ShopEventHandler::class,
+        Food99CatalogSyncService::class,
     ];
 
     public int $tries = 5;
