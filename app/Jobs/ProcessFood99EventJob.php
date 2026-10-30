@@ -7,6 +7,7 @@ use App\Exceptions\Food99RateLimitedException;
 use App\Models\Food99WebhookEvent;
 use App\Services\Food99\Food99OrderEventProcessor;
 use App\Services\Food99\Food99OrderImporter;
+use App\Services\Food99\Food99RequestService;
 use App\Services\Food99\Food99ShopEventHandler;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -30,6 +31,7 @@ class ProcessFood99EventJob implements ShouldBeUnique, ShouldQueue
     public const HANDLERS = [
         Food99OrderImporter::class,
         Food99OrderEventProcessor::class,
+        Food99RequestService::class,
         Food99ShopEventHandler::class,
     ];
 

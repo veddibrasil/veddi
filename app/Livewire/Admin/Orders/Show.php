@@ -10,6 +10,7 @@ use App\Exceptions\IfoodApiException;
 use App\Exceptions\InsufficientStockException;
 use App\Jobs\IssueFiscalNote;
 use App\Livewire\Admin\Orders\Concerns\HandlesFood99Orders;
+use App\Livewire\Admin\Orders\Concerns\HandlesFood99Requests;
 use App\Models\IfoodDispute;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -29,6 +30,7 @@ class Show extends Component
 {
     use \App\Livewire\Concerns\HasFiscalRecipient;
     use HandlesFood99Orders;
+    use HandlesFood99Requests;
 
     public Order $order;
 

@@ -70,6 +70,9 @@
     @if ($order->channel === 'ifood')
         @include('livewire.admin.orders.partials.ifood-summary')
         @include('livewire.admin.orders.partials.ifood-disputes')
+    @elseif ($order->channel === '99food')
+        @include('livewire.admin.orders.partials.food99-summary')
+        @include('livewire.admin.orders.partials.food99-requests')
     @endif
 
     @if ($order->scheduled_at && ! $order->isMarketplaceOrder())
@@ -755,6 +758,10 @@
             @if ($order->channel === 'ifood')
             <x-admin.form-card padding="p-4">
                 @include('livewire.admin.orders.partials.ifood-actions')
+            </x-admin.form-card>
+            @elseif ($order->channel === '99food')
+            <x-admin.form-card padding="p-4">
+                @include('livewire.admin.orders.partials.food99-actions')
             </x-admin.form-card>
             @else
             <x-admin.form-card padding="p-4 space-y-3">
