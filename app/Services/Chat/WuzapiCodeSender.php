@@ -38,19 +38,41 @@ class WuzapiCodeSender implements ChatCodeSender
         if (($status['connected'] ?? false) !== true || ($status['loggedIn'] ?? false) !== true) {
             throw new RuntimeException('Sessão de autenticação desconectada.');
         }
+        $recipient = $this->resolveRecipient('55'.$phone);
 
         // An opaque, stable WhatsApp message id for this challenge, without phone or code.
         // There are no automatic HTTP retries; a timeout is ambiguous even with a custom id.
         $messageId = strtoupper(substr(hash_hmac('sha256', $companyId.'|'.($challengeId ?? Str::uuid()->toString()), config('app.key')), 0, 32));
         $companyName = Str::limit(preg_replace('/[\r\n\x00-\x1F\x7F]+/u', ' ', $company->name) ?? '', 100);
         $response = $this->request('post', '/chat/send/text', [
-            'Phone' => '55'.$phone,
+            'Phone' => $recipient,
             'Body' => "Seu código de verificação para acessar seus dados na {$companyName} é {$code}. Válido por 5 minutos. Se não foi você, ignore esta mensagem.",
             'Id' => $messageId,
         ]);
         if (! is_string($response['Id'] ?? null) || $response['Id'] === '') {
             throw new RuntimeException('Envio de autenticação não confirmado.');
         }
+    }
+
+    private function resolveRecipient(#[\SensitiveParameter] string $phone): string
+    {
+        $data = $this->request('post', '/user/check', ['Phone' => [$phone]]);
+        $users = $data['Users'] ?? null;
+        $user = is_array($users) && count($users) === 1 ? ($users[0] ?? null) : null;
+        if (! is_array($user) || ($user['Query'] ?? null) !== $phone || ($user['IsInWhatsapp'] ?? null) !== true) {
+            throw new RuntimeException('Destinatário de autenticação não confirmado.');
+        }
+
+        $jid = $user['JID'] ?? null;
+        if ($jid === $phone.'@s.whatsapp.net') {
+            return $phone;
+        }
+        // Use only the LID confirmed for the exact submitted number. Never guess phone aliases.
+        if (is_string($jid) && preg_match('/^[1-9][0-9]{0,19}@lid$/D', $jid)) {
+            return $jid;
+        }
+
+        throw new RuntimeException('Destinatário de autenticação não confirmado.');
     }
 
     private function request(string $method, string $path, #[\SensitiveParameter] array $data = []): array
