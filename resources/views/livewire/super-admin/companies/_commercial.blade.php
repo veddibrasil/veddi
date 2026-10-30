@@ -121,7 +121,7 @@
                     <dd class="mt-1 font-medium text-neutral-800 dark:text-neutral-100">{{ $company->status }}{{ $company->overdue_since ? ' · em atraso desde '.$company->overdue_since->format('d/m/Y') : '' }}</dd>
                 </div>
             </dl>
-            <p class="mt-4 text-xs text-neutral-500 dark:text-neutral-400">Nos últimos 30 dias: {{ $usage['pdv_orders'] }} pedido(s) de PDV · {{ $usage['ifood_orders'] }} do iFood. Mesas ativas cadastradas: {{ $usage['tables'] }}.</p>
+            <p class="mt-4 text-xs text-neutral-500 dark:text-neutral-400">Nos últimos 30 dias: {{ $usage['pdv_orders'] }} pedido(s) de PDV · {{ $usage['ifood_orders'] }} do iFood · {{ $usage['food99_orders'] ?? 0 }} da 99Food. Mesas ativas cadastradas: {{ $usage['tables'] }}.</p>
         </div>
 
         <div class="min-w-0 rounded-xl border bg-white p-5 dark:border-zinc-700 dark:bg-zinc-800">

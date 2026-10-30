@@ -29,6 +29,7 @@ readonly class SalesInsight
         'weak_hour' => 'Horários fracos',
         'promo_no_effect' => 'Promoções',
         'ifood_dependency' => 'Canais de venda',
+        'food99_dependency' => 'Canais de venda',
         'catalog_presentation' => 'Foto e descrição',
     ];
 

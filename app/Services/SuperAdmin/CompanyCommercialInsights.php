@@ -14,7 +14,7 @@ class CompanyCommercialInsights
 {
     public function forCompany(Company $company): array
     {
-        $usage = Cache::remember("superadmin:company:{$company->id}:commercial:v1", now()->addMinutes(5), function () use ($company) {
+        $usage = Cache::remember("superadmin:company:{$company->id}:commercial:v2", now()->addMinutes(5), function () use ($company) {
             $orders = Order::withoutGlobalScope(CompanyScope::class)->where('company_id', $company->id);
             $confirmed = (clone $orders)->whereIn('status', Order::CONFIRMED_STATUSES);
             $month = (clone $confirmed)->whereBetween('created_at', [now()->startOfMonth(), now()]);
@@ -30,6 +30,7 @@ class CompanyCommercialInsights
                 'last_order_at' => (clone $confirmed)->max('created_at'),
                 'pdv_orders' => (clone $recent)->where('order_type', 'pdv')->count(),
                 'ifood_orders' => (clone $recent)->where('channel', 'ifood')->count(),
+                'food99_orders' => (clone $recent)->where('channel', '99food')->count(),
                 'tables' => RestaurantTable::where('company_id', $company->id)->where('active', true)->count(),
                 'branches' => $company->branches()->withoutGlobalScope(CompanyScope::class)->count(),
                 'updated_at' => now(),

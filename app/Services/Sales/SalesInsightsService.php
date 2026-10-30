@@ -22,9 +22,9 @@ class SalesInsightsService
 
     private const WEEKDAYS_SHORT = [1 => 'seg', 2 => 'ter', 3 => 'qua', 4 => 'qui', 5 => 'sex', 6 => 'sab', 7 => 'dom'];
 
-    private const CHANNEL_FLAGS = ['chat' => 'available_in_delivery', 'pdv' => 'available_in_pdv', 'ifood' => 'available_in_ifood'];
+    private const CHANNEL_FLAGS = ['chat' => 'available_in_delivery', 'pdv' => 'available_in_pdv', 'ifood' => 'available_in_ifood', '99food' => 'available_in_99food'];
 
-    private const CHANNEL_LABELS = ['chat' => 'no chat', 'pdv' => 'no PDV', 'ifood' => 'no iFood'];
+    private const CHANNEL_LABELS = ['chat' => 'no chat', 'pdv' => 'no PDV', 'ifood' => 'no iFood', '99food' => 'na 99Food'];
 
     public function __construct(private SoldItemsReportService $reports) {}
 
@@ -135,7 +135,7 @@ class SalesInsightsService
             ...($storeRules ? $this->weakHours($report) : []),
             ...$this->promosWithoutEffect($report, $catalog),
             ...$this->catalogPresentation($report, $catalog),
-            ...$this->ifoodDependency($company, $report, $catalog, $window, $storeRules),
+            ...$this->marketplaceDependency($company, $report, $catalog, $window, $storeRules),
         ];
 
         $result['insights'] = $insights;
@@ -467,7 +467,7 @@ class SalesInsightsService
         foreach ($catalog as $product) {
             if (! $this->isSellable($product)
                 || ($window->categoryId && (int) $product->product_category_id !== $window->categoryId)
-                || ! ($product->available_in_delivery || $product->available_in_pdv || $product->available_in_ifood)
+                || ! ($product->available_in_delivery || $product->available_in_pdv || $product->available_in_ifood || ($product->available_in_99food && $this->food99Connected($company)))
                 // Sem estoque não é "parado", é falta de reposição (não sugerir desconto).
                 || ! $this->branchPivots($product, $window->branchId)->contains(fn ($branch) => $branch->pivot->available && (! $branch->pivot->track_stock || $branch->pivot->quantity > 0))
                 || $product->created_at?->greaterThan($limit)) {
@@ -735,28 +735,60 @@ class SalesInsightsService
         return $insights;
     }
 
-    private function ifoodDependency(Company $company, array $report, Collection $catalog, SoldItemsFilters $window, bool $storeRules): array
+    /** @var array<int, bool> */
+    private array $food99Connected = [];
+
+    /**
+     * available_in_99food nasce ligado em todo produto: só conta como canal de venda pra empresa
+     * que tem a 99Food conectada.
+     */
+    private function food99Connected(Company $company): bool
     {
-        // Com filtro de canal a fatia do iFood perde sentido (100% ou 0%).
+        return $this->food99Connected[$company->id] ??= config('food99.enabled')
+            && \App\Models\Food99Integration::withoutGlobalScopes()->where('company_id', $company->id)->whereNotNull('shop_id')->exists();
+    }
+
+    /** Marketplaces com comissão e o tipo de insight de cada um (o do iFood mantém o nome histórico). */
+    private const MARKETPLACE_DEPENDENCY = [
+        'ifood' => ['type' => 'ifood_dependency', 'label' => 'iFood', 'article' => 'do'],
+        '99food' => ['type' => 'food99_dependency', 'label' => '99Food', 'article' => 'da'],
+    ];
+
+    private function marketplaceDependency(Company $company, array $report, Collection $catalog, SoldItemsFilters $window, bool $storeRules): array
+    {
+        // Com filtro de canal a fatia do marketplace perde sentido (100% ou 0%).
         if ($window->channel !== null) {
             return [];
         }
 
+        $insights = [];
+        foreach (self::MARKETPLACE_DEPENDENCY as $channel => $meta) {
+            array_push($insights, ...$this->dependencyOn($company, $report, $catalog, $storeRules, $channel, $meta));
+        }
+
+        return $insights;
+    }
+
+    /** @param  array{type: string, label: string, article: string}  $meta */
+    private function dependencyOn(Company $company, array $report, Collection $catalog, bool $storeRules, string $channel, array $meta): array
+    {
         $cfg = config('sales_insights.rules.ifood_dependency');
         $link = route('chat.company', ['company' => $company->slug]);
         $insights = [];
-        $ifood = $report['channels']['ifood'] ?? null;
+        $stats = $report['channels'][$channel] ?? null;
+        ['type' => $type, 'label' => $label, 'article' => $article] = $meta;
+        $preposition = $article === 'do' ? 'pelo' : 'pela';
 
-        if ($storeRules && $ifood && $ifood['orders'] >= $cfg['min_orders'] && $report['kpis']['revenue'] > 0
-            && $cfg['revenue_share'] <= $ifood['revenue'] / $report['kpis']['revenue']) {
+        if ($storeRules && $stats && $stats['orders'] >= $cfg['min_orders'] && $report['kpis']['revenue'] > 0
+            && $cfg['revenue_share'] <= $stats['revenue'] / $report['kpis']['revenue']) {
             $now = CarbonImmutable::now();
             $insights[] = new SalesInsight(
-                type: 'ifood_dependency',
+                type: $type,
                 scope: 'store',
                 priority: SalesInsight::PRIORITY_OPPORTUNITY,
-                title: 'Dependência do iFood',
-                message: $this->percent($ifood['revenue'] / $report['kpis']['revenue'])."% do faturamento veio do iFood, que cobra comissão. Divulgue seu link próprio ({$link}) na embalagem e nas redes, com um cupom de primeira compra.",
-                evidence: ["{$ifood['orders']} pedidos pelo iFood"],
+                title: "Dependência {$article} {$label}",
+                message: $this->percent($stats['revenue'] / $report['kpis']['revenue'])."% do faturamento veio {$article} {$label}, que cobra comissão. Divulgue seu link próprio ({$link}) na embalagem e nas redes, com um cupom de primeira compra.",
+                evidence: ["{$stats['orders']} pedidos {$preposition} {$label}"],
                 actions: [$this->couponAction('Criar cupom de 1ª compra', [
                     'escopo' => 'order',
                     'valor' => $cfg['discount'],
@@ -765,24 +797,24 @@ class SalesInsightsService
                     'nome' => 'Primeiro pedido direto',
                     'codigo' => $cfg['code'],
                 ])],
-                weight: (float) $ifood['revenue'],
+                weight: (float) $stats['revenue'],
             );
         }
 
         foreach ($report['products'] as $key => $sold) {
-            $share = $sold['qty'] > 0 ? ($sold['channels']['ifood'] ?? 0) / $sold['qty'] : 0;
+            $share = $sold['qty'] > 0 ? ($sold['channels'][$channel] ?? 0) / $sold['qty'] : 0;
             if ($sold['qty'] < $cfg['product_min_units'] || $share < $cfg['product_share']) {
                 continue;
             }
 
             $product = $sold['product_id'] ? $catalog->get($sold['product_id']) : null;
             $insights[] = new SalesInsight(
-                type: 'ifood_dependency',
+                type: $type,
                 scope: 'product',
                 priority: SalesInsight::PRIORITY_IDEA,
-                title: 'Vende quase só no iFood',
-                message: "{$sold['name']}: ".$this->percent($share)."% das vendas vêm do iFood. Divulgue o {$sold['name']} no seu link próprio ({$link}), onde não há comissão.",
-                evidence: [$this->percent($share).'% das unidades pelo iFood'],
+                title: ($article === 'do' ? 'Vende quase só no ' : 'Vende quase só na ').$label,
+                message: "{$sold['name']}: ".$this->percent($share)."% das vendas vêm {$article} {$label}. Divulgue o {$sold['name']} no seu link próprio ({$link}), onde não há comissão.",
+                evidence: [$this->percent($share)."% das unidades {$preposition} {$label}"],
                 productKey: $key,
                 productId: $product?->id,
                 weight: $sold['revenue'],
