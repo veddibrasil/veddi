@@ -10,6 +10,7 @@ use App\Models\EmailAutomationEnrollment;
 use App\Models\EmailCampaign;
 use App\Models\EmailTemplate;
 use App\Models\Order;
+use App\Services\Marketing\AutomationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 
@@ -35,6 +36,17 @@ function abandonedSignupAutomation(): EmailAutomation
 
     return EmailAutomation::with('steps.campaign')->firstOrFail();
 }
+
+test('automação acompanha pessoas: e-mail da empresa não entra na sequência', function () {
+    marketingSetup();
+    config(['marketing.require_opt_in' => false]);
+    $automation = abandonedSignupAutomation();
+    $member = marketingMember(['status' => 'PENDING_PAYMENT', 'active' => false, 'email' => 'contato@loja.com'], user: ['email' => 'dono@a.com']);
+    $member->companies()->first()->forceFill(['created_at' => now()->subHours(5)])->save();
+
+    expect(app(AutomationService::class)->enroll($automation))->toBe(1)
+        ->and(EmailAutomationEnrollment::pluck('email')->all())->toBe(['dono@a.com']);
+});
 
 test('salvar cria um passo por e-mail com campanha interna pausada', function () {
     marketingSetup();

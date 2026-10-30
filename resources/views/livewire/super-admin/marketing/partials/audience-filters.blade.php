@@ -24,7 +24,11 @@
             @foreach(\App\DTOs\AudienceFilterData::ROLES as $value => $label)
                 <flux:checkbox wire:model.live="{{ $prefix }}.roles" value="{{ $value }}" label="{{ $label }}" />
             @endforeach
-            <p class="text-xs text-neutral-400 dark:text-neutral-500">Clientes finais dos restaurantes nunca entram.</p>
+            <p class="text-xs text-neutral-400 dark:text-neutral-500">
+                O administrador de cada empresa sempre entra.
+                {{ config('marketing.require_opt_in') ? 'O e-mail da empresa fica de fora enquanto o aceite for exigido.' : 'O e-mail da empresa também.' }}
+                Clientes finais dos restaurantes nunca entram.
+            </p>
         </fieldset>
     </div>
 

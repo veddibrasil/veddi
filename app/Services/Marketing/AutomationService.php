@@ -93,7 +93,8 @@ class AutomationService
         $this->audience->chunk($filters, 1000, function (Collection $rows) use ($automation, $first, &$enrolled) {
             $now = now();
 
-            $enrolled += DB::table('email_automation_enrollments')->insertOrIgnore($rows->map(fn (object $row) => [
+            // Automação acompanha pessoas: o e-mail da empresa (sem user_id) não entra na sequência.
+            $enrolled += DB::table('email_automation_enrollments')->insertOrIgnore($rows->whereNotNull('user_id')->values()->map(fn (object $row) => [
                 'automation_id' => $automation->id,
                 'user_id' => $row->user_id,
                 'company_id' => $row->company_id,

@@ -123,14 +123,15 @@ class SuppressionCleanup
     }
 
     /**
-     * E-mails dos usuários das empresas (papéis do público), sem os já suprimidos. Consulta direta
-     * em company_user/users como o AudienceResolver: o módulo é da plataforma e cruza empresas.
+     * E-mails dos usuários das empresas (papéis do público) e das próprias empresas, sem os já
+     * suprimidos. Consulta direta em company_user/users/companies como o AudienceResolver: o
+     * módulo é da plataforma e cruza empresas.
      *
      * @return list<string>
      */
     private function candidateEmails(): array
     {
-        return DB::table('company_user')
+        $users = DB::table('company_user')
             ->join('users', 'users.id', '=', 'company_user.user_id')
             ->whereNull('users.deleted_at')
             ->whereIn('company_user.role', config('marketing.roles', []))
@@ -138,7 +139,17 @@ class SuppressionCleanup
                 ->from('email_suppressions')
                 ->whereRaw('email_suppressions.email = LOWER(TRIM(users.email))'))
             ->distinct()
-            ->pluck('users.email')
+            ->pluck('users.email');
+
+        $companies = DB::table('companies')
+            ->whereRaw("TRIM(COALESCE(companies.email, '')) <> ''")
+            ->whereNotExists(fn ($suppressions) => $suppressions->selectRaw('1')
+                ->from('email_suppressions')
+                ->whereRaw('email_suppressions.email = LOWER(TRIM(companies.email))'))
+            ->distinct()
+            ->pluck('companies.email');
+
+        return $users->concat($companies)
             ->map(fn (string $email) => SuppressionService::normalize($email))
             ->unique()
             ->sort()

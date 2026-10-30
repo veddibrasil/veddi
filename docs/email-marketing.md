@@ -13,7 +13,7 @@ Telas: `/superadmin/marketing` (Campanhas, Templates, Segmentos, Automações, S
 ## Fluxo de uma campanha
 
 1. **Conteúdo** (wizard, passo 1): nome, assunto, pré-cabeçalho, remetente e blocos (cabeçalho, texto, imagem, botão, divisor, rodapé). Pode começar de um template. O HTML é gerado e sanitizado no servidor (`TemplateRenderer` + `EmailHtmlSanitizer`); o conteúdo nunca é compilado como Blade.
-2. **Público** (passo 2): filtros da própria campanha ou um segmento salvo ("sem pedidos há N dias" só pega empresa cadastrada há pelo menos N dias); contagem ao vivo já sem supressões, opt-out e (com `MARKETING_REQUIRE_OPT_IN=true`) sem quem não deu aceite. Teste A/B de assunto opcional.
+2. **Público** (passo 2): filtros da própria campanha ou um segmento salvo ("sem pedidos há N dias" só pega empresa cadastrada há pelo menos N dias); contagem ao vivo já sem supressões, opt-out e (com `MARKETING_REQUIRE_OPT_IN=true`) sem quem não deu aceite. O administrador (`company_admin`) de cada empresa filtrada sempre entra, mesmo com filtro de papel; o filtro de papel só decide se os gerentes entram junto. Com `MARKETING_REQUIRE_OPT_IN=false`, o e-mail da própria empresa (`companies.email`, opcional, preenchido nas configurações) também entra: a saudação usa o nome do primeiro administrador. Ele nunca entra se o endereço for de um usuário (vale o consentimento da conta) e fica fora das automações, que acompanham pessoas. Teste A/B de assunto opcional.
 3. **Revisão** (passo 3): preview desktop/celular com dados de uma empresa real, envio de teste (até 5 e-mails) e checklist obrigatório: conteúdo, variáveis válidas, remetente de domínio verificado, link de descadastro, rodapé legal, público não vazio e teste enviado com o conteúdo atual.
 4. **Envio** (passo 4): agora ou agendado (horário de Brasília). O público é recalculado no disparo.
 
@@ -41,7 +41,7 @@ Tudo que é pronto vira registro comum (editável, duplicável) e é comparado p
 | Recuperar cadastro abandonado | Cadastro abandonado, 2 h | Lembrete → 48 h → Último aviso |
 | Reengajar empresa sem pedidos | Sem pedidos, 30 dias | Reengajamento → 168 h → Dicas para vender mais |
 
-**Supressões** (`SuppressionCleanup`, **Limpeza da lista → Verificar lista** em Supressões): procura entre os usuários das empresas (papéis do público, já sem os suprimidos) endereços inválidos, domínio digitado errado (`gmail.con`, `hotmal.com`...), e-mails de teste (`example.com`, `teste.com`, `.test`, `.local`), caixas temporárias (mailinator, yopmail...) e endereços automáticos (`noreply@`, `nao-responda@`, `postmaster@`). **Suprimir** recalcula a lista no servidor e grava supressão manual com a observação "Limpeza da lista: ...", removível depois com motivo. Rodar antes do primeiro disparo real.
+**Supressões** (`SuppressionCleanup`, **Limpeza da lista → Verificar lista** em Supressões): procura entre os usuários das empresas (papéis do público) e os e-mails das próprias empresas, já sem os suprimidos, endereços inválidos, domínio digitado errado (`gmail.con`, `hotmal.com`...), e-mails de teste (`example.com`, `teste.com`, `.test`, `.local`), caixas temporárias (mailinator, yopmail...) e endereços automáticos (`noreply@`, `nao-responda@`, `postmaster@`). **Suprimir** recalcula a lista no servidor e grava supressão manual com a observação "Limpeza da lista: ...", removível depois com motivo. Rodar antes do primeiro disparo real.
 
 ## Disparo e filas
 

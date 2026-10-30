@@ -8,6 +8,7 @@ use App\Models\Customer;
 use App\Models\EmailSuppression;
 use App\Models\Order;
 use App\Services\Marketing\AudienceResolver;
+use App\Services\Marketing\DefaultEmailSegments;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -38,13 +39,63 @@ test('filtro de plano, status e ativa retorna só quem deve', function () {
         ->and(audienceEmails(new AudienceFilterData))->toBe(['free@a.com', 'lead@a.com', 'pro@a.com']);
 });
 
-test('filtro de papel separa dono e gerente; outros papéis nunca entram', function () {
+test('filtro de papel mantém o administrador; outros papéis nunca entram', function () {
     marketingMember(role: 'company_admin', user: ['email' => 'dono@a.com']);
     marketingMember(role: 'branch_manager', user: ['email' => 'gerente@a.com']);
     marketingMember(role: 'garcom', user: ['email' => 'garcom@a.com']);
 
-    expect(audienceEmails(new AudienceFilterData(roles: ['branch_manager'])))->toBe(['gerente@a.com'])
-        ->and(audienceEmails(new AudienceFilterData))->toBe(['dono@a.com', 'gerente@a.com']);
+    expect(audienceEmails(new AudienceFilterData(roles: ['company_admin'])))->toBe(['dono@a.com'])
+        ->and(audienceEmails(new AudienceFilterData(roles: ['branch_manager'])))->toBe(['dono@a.com', 'gerente@a.com'])
+        ->and(audienceEmails(new AudienceFilterData))->toBe(['dono@a.com', 'gerente@a.com'])
+        ->and((new AudienceFilterData(roles: ['branch_manager']))->describe())->toBe(['Papel: Administrador (dono), Gerente de filial']);
+});
+
+test('segmento de gerentes alcança o administrador só das empresas filtradas', function () {
+    $admin = marketingMember(['plan' => 'pro'], user: ['email' => 'dono@a.com']);
+    marketingMember(['model' => $admin->companies()->first()], 'branch_manager', ['email' => 'gerente@a.com']);
+    marketingMember(['plan' => 'free'], user: ['email' => 'outro-dono@a.com']);
+
+    expect(audienceEmails(new AudienceFilterData(plans: ['pro'], roles: ['branch_manager'])))->toBe(['dono@a.com', 'gerente@a.com']);
+});
+
+test('todo segmento padrão inclui o administrador da empresa', function () {
+    foreach (app(DefaultEmailSegments::class)->definitions() as $definition) {
+        expect(AudienceFilterData::fromArray($definition['filters'])->effectiveRoles())->toContain('company_admin');
+    }
+});
+
+test('e-mail da empresa entra no público sob legítimo interesse', function () {
+    config(['marketing.require_opt_in' => false]);
+    $admin = marketingMember(['email' => ' Contato@Loja.com ', 'plan' => 'pro'], user: ['name' => 'Ana Lima', 'email' => 'ana@a.com']);
+    marketingMember(['email' => 'free@loja.com', 'plan' => 'free'], user: ['email' => 'free@a.com']);
+    marketingMember(user: ['email' => 'sem-caixa@a.com']);
+    marketingMember(['email' => '   '], user: ['email' => 'caixa-vazia@a.com']);
+
+    expect(audienceEmails(new AudienceFilterData(plans: ['pro'])))->toBe(['ana@a.com', 'caixa-vazia@a.com', 'contato@loja.com', 'sem-caixa@a.com'])
+        ->and(app(AudienceResolver::class)->count(new AudienceFilterData(plans: ['pro'])))->toBe(4);
+
+    $row = app(AudienceResolver::class)->sample(new AudienceFilterData(plans: ['pro']), 10)->firstWhere('email', 'contato@loja.com');
+
+    expect($row->user_id)->toBeNull()
+        ->and($row->company_id)->toBe($admin->companies()->first()->id)
+        ->and(AudienceResolver::variablesFor($row))->toMatchArray(['primeiro_nome' => 'Ana', 'empresa' => $admin->companies()->first()->name, 'plano' => 'PRO']);
+});
+
+test('e-mail da empresa fica de fora enquanto o aceite for exigido', function () {
+    marketingMember(['email' => 'contato@loja.com'], user: ['email' => 'dono@a.com']);
+
+    expect(audienceEmails(new AudienceFilterData))->toBe(['dono@a.com']);
+});
+
+test('e-mail da empresa respeita supressão e as preferências de quem tem conta', function () {
+    config(['marketing.require_opt_in' => false]);
+    marketingMember(['email' => 'DONO@a.com'], user: ['email' => 'dono@a.com']);
+    marketingMember(['email' => 'saiu@a.com'], user: ['email' => 'saiu@a.com', 'marketing_opt_out_at' => now()]);
+    marketingMember(['email' => 'bloqueado@loja.com'], user: ['email' => 'outro@a.com']);
+    EmailSuppression::create(['email' => 'bloqueado@loja.com', 'reason' => EmailSuppressionReason::HardBounce]);
+
+    expect(audienceEmails(new AudienceFilterData))->toBe(['dono@a.com', 'outro@a.com'])
+        ->and(app(AudienceResolver::class)->count(new AudienceFilterData))->toBe(2);
 });
 
 test('filtro de módulos PDV e nota fiscal', function () {
