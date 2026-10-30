@@ -17,6 +17,7 @@ Tambem ha integracoes de pagamento e webhook:
 - Vindi para PIX e parte do fluxo financeiro;
 - carteira (historico e saldo interno por empresa) e conciliacao; saque e antecipacao sao feitos no portal Vindi. O split do pagamento e calculado uma vez em `PaymentSplitCalculator`, gravado no `Payment` (`platform_fee`, `company_net_amount`) e reusado pela carteira e pelas transacoes;
 - WhatsApp Cloud API (Meta) para avisar o cliente a cada etapa do pedido, com numero proprio de cada empresa (detalhes na secao "Notificacoes por WhatsApp");
+- marketplaces iFood e 99Food recebendo pedidos no painel (detalhes da 99Food na secao "Integracao 99Food");
 - e-mail marketing da plataforma para os usuarios das empresas, com provedor atras de Contract (detalhes na secao "E-mail marketing").
 
 ## Stack principal
@@ -41,6 +42,8 @@ Tambem ha integracoes de pagamento e webhook:
 - `POST /webhooks/asaas`: eventos financeiros do Asaas
 - `POST /webhooks/vindi`: eventos financeiros do Vindi
 - `POST /webhooks/fiscal`: eventos de nota fiscal
+- `POST /webhooks/ifood`: eventos do iFood
+- `POST /webhooks/99food`: callbacks da 99Food (assinatura `didi-header-sign`, resposta sempre `{"errno":0,"errmsg":"ok"}`)
 - `GET|POST /webhooks/whatsapp`: verificacao do endpoint e eventos da WhatsApp Cloud API (assinatura `X-Hub-Signature-256`)
 - `POST /webhooks/email`: eventos do provedor de e-mail marketing (Resend, assinatura Svix)
 - `GET|POST /email/u/{recipient}`, `GET /email/o/{recipient}`, `GET /email/c/{recipient}`: descadastro (One-Click), pixel e redirect de clique do e-mail marketing, todos com URL assinada
@@ -64,6 +67,7 @@ Principais modulos:
 - faturamento
 - carteira
 - whatsapp (conexao do numero e notificacoes de pedido)
+- integracoes (iFood e 99Food, por filial)
 - usuarios e papeis
 
 ### Painel super admin
@@ -215,6 +219,21 @@ Comandos e operacao:
 - localmente `composer dev` e o Horizon (ambiente `local`) consomem `critical,default,whatsapp,low,marketing`; em producao os workers estao no `cloud.yaml`.
 
 Pendencia conhecida: o evento `awaiting_payment` (codigo PIX por WhatsApp) ainda nao tem template nem gatilho; o toggle aparece desabilitado como "em breve".
+
+### Integracao 99Food
+
+Pedidos da 99Food pelo 99Food Protocol, no mesmo molde do iFood: app parceiro unico (`config/food99.php`) e uma `Food99Integration` por filial. Tudo atras de `FOOD99_ENABLED`. Guia completo, roteiro da loja de teste e itens a validar: `docs/99food-homologacao.md`. O plano e a documentacao da 99 sao NDA e ficam fora do repositorio (publico).
+
+Onde esta cada coisa: `app/Services/Food99` (cliente, auth, gateway atras de `Food99GatewayContract`, importacao, acoes, status, cardapio, loja, monitor), `app/Support/Food99/Food99OrderDetails`, `app/DTOs/Food99OrderDTO`, jobs `*Food99*`, tela `app/Livewire/Admin/Settings/Food99IntegrationSettings` e partials `food99-*` dos pedidos.
+
+Regras que nao podem quebrar:
+
+- o que vale pra qualquer marketplace pergunta `OrderChannel::isMarketplace()` / `$order->marketplaceDetails()`, nunca `=== 'ifood'`; o que e so do iFood fica no modulo iFood;
+- webhook so valida, persiste com `dedupe_key` (a 99 nao manda id de evento) e enfileira; responde `errno 0` inclusive pra reentrega e tipo desconhecido;
+- ids da 99 sao int64: colunas string, `JSON_BIGINT_AS_STRING`, nunca float/JS; dinheiro vem em centavos e e convertido no DTO;
+- a tela chama a 99 antes de mudar o status local; callbacks so avancam etapa (nunca regridem);
+- a lista de lojas autorizadas e do app inteiro: nunca mostrar pro restaurante (ele informa o ID da propria loja);
+- token e `app_secret` nunca vao pro log; consultas fora de request usam `withoutGlobalScopes()` com `company_id` explicito.
 
 ### E-mail marketing
 
