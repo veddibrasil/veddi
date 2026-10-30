@@ -438,8 +438,7 @@ class Index extends Component
         ]);
     }
 
-    /** Botão "Aceitar" do card/alerta de pedido iFood aguardando aceite. */
-    /** Aceite de pedido de marketplace: a etapa "preparando" passa pela API da plataforma. */
+    /** Botão "Aceitar" do card/alerta de pedido de marketplace: "preparando" passa pela API da plataforma. */
     public function acceptMarketplaceOrder(int $orderId): void
     {
         $this->updateOrderStatus($orderId, 'preparing');
@@ -696,15 +695,15 @@ class Index extends Component
         ));
     }
 
-    /** Some o aviso de um pedido do iFood que não entrou no painel (já resolvido no Gestor de Pedidos). */
     protected function food99ActionableOrder(int $orderId): Order
     {
         return $this->findActionableOrder($orderId);
     }
 
+    /** Recusar/cancelar e confirmar dinheiro na 99 é do balcão; cozinha/bar/entrega só avançam a etapa. */
     protected function canOperateFood99(): bool
     {
-        return $this->canUpdate;
+        return $this->canUpdate && ! $this->userStation;
     }
 
     /**
@@ -718,6 +717,7 @@ class Index extends Component
             ->findOrFail($orderId);
     }
 
+    /** Some o aviso de um pedido do iFood que não entrou no painel (já resolvido no Gestor de Pedidos). */
     public function dismissIfoodNotImported(int $eventId): void
     {
         abort_unless($this->canUpdate && $this->companyId, 403);

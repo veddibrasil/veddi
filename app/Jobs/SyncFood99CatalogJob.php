@@ -22,9 +22,13 @@ class SyncFood99CatalogJob implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
-    public int $tries = 5;
-
+    /** Por tempo: cada release() do limite de 1 upload/min conta como tentativa na fila. */
     public array $backoff = [60, 120, 300, 600];
+
+    public function retryUntil(): \DateTimeInterface
+    {
+        return now()->addMinutes(30);
+    }
 
     public int $uniqueFor = 120;
 

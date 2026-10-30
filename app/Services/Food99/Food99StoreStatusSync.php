@@ -146,7 +146,16 @@ class Food99StoreStatusSync
             ->where(fn ($q) => $q
                 ->where(fn ($q) => $q->where('food99_sync_state', 'scheduled')->where('starts_at', '<=', now()))
                 ->orWhere(fn ($q) => $q->whereIn('food99_sync_state', ['closed', 'paused'])->where('ends_at', '<=', now())))
+            ->lazyById()
             ->each(function (BranchPause $pause) {
+                // Agendada que já terminou (agendador parado, 99 recusando): a loja nunca fechou
+                // por ela, então não há o que reabrir.
+                if ($pause->food99_sync_state === 'scheduled' && ! $pause->ends_at->isFuture()) {
+                    $pause->update(['food99_sync_state' => 'skipped']);
+
+                    return;
+                }
+
                 $integration = $this->integrationForPause($pause);
                 if (! $integration) {
                     $pause->update(['food99_sync_state' => 'skipped']);
@@ -155,7 +164,7 @@ class Food99StoreStatusSync
                 }
 
                 try {
-                    $pause->food99_sync_state === 'scheduled' && $pause->ends_at->isFuture()
+                    $pause->food99_sync_state === 'scheduled'
                         ? $this->apply($pause, $integration)
                         : $this->finish($pause, $integration);
                 } catch (Throwable $e) {

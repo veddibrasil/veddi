@@ -139,6 +139,7 @@ class Food99RequestService implements Food99EventHandler
         Food99Request::withoutGlobalScopes()
             ->where('status', Food99Request::STATUS_OPEN)
             ->where('expires_at', '<', now())
+            ->lazyById()
             ->each(function (Food99Request $request) use (&$expired) {
                 $request->update(['status' => Food99Request::STATUS_EXPIRED]);
                 $expired++;

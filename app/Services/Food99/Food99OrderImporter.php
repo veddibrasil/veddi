@@ -15,6 +15,7 @@ use App\Models\Food99WebhookEvent;
 use App\Models\Order;
 use App\Services\Payment\PaymentOrchestrator;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
@@ -74,21 +75,30 @@ class Food99OrderImporter implements Food99EventHandler
 
         $customer = $this->resolveOrCreateCustomer($dto, $integration->company_id);
 
-        $order = $this->orderService->createOrder(
-            customerId: $customer->id,
-            branchId: $integration->branch_id,
-            cart: $cart,
-            notes: $dto->remark ?? '',
-            paymentMethod: OrderChannel::Food99->value,
-            orderType: $dto->localOrderType(),
-            status: 'pending',
-            deliveryFee: $dto->deliveryFee,
-            extraDiscount: $dto->itemsDiscount,
-            serviceFee: $dto->serviceFee,
-            channel: OrderChannel::Food99->value,
-            externalOrderId: $dto->orderId,
-            externalMetadata: $dto->toMetadata(),
-        );
+        // Pedido e pagamento juntos: com o pedido gravado sem Payment, a reentrega acharia o
+        // pedido pronto e nunca registraria o pagamento.
+        $order = DB::transaction(function () use ($dto, $cart, $customer, $integration, $event) {
+            $order = $this->orderService->createOrder(
+                customerId: $customer->id,
+                branchId: $integration->branch_id,
+                cart: $cart,
+                notes: $dto->remark ?? '',
+                paymentMethod: OrderChannel::Food99->value,
+                orderType: $dto->localOrderType(),
+                status: 'pending',
+                deliveryFee: $dto->deliveryFee,
+                extraDiscount: $dto->itemsDiscount,
+                serviceFee: $dto->serviceFee,
+                channel: OrderChannel::Food99->value,
+                externalOrderId: $dto->orderId,
+                externalMetadata: $dto->toMetadata(),
+            );
+
+            $this->payments->processMarketplacePayments($order, OrderChannel::Food99->value, $dto->prepaidAmount(), $dto->pendingAmount);
+            $event->update(['order_id' => $order->id]);
+
+            return $order;
+        });
 
         if (abs((float) $order->total - $dto->reportedTotal) > 0.01) {
             // Itens ligados são reprecificados pelo cadastro do VEDDI; a diferença fica no log e
@@ -101,11 +111,12 @@ class Food99OrderImporter implements Food99EventHandler
             ]);
         }
 
-        $this->payments->processMarketplacePayments($order, OrderChannel::Food99->value, $dto->prepaidAmount(), $dto->pendingAmount);
-
-        $event->update(['order_id' => $order->id]);
-
-        NewOrderPlaced::dispatch($order->load('customer'));
+        try {
+            NewOrderPlaced::dispatch($order->load('customer'));
+        } catch (Throwable $e) {
+            // O pedido já está no painel: falha no aviso não pode reprocessar (e duplicar) a importação.
+            report($e);
+        }
 
         Log::channel('food99')->info('99Food: pedido criado a partir do orderNew', [
             'food99_webhook_event_id' => $event->id,

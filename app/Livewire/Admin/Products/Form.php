@@ -997,12 +997,14 @@ class Form extends Component
         }
 
         // 99Food: nome, preço, foto e complementos vão no próximo upload completo (1 por minuto).
-        Food99Integration::withoutGlobalScopes()
-            ->where('company_id', $product->company_id)->where('status', Food99Integration::STATUS_ACTIVE)
-            ->whereNotNull('catalog_published_at')
-            ->whereIn('branch_id', DB::table('branch_product')->where('product_id', $product->id)->select('branch_id'))
-            ->pluck('branch_id')
-            ->each(fn (int $branchId) => SyncFood99CatalogJob::debounce($branchId));
+        if (config('food99.enabled')) {
+            Food99Integration::withoutGlobalScopes()
+                ->where('company_id', $product->company_id)->where('status', Food99Integration::STATUS_ACTIVE)
+                ->whereNotNull('catalog_published_at')
+                ->whereIn('branch_id', DB::table('branch_product')->where('product_id', $product->id)->select('branch_id'))
+                ->pluck('branch_id')
+                ->each(fn (int $branchId) => SyncFood99CatalogJob::debounce($branchId));
+        }
 
         $this->redirect(route('admin.products.index'));
     }

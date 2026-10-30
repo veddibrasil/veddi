@@ -47,7 +47,7 @@ class Food99ConnectionMonitor
             ->with(['company', 'branch'])
             ->whereNotNull('shop_id')
             ->whereIn('status', [Food99Integration::STATUS_ACTIVE, Food99Integration::STATUS_PAUSED, Food99Integration::STATUS_ERROR])
-            ->orderBy('id')
+            ->lazyById()
             ->each(function (Food99Integration $integration) use (&$summary) {
                 $summary['checked']++;
                 $this->syncPresence($integration);

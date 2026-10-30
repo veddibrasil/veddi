@@ -16,9 +16,13 @@ class SetFood99ItemStatusJob implements ShouldQueue
 {
     use Queueable;
 
-    public int $tries = 5;
-
+    /** Por tempo: release() no limite de frequência conta como tentativa na fila. */
     public array $backoff = [10, 30, 120, 300];
+
+    public function retryUntil(): \DateTimeInterface
+    {
+        return now()->addMinutes(15);
+    }
 
     /** @param  array<int, int>  $productIds */
     public function __construct(public int $branchId, public array $productIds, public bool $disable = false) {}
@@ -26,6 +30,10 @@ class SetFood99ItemStatusJob implements ShouldQueue
     /** Filiais da empresa com 99Food conectada e cardápio publicado que vendem o produto. */
     public static function forProduct(int $companyId, int $productId, ?array $branchIds = null, bool $disable = false): void
     {
+        if (! config('food99.enabled')) {
+            return;
+        }
+
         Food99Integration::withoutGlobalScopes()
             ->where('company_id', $companyId)
             ->whereIn('status', $disable ? [Food99Integration::STATUS_ACTIVE, Food99Integration::STATUS_PAUSED] : [Food99Integration::STATUS_ACTIVE])

@@ -94,3 +94,17 @@ it('não oferece a 99Food nas pausas com a integração desligada na plataforma'
     Livewire::test(Pauses::class, ['branch' => $ctx['branch']])
         ->assertDontSee('Fechar também a loja na 99Food');
 });
+
+it('não reabre a loja por pausa agendada que terminou sem ter sido aplicada', function () {
+    $ctx = food99Context();
+    Http::fake(['*' => Http::response(food99Ok(), 200)]);
+    $pause = BranchPause::withoutGlobalScopes()->create([
+        'company_id' => $ctx['company']->id, 'branch_id' => $ctx['branch']->id, 'recurring_annual' => false,
+        'starts_at' => now()->subHour(), 'ends_at' => now()->subMinute(), 'food99_sync' => true, 'food99_sync_state' => 'scheduled',
+    ]);
+
+    app(Food99StoreStatusSync::class)->applyDuePauses();
+
+    expect($pause->fresh()->food99_sync_state)->toBe('skipped')
+        ->and(food99StoreCalls())->toBe([]);
+});

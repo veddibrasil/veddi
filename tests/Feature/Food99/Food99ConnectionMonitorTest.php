@@ -115,3 +115,37 @@ it('não roda o monitor com a 99Food desligada', function () {
 
     $this->artisan('food99:check-connections')->expectsOutputToContain('desligada')->assertSuccessful();
 });
+
+it('reconcilia em rodízio pra todos os pedidos abertos serem relidos', function () {
+    $ctx = food99Context();
+    $base = food99OrderInfo($ctx);
+    foreach (range(1, 10) as $i) {
+        receiveFood99Order($this, $ctx, array_merge($base, ['order_id' => (string) (5764607523034900000 + $i), 'order_index' => $i]));
+    }
+    Http::fake(['*/v1/order/order/detail*' => Http::response(food99Ok(array_merge($base, ['status' => 100])), 200)]);
+    $job = app(ReconcileFood99OrdersJob::class);
+    $run = fn () => $job->handle(app(\App\Contracts\Food99GatewayContract::class), app(\App\Services\Food99\Food99OrderStatusSync::class));
+
+    $run();
+    $this->travel(11)->seconds();
+    $run();
+
+    $read = collect(Http::recorded())->map(fn ($pair) => $pair[0]['order_id'])->unique();
+    expect($read)->toHaveCount(10);
+});
+
+it('reenfileira callback preso em processamento por worker que morreu', function () {
+    \Illuminate\Support\Facades\Queue::fake();
+    $ctx = food99Context();
+    postFood99Webhook($this, food99Callback($ctx['integration'], 'orderReady', ['order_id' => 1]))->assertOk();
+    $event = \App\Models\Food99WebhookEvent::sole();
+    $event->forceFill(['status' => 'processing'])->saveQuietly();
+    // Worker morreu: passados os minutos de folga (e a trava de job único), volta pra fila.
+    $this->travel(10)->minutes();
+    Http::fake();
+
+    app(ReconcileFood99OrdersJob::class)->handle(app(\App\Contracts\Food99GatewayContract::class), app(\App\Services\Food99\Food99OrderStatusSync::class));
+
+    expect($event->fresh()->status)->toBe('pending');
+    \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\ProcessFood99EventJob::class, 2);
+});

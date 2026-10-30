@@ -37,9 +37,17 @@ class ProcessFood99EventJob implements ShouldBeUnique, ShouldQueue
         Food99CatalogSyncService::class,
     ];
 
-    public int $tries = 5;
-
+    /**
+     * Limite por tempo, não por tentativas: release() por limite de frequência da 99 conta como
+     * tentativa na fila e esgotaria $tries sem o evento ter falhado. Falha de verdade para em
+     * MAX_ATTEMPTS (contado no próprio evento).
+     */
     public array $backoff = [10, 30, 60, 120];
+
+    public function retryUntil(): \DateTimeInterface
+    {
+        return now()->addMinutes(30);
+    }
 
     public int $uniqueFor = 300;
 

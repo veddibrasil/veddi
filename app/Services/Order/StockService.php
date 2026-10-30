@@ -428,8 +428,7 @@ class StockService
             SyncIfoodCatalogJob::dispatch($branchId, $productId)->afterCommit();
         }
 
-        $companyId = DB::table('branches')->where('id', $branchId)->value('company_id');
-        if ($companyId) {
+        if (config('food99.enabled') && ($companyId = DB::table('branches')->where('id', $branchId)->value('company_id'))) {
             SetFood99ItemStatusJob::forProduct((int) $companyId, $productId, [$branchId]);
         }
     }

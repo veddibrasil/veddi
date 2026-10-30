@@ -231,3 +231,22 @@ it('mostra erro da 99 na tela sem mudar o status local', function () {
     expect($order->fresh()->status)->toBe('pending')
         ->and($order->fresh()->food99Details()->stage())->toBe('CREATED');
 });
+
+it('não deixa cozinha recusar pedido 99Food pelo kanban', function () {
+    $ctx = food99Context();
+    $info = food99OrderInfo($ctx);
+    fakeFood99Api($info);
+    $order = receiveFood99Order($this, $ctx, $info);
+    $cook = User::factory()->create();
+    $cook->companies()->attach($ctx['company']->id, ['role' => 'cozinha', 'branch_id' => $ctx['branch']->id]);
+    app()->instance('current.company', $ctx['company']);
+
+    Livewire::actingAs($cook)->test(OrdersIndex::class)
+        ->set('food99CancelOrderId', $order->id)
+        ->set('food99CancelReason', '1020')
+        ->call('confirmFood99Cancel')
+        ->assertForbidden();
+
+    expect($order->fresh()->status)->toBe('pending');
+    Http::assertNotSent(fn (Request $r) => str_ends_with($r->url(), '/v1/order/order/cancel'));
+});

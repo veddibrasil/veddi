@@ -29,6 +29,7 @@ class RefreshFood99TokensJob implements ShouldQueue
             ->with('company')
             ->whereNotNull('shop_id')
             ->whereIn('status', [Food99Integration::STATUS_ACTIVE, Food99Integration::STATUS_PAUSED])
+            ->lazyById()
             ->each(function (Food99Integration $integration) use ($auth, $monitor) {
                 if (! $integration->company?->canUseMarketplaceIntegrations()) {
                     return;

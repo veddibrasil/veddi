@@ -43,7 +43,7 @@ class ProductObserver
      */
     private function syncFood99(Product $product): void
     {
-        if (! $product->wasChanged(['active', 'available_in_99food'])) {
+        if (! config('food99.enabled') || ! $product->wasChanged(['active', 'available_in_99food'])) {
             return;
         }
 

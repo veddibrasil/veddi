@@ -19,9 +19,13 @@ class RefreshFood99OrderDetailsJob implements ShouldQueue
 {
     use Queueable;
 
-    public int $tries = 3;
-
+    /** Por tempo: release() no limite de frequência conta como tentativa na fila. */
     public array $backoff = [15, 60];
+
+    public function retryUntil(): \DateTimeInterface
+    {
+        return now()->addMinutes(10);
+    }
 
     public function __construct(public int $orderId)
     {
