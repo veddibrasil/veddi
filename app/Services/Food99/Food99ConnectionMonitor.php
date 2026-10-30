@@ -130,9 +130,7 @@ class Food99ConnectionMonitor
             ];
         }
 
-        $silentSince = Date::now()->subHours(self::WEBHOOK_SILENT_HOURS);
-        if ($integration->isStoreOpen() && $integration->sub_biz_status === 1
-            && ($integration->last_webhook_received_at?->lt($silentSince) ?? $integration->updated_at?->lt($silentSince))) {
+        if ($integration->isStoreOpen() && $integration->sub_biz_status === 1 && $integration->isWebhookSilent(self::WEBHOOK_SILENT_HOURS)) {
             $conditions[self::ALERT_WEBHOOK_SILENT] = [
                 'title' => "Pedidos da 99Food {$store} podem não estar chegando",
                 'message' => 'A loja está aberta na 99Food, mas não recebemos nenhum aviso dela nas últimas horas. Acompanhe pelo app da 99Food; se continuar, fale com o suporte.',

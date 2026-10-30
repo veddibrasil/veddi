@@ -45,6 +45,11 @@ class Food99GatewayService implements Food99GatewayContract
         return (array) $this->call($integration, 'GET', '/v1/shop/shop/detail', [], 'shop.detail');
     }
 
+    public function updateShop(Food99Integration $integration, array $fields): array
+    {
+        return (array) $this->call($integration, 'POST', '/v1/shop/shop/update', $fields, 'shop.update');
+    }
+
     public function setConfirmMethod(Food99Integration $integration, int $method): void
     {
         $this->call($integration, 'POST', '/v1/shop/shop/setconfirmmethod', ['order_confirm_method' => $method], 'shop.setconfirmmethod');

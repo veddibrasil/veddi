@@ -18,8 +18,10 @@ Tudo fica atrás de `FOOD99_ENABLED` (padrão `false`): com a flag desligada nã
 | Pedido | `DTOs/Food99OrderDTO`, `Food99OrderMapper`, `Support/Food99/Food99OrderDetails`, `Food99OrderStatusSync`, `Food99OrderActionService`, `PropagateFood99OrderStatus` + `PropagateFood99StatusJob`, `RefreshFood99OrderDetailsJob` |
 | Cardápio | `Food99CatalogSyncService`, `SyncFood99CatalogJob` (upload completo com debounce), `SetFood99ItemStatusJob` (disponibilidade) |
 | Loja | `Food99StoreStatusSync` (abrir/pausar/fechar/modo ocupado e pausas da filial) |
-| Monitoramento | `Food99ConnectionMonitor` + `food99:check-connections`, `RefreshFood99TokensJob`, `ReconcileFood99OrdersJob`, `ExpireFood99RequestsJob` (agendados em `routes/console.php`) |
-| Telas | `/admin/settings/99food` (`Food99IntegrationSettings`, só `company_admin`), card em Integrações, partials `food99-*` em pedidos, opção na pausa da filial e no cadastro do produto |
+| Horários | `Food99StoreHours` (lê `biz_day_time` de `shop/detail` e grava por `shop/update`) |
+| Monitoramento | `Food99ConnectionMonitor` + `food99:check-connections`, `RefreshFood99TokensJob`, `ReconcileFood99OrdersJob` (dispara um `ReconcileFood99IntegrationJob` por loja), `ExpireFood99RequestsJob` (agendados em `routes/console.php`) |
+| Telas | `/admin/settings/99food` (`Food99IntegrationSettings` + `Concerns/ManagesFood99Store`, só `company_admin`; abas Loja, Pausas, Horários, Cardápio, Pedidos e Diagnóstico), card em Integrações, partials `food99-*` em pedidos, opção na pausa da filial e no cadastro do produto |
+| Super admin | `/superadmin/integracoes` (`SuperAdmin/Integrations/Connections`): lojas iFood e 99Food de todas as empresas, e lojas que autorizaram o app sem filial |
 | Testes | `tests/Feature/Food99/*`, fixtures em `tests/Fixtures/food99/` |
 | Log | canal `food99` (operação, errno, `requestId`, duração; nunca token, app_secret ou dados do cliente) |
 
@@ -27,6 +29,7 @@ Tudo fica atrás de `FOOD99_ENABLED` (padrão `false`): com a flag desligada nã
 
 ```
 FOOD99_ENABLED=false
+FOOD99_COMPANY_IDS=                 # empresas que veem a tela e podem conectar; vazio = todas com o módulo de integrações
 FOOD99_APP_ID=                      # app parceiro VEDDI no portal da 99Food
 FOOD99_APP_SECRET=
 FOOD99_API_BASE_URL=https://openapi.99food.com
@@ -40,17 +43,27 @@ Workers: os callbacks vão pra fila `critical`; atualizações de detalhe do ped
 
 ## Configuração no portal da 99Food
 
-1. No app parceiro (Application Management), cadastrar a URL de callback: `https://<domínio>/webhooks/99food`.
-2. Copiar `app_id` e `app_secret` para o ambiente e ligar `FOOD99_ENABLED=true` só no ambiente de homologação.
-3. Criar a loja de teste e a conta de cliente de teste (C-App) no portal.
+Portal: `https://developer-food.99app.com`.
+
+1. Aguardar a aprovação das credenciais da empresa em Gerenciamento de qualificações (até 3 dias úteis). Sem ela o portal não deixa criar o app, e sem app não existem `app_id` e `app_secret`.
+2. Criar o aplicativo em Gerenciamento de aplicativo e cadastrar a URL de callback: `https://<domínio>/webhooks/99food`.
+3. Copiar `app_id` e `app_secret` para o ambiente e ligar `FOOD99_ENABLED=true` só no ambiente de homologação. Para abrir com uma empresa só, preencher `FOOD99_COMPANY_IDS`: a lista decide quem vê a tela e conecta; loja já ligada continua operando se a empresa sair dela.
+4. Criar a loja de teste e a conta de cliente de teste (C-App) no portal.
 
 ## Como a loja conecta
 
-1. Admin da empresa abre Integrações › 99Food, escolhe a filial e clica em **Conectar 99Food**.
-2. O VEDDI gera o link de autorização self-service (vale 7 dias). O superadmin da loja na 99 abre, escolhe a loja e autoriza o app VEDDI.
-3. O admin informa o **ID da loja** (aparece no app 99Food Loja/portal). O VEDDI confere que ela está entre as lojas autorizadas e que não está ligada a outra filial/empresa, vincula (se ainda não estiver) e ativa: pega o token, define quem confirma pedidos, liga as solicitações de cancelamento/reembolso e lê nome/status da loja.
+Cada filial conecta a própria loja, em qualquer quantidade de empresas: o app parceiro é um só e cada `Food99Integration` guarda a loja e o token dela.
 
-A lista de lojas autorizadas é do app inteiro (todas as empresas da plataforma). Por isso ela não aparece pro restaurante: só em `FOOD99_HOMOLOGATION_MODE` ou pro super admin.
+1. Admin da empresa abre Integrações › 99Food, escolhe a filial e clica em **Conectar 99Food**.
+2. O VEDDI gera o link de autorização self-service (vale 7 dias e é o mesmo pra todas as lojas). O superadmin da loja na 99 abre, escolhe a loja e autoriza o app VEDDI. Nesse vínculo quem gera o `app_shop_id` é a 99.
+3. O admin informa o **ID da loja** (aparece no app 99Food Loja/portal). O VEDDI confere que ela está entre as lojas autorizadas e que não está ligada a outra filial/empresa, e mostra o nome da loja para o admin confirmar.
+4. Confirmado, o VEDDI vincula (se ainda não estiver) e ativa: pega o token, define quem confirma pedidos, liga as solicitações de cancelamento/reembolso e lê nome, status e horários da loja.
+
+Se a 99 limitar a ativação, a loja fica em **Ativação pendente** e o admin conclui pelo botão. Reconectar depois de a 99 desfazer o vínculo segue os mesmos passos, com a mesma loja.
+
+A lista de lojas autorizadas é do app inteiro (todas as empresas da plataforma). Por isso ela não aparece pro restaurante: só em `FOOD99_HOMOLOGATION_MODE` ou pro super admin. O link é único do app, então nada liga uma autorização a uma filial: o ID informado e a confirmação do nome são a defesa contra conectar a loja errada, e toda ligação fica no log `food99` com o usuário.
+
+A busca da loja para na página em que ela aparece e guarda cada página por 1 minuto: quem acabou de autorizar pode precisar aguardar esse minuto. Sem acesso ao `getAuthorizedShops`, a busca usa `shop/list` (1 req/20 s) e continua de onde parou a cada nova tentativa.
 
 ## Roteiro na loja de teste
 
@@ -90,7 +103,7 @@ Antes: filial com cardápio no VEDDI (produtos marcados "Disponível na 99Food")
 
 Cada um está marcado no código com `[VALIDAR 99Food]`.
 
-1. Como o `app_shop_id` é definido no vínculo self-service (o nosso `veddi-{empresa}-{filial}` × id gerado pela 99) e se `getAuthorizedShops` está liberado para o app VEDDI (sem ele, cai em `shop/list`). `Food99AuthService::selectShop()`.
+1. Se `getAuthorizedShops` está liberado para o app VEDDI (é de acesso restrito; sem ele, cai em `shop/list`). `Food99AuthService`.
 2. Fórmula do total local × campos de preço nos dois modelos (comparar com o valor que a loja vê no app). `Food99OrderDTO`; divergências vão pro log e pro `reported_total`.
 3. Rota de "entregue" na entrega própria (`selfdelivery/delivered`, com fallback `order/delivered`) e campos obrigatórios de `courier_info`.
 4. `order_confirm_method = 2` (só API) como padrão.
@@ -100,7 +113,10 @@ Cada um está marcado no código com `[VALIDAR 99Food]`.
 8. Itens vendidos por peso (`sales_type`): hoje entram como item avulso com o peso no nome.
 9. Se as fotos do storage do VEDDI são baixáveis pelos servidores da 99 (sem 403).
 10. Padrão de `available_in_99food` (hoje `true`, como o iFood; a publicação do cardápio é opt-in).
-11. Formatos não confirmados: `agree` (booleano) nas respostas de solicitação, `receive_*_apply` (1/2), parâmetro da task (`taskID`), `busy_mode`, significado dos `pause_reason_code` 1001–1006 e se `getUrl` aceita a assinatura.
+11. Formatos não confirmados: `agree` (booleano) nas respostas de solicitação, `receive_*_apply` (1/2), parâmetro da task (`taskID`) e se `getUrl` aceita a assinatura.
+12. Se os limites de token (1 req/30 s) e de loja valem por loja, como o VEDDI assume, ou pelo app inteiro, como a documentação sugere. Pelo app inteiro, muitas lojas renovando juntas recebem `10005`: vira nova tentativa, não erro, mas pode pedir um espaçamento global em `Food99Client::LIMITS`.
+13. Se `biz_day_time` parcial mantém os dias omitidos. A tela sempre envia a semana inteira e trata dia sem turno como fechado. `Food99StoreHours::save()`.
+14. Se a resposta de `shopBind` vem no envelope `errno`/`data` como os demais endpoints. `Food99Client::unwrap()` exige o envelope.
 
 ## Pendências conhecidas
 
@@ -113,3 +129,4 @@ Cada um está marcado no código com `[VALIDAR 99Food]`.
 - `php artisan food99:check-connections` — monitor (agendado a cada 10 min).
 - Agendamentos em `routes/console.php`: tokens (10 min), reconciliação de pedidos (3 min), solicitações vencidas e pausas da filial (1 min), task de cardápio sem callback (15 min), cardápio completo (04:30).
 - Evento com falha: aba Diagnóstico › Reprocessar.
+- Lojas de todas as empresas: `/superadmin/integracoes`.

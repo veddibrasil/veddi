@@ -13,6 +13,13 @@ return [
     | a homologação com a 99Food.
     */
     'enabled' => (bool) env('FOOD99_ENABLED', false),
+
+    /*
+    | Empresas que veem a tela e podem conectar (ids separados por vírgula). Vazio = todas as
+    | que têm o módulo de integrações. Loja já conectada continua operando fora da lista.
+    */
+    'company_ids' => array_values(array_filter(array_map('intval', explode(',', (string) env('FOOD99_COMPANY_IDS', ''))))),
+
     'app_id' => env('FOOD99_APP_ID'),
     'app_secret' => env('FOOD99_APP_SECRET'),
     'api_base_url' => env('FOOD99_API_BASE_URL', 'https://openapi.99food.com'),

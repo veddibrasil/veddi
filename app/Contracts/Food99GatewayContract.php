@@ -26,6 +26,12 @@ interface Food99GatewayContract
 
     public function getShopDetail(Food99Integration $integration): array;
 
+    /**
+     * Atualiza dados da loja (horários, entre outros). A resposta traz um booleano por campo:
+     * errno 0 com false significa que aquele campo não foi aceito.
+     */
+    public function updateShop(Food99Integration $integration, array $fields): array;
+
     /** 1 = app 99Food Loja e API confirmam pedidos; 2 = só API. */
     public function setConfirmMethod(Food99Integration $integration, int $method): void;
 

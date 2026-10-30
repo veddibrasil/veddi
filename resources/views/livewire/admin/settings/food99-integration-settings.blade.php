@@ -1,6 +1,10 @@
 @php
     $currentBranch = collect($branchOptions)->firstWhere('id', $branchId);
     $data = $integrationData;
+    $tabItems = $tabs;
+    if ($mirroredPauses !== []) {
+        $tabItems['pausas'] = ['label' => $tabs['pausas'], 'badge' => count($mirroredPauses)];
+    }
 @endphp
 
 <div class="w-full space-y-6">
@@ -34,10 +38,16 @@
 
         @if(in_array($connectionState, ['connected', 'error'], true))
             <div class="space-y-4">
-                <x-admin.section-tabs :tabs="$tabs" :current="$tab" label="Seções da integração 99Food" />
+                <x-admin.section-tabs :tabs="$tabItems" :current="$tab" label="Seções da integração 99Food" />
+
+                <div wire:loading.flex wire:target="tab, branchId" class="items-center gap-2 text-sm text-neutral-500 dark:text-neutral-400">
+                    <flux:icon.loading class="size-4" /> Carregando dados da 99Food…
+                </div>
 
                 <div role="tabpanel" id="tabpanel-{{ $tab }}" aria-labelledby="tab-{{ $tab }}" wire:key="food99-panel-{{ $branchId }}-{{ $tab }}" class="space-y-4">
                     @include('livewire.admin.settings.food99.tab-'.match($tab) {
+                        'pausas' => 'pauses',
+                        'horarios' => 'hours',
                         'cardapio' => 'catalog',
                         'pedidos' => 'orders',
                         'diagnostico' => 'diagnostics',
@@ -63,12 +73,25 @@
         </div>
     </flux:modal>
 
+    <flux:modal wire:model.self="showRemovePauseModal" class="max-w-sm">
+        <div class="space-y-5">
+            <div>
+                <flux:heading size="lg">Remover esta pausa da 99Food?</flux:heading>
+                <flux:subheading class="mt-1">A loja volta a abrir na 99Food no horário de funcionamento. A pausa continua cadastrada na filial e valendo para o chat.</flux:subheading>
+            </div>
+            <div class="flex justify-end gap-3">
+                <flux:button wire:click="$set('showRemovePauseModal', false)" variant="ghost">Cancelar</flux:button>
+                <flux:button wire:click="removePauseFrom99" wire:target="removePauseFrom99" variant="danger">Remover da 99Food</flux:button>
+            </div>
+        </div>
+    </flux:modal>
+
     <flux:modal wire:model.self="showSuspendModal" class="max-w-sm">
         <div class="space-y-5">
             <div>
                 <flux:heading size="lg">Suspender a integração?</flux:heading>
                 <flux:subheading class="mt-1">
-                    A loja fica fechada na 99Food e pedidos novos não chegam. Pedidos já recebidos podem ser concluídos. Para fechar só por algumas horas, prefira pausar a loja na aba Loja.
+                    A loja fica fechada na 99Food e pedidos novos não chegam. Pedidos já recebidos podem ser concluídos. Para fechar só por algumas horas, prefira a aba Pausas.
                 </flux:subheading>
             </div>
             <div class="flex justify-end gap-3">

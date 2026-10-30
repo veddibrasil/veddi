@@ -218,6 +218,7 @@ Route::middleware(['auth', 'verified', 'super.admin'])
         Route::get('/users/{user}/permissions', \App\Livewire\SuperAdmin\Permissions\UserPermissions::class)->name('users.permissions');
         Route::get('/permissions', \App\Livewire\SuperAdmin\Permissions\Index::class)->name('permissions.index');
         Route::get('/whatsapp', \App\Livewire\SuperAdmin\WhatsApp\Connections::class)->name('whatsapp.index');
+        Route::get('/integracoes', \App\Livewire\SuperAdmin\Integrations\Connections::class)->name('integrations.index');
 
         // E-mail marketing (público: usuários das empresas; nunca clientes finais dos restaurantes)
         Route::prefix('marketing')->name('marketing.')->group(function () {

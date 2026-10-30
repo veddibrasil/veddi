@@ -61,6 +61,12 @@ class SyncFood99CatalogJob implements ShouldBeUnique, ShouldQueue
         }
 
         if (! $this->publish && ! $integration->hasPublishedCatalog()) {
+            // Este envio automático pode ter segurado o lock e barrado a publicação pedida na tela.
+            $integration->where('id', $integration->id)->where('catalog_sync_status', 'queued')->update([
+                'catalog_sync_status' => 'failed',
+                'catalog_sync_error' => 'O envio não começou. Publique o cardápio de novo.',
+            ]);
+
             return;
         }
 

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * Loja da 99Food ligada a uma filial. O app parceiro é um só pra plataforma
@@ -15,6 +16,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Food99Integration extends Model
 {
     use BelongsToCompany;
+
+    /** Passou disso na fila, o job se perdeu: o envio de cardápio volta a ser liberado. */
+    private const CATALOG_QUEUE_STALE_MINUTES = 10;
 
     public const STATUS_DISCONNECTED = 'disconnected';
 
@@ -41,11 +45,18 @@ class Food99Integration extends Model
         'authorization_url',
         'authorization_url_expires_at',
         'status',
+        'activated_at',
         'order_confirm_method',
         'receive_cancel_apply',
         'receive_refund_apply',
         'store_status',
         'sub_biz_status',
+        'auto_switch',
+        'promise_produce_time',
+        'business_hours',
+        'busy_mode',
+        'store_unavailable_reason',
+        'store_unavailable_until',
         'store_status_updated_at',
         'webhook_status',
         'last_webhook_received_at',
@@ -53,6 +64,7 @@ class Food99Integration extends Model
         'catalog_published_at',
         'catalog_sync_status',
         'catalog_sync_error',
+        'catalog_queued_at',
         'catalog_task_id',
         'catalog_synced_at',
         'alerts_sent',
@@ -70,10 +82,17 @@ class Food99Integration extends Model
         'receive_refund_apply' => 'boolean',
         'store_status' => 'integer',
         'sub_biz_status' => 'integer',
+        'auto_switch' => 'integer',
+        'promise_produce_time' => 'integer',
+        'business_hours' => 'array',
+        'busy_mode' => 'array',
+        'store_unavailable_until' => 'datetime',
+        'activated_at' => 'datetime',
         'order_confirm_method' => 'integer',
         'store_status_updated_at' => 'datetime',
         'last_webhook_received_at' => 'datetime',
         'catalog_published_at' => 'datetime',
+        'catalog_queued_at' => 'datetime',
         'catalog_synced_at' => 'datetime',
         'alerts_sent' => 'array',
     ];
@@ -124,6 +143,48 @@ class Food99Integration extends Model
             && $company !== null
             && ($company->isActive() || $company->isOverdue())
             && $company->canUseMarketplaceIntegrations();
+    }
+
+    public function isCatalogSyncing(): bool
+    {
+        return $this->catalog_sync_status === 'running'
+            || ($this->catalog_sync_status === 'queued' && $this->catalog_queued_at?->gt(now()->subMinutes(self::CATALOG_QUEUE_STALE_MINUTES)) === true);
+    }
+
+    public function isBusy(): bool
+    {
+        $until = $this->busy_mode['until'] ?? null;
+
+        return (int) ($this->busy_mode['busy_state'] ?? 0) === 1 && ($until === null || $until > now()->getTimestamp());
+    }
+
+    /** Sem nenhum callback há $hours horas; conta da ativação até chegar o primeiro. */
+    public function isWebhookSilent(int $hours): bool
+    {
+        $last = $this->last_webhook_received_at ?? $this->activated_at;
+
+        return $last !== null && $last->lt(now()->subHours($hours));
+    }
+
+    /**
+     * Indisponibilidade informada por shop/detail e shopStatus. Campo ausente não muda nada;
+     * vazio ou 0 significa que a loja voltou a ficar disponível.
+     *
+     * @return array<string, mixed>
+     */
+    public static function availabilityAttributes(array $data): array
+    {
+        $attributes = [];
+
+        if (array_key_exists('store_unavailable_reason', $data)) {
+            $attributes['store_unavailable_reason'] = mb_substr((string) $data['store_unavailable_reason'], 0, 255) ?: null;
+        }
+        if (array_key_exists('store_unavailable_end_time', $data)) {
+            $until = (int) $data['store_unavailable_end_time'];
+            $attributes['store_unavailable_until'] = $until > 0 ? Carbon::createFromTimestamp($until, config('app.timezone')) : null;
+        }
+
+        return $attributes;
     }
 
     /** Cardápio liberado pelo restaurante para envio automático (publicação é opt-in). */

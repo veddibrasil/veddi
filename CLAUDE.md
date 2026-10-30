@@ -82,6 +82,7 @@ Principais modulos:
 - taxas/cartoes
 - simulacao de pagamento
 - conexoes de WhatsApp de todas as empresas (`/superadmin/whatsapp`)
+- lojas iFood e 99Food de todas as empresas (`/superadmin/integracoes`)
 - e-mail marketing: campanhas, templates, segmentos, automacoes e supressoes (`/superadmin/marketing`)
 
 ## Estrutura do codigo
@@ -222,9 +223,9 @@ Pendencia conhecida: o evento `awaiting_payment` (codigo PIX por WhatsApp) ainda
 
 ### Integracao 99Food
 
-Pedidos da 99Food pelo 99Food Protocol, no mesmo molde do iFood: app parceiro unico (`config/food99.php`) e uma `Food99Integration` por filial. Tudo atras de `FOOD99_ENABLED`. Guia completo, roteiro da loja de teste e itens a validar: `docs/99food-homologacao.md`. O plano e a documentacao da 99 sao NDA e ficam fora do repositorio (publico).
+Pedidos da 99Food pelo 99Food Protocol, no mesmo molde do iFood: app parceiro unico (`config/food99.php`) e uma `Food99Integration` por filial. Tudo atras de `FOOD99_ENABLED`, com `FOOD99_COMPANY_IDS` opcional para limitar quem ve a tela e conecta (`Company::canUseFood99Integration()`); loja ja ligada segue operando. Guia completo, roteiro da loja de teste e itens a validar: `docs/99food-homologacao.md`. O plano e a documentacao da 99 sao NDA e ficam fora do repositorio (publico).
 
-Onde esta cada coisa: `app/Services/Food99` (cliente, auth, gateway atras de `Food99GatewayContract`, importacao, acoes, status, cardapio, loja, monitor), `app/Support/Food99/Food99OrderDetails`, `app/DTOs/Food99OrderDTO`, jobs `*Food99*`, tela `app/Livewire/Admin/Settings/Food99IntegrationSettings` e partials `food99-*` dos pedidos.
+Onde esta cada coisa: `app/Services/Food99` (cliente, auth, gateway atras de `Food99GatewayContract`, importacao, acoes, status, horarios, cardapio, loja, monitor), `app/Support/Food99/Food99OrderDetails`, `app/DTOs/Food99OrderDTO`, jobs `*Food99*`, tela `app/Livewire/Admin/Settings/Food99IntegrationSettings` (+ `Concerns/ManagesFood99Store`), `app/Livewire/SuperAdmin/Integrations/Connections` e partials `food99-*` dos pedidos.
 
 Regras que nao podem quebrar:
 
@@ -232,7 +233,7 @@ Regras que nao podem quebrar:
 - webhook so valida, persiste com `dedupe_key` (a 99 nao manda id de evento) e enfileira; responde `errno 0` inclusive pra reentrega e tipo desconhecido;
 - ids da 99 sao int64: colunas string, `JSON_BIGINT_AS_STRING`, nunca float/JS; dinheiro vem em centavos e e convertido no DTO;
 - a tela chama a 99 antes de mudar o status local; callbacks so avancam etapa (nunca regridem);
-- a lista de lojas autorizadas e do app inteiro: nunca mostrar pro restaurante (ele informa o ID da propria loja);
+- a lista de lojas autorizadas e do app inteiro: nunca mostrar pro restaurante (ele informa o ID da propria loja e confirma o nome antes de ligar);
 - token e `app_secret` nunca vao pro log; consultas fora de request usam `withoutGlobalScopes()` com `company_id` explicito.
 
 ### E-mail marketing

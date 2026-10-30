@@ -3,6 +3,7 @@
 namespace App\Services\Food99;
 
 use App\Contracts\Food99GatewayContract;
+use App\Exceptions\Food99ApiException;
 use App\Models\Branch;
 use App\Models\BranchPause;
 use App\Models\Food99Integration;
@@ -31,17 +32,18 @@ class Food99StoreStatusSync
 
     public const PAUSE_TIMES = [1 => '10 minutos', 2 => '20 minutos', 3 => '30 minutos', 4 => 'Até o fim do dia'];
 
-    /** [VALIDAR 99Food] significado oficial de cada pause_reason_code. */
     public const PAUSE_REASONS = [
-        1001 => 'Muitos pedidos',
-        1002 => 'Itens em falta',
-        1003 => 'Problema técnico',
-        1004 => 'Falta de entregador',
-        1005 => 'Fechamento temporário',
+        1001 => 'Equipamento com defeito ou falta de luz/água/gás',
+        1002 => 'Falta temporária de equipe',
+        1003 => 'Ingredientes insuficientes',
+        1004 => 'Risco de não entregar perto do fechamento',
+        1005 => 'Muitos pedidos no salão',
         1006 => 'Outro motivo',
     ];
 
-    private const DEFAULT_PAUSE_REASON = 1005;
+    public const DEFAULT_PAUSE_REASON = 1006;
+
+    private const ERRNO_STORE_NOT_CLOSED = 56101;
 
     public function __construct(private readonly Food99GatewayContract $gateway) {}
 
@@ -94,18 +96,30 @@ class Food99StoreStatusSync
         ], 'pausar');
     }
 
-    /** Modo ocupado: a 99 avisa o cliente do atraso no preparo. [VALIDAR 99Food] formato do busy_mode. */
+    /** Modo ocupado: a 99 soma o atraso ao tempo de preparo informado ao cliente. */
     public function busy(Food99Integration $integration, int $minutes, int $cookDelay): void
     {
         if ($minutes < 1 || $minutes > 180 || $cookDelay < 1 || $cookDelay > 30) {
             throw new InvalidArgumentException('Modo ocupado: duração de 1 a 180 minutos e atraso de 1 a 30 minutos.');
         }
 
-        $this->send($integration, ['busy_mode' => [
+        $busyMode = [
             'busy_state' => 1,
             'busy_duration_minutes' => $minutes,
             'busy_cook_delay_minutes' => $cookDelay,
-        ]], 'modo ocupado');
+        ];
+
+        $this->send($integration, ['busy_mode' => $busyMode], 'modo ocupado');
+
+        // O callback shopStatus não informa modo ocupado e shop/detail só aceita 1 leitura por
+        // minuto: grava aqui, com o fim calculado, porque a 99 volta ao normal sozinha.
+        $integration->forceFill(['busy_mode' => $busyMode + ['until' => now()->addMinutes($minutes)->getTimestamp()]])->save();
+    }
+
+    public function endBusy(Food99Integration $integration): void
+    {
+        $this->send($integration, ['busy_mode' => ['busy_state' => 0]], 'encerrar modo ocupado');
+        $integration->forceFill(['busy_mode' => ['busy_state' => 0]])->save();
     }
 
     /** Motivo pelo qual a pausa não pode ir pra 99Food, ou null se pode. */
@@ -235,8 +249,20 @@ class Food99StoreStatusSync
 
     private function finish(BranchPause $pause, Food99Integration $integration): void
     {
-        // [VALIDAR 99Food] se "revogar fechamento" já volta a loja pro horário automático.
-        $pause->food99_sync_state === 'closed' ? $this->revokeClose($integration) : $this->open($integration);
+        if ($pause->food99_sync_state === 'closed') {
+            try {
+                // [VALIDAR 99Food] se "revogar fechamento" já volta a loja pro horário automático.
+                $this->revokeClose($integration);
+            } catch (Food99ApiException $e) {
+                // Reaberta antes do fim da pausa (aqui ou no app): não há fechamento a desfazer.
+                if ($e->errno !== self::ERRNO_STORE_NOT_CLOSED) {
+                    throw $e;
+                }
+            }
+        } else {
+            $this->open($integration);
+        }
+
         $pause->update(['food99_sync_state' => 'done']);
     }
 

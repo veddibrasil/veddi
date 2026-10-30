@@ -1,7 +1,17 @@
 {{-- Diagnóstico: ids da loja, token, último callback e requestId (o suporte da 99 pede), eventos recentes. --}}
 <x-admin.form-card padding="p-6 space-y-5">
     <dl class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-        <div><dt class="text-xs uppercase tracking-wide text-neutral-500">ID da loja (shop_id)</dt><dd class="font-mono">{{ $data['shop_id'] ?? '—' }}</dd></div>
+        <div x-data="{ copied: false }">
+            <dt class="text-xs uppercase tracking-wide text-neutral-500">ID da loja (shop_id)</dt>
+            <dd class="flex items-center gap-1 font-mono">
+                <span class="break-all">{{ $data['shop_id'] ?? '—' }}</span>
+                @if($data['shop_id'] ?? null)
+                    <flux:button size="xs" variant="ghost" icon="document-duplicate" aria-label="Copiar ID da loja"
+                        x-on:click="navigator.clipboard.writeText(@js($data['shop_id'])); copied = true; setTimeout(() => copied = false, 2000)" />
+                    <span x-show="copied" x-cloak class="font-sans text-xs text-green-600 dark:text-green-400">Copiado</span>
+                @endif
+            </dd>
+        </div>
         <div><dt class="text-xs uppercase tracking-wide text-neutral-500">app_shop_id</dt><dd class="font-mono">{{ $data['app_shop_id'] ?? '—' }}</dd></div>
         <div><dt class="text-xs uppercase tracking-wide text-neutral-500">Acesso válido até</dt><dd>{{ $data['token_expires_at'] ?? '—' }}</dd></div>
         <div><dt class="text-xs uppercase tracking-wide text-neutral-500">Último evento recebido</dt><dd>{{ $data['last_webhook_at'] ?? 'Nenhum ainda' }}</dd></div>

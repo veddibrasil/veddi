@@ -283,7 +283,7 @@
             <flux:select.option value="pdv">PDV</flux:select.option>
             <flux:select.option value="delivery">Entrega</flux:select.option>
             <flux:select.option value="ifood">iFood</flux:select.option>
-            @if (config('food99.enabled'))
+            @if (config('food99.enabled') && (auth()->user()->isSuperAdmin() || app('current.company')->canUseFood99Integration()))
                 <flux:select.option value="99food">99Food</flux:select.option>
             @endif
         </flux:select>

@@ -35,7 +35,7 @@ it('pausa a loja na 99 junto com pausa curta da filial e reabre ao excluir', fun
     $pause = BranchPause::withoutGlobalScopes()->sole();
     expect($pause->food99_sync)->toBeTrue()
         ->and($pause->food99_sync_state)->toBe('paused')
-        ->and(food99StoreCalls())->toBe([['store_status' => 3, 'pause_time' => 3, 'pause_reason_code' => 1005]]);
+        ->and(food99StoreCalls())->toBe([['store_status' => 3, 'pause_time' => 3, 'pause_reason_code' => 1006]]);
 
     $this->travel(61)->seconds();
     $component->call('confirmDelete', $pause->id)->call('delete');

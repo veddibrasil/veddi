@@ -1,5 +1,6 @@
 {{-- Cardápio: prévia com pendências, publicação opt-in (substitui o cardápio da loja na 99) e resultado do último envio. --}}
 @php $preview = $this->menuPreview; @endphp
+<div @if($data['catalog_busy']) wire:poll.5s="refreshCatalogStatus" @endif>
 <x-admin.form-card padding="p-6 space-y-5">
     <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -14,9 +15,9 @@
         </div>
         <div class="flex flex-wrap gap-2">
             @if($data['catalog_published'])
-                <flux:button wire:click="syncCatalogNow" wire:target="syncCatalogNow" icon="arrow-path" :disabled="in_array($data['catalog_sync_status'], ['queued', 'running'], true)">Enviar agora</flux:button>
+                <flux:button wire:click="syncCatalogNow" wire:target="syncCatalogNow" icon="arrow-path" :disabled="$data['catalog_busy']">Enviar agora</flux:button>
             @else
-                <flux:button wire:click="publishCatalog" wire:target="publishCatalog" variant="primary">Publicar cardápio na 99Food</flux:button>
+                <flux:button wire:click="publishCatalog" wire:target="publishCatalog" variant="primary" :disabled="$data['catalog_busy']">Publicar cardápio na 99Food</flux:button>
             @endif
             @if($data['catalog_task_id'])
                 <flux:button wire:click="checkCatalogTask" wire:target="checkCatalogTask" variant="ghost">Consultar último envio</flux:button>
@@ -59,3 +60,4 @@
     @endif
     <p class="text-xs text-neutral-500 dark:text-neutral-400">Só produtos ativos, desta filial e marcados como "Disponível na 99Food" entram. Recomendado publicar primeiro numa loja de teste.</p>
 </x-admin.form-card>
+</div>

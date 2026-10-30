@@ -10,6 +10,7 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
+use RuntimeException;
 
 /**
  * Transporte do 99Food Protocol: envelope {errno, errmsg, requestId, data}, ids int64 como
@@ -21,18 +22,21 @@ use Illuminate\Support\Facades\RateLimiter;
 class Food99Client
 {
     /**
-     * Limites documentados por endpoint: [chamadas, janela em segundos]. Valem por loja nos
+     * Limites documentados por endpoint: [chamadas, janela em segundos]. Aqui valem por loja nos
      * endpoints com token e pelo app nos assinados; o limitador segura a chamada antes de
-     * gastar a cota da 99. As listagens paginadas de lojas (getAuthorizedShops 1/s,
-     * shop/list 1/20s) ficam de fora: Food99AuthService espaça as páginas.
+     * gastar a cota da 99. [VALIDAR 99Food] a doc fala em limite "por aplicação": se os de token
+     * forem do app inteiro, o errno 10005 vira Food99RateLimitedException do mesmo jeito.
      */
     public const LIMITS = [
         '/v1/auth/authtoken/get' => [1, 30],
         '/v1/auth/authtoken/refresh' => [1, 30],
         '/v1/auth/authorizationpage/getUrl' => [100, 60],
         '/v3/auth/authorization/shopBind' => [1, 1],
+        '/v3/auth/authorization/getAuthorizedShops' => [1, 1],
+        '/v1/shop/shop/list' => [1, 20],
         '/v1/shop/shop/unbind' => [1, 60],
         '/v1/shop/shop/detail' => [1, 60],
+        '/v1/shop/shop/update' => [1, 60],
         '/v1/shop/shop/setconfirmmethod' => [1, 60],
         '/v1/shop/shop/setStatus' => [1, 60],
         '/v1/shop/apply/set' => [1, 60],
@@ -93,6 +97,8 @@ class Food99Client
      */
     public function signed(string $path, array $params, string $operation): array
     {
+        $this->ensureConfigured();
+
         $params = array_merge($params, [
             'app_id' => (int) config('food99.app_id'),
             'timestamp' => now()->getTimestamp(),
@@ -109,7 +115,17 @@ class Food99Client
      */
     public function appCredentials(): array
     {
+        $this->ensureConfigured();
+
         return ['app_id' => (string) config('food99.app_id'), 'app_secret' => (string) config('food99.app_secret')];
+    }
+
+    /** Sem o app parceiro criado no portal da 99, nenhuma chamada tem como funcionar. */
+    private function ensureConfigured(): void
+    {
+        if (blank(config('food99.app_id')) || blank(config('food99.app_secret'))) {
+            throw new RuntimeException('A 99Food ainda não foi configurada na plataforma. Fale com o suporte do VEDDI.');
+        }
     }
 
     /** @return array{data: mixed, request_id: ?string} */

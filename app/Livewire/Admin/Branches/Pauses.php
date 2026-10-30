@@ -150,7 +150,7 @@ class Pauses extends Component
                 $message .= ' Na 99Food a loja também fecha nesse período.';
             } catch (Throwable $e) {
                 report($e);
-                session()->flash('error', 'A pausa foi cadastrada no painel, mas a 99Food não aceitou fechar a loja. '.\App\Exceptions\Food99ApiException::messageFor($e).' Tente pela tela da integração 99Food, na aba Loja.');
+                session()->flash('error', 'A pausa foi cadastrada no painel, mas a 99Food não aceitou fechar a loja. '.\App\Exceptions\Food99ApiException::messageFor($e).' Tente pela tela da integração 99Food, na aba Pausas.');
             }
         }
 

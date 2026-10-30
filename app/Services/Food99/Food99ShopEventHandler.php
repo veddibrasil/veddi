@@ -61,6 +61,7 @@ class Food99ShopEventHandler implements Food99EventHandler
     {
         $data = $event->data();
         $appShopIds = array_map('strval', (array) ($data['appShopIDList'] ?? $data['app_shop_id_list'] ?? []));
+        app(Food99AuthService::class)->forgetShopPages();
 
         if (($data['bindStatus'] ?? null) !== 'unbind' || $appShopIds === []) {
             Log::channel('food99')->info('99Food: vínculo de loja recebido', ['lojas' => count($appShopIds)]);
@@ -110,7 +111,7 @@ class Food99ShopEventHandler implements Food99EventHandler
             'store_status' => isset($data['biz_status']) ? (int) $data['biz_status'] : null,
             'sub_biz_status' => isset($data['sub_biz_status']) ? (int) $data['sub_biz_status'] : null,
             'store_status_updated_at' => now(),
-        ], fn ($value) => $value !== null))->save();
+        ], fn ($value) => $value !== null) + Food99Integration::availabilityAttributes($data))->save();
 
         return true;
     }

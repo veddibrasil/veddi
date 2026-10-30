@@ -11,35 +11,32 @@
         <flux:button size="sm" wire:click="refreshStore" wire:target="refreshStore" icon="arrow-path">Atualizar</flux:button>
     </div>
 
-    <p class="text-xs text-neutral-500 dark:text-neutral-400">A 99Food aceita uma mudança de status por minuto e confirma em instantes. Fechar a loja só reabre manualmente (aqui ou no app da 99Food).</p>
+    <dl class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+        <div>
+            <dt class="text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Abertura</dt>
+            <dd class="font-medium text-neutral-800 dark:text-neutral-100">{{ match($data['auto_switch'] ?? null) { 1 => 'Manual', 2 => 'Automática, nos horários da loja', default => 'Não informada' } }}</dd>
+        </div>
+        <div>
+            <dt class="text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Preparo médio</dt>
+            <dd class="font-medium text-neutral-800 dark:text-neutral-100">{{ ($data['prepare_minutes'] ?? null) ? $data['prepare_minutes'].' min' : 'Não informado' }}</dd>
+        </div>
+    </dl>
+
+    <p class="text-xs text-neutral-500 dark:text-neutral-400">A 99Food aceita uma mudança de status por minuto e confirma em instantes. Fechar a loja vale até reabrir manualmente, mesmo nos dias seguintes (aqui ou no app da 99Food). Para sair só por hoje, use a aba Pausas.</p>
 
     <div class="flex flex-wrap gap-2">
         <flux:button wire:click="storeAction('open')" wire:target="storeAction" variant="primary">Abrir loja</flux:button>
-        <flux:button wire:click="storeAction('close')" wire:target="storeAction" variant="danger">Fechar hoje</flux:button>
+        <flux:button wire:click="storeAction('close')" wire:target="storeAction" variant="danger">Fechar loja</flux:button>
         <flux:button wire:click="storeAction('revoke')" wire:target="storeAction">Desfazer fechamento</flux:button>
-    </div>
-
-    <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:items-end">
-        <flux:select wire:model="pauseTime" label="Pausar por">
-            @foreach($pauseTimes as $value => $label)
-                <flux:select.option value="{{ $value }}">{{ $label }}</flux:select.option>
-            @endforeach
-        </flux:select>
-        <flux:select wire:model="pauseReason" label="Motivo">
-            @foreach($pauseReasons as $value => $label)
-                <flux:select.option value="{{ $value }}">{{ $label }}</flux:select.option>
-            @endforeach
-        </flux:select>
-        <flux:button wire:click="storeAction('pause')" wire:target="storeAction">Pausar loja</flux:button>
     </div>
 
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:items-end">
         <flux:input type="number" min="1" max="180" wire:model="busyMinutes" label="Modo ocupado por (min)" />
         <flux:input type="number" min="1" max="30" wire:model="busyDelay" label="Atraso no preparo (min)" />
-        <flux:button wire:click="storeAction('busy')" wire:target="storeAction">Ativar modo ocupado</flux:button>
+        @if($data['busy'] ?? false)
+            <flux:button wire:click="storeAction('busy-off')" wire:target="storeAction">Encerrar modo ocupado</flux:button>
+        @else
+            <flux:button wire:click="storeAction('busy')" wire:target="storeAction">Ativar modo ocupado</flux:button>
+        @endif
     </div>
-
-    <p class="text-xs text-neutral-500 dark:text-neutral-400">
-        Pausas e feriados da filial também podem fechar a loja na 99Food (Filiais › Pausas). Diferente do iFood, a 99Food não tem interrupção com horário de início e fim: pausas de até 30 minutos ou até o fim do dia viram "pausar"; as maiores fecham no início e reabrem no fim.
-    </p>
 </x-admin.form-card>

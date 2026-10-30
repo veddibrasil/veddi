@@ -9,9 +9,11 @@ use App\Exceptions\Food99ShopAlreadyLinkedException;
 use App\Models\Food99Integration;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
@@ -29,6 +31,21 @@ class Food99AuthService
     public const AUTHORIZATION_URL_DAYS = 7;
 
     private const AUTHORIZATION_URL_CACHE_KEY = 'food99:authorization-url';
+
+    /** Sem getAuthorizedShops liberado, nem tenta por um tempo: vai direto na lista de vinculadas. */
+    private const BOUND_SHOPS_ONLY_KEY = 'food99:shops:bound-only';
+
+    private const ERRNO_PERMISSION_DENIED = 10006;
+
+    private const SHOP_ALREADY_LINKED_MESSAGE = 'Esta loja da 99Food já está conectada em outra filial ou empresa da plataforma. Desconecte a integração anterior antes de conectar aqui.';
+
+    private const SHOP_PAGE_SIZE = 50;
+
+    private const BOUND_SHOPS_PAGE_SIZE = 100;
+
+    private const SHOP_MAX_PAGES = 20;
+
+    private const SHOP_PAGE_CACHE_SECONDS = 60;
 
     public function __construct(private readonly Food99Client $client) {}
 
@@ -172,71 +189,98 @@ class Food99AuthService
     }
 
     /**
-     * Lojas que autorizaram o app. A lista é do app inteiro (todas as empresas da plataforma),
-     * então nunca vai pra tela do restaurante: a filial informa o ID da própria loja e
-     * findAuthorizedShop() confere aqui. Lojas já ligadas a alguma integração ficam de fora.
+     * Lojas que autorizaram o app e ainda não estão ligadas a nenhuma integração. A lista é do
+     * app inteiro (todas as empresas da plataforma), então nunca vai pra tela do restaurante: a
+     * filial informa o ID da própria loja e connectableShop() confere.
      *
      * @return array<int, array{shop_id: string, shop_name: ?string, app_shop_id: ?string, bound: bool}>
      */
-    public function authorizedShops(): array
+    public function authorizedShops(?int $exceptIntegrationId = null): array
     {
-        try {
-            $shops = $this->collectPages(fn (int $page) => app(Food99GatewayContract::class)->getAuthorizedShops($page));
-        } catch (Food99RateLimitedException $e) {
-            throw $e;
-        } catch (Food99ApiException $e) {
-            // getAuthorizedShops é de acesso restrito: sem liberação, cai na lista de vinculadas.
-            Log::channel('food99')->info('99Food: getAuthorizedShops indisponível, usando shop/list', ['errno' => $e->errno]);
-            $shops = $this->collectPages(fn (int $page) => app(Food99GatewayContract::class)->listBoundShops($page));
+        $shops = [];
+        foreach ($this->shopPages() as $page) {
+            foreach ($page as $shop) {
+                $shops[$shop['shop_id']] = $shop;
+            }
         }
 
-        $linked = Food99Integration::withoutGlobalScopes()->whereNotNull('shop_id')->pluck('shop_id')->all();
+        $linked = Food99Integration::withoutGlobalScopes()
+            ->whereNotNull('shop_id')
+            ->when($exceptIntegrationId, fn ($query) => $query->where('id', '!=', $exceptIntegrationId))
+            ->pluck('shop_id')
+            ->all();
 
         return array_values(array_filter($shops, fn (array $shop) => ! in_array($shop['shop_id'], $linked, true)));
     }
 
+    /** @return array{shop_id: string, shop_name: ?string, app_shop_id: ?string, bound: bool}|null */
     public function findAuthorizedShop(string $shopId): ?array
     {
-        return collect($this->authorizedShops())->firstWhere('shop_id', $shopId);
+        foreach ($this->shopPages() as $page) {
+            foreach ($page as $shop) {
+                if ($shop['shop_id'] === $shopId) {
+                    return $shop;
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
-     * Liga a loja (ID informado pelo restaurante) à filial e ativa. Se a 99 já vinculou a loja ao
-     * app com um app_shop_id próprio (fluxo self-service), usa o dela; senão vincula com o nosso
-     * pelo shopBind (só produção).
+     * Confere se a loja informada pode ser ligada à integração: autorizou o app e não está em
+     * outra filial ou empresa. A própria integração não conta, pra reconectar depois de a 99
+     * desfazer o vínculo.
      *
-     * @return array<int, string> avisos de configuração que não impediram a ativação
+     * @return array{shop_id: string, shop_name: ?string, app_shop_id: ?string, bound: bool}
      */
-    public function selectShop(Food99Integration $integration, string $shopId): array
+    public function connectableShop(Food99Integration $integration, string $shopId): array
     {
-        $shopId = preg_replace('/\D/', '', $shopId);
+        $shopId = (string) preg_replace('/\D/', '', $shopId);
         if ($shopId === '') {
             throw new RuntimeException('Informe o ID da loja na 99Food (só números).');
         }
 
         $shop = $this->findAuthorizedShop($shopId);
-        if ($shop === null) {
-            $this->ensureShopAvailable($integration, $shopId, null);
+        $this->ensureShopAvailable($integration, $shopId, $shop['app_shop_id'] ?? null);
 
-            throw new RuntimeException('Esta loja ainda não autorizou o app VEDDI na 99Food. Abra o link de autorização com o usuário superadmin da loja, escolha a loja certa e tente de novo.');
+        if ($shop === null) {
+            throw new RuntimeException('Esta loja ainda não autorizou o app VEDDI na 99Food. Abra o link de autorização com o usuário superadmin da loja e escolha a loja certa. Se acabou de autorizar, aguarde um minuto e tente de novo.');
         }
 
-        $appShopId = $shop['app_shop_id'] ?: Food99Integration::appShopIdFor($integration->company_id, $integration->branch_id);
-        $this->ensureShopAvailable($integration, $shopId, $appShopId);
+        return $shop;
+    }
+
+    /**
+     * Liga a loja (ID informado pelo restaurante) à filial e ativa. No vínculo self-service a 99
+     * gera o app_shop_id e é ele que vale; sem vínculo, usa o nosso pelo shopBind (só produção).
+     *
+     * @return array<int, string> avisos de configuração que não impediram a ativação
+     */
+    public function selectShop(Food99Integration $integration, string $shopId): array
+    {
+        $shop = $this->connectableShop($integration, $shopId);
+        $appShopId = $shop['app_shop_id'] ?: $this->ownAppShopId($integration);
+        $this->ensureShopAvailable($integration, $shop['shop_id'], $appShopId);
+        $this->releaseAppShopId($integration, $appShopId);
 
         if (! $shop['bound']) {
-            // [VALIDAR 99Food] como o app_shop_id é definido no vínculo self-service.
-            app(Food99GatewayContract::class)->bindShops([['shop_id' => Food99GatewayService::id($shopId), 'app_shop_id' => $appShopId]]);
+            $this->bindShop($shop['shop_id'], $appShopId);
         }
 
-        $integration->forceFill([
-            'shop_id' => $shopId,
-            'shop_name' => $shop['shop_name'],
-            'app_shop_id' => $appShopId,
-            'available_shops' => null,
-            'auth_token' => null,
-            'token_expires_at' => null,
-        ])->save();
+        try {
+            $integration->forceFill([
+                'shop_id' => $shop['shop_id'],
+                'shop_name' => $shop['shop_name'],
+                'app_shop_id' => $appShopId,
+                'available_shops' => null,
+                'auth_token' => null,
+                'token_expires_at' => null,
+            ])->save();
+        } catch (UniqueConstraintViolationException) {
+            // Duas filiais confirmando a mesma loja ao mesmo tempo: o índice único decide.
+            throw new Food99ShopAlreadyLinkedException(self::SHOP_ALREADY_LINKED_MESSAGE);
+        }
 
         return $this->activate($integration);
     }
@@ -253,6 +297,9 @@ class Food99AuthService
 
         try {
             $this->getToken($integration);
+        } catch (Food99RateLimitedException $e) {
+            // Limite de frequência não é problema da loja: basta repetir em instantes.
+            throw $e;
         } catch (Food99ApiException $e) {
             $integration->update(['status' => Food99Integration::STATUS_ERROR]);
 
@@ -277,6 +324,7 @@ class Food99AuthService
 
         $integration->update([
             'status' => Food99Integration::STATUS_ACTIVE,
+            'activated_at' => now(),
             'order_confirm_method' => $confirmMethod,
             'authorization_url' => null,
             'authorization_url_expires_at' => null,
@@ -292,7 +340,7 @@ class Food99AuthService
         return $warnings;
     }
 
-    /** Nome, status e disponibilidade atuais da loja (shop/detail). */
+    /** Nome, status, horários e disponibilidade atuais da loja (shop/detail). */
     public function syncShopDetail(Food99Integration $integration): array
     {
         $detail = app(Food99GatewayContract::class)->getShopDetail($integration);
@@ -303,9 +351,21 @@ class Food99AuthService
             'store_status' => isset($shop['biz_status']) ? (int) $shop['biz_status'] : null,
             'sub_biz_status' => isset($shop['sub_biz_status']) ? (int) $shop['sub_biz_status'] : null,
             'store_status_updated_at' => isset($shop['sub_biz_status']) || isset($shop['biz_status']) ? now() : null,
-        ], fn ($value) => $value !== null))->save();
+            'auto_switch' => isset($shop['auto_switch']) ? (int) $shop['auto_switch'] : null,
+            'promise_produce_time' => isset($shop['promise_produce_time']) ? (int) $shop['promise_produce_time'] : null,
+            'business_hours' => is_array($shop['biz_day_time'] ?? null) ? $shop['biz_day_time'] : null,
+            'busy_mode' => is_array($shop['busy_mode_info'] ?? null) ? $this->busyModeFrom($shop['busy_mode_info'], $integration) : null,
+        ], fn ($value) => $value !== null) + Food99Integration::availabilityAttributes($shop))->save();
 
         return $detail;
+    }
+
+    /** shop/detail não diz quando o modo ocupado acaba: mantém o fim calculado ao ativar. */
+    private function busyModeFrom(array $info, Food99Integration $integration): array
+    {
+        $until = $integration->busy_mode['until'] ?? null;
+
+        return (int) ($info['busy_state'] ?? 0) === 1 && $until > now()->getTimestamp() ? $info + ['until' => $until] : $info;
     }
 
     /**
@@ -334,22 +394,33 @@ class Food99AuthService
         $integration->forceFill([
             'shop_id' => null,
             'shop_name' => null,
-            'app_shop_id' => Food99Integration::appShopIdFor($integration->company_id, $integration->branch_id),
+            'app_shop_id' => $this->ownAppShopId($integration),
             'available_shops' => null,
             'auth_token' => null,
             'token_expires_at' => null,
             'authorization_url' => null,
             'authorization_url_expires_at' => null,
             'status' => Food99Integration::STATUS_DISCONNECTED,
+            'activated_at' => null,
             'store_status' => null,
             'sub_biz_status' => null,
+            'auto_switch' => null,
+            'promise_produce_time' => null,
+            'business_hours' => null,
+            'busy_mode' => null,
+            'store_unavailable_reason' => null,
+            'store_unavailable_until' => null,
             'catalog_published_at' => null,
             'catalog_sync_status' => null,
             'catalog_sync_error' => null,
+            'catalog_queued_at' => null,
             'catalog_task_id' => null,
             'catalog_synced_at' => null,
             'alerts_sent' => null,
         ])->save();
+
+        // A lista guardada ainda traz a loja como vinculada a esta filial.
+        $this->forgetShopPages();
 
         Log::channel('food99')->info('99Food: loja desconectada', [
             'food99_integration_id' => $integration->id,
@@ -359,13 +430,15 @@ class Food99AuthService
 
     /**
      * Uma loja da 99 só pode estar ligada a uma integração (de qualquer empresa): com duas, o
-     * callback entregaria pedidos de uma empresa na outra. Vale também pro app_shop_id.
+     * callback entregaria pedidos de uma empresa na outra. Vale também pro app_shop_id de quem
+     * tem loja; linha sem loja não recebe nada e tem o id liberado em releaseAppShopId().
      */
     public function ensureShopAvailable(Food99Integration $integration, string $shopId, ?string $appShopId): void
     {
         $conflict = Food99Integration::withoutGlobalScopes()
             ->where('id', '!=', $integration->id)
-            ->where(fn ($q) => $q->where('shop_id', $shopId)->when($appShopId, fn ($q) => $q->orWhere('app_shop_id', $appShopId)))
+            ->where(fn ($q) => $q->where('shop_id', $shopId)
+                ->when($appShopId, fn ($q) => $q->orWhere(fn ($q) => $q->where('app_shop_id', $appShopId)->whereNotNull('shop_id'))))
             ->first();
 
         if (! $conflict) {
@@ -379,38 +452,122 @@ class Food99AuthService
             'conflicting_company_id' => $conflict->company_id,
         ]);
 
-        throw new Food99ShopAlreadyLinkedException('Esta loja da 99Food já está conectada em outra filial ou empresa da plataforma. Desconecte a integração anterior antes de conectar aqui.');
+        throw new Food99ShopAlreadyLinkedException(self::SHOP_ALREADY_LINKED_MESSAGE);
+    }
+
+    /** Id próprio da filial; se outra linha ficou com ele (releaseAppShopId), gera outro. */
+    private function ownAppShopId(Food99Integration $integration): string
+    {
+        $appShopId = Food99Integration::appShopIdFor($integration->company_id, $integration->branch_id);
+        $taken = Food99Integration::withoutGlobalScopes()
+            ->where('id', '!=', $integration->id)
+            ->where('app_shop_id', $appShopId)
+            ->exists();
+
+        return $taken ? $appShopId.'-'.Str::lower(Str::random(8)) : $appShopId;
     }
 
     /**
-     * @param  callable(int): array  $fetch
-     * @return array<int, array{shop_id: string, shop_name: ?string, app_shop_id: ?string, bound: bool}>
+     * Desconexão com unbind que falhou deixa a linha antiga com o app_shop_id da loja. Como a
+     * coluna é única, ela precisa soltar o id pra loja ser ligada em outra filial.
      */
-    private function collectPages(callable $fetch): array
+    private function releaseAppShopId(Food99Integration $integration, string $appShopId): void
     {
-        $shops = [];
+        Food99Integration::withoutGlobalScopes()
+            ->where('id', '!=', $integration->id)
+            ->where('app_shop_id', $appShopId)
+            ->whereNull('shop_id')
+            ->get()
+            ->each(fn (Food99Integration $free) => $free->forceFill(['app_shop_id' => "{$appShopId}-livre-{$free->id}"])->save());
+    }
 
-        for ($page = 1; $page <= 20; $page++) {
-            if ($page > 1) {
-                usleep(1_100_000); // getAuthorizedShops: 1 req/s
-            }
+    /** shopBind responde errno 0 mesmo quando a loja cai na failure_list. */
+    private function bindShop(string $shopId, string $appShopId): void
+    {
+        $result = app(Food99GatewayContract::class)->bindShops([['shop_id' => Food99GatewayService::id($shopId), 'app_shop_id' => $appShopId]]);
 
-            $data = $fetch($page);
-            $list = $data['list'] ?? $data['shop_list'] ?? $data['shops'] ?? (array_is_list($data) ? $data : []);
+        if (! empty($result['failure_list'])) {
+            Log::channel('food99')->warning('99Food: shopBind recusou a loja', ['falhas' => count($result['failure_list'])]);
 
-            foreach ($list as $shop) {
-                if (is_array($shop) && ($normalized = $this->normalizeShop($shop))) {
-                    $shops[$normalized['shop_id']] = $normalized;
+            throw new RuntimeException('A 99Food não aceitou vincular esta loja. Confira se a loja autorizou o app e tente de novo.');
+        }
+    }
+
+    /** A 99 avisou que uma loja autorizou ou saiu do app: a lista guardada ficou velha. */
+    public function forgetShopPages(): void
+    {
+        foreach (range(1, self::SHOP_MAX_PAGES) as $page) {
+            Cache::forget("food99:shops:page:{$page}");
+        }
+    }
+
+    /**
+     * Lojas do app página a página, pra busca de uma loja parar assim que achar. Cada página fica
+     * um minuto em cache: shop/list só aceita 1 req/20s, então a busca interrompida pelo limite
+     * continua de onde parou na próxima tentativa.
+     *
+     * @return \Generator<int, array<int, array{shop_id: string, shop_name: ?string, app_shop_id: ?string, bound: bool}>>
+     */
+    private function shopPages(): \Generator
+    {
+        $fetched = false;
+
+        for ($page = 1; $page <= self::SHOP_MAX_PAGES; $page++) {
+            $key = "food99:shops:page:{$page}";
+            $result = Cache::get($key);
+
+            if (! is_array($result)) {
+                if ($fetched) {
+                    usleep(1_100_000); // getAuthorizedShops: 1 req/s
                 }
+
+                $result = $this->fetchShopPage($page);
+                $fetched = true;
+                Cache::put($key, $result, self::SHOP_PAGE_CACHE_SECONDS);
             }
 
-            $total = (int) ($data['total'] ?? 0);
-            if (count($list) < 50 || ($total > 0 && count($shops) >= $total)) {
-                break;
+            yield $result['shops'];
+
+            if ($result['last']) {
+                return;
+            }
+        }
+    }
+
+    /** @return array{shops: array<int, array{shop_id: string, shop_name: ?string, app_shop_id: ?string, bound: bool}>, last: bool} */
+    private function fetchShopPage(int $page): array
+    {
+        $gateway = app(Food99GatewayContract::class);
+        $data = null;
+
+        if (! Cache::has(self::BOUND_SHOPS_ONLY_KEY)) {
+            try {
+                $data = $gateway->getAuthorizedShops($page);
+            } catch (Food99RateLimitedException $e) {
+                throw $e;
+            } catch (Food99ApiException $e) {
+                // Falha no meio da paginação: a outra lista tem outro tamanho de página e pularia lojas.
+                if ($page > 1 && $e->errno !== self::ERRNO_PERMISSION_DENIED) {
+                    throw $e;
+                }
+
+                // getAuthorizedShops é de acesso restrito: sem liberação, cai na lista de vinculadas.
+                Log::channel('food99')->info('99Food: getAuthorizedShops indisponível, usando shop/list', ['errno' => $e->errno]);
+
+                if ($e->errno === self::ERRNO_PERMISSION_DENIED) {
+                    Cache::put(self::BOUND_SHOPS_ONLY_KEY, true, now()->addHour());
+                }
             }
         }
 
-        return array_values($shops);
+        $data ??= $gateway->listBoundShops($page, self::BOUND_SHOPS_PAGE_SIZE);
+        $list = $data['shops'] ?? $data['list'] ?? $data['shop_list'] ?? (array_is_list($data) ? $data : []);
+        $totalPages = (int) ($data['total_page'] ?? 0);
+
+        return [
+            'shops' => array_values(array_filter(array_map(fn ($shop) => is_array($shop) ? $this->normalizeShop($shop) : null, $list))),
+            'last' => $totalPages > 0 ? $page >= $totalPages : count($list) < self::SHOP_PAGE_SIZE,
+        ];
     }
 
     /** @return array{shop_id: string, shop_name: ?string, app_shop_id: ?string, bound: bool}|null */
@@ -424,12 +581,13 @@ class Food99AuthService
         $appShopId = $shop['app_shop_id'] ?? $shop['appShopId'] ?? null;
         $appShopId = is_scalar($appShopId) && (string) $appShopId !== '' ? (string) $appShopId : null;
         $boundFlag = $shop['bound_flag'] ?? $shop['bind_status'] ?? null;
+        $bound = $boundFlag === null ? $appShopId !== null : in_array($boundFlag, [1, '1', true, 'bind'], true);
 
         return [
             'shop_id' => $shopId,
             'shop_name' => isset($shop['shop_name']) ? (string) $shop['shop_name'] : (isset($shop['name']) ? (string) $shop['name'] : null),
-            'app_shop_id' => $appShopId,
-            'bound' => $appShopId !== null || in_array($boundFlag, [1, '1', true, 'bind'], true),
+            'app_shop_id' => $bound ? $appShopId : null,
+            'bound' => $bound,
         ];
     }
 

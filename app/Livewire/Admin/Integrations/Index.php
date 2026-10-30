@@ -47,7 +47,7 @@ class Index extends Component
             ],
         ];
 
-        if (config('food99.enabled')) {
+        if ($company->canUseFood99Integration()) {
             $this->integrations[] = $this->food99Card($company->id, $branches);
         }
     }
@@ -62,7 +62,7 @@ class Index extends Component
             'key' => '99food',
             'name' => '99Food',
             'description' => 'Receba pedidos da 99Food no painel, aceite em até 5 minutos e mantenha cardápio e loja sincronizados.',
-            'icon' => 'link',
+            'icon' => 'truck',
             'state' => match (true) {
                 $attention > 0 => 'attention',
                 $connected > 0 => 'connected',

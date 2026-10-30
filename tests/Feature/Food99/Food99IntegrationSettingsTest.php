@@ -63,6 +63,10 @@ it('conecta pela URL de autorização e pelo ID da loja', function () {
         ->set('shopIdInput', '5763000000000077001')
         ->call('linkShop')
         ->assertHasNoErrors()
+        ->assertSet('connectionState', 'pending_authorization')
+        ->assertSee('É esta loja?')
+        ->assertSee('Coxinha 99')
+        ->call('confirmLinkShop')
         ->assertSet('connectionState', 'connected')
         ->assertSee('Coxinha 99');
 

@@ -350,6 +350,21 @@ class Company extends Model
             || (bool) $this->waiter_module_enabled;
     }
 
+    /**
+     * Quem vê a tela da 99Food e pode conectar: plataforma ligada, módulo liberado e empresa em
+     * FOOD99_COMPANY_IDS (vazia = todas). Só abre a homologação aos poucos: loja já ligada segue
+     * operando por Food99Integration::isOperational(), senão tirar a empresa da lista congelaria
+     * pedidos em andamento e o monitor fecharia a loja na 99.
+     */
+    public function canUseFood99Integration(): bool
+    {
+        $allowed = (array) config('food99.company_ids', []);
+
+        return config('food99.enabled')
+            && $this->canUseMarketplaceIntegrations()
+            && ($allowed === [] || in_array($this->id, $allowed, true));
+    }
+
     public function canUseIfoodIntegration(): bool
     {
         return $this->canUseMarketplaceIntegrations();
