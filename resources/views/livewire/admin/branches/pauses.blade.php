@@ -65,6 +65,15 @@
                 </div>
             @endif
 
+            @if ($this->food99Connected)
+                <div>
+                    <flux:checkbox wire:model="close_in_99food" label="Fechar também a loja na 99Food"
+                        description="Até 30 minutos ou até o fim do dia, a loja fica pausada; pausas maiores fecham a loja no início e reabrem no fim (sem repetição anual)."
+                        :disabled="$recurring_annual" />
+                    @error('close_in_99food') <p role="alert" class="text-red-600 text-xs mt-1 dark:text-red-400">{{ $message }}</p> @enderror
+                </div>
+            @endif
+
             <flux:button wire:click="create" variant="primary">Adicionar pausa</flux:button>
         </x-admin.form-card>
     @endif
@@ -88,6 +97,9 @@
                                 @endif
                                 @if ($pause->ifood_interruption_id)
                                     <flux:badge size="sm" color="red">Também no iFood</flux:badge>
+                                @endif
+                                @if ($pause->food99_sync)
+                                    <flux:badge size="sm" color="amber">Também na 99Food</flux:badge>
                                 @endif
                             </div>
                             @if ($pause->reason)
