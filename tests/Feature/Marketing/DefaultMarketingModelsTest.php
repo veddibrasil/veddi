@@ -35,6 +35,14 @@ beforeEach(function () {
     config(['marketing.from' => ['address' => 'novidades@news.veddi.com.br', 'name' => 'Veddi']]);
 });
 
+test('limpeza da lista também confere o e-mail da empresa', function () {
+    marketingMember(['email' => 'Loja@Gmail.con'], user: ['email' => 'dono@lanches.com.br']);
+    marketingMember(['email' => '  '], user: ['email' => 'outro@lanches.com.br']);
+
+    expect(app(SuppressionCleanup::class)->scan()['typo'])->toBe(['loja@gmail.con'])
+        ->and(app(SuppressionCleanup::class)->scan()['invalid'])->toBe([]);
+});
+
 test('segmentos padrão: instala uma vez, com filtros válidos e contagem', function () {
     marketingMember(['plan' => 'free'], user: ['email' => 'gratis@a.com']);
     marketingMember(['plan' => 'pro'], user: ['email' => 'pro@a.com']);

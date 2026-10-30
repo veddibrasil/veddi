@@ -124,10 +124,10 @@ readonly class AudienceFilterData
         ];
     }
 
-    /** @return list<string> Papéis efetivos: vazio = todos os papéis do público (config). */
+    /** @return list<string> Papéis efetivos: vazio = todos os papéis do público (config). O administrador sempre entra. */
     public function effectiveRoles(): array
     {
-        return $this->roles !== [] ? $this->roles : array_values(array_intersect(
+        return $this->roles !== [] ? array_values(array_unique(['company_admin', ...$this->roles])) : array_values(array_intersect(
             config('marketing.roles', []),
             array_keys(self::ROLES),
         ));
@@ -159,7 +159,7 @@ readonly class AudienceFilterData
             $parts[] = $this->companyActive ? 'Empresa ativa' : 'Empresa inativa';
         }
         if ($this->roles !== []) {
-            $parts[] = 'Papel: '.implode(', ', array_map(fn ($role) => self::ROLES[$role], $this->roles));
+            $parts[] = 'Papel: '.implode(', ', array_map(fn ($role) => self::ROLES[$role], $this->effectiveRoles()));
         }
         if ($this->createdFrom || $this->createdTo) {
             $parts[] = 'Cadastro: '.($this->createdFrom ? Carbon::parse($this->createdFrom)->format('d/m/Y') : '…')

@@ -11,6 +11,7 @@ use App\Models\EmailContactList;
 use App\Models\EmailSuppression;
 use App\Services\Marketing\AudienceResolver;
 use App\Services\Marketing\CampaignService;
+use App\Services\Marketing\SuppressionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 
@@ -102,6 +103,37 @@ test('wizard salva lista mais donos reabre a escolha e permite desmarcar', funct
         ->call('next')->assertHasNoErrors();
 
     expect($campaign->refresh()->filters['include_owners'])->toBeFalse();
+});
+
+test('segmento envia para administrador e email da empresa uma vez, e o descadastro vale para a proxima campanha', function () {
+    $fake = marketingSetup();
+    config(['marketing.require_opt_in' => false]);
+    marketingMember(['email' => 'contato@loja.com'], user: ['email' => 'dono@empresa.com']);
+    marketingMember(['model' => Company::create(['name' => 'Filial', 'slug' => 'filial-mista', 'order_prefix' => 'FIL', 'active' => true, 'plan' => 'pro', 'status' => 'ACTIVE', 'email' => 'contato@loja.com'])], user: ['email' => 'socio@empresa.com']);
+    $campaign = EmailCampaign::factory()->create(['test_sent_at' => now(), 'filters' => []]);
+
+    app(CampaignService::class)->start($campaign);
+
+    expect($campaign->refresh()->status)->toBe(EmailCampaignStatus::Sent)
+        ->and(collect($fake->sent)->pluck('toEmail')->sort()->values()->all())->toBe(['contato@loja.com', 'dono@empresa.com', 'socio@empresa.com']);
+
+    $recipient = $campaign->recipients()->where('email', 'contato@loja.com')->first();
+    app(SuppressionService::class)->unsubscribe($recipient);
+
+    expect(app(AudienceResolver::class)->count(new AudienceFilterData))->toBe(2);
+});
+
+test('email da empresa nao sai se o aceite passar a ser exigido depois de montar o publico', function () {
+    $fake = marketingSetup();
+    config(['marketing.require_opt_in' => false]);
+    marketingMember(['email' => 'contato@loja.com'], user: ['email' => 'dono@empresa.com']);
+    $campaign = EmailCampaign::factory()->create(['filters' => []]);
+    app(CampaignService::class)->addRecipients($campaign, app(AudienceResolver::class)->sample(new AudienceFilterData));
+    config(['marketing.require_opt_in' => true]);
+
+    $blocked = $campaign->recipients()->get()->mapWithKeys(fn ($recipient) => [$recipient->email => app(SuppressionService::class)->blocks($recipient)]);
+
+    expect($blocked->all())->toEqual(['contato@loja.com' => true, 'dono@empresa.com' => false]);
 });
 
 test('disparo misto no provedor fake envia uma vez por email mesmo em blocos pequenos', function () {
