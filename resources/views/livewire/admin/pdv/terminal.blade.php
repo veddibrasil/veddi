@@ -121,7 +121,7 @@
     @endif
 
     {{-- ══ Header ══ --}}
-    <div class="flex items-center justify-between gap-4 px-5 py-3 bg-white border-b border-neutral-200 shadow-sm dark:bg-zinc-900 dark:border-zinc-800 shrink-0">
+    <div class="flex flex-wrap items-center justify-between gap-4 px-5 py-3 bg-white border-b border-neutral-200 shadow-sm dark:bg-zinc-900 dark:border-zinc-800 shrink-0">
         <div class="flex items-center gap-3 min-w-0">
             <div class="size-9 rounded-lg bg-amber-500 text-white flex items-center justify-center shadow-sm shadow-amber-500/20 dark:bg-amber-400 dark:text-white">
                 <flux:icon.computer-desktop class="size-5" />
@@ -144,7 +144,7 @@
                 </p>
             </div>
         </div>
-        <div class="flex items-center gap-2 min-w-0 sm:shrink-0">
+        <div class="flex flex-wrap items-center gap-2 min-w-0 sm:shrink-0">
             @if ($this->branches->count() > 1)
                 <flux:select wire:model.live="selectedBranchId" class="w-32 sm:w-56" :disabled="! empty($cart)" :title="! empty($cart) ? 'Finalize ou limpe o carrinho para trocar de filial' : null" aria-label="Filial">
                     @foreach ($this->branches as $branch)
@@ -588,12 +588,14 @@
                                             <span class="text-xs font-bold px-2 py-1 rounded-full"
                                                 :class="getGroupTotal(group.id) > group.total_qty
                                                     ? 'bg-red-100 text-red-700'
-                                                    : getGroupTotal(group.id) >= (group.min_qty || 0)
+                                                    : groupSatisfied(group)
                                                         ? 'bg-green-100 text-green-700'
                                                         : 'bg-neutral-100 text-neutral-500'">
                                                 <span x-text="getGroupTotal(group.id)"></span>/<span x-text="group.total_qty"></span>
                                             </span>
                                         </div>
+
+                                        @include('livewire.admin.pdv._skip-option-group')
 
                                         <div class="space-y-1">
                                             <template x-for="option in group.options" :key="option.id">
