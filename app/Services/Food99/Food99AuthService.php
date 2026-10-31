@@ -6,6 +6,7 @@ use App\Contracts\Food99GatewayContract;
 use App\Exceptions\Food99ApiException;
 use App\Exceptions\Food99RateLimitedException;
 use App\Exceptions\Food99ShopAlreadyLinkedException;
+use App\Exceptions\Food99TokenExpiredException;
 use App\Models\Food99Integration;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
@@ -35,7 +36,9 @@ class Food99AuthService
     /** Sem getAuthorizedShops liberado, nem tenta por um tempo: vai direto na lista de vinculadas. */
     private const BOUND_SHOPS_ONLY_KEY = 'food99:shops:bound-only';
 
-    private const ERRNO_PERMISSION_DENIED = 10006;
+    private const PERMISSION_DENIED_ERRNOS = [10006, 10050];
+
+    private const ERRNO_SHOP_WITHOUT_TOKEN = 10101;
 
     private const SHOP_ALREADY_LINKED_MESSAGE = 'Esta loja da 99Food já está conectada em outra filial ou empresa da plataforma. Desconecte a integração anterior antes de conectar aqui.';
 
@@ -63,12 +66,7 @@ class Food99AuthService
                 return $integration->auth_token;
             }
 
-            // Token que está pra vencer: pede um novo antes do get, senão o get devolve o mesmo.
-            if ($integration->auth_token !== null) {
-                $this->requestRefresh($integration);
-            }
-
-            return $this->fetchToken($integration);
+            return $this->renewToken($integration);
         });
     }
 
@@ -82,9 +80,7 @@ class Food99AuthService
                 return $integration->auth_token;
             }
 
-            $this->requestRefresh($integration);
-
-            return $this->fetchToken($integration);
+            return $this->renewToken($integration);
         });
     }
 
@@ -102,14 +98,28 @@ class Food99AuthService
                 return;
             }
 
-            if ($integration->auth_token !== null) {
-                $this->requestRefresh($integration);
-            }
-
-            $this->fetchToken($integration);
+            $this->renewToken($integration);
         });
 
         return true;
+    }
+
+    /**
+     * Refresh antes do get mesmo em loja recém-ligada: o token que a 99 emite ao criar a loja já
+     * pode ter vencido, e aí o get responde 10102 até alguém pedir o refresh. Sem token ainda, o
+     * refresh é só precaução: falhar nele não pode impedir o get de emitir o primeiro token.
+     */
+    private function renewToken(Food99Integration $integration): string
+    {
+        try {
+            $this->requestRefresh($integration);
+        } catch (Food99ApiException $e) {
+            if ($integration->auth_token !== null) {
+                throw $e;
+            }
+        }
+
+        return $this->fetchToken($integration);
     }
 
     private function fetchToken(Food99Integration $integration): string
@@ -146,9 +156,18 @@ class Food99AuthService
             return;
         }
 
-        $this->client->request('GET', '/v1/auth/authtoken/refresh', $this->client->appCredentials() + [
-            'app_shop_id' => $integration->app_shop_id,
-        ], 'authtoken.refresh', $integration, 'shop-refresh:'.$integration->app_shop_id);
+        try {
+            $this->client->request('GET', '/v1/auth/authtoken/refresh', $this->client->appCredentials() + [
+                'app_shop_id' => $integration->app_shop_id,
+            ], 'authtoken.refresh', $integration, 'shop-refresh:'.$integration->app_shop_id);
+        } catch (Food99ApiException $e) {
+            // Loja ainda sem token não tem o que renovar: quem responde por ela é o get.
+            if ($e->errno !== self::ERRNO_SHOP_WITHOUT_TOKEN) {
+                throw $e;
+            }
+
+            return;
+        }
 
         Cache::put($cooldown, true, self::REFRESH_COOLDOWN_SECONDS);
     }
@@ -166,7 +185,7 @@ class Food99AuthService
         $cached = $force ? null : Cache::get(self::AUTHORIZATION_URL_CACHE_KEY);
 
         if (! is_array($cached)) {
-            // [VALIDAR 99Food] doc lista só app_id; vai assinado (timestamp + sign) por garantia.
+            // A doc lista só app_id; a 99 aceita assinado (timestamp + sign).
             $data = $this->client->signed('/v1/auth/authorizationpage/getUrl', [], 'authorizationpage.getUrl')['data'];
             $url = is_string($data) ? $data : ($data['url'] ?? $data['authorization_url'] ?? $data['auth_url'] ?? null);
 
@@ -297,8 +316,8 @@ class Food99AuthService
 
         try {
             $this->getToken($integration);
-        } catch (Food99RateLimitedException $e) {
-            // Limite de frequência não é problema da loja: basta repetir em instantes.
+        } catch (Food99RateLimitedException|Food99TokenExpiredException $e) {
+            // Nem limite de frequência nem token vencido são problema da loja: basta repetir em instantes.
             throw $e;
         } catch (Food99ApiException $e) {
             $integration->update(['status' => Food99Integration::STATUS_ERROR]);
@@ -547,14 +566,16 @@ class Food99AuthService
                 throw $e;
             } catch (Food99ApiException $e) {
                 // Falha no meio da paginação: a outra lista tem outro tamanho de página e pularia lojas.
-                if ($page > 1 && $e->errno !== self::ERRNO_PERMISSION_DENIED) {
+                $denied = in_array($e->errno, self::PERMISSION_DENIED_ERRNOS, true);
+
+                if ($page > 1 && ! $denied) {
                     throw $e;
                 }
 
                 // getAuthorizedShops é de acesso restrito: sem liberação, cai na lista de vinculadas.
                 Log::channel('food99')->info('99Food: getAuthorizedShops indisponível, usando shop/list', ['errno' => $e->errno]);
 
-                if ($e->errno === self::ERRNO_PERMISSION_DENIED) {
+                if ($denied) {
                     Cache::put(self::BOUND_SHOPS_ONLY_KEY, true, now()->addHour());
                 }
             }

@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Contracts\Food99EventHandler;
+use App\Exceptions\Food99ApiException;
 use App\Exceptions\Food99RateLimitedException;
 use App\Models\Food99WebhookEvent;
 use App\Services\Food99\Food99CatalogSyncService;
@@ -108,7 +109,7 @@ class ProcessFood99EventJob implements ShouldBeUnique, ShouldQueue
                 'type' => $event->event_type,
                 'attempts' => $event->attempts,
                 'retry' => $retryable,
-                'error' => $e->getMessage(),
+                'error' => Food99ApiException::forLog($e),
             ]);
 
             if (! $retryable) {

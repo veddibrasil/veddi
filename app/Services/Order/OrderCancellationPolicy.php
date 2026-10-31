@@ -47,6 +47,11 @@ class OrderCancellationPolicy
         if (in_array($order->status, self::TERMINAL_STATUSES)) {
             throw new RuntimeException("Pedido já está em status terminal ({$order->status}) e não pode ser cancelado.");
         }
+
+        // A tela já desvia pro fluxo do marketplace: cancelar só aqui deixaria o pedido ativo lá.
+        if ($order->isMarketplaceOrder()) {
+            throw new RuntimeException('Este pedido é cancelado pelas ações do marketplace.');
+        }
     }
 
     /**

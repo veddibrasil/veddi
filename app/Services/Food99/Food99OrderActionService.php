@@ -56,10 +56,7 @@ class Food99OrderActionService
         $this->log('pedido pronto', $order, $userId);
     }
 
-    /**
-     * Saiu para entrega (só entrega própria). [VALIDAR 99Food] campos obrigatórios de
-     * courier_info; vai nome e telefone do entregador quando a loja informar.
-     */
+    /** Saiu para entrega (só entrega própria). */
     public function dispatch(Order $order, ?int $userId = null, ?string $courierName = null, ?string $courierPhone = null): void
     {
         $details = $this->details($order);
@@ -78,10 +75,7 @@ class Food99OrderActionService
             ? (int) $arrival
             : now()->addMinutes(self::DEFAULT_DELIVERY_MINUTES)->getTimestamp();
 
-        $this->gateway->dispatchSelfDelivery($integration, $details->orderId(), array_filter([
-            'name' => $courierName ?: 'Entregador da loja',
-            'phone' => $courierPhone ? preg_replace('/\D/', '', $courierPhone) : null,
-        ]), [
+        $this->gateway->dispatchSelfDelivery($integration, $details->orderId(), $this->courierInfo($order, $courierName, $courierPhone), [
             'pickup_time' => now()->getTimestamp(),
             'delivery_time' => $deliveryTime,
         ]);
@@ -103,9 +97,13 @@ class Food99OrderActionService
         $integration = $this->resolveIntegration($order);
         $code = $deliveryCode !== null ? trim($deliveryCode) : '';
 
-        $code !== ''
-            ? $this->gateway->verifyDeliveryCode($integration, $details->orderId(), $code)
-            : $this->gateway->markSelfDelivered($integration, $details->orderId());
+        if ($code !== '') {
+            $this->gateway->verifyDeliveryCode($integration, $details->orderId(), $code);
+        } else {
+            // "Entregue" para no status 500; sem o código, quem conclui na 99 é o order/finish.
+            $this->gateway->markSelfDelivered($integration, $details->orderId());
+            $this->gateway->finishOrder($integration, $details->orderId());
+        }
 
         $this->sync->advance($order, 'FINISHED', $userId, 'veddi');
         $this->log('pedido entregue (entrega própria)', $order, $userId, ['com_codigo' => $code !== '']);
@@ -268,6 +266,28 @@ class Food99OrderActionService
         }
 
         return $reason;
+    }
+
+    /** A 99 exige nome, sobrenome e telefone; o painel não cadastra entregador, então vale o telefone da filial. */
+    private function courierInfo(Order $order, ?string $name, ?string $phone): array
+    {
+        // Sem escopo porque o aviso à 99 também roda em job; a relação já limita à filial do pedido.
+        $phone = preg_replace('/\D/', '', (string) ($phone ?: $order->branch()->withoutGlobalScopes()->value('phone')));
+
+        if ($phone === '') {
+            throw new RuntimeException('A 99Food exige um telefone para o entregador. Cadastre o telefone da filial e tente de novo.');
+        }
+
+        $name = trim((string) $name) ?: 'Entregador da loja';
+        [$firstName, $lastName] = array_pad(explode(' ', $name, 2), 2, null);
+
+        return [
+            'courier_name' => $name,
+            'courier_first_name' => $firstName,
+            'courier_last_name' => $lastName ?: $firstName,
+            'courier_phone_code' => '+55',
+            'courier_phone' => $phone,
+        ];
     }
 
     private function details(Order $order): Food99OrderDetails

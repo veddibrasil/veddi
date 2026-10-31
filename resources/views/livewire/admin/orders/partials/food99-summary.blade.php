@@ -71,6 +71,7 @@
             Itens cancelados:
             {{ collect($partial['items'] ?? [])->map(fn ($item) => ($item['cancel_amount'] ?? $item['amount'] ?? '').'x '.($item['name'] ?? collect($food99->get('order_items', []))->firstWhere('mdu_id', $item['mdu_id'] ?? null)['name'] ?? 'item'))->implode(', ') }}
             @if (! empty($partial['refund'])) · reembolso {{ $money($partial['refund']) }} @endif
+            @if (! empty($partial['refund_fee'])) · abatido da loja {{ $money($partial['refund_fee']) }} @endif
         </div>
     @endforeach
 

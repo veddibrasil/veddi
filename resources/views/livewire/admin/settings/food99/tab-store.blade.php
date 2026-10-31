@@ -14,7 +14,7 @@
     <dl class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
         <div>
             <dt class="text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Abertura</dt>
-            <dd class="font-medium text-neutral-800 dark:text-neutral-100">{{ match($data['auto_switch'] ?? null) { 1 => 'Manual', 2 => 'Automática, nos horários da loja', default => 'Não informada' } }}</dd>
+            <dd class="font-medium text-neutral-800 dark:text-neutral-100">{{ match($data['auto_switch'] ?? null) { 1 => 'Manual', 2, 3 => 'Automática, nos horários da loja', default => 'Não informada' } }}</dd>
         </div>
         <div>
             <dt class="text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Preparo médio</dt>

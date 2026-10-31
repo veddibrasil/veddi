@@ -2,6 +2,7 @@
 
 namespace App\Services\Food99;
 
+use App\Exceptions\Food99ApiException;
 use App\Mail\Food99ConnectionAlert;
 use App\Models\CompanyNotification;
 use App\Models\Food99Integration;
@@ -170,7 +171,7 @@ class Food99ConnectionMonitor
             Log::channel('food99')->warning('Monitor 99Food: não foi possível ajustar a loja à situação da empresa', [
                 'food99_integration_id' => $integration->id,
                 'company_id' => $company->id,
-                'error' => $e->getMessage(),
+                'error' => Food99ApiException::forLog($e),
             ]);
         }
     }
@@ -217,7 +218,7 @@ class Food99ConnectionMonitor
                     'company_id' => $company->id,
                     'food99_integration_id' => $integration->id,
                     'user_id' => $admin->id,
-                    'error' => $e->getMessage(),
+                    'error' => Food99ApiException::forLog($e),
                 ]);
             }
         }

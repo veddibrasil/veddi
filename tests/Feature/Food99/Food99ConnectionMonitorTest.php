@@ -110,6 +110,32 @@ it('reconcilia pedido que a 99 cancelou por falta de aceite', function () {
         ->and($order->fresh()->cancellation_reason)->toContain('não aceitou a tempo');
 });
 
+it('reconcilia o cancelamento com a origem e o reembolso informados pela 99', function () {
+    $ctx = food99Context();
+    $info = food99OrderInfo($ctx);
+    $order = receiveFood99Order($this, $ctx, $info);
+    Http::fake(['*/v1/order/order/detail*' => Http::response(food99Ok(array_replace_recursive($info, ['status' => 922, 'price' => ['refund_price' => 1800]])), 200)]);
+
+    app(ReconcileFood99OrdersJob::class)->handle();
+
+    expect($order->fresh()->food99Details()->cancellation())->toMatchArray(['origin' => 'store', 'code' => 922])
+        ->and($order->fresh()->food99Details()->cancellation()['refund'])->toEqual(18.0);
+});
+
+it('busca o valor em dinheiro quando shop_paid_money chega depois do entregador', function () {
+    $ctx = food99Context();
+    $info = food99OrderInfo($ctx, overrides: ['pay_method' => 2, 'pay_channel' => 153]);
+    $order = receiveFood99Order($this, $ctx, $info);
+    expect($order->food99Details()->get('pending_estimated'))->toBeTrue();
+    Http::fake(['*/v1/order/order/detail*' => Http::response(food99Ok(array_replace_recursive($info, ['price' => ['shop_paid_money' => 1500]])), 200)]);
+
+    app(ReconcileFood99OrdersJob::class)->handle();
+
+    $details = $order->fresh()->food99Details();
+    expect($details->get('pending_estimated'))->toBeFalse()
+        ->and($details->get('shop_paid_money'))->toEqual(15.0);
+});
+
 it('não roda o monitor com a 99Food desligada', function () {
     config(['food99.enabled' => false]);
 

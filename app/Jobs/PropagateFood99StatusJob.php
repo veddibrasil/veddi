@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Exceptions\Food99ApiException;
 use App\Models\Order;
 use App\Services\Food99\Food99OrderActionService;
 use App\Support\Food99\Food99OrderDetails;
@@ -85,7 +86,7 @@ class PropagateFood99StatusJob implements ShouldQueue
             Log::channel('food99')->error('99Food: falha ao propagar status', [
                 'order_id' => $order->id,
                 'status' => $this->status,
-                'error' => $e->getMessage(),
+                'error' => Food99ApiException::forLog($e),
             ]);
 
             throw $e;

@@ -41,6 +41,19 @@ it('registra o pedido de cancelamento do cliente com prazo de 5 min e avisa a lo
         ->toBe('Cliente pediu cancelamento — 99Food #12');
 });
 
+it('liga ao pedido a solicitação que chegou antes dele', function () {
+    $ctx = food99Context();
+    $info = food99OrderInfo($ctx);
+    fakeFood99Api($info);
+
+    food99CancelApply($this, $ctx, $info);
+    expect(Food99Request::withoutGlobalScopes()->sole()->order_id)->toBeNull();
+
+    $order = receiveFood99Order($this, $ctx, $info);
+
+    expect(Food99Request::withoutGlobalScopes()->sole()->order_id)->toBe($order->id);
+});
+
 it('aceita o cancelamento e só cancela o pedido quando a 99 confirmar', function () {
     $ctx = food99Context();
     $info = food99OrderInfo($ctx);

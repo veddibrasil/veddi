@@ -69,6 +69,25 @@ class Food99OrderDetails implements MarketplaceOrderDetails
 
     public function __construct(private readonly Order $order) {}
 
+    /** Quem cancelou, pelo status 9xx da 99. */
+    public static function cancelOrigin(int $code): string
+    {
+        return match (true) {
+            in_array($code, [901, 945], true) => 'customer',
+            in_array($code, [921, 922, 923, 944, 946], true) => 'store',
+            $code >= 940 && $code < 950 => 'courier',
+            default => 'platform',
+        };
+    }
+
+    /** Reembolso no detalhe do pedido: refund_price vem em centavos dentro de price. */
+    public static function refundFrom(array $info): ?float
+    {
+        $refund = $info['price']['refund_price'] ?? null;
+
+        return $refund === null ? null : round(((float) $refund) / 100, 2);
+    }
+
     public static function for(Order $order): ?self
     {
         return $order->channel === '99food' ? new self($order) : null;

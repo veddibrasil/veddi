@@ -48,7 +48,7 @@ class Food99RequestService implements Food99EventHandler
         $kind = self::KINDS[$event->event_type];
         $order = $this->findOrder($integration, $event->external_order_id);
 
-        $existing = Food99Request::withoutGlobalScopes()->where('apply_id', $applyId)->first();
+        $existing = Food99Request::withoutGlobalScopes()->where('company_id', $integration->company_id)->where('apply_id', $applyId)->first();
         if ($existing) {
             $existing->update(['last_seen_at' => now(), 'order_id' => $existing->order_id ?? $order?->id]);
 

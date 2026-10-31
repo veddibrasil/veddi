@@ -147,6 +147,10 @@ class Food99OrderStatusSync
                 array_filter(['source' => 'food99_event', 'food99_webhook_event_id' => $eventId, 'food99_stage' => 'CANCELLED', 'code' => $cancellation['code'] ?? null]),
             );
 
+            // Dentro da transação: falhou aqui, o pedido não fica cancelado e o job tenta de novo.
+            // Fora dela, a nova tentativa pararia em "já cancelado" com o estoque ainda baixado.
+            app(StockService::class)->restoreForOrder($locked);
+
             return $locked;
         });
 
@@ -155,7 +159,6 @@ class Food99OrderStatusSync
         }
 
         $order->setRawAttributes($changed->getAttributes(), true);
-        app(StockService::class)->restoreForOrder($order);
         OrderStatusUpdated::dispatch($order);
 
         Log::channel('food99')->info('99Food: pedido cancelado', [

@@ -685,7 +685,7 @@ class Index extends Component
      */
     private function kanbanStatuses(\Illuminate\Support\Collection $totals): array
     {
-        if ($this->channelFilter !== 'ifood') {
+        if (! OrderChannel::isMarketplaceValue($this->channelFilter)) {
             return self::KANBAN_STATUSES;
         }
 

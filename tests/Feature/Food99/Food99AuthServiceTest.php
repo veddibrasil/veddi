@@ -1,6 +1,8 @@
 <?php
 
+use App\Exceptions\Food99ApiException;
 use App\Exceptions\Food99ShopAlreadyLinkedException;
+use App\Exceptions\Food99TokenExpiredException;
 use App\Models\Food99Integration;
 use App\Services\Food99\Food99AuthService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -32,18 +34,69 @@ it('usa o token gravado enquanto estiver fora da margem de renovação', functio
     Http::assertNothingSent();
 });
 
-it('busca token pelo app_shop_id quando a loja ainda não tem', function () {
+it('pede refresh antes do get em loja recém-ligada: o token de origem pode ter vencido', function () {
     $ctx = food99Context();
     $ctx['integration']->forceFill(['auth_token' => null, 'token_expires_at' => null])->save();
-    Http::fake(['*/v1/auth/authtoken/get*' => Http::response(food99TokenResponse('tok-1'), 200)]);
+    Http::fake([
+        '*/v1/auth/authtoken/refresh*' => Http::response(food99Ok(true), 200),
+        '*/v1/auth/authtoken/get*' => Http::response(food99TokenResponse('tok-1'), 200),
+    ]);
 
     expect(app(Food99AuthService::class)->getToken($ctx['integration']->fresh()))->toBe('tok-1');
 
     Http::assertSent(fn (Request $r) => str_contains($r->url(), '/v1/auth/authtoken/get')
         && $r['app_shop_id'] === $ctx['integration']->app_shop_id
         && $r['app_id'] === FOOD99_TEST_APP_ID);
-    Http::assertNotSent(fn (Request $r) => str_contains($r->url(), 'authtoken/refresh'));
-    expect($ctx['integration']->fresh()->token_expires_at->isFuture())->toBeTrue();
+    $paths = collect(Http::recorded())->map(fn ($pair) => parse_url($pair[0]->url(), PHP_URL_PATH))->all();
+    expect($paths)->toBe(['/v1/auth/authtoken/refresh', '/v1/auth/authtoken/get'])
+        ->and($ctx['integration']->fresh()->token_expires_at->isFuture())->toBeTrue();
+});
+
+it('segue pro get quando a loja ainda não tem token pra renovar', function () {
+    $ctx = food99Context();
+    $ctx['integration']->forceFill(['auth_token' => null, 'token_expires_at' => null])->save();
+    Http::fake([
+        '*/v1/auth/authtoken/refresh*' => Http::response(food99Error(10101, 'shop has no auth_token'), 200),
+        '*/v1/auth/authtoken/get*' => Http::response(food99TokenResponse('tok-primeiro'), 200),
+    ]);
+
+    expect(app(Food99AuthService::class)->getToken($ctx['integration']->fresh()))->toBe('tok-primeiro');
+});
+
+it('tenta o get mesmo com o refresh falhando em loja ainda sem token', function () {
+    $ctx = food99Context();
+    $ctx['integration']->forceFill(['auth_token' => null, 'token_expires_at' => null])->save();
+    Http::fake([
+        '*/v1/auth/authtoken/refresh*' => Http::response(food99Error(10103, 'falha ao emitir'), 200),
+        '*/v1/auth/authtoken/get*' => Http::response(food99TokenResponse('tok-primeiro'), 200),
+    ]);
+
+    expect(app(Food99AuthService::class)->getToken($ctx['integration']->fresh()))->toBe('tok-primeiro');
+});
+
+it('não esconde a falha do refresh em loja que já tem token', function () {
+    $ctx = food99Context();
+    $ctx['integration']->forceFill(['token_expires_at' => now()->subMinute()])->save();
+    Http::fake([
+        '*/v1/auth/authtoken/refresh*' => Http::response(food99Error(10103, 'falha ao emitir'), 200),
+        '*/v1/auth/authtoken/get*' => Http::response(food99TokenResponse('tok-novo'), 200),
+    ]);
+
+    expect(fn () => app(Food99AuthService::class)->getToken($ctx['integration']->fresh()))->toThrow(Food99ApiException::class);
+    Http::assertNotSent(fn (Request $request) => str_contains($request->url(), '/v1/auth/authtoken/get'));
+});
+
+it('não marca a loja como erro quando o token vence no meio da ativação', function () {
+    $ctx = food99Context();
+    $integration = $ctx['integration'];
+    $integration->forceFill(['auth_token' => null, 'token_expires_at' => null, 'status' => 'pending_shop_selection'])->save();
+    Http::fake([
+        '*/v1/auth/authtoken/refresh*' => Http::response(food99Ok(true), 200),
+        '*/v1/auth/authtoken/get*' => Http::response(food99Error(10102, 'expired'), 200),
+    ]);
+
+    expect(fn () => app(Food99AuthService::class)->activate($integration->fresh()))->toThrow(Food99TokenExpiredException::class)
+        ->and($integration->fresh()->status)->toBe('pending_shop_selection');
 });
 
 it('pede refresh antes do get quando o token está vencendo', function () {
@@ -84,6 +137,7 @@ it('liga a loja informada pelo restaurante e aplica a configuração', function 
         '*/v3/auth/authorization/getAuthorizedShops' => Http::response(food99Ok(['total' => 1, 'list' => [
             ['shop_id' => 5763000000000099001, 'shop_name' => 'Coxinha da Vila', 'bound_flag' => 1, 'app_shop_id' => 'uuid-99-gerado'],
         ]]), 200),
+        '*/v1/auth/authtoken/refresh*' => Http::response(food99Ok(true), 200),
         '*/v1/auth/authtoken/get*' => Http::response(food99TokenResponse('tok-loja'), 200),
         '*/v1/shop/shop/setconfirmmethod' => Http::response(food99Ok(), 200),
         '*/v1/shop/apply/set' => Http::response(food99Ok(), 200),

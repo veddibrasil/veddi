@@ -16,7 +16,7 @@ Tudo fica atrás de `FOOD99_ENABLED` (padrão `false`): com a flag desligada nã
 | Transporte e auth | `Services/Food99/Food99Client` (envelope `errno`, limites por endpoint, log com `requestId`), `Food99Signer` (sign MD5 e `didi-header-sign`), `Food99AuthService` (token, autorização, escolha da loja, ativação, desconexão), `Food99GatewayService` (atrás de `Food99GatewayContract`) |
 | Webhook | `POST /webhooks/99food` → `Food99WebhookController` → `ProcessFood99EventJob` (fila `critical`) → tratadores (`Food99OrderImporter`, `Food99OrderEventProcessor`, `Food99RequestService`, `Food99ShopEventHandler`, `Food99CatalogSyncService`) |
 | Pedido | `DTOs/Food99OrderDTO`, `Food99OrderMapper`, `Support/Food99/Food99OrderDetails`, `Food99OrderStatusSync`, `Food99OrderActionService`, `PropagateFood99OrderStatus` + `PropagateFood99StatusJob`, `RefreshFood99OrderDetailsJob` |
-| Cardápio | `Food99CatalogSyncService`, `SyncFood99CatalogJob` (upload completo com debounce), `SetFood99ItemStatusJob` (disponibilidade) |
+| Cardápio | `Food99CatalogSyncService`, `SyncFood99CatalogJob` (upload completo com debounce), `CheckFood99CatalogTaskJob` (resultado do upload), `SetFood99ItemStatusJob` (disponibilidade) |
 | Loja | `Food99StoreStatusSync` (abrir/pausar/fechar/modo ocupado e pausas da filial) |
 | Horários | `Food99StoreHours` (lê `biz_day_time` de `shop/detail` e grava por `shop/update`) |
 | Monitoramento | `Food99ConnectionMonitor` + `food99:check-connections`, `RefreshFood99TokensJob`, `ReconcileFood99OrdersJob` (dispara um `ReconcileFood99IntegrationJob` por loja), `ExpireFood99RequestsJob` (agendados em `routes/console.php`) |
@@ -78,7 +78,7 @@ Antes: filial com cardápio no VEDDI (produtos marcados "Disponível na 99Food")
 | 5 | Recusa com cada grupo de motivo | Modal com os motivos da 99 (de entrega só na entrega própria; "Outro" exige texto); pedido cancelado na hora |
 | 6 | Cancelamento pelo cliente antes/depois do aceite | `orderCancel` → pedido cancelado com o motivo 9xx do detalhe e estoque devolvido |
 | 7 | Pedido com promoção da loja | Promoção e parte bancada pela loja no resumo do pedido e no cupom |
-| 8 | Cancelamento parcial | Pelo app 99: aviso no sino e linha no resumo. Pela API: `partialCancel` (mdu_id) |
+| 8 | Cancelamento parcial | Pelo app 99: aviso no sino e linha no resumo. Pela API: `Food99OrderActionService::partialCancel` (mdu_id), ainda sem botão no painel |
 | 9 | Solicitação de cancelamento e de reembolso (aceitar e recusar) | Bloco no pedido com prazo; reembolso só recusa com motivo da lista da 99 |
 | 10 | Upload de cardápio com item inválido proposital | Envio "aceito com pendências"; erro no item (aba Cardápio e cadastro do produto) |
 | 11 | Pausa/fechamento/reabertura da loja | Aba Loja e pausas da filial; status confirmado pelo `shopStatus` |
@@ -99,24 +99,44 @@ Antes: filial com cardápio no VEDDI (produtos marcados "Disponível na 99Food")
 | Recusar/cancelar pela API | Modal de motivos |
 | Guardar `requestId` | Log `food99`, `food99_webhook_events.request_id`, `food99_integrations.last_request_id` |
 
+## Validado na API real (30/10/2026, loja de teste)
+
+Autorização e assinatura, conexão e ativação, `setStatus` (fechar e modo ocupado), `shop/update` (semana inteira de horários), upload e leitura do cardápio V3 com complementos, `updateItemStatus`, pedido entrega própria completo (aceite, pronto, despacho, `verifyDeliveryCode`, `orderFinish`), recusa com motivo, pedido entrega 99 até pronto. `getAuthorizedShops` está liberado, `getUrl` aceita a assinatura e o total local bate com `real_price` na entrega própria.
+
+Em 31/10/2026 (pedidos de sandbox): renovação com token vencido, resultado do upload por `CheckFood99CatalogTaskJob`, entrega própria em dinheiro de ponta a ponta com callbacks reais (total local igual a `real_price`, pagamento quitado no `orderFinish`), importação da entrega 99 em dinheiro com total igual a `order_price + service_price`, aceite, `partialCancel` com item esgotado e cancelamento pela loja (921). Nesse pedido de entrega 99 os callbacks foram reenviados localmente com a assinatura do app. `payConfirm` respondeu `12016` porque a loja de teste não recebe dinheiro do entregador: o formato da chamada foi aceito, o fluxo não foi concluído.
+
+O que a 99 faz e a documentação não conta:
+
+- O token dura cerca de 15 min, e o emitido ao criar a loja pode já vir vencido: o `get` responde `10102` até alguém pedir o `refresh`. O VEDDI sempre pede `refresh` antes do `get`.
+- Editar a loja no portal dispara `shopBindStatus` e gira o token: chamada com o token antigo volta `10100`. `Food99GatewayService::call()` renova e repete.
+- `auto_switch` vem como 3 na opção "abrir e fechar automaticamente", fora do enum da doc.
+- `shopBusyMode` e `orderDispatch` chegam sem estar listados. O primeiro atualiza o modo ocupado; o segundo não tem efeito.
+- Em `order_info`, `locator`, `virtual_phone_number` e `handover_page_url` vêm dentro de `receive_address`.
+- Em `partialCancel`, `items` é string JSON e `app_item_ids` é string separada por vírgula; array volta `10002`.
+- `refund_price` e `in_sale_refund_to_c_fee` vêm dentro de `price`. No parcial em dinheiro, o valor do item cai em `in_sale_refund_to_c_fee` e `refund_price` fica 0.
+- `setStatus` tem limite real de 1 chamada por minuto, igual ao limitador local.
+
 ## Itens a validar com a 99Food
 
 Cada um está marcado no código com `[VALIDAR 99Food]`.
 
-1. Se `getAuthorizedShops` está liberado para o app VEDDI (é de acesso restrito; sem ele, cai em `shop/list`). `Food99AuthService`.
-2. Fórmula do total local × campos de preço nos dois modelos (comparar com o valor que a loja vê no app). `Food99OrderDTO`; divergências vão pro log e pro `reported_total`.
-3. Rota de "entregue" na entrega própria (`selfdelivery/delivered`, com fallback `order/delivered`) e campos obrigatórios de `courier_info`.
-4. `order_confirm_method = 2` (só API) como padrão.
-5. Resposta para callback de loja desconhecida (hoje `errno 0`, pra não gerar reenvio sem fim).
-6. Pausas longas/futuras com fechar (2) / revogar fechamento (4) e o `auto_switch`.
-7. Tratamento de `orderPartialCancel` nos itens do pedido local (hoje os itens não são reescritos; o reembolso fica no resumo).
-8. Itens vendidos por peso (`sales_type`): hoje entram como item avulso com o peso no nome.
-9. Se as fotos do storage do VEDDI são baixáveis pelos servidores da 99 (sem 403).
-10. Padrão de `available_in_99food` (hoje `true`, como o iFood; a publicação do cardápio é opt-in).
-11. Formatos não confirmados: `agree` (booleano) nas respostas de solicitação, `receive_*_apply` (1/2), parâmetro da task (`taskID`) e se `getUrl` aceita a assinatura.
-12. Se os limites de token (1 req/30 s) e de loja valem por loja, como o VEDDI assume, ou pelo app inteiro, como a documentação sugere. Pelo app inteiro, muitas lojas renovando juntas recebem `10005`: vira nova tentativa, não erro, mas pode pedir um espaçamento global em `Food99Client::LIMITS`.
-13. Se `biz_day_time` parcial mantém os dias omitidos. A tela sempre envia a semana inteira e trata dia sem turno como fechado. `Food99StoreHours::save()`.
-14. Se a resposta de `shopBind` vem no envelope `errno`/`data` como os demais endpoints. `Food99Client::unwrap()` exige o envelope.
+1. Assinatura do `uploadMenuTaskStatus`: não bate com `md5(corpo + app_secret)`, então o callback é recusado com 401. O resultado do upload vem de `CheckFood99CatalogTaskJob`, agendado a cada minuto; sem resultado em 30 min o envio vira falha com aviso à loja. Abrir chamado com a 99 antes de decidir aceitar esse callback sem assinatura.
+2. Reabrir loja depois de fechar: `setStatus` responde `11040` ("is menu upload?") com `store_status` 1 e `10001` ("sem itens disponíveis para venda") com 4, com ou sem `auto_switch`, mesmo com upload recente com sucesso, cardápio lido na API e itens com `status` 1. `sold_info_intl` e foto não mudam o resultado. `shop/deliveryArea/*` responde `10050` (sem permissão) para o app. Em entrega da loja o `11040` passa a citar também "is delivery data set?", então a reabertura depende da área de entrega e da liberação desse endpoint. Enquanto não houver resposta, não fechar loja real pelo painel.
+3. Fórmula do total na entrega 99: sem `real_price` e com `store_charged_delivery_price`, que hoje não entra no valor líquido. `Food99OrderDTO`; divergências vão pro log e pro `reported_total`.
+4. "Entregue" sem código na entrega própria: `selfdelivery/delivered` e `order/delivered` levam a 99 só até o status 500 (callback `orderDelivered`, sem efeito no VEDDI). O VEDDI chama `order/finish` em seguida, que levou de 500 a 600 na loja de teste. Falta a 99 confirmar que isso vale em produção; com código, a conclusão vem de `verifyDeliveryCode`.
+5. `order_confirm_method = 2` (só API) como padrão.
+6. Resposta para callback de loja desconhecida (hoje `errno 0`, pra não gerar reenvio sem fim).
+7. Pausas longas/futuras com fechar (2) / revogar fechamento (4) e o `auto_switch`.
+8. Tratamento de `orderPartialCancel` nos itens do pedido local (hoje os itens não são reescritos; o reembolso fica no resumo).
+9. Itens vendidos por peso (`sales_type`): hoje entram como item avulso com o peso no nome.
+10. Se as fotos do storage do VEDDI são baixáveis pelos servidores da 99 (sem 403).
+11. Padrão de `available_in_99food` (hoje `true`, como o iFood; a publicação do cardápio é opt-in).
+12. Formato `agree` (booleano) nas respostas de solicitação de cancelamento e reembolso.
+13. Se os limites de token (1 req/30 s) e de loja valem por loja, como o VEDDI assume, ou pelo app inteiro, como a documentação sugere. Pelo app inteiro, muitas lojas renovando juntas recebem `10005`: vira nova tentativa, não erro, mas pode pedir um espaçamento global em `Food99Client::LIMITS`.
+14. Se `biz_day_time` parcial mantém os dias omitidos. A tela sempre envia a semana inteira e trata dia sem turno como fechado. `Food99StoreHours::save()`.
+15. Se a resposta de `shopBind` vem no envelope `errno`/`data` como os demais endpoints. `Food99Client::unwrap()` exige o envelope.
+
+Sem teste real ainda: entregador da 99 (o sandbox não atribui), dinheiro com `shop_paid_money`/`payConfirm` até o fim, retirada, pagamento online e solicitações do cliente. Esses cenários dependem do app do cliente (C-App).
 
 ## Pendências conhecidas
 
@@ -127,6 +147,6 @@ Cada um está marcado no código com `[VALIDAR 99Food]`.
 ## Operação
 
 - `php artisan food99:check-connections` — monitor (agendado a cada 10 min).
-- Agendamentos em `routes/console.php`: tokens (10 min), reconciliação de pedidos (3 min), solicitações vencidas e pausas da filial (1 min), task de cardápio sem callback (15 min), cardápio completo (04:30).
+- Agendamentos em `routes/console.php`: tokens (10 min), reconciliação de pedidos (3 min, também busca `shop_paid_money` atrasado), solicitações vencidas e pausas da filial (1 min), resultado do upload de cardápio (1 min, um job por loja), cardápio completo (04:30).
 - Evento com falha: aba Diagnóstico › Reprocessar.
 - Lojas de todas as empresas: `/superadmin/integracoes`.

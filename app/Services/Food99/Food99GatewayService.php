@@ -4,7 +4,7 @@ namespace App\Services\Food99;
 
 use App\Contracts\Food99GatewayContract;
 use App\Exceptions\Food99ApiException;
-use App\Exceptions\Food99TokenExpiredException;
+use App\Exceptions\Food99RateLimitedException;
 use App\Models\Food99Integration;
 use Illuminate\Support\Facades\Log;
 
@@ -62,7 +62,7 @@ class Food99GatewayService implements Food99GatewayContract
 
     public function setApplyConfig(Food99Integration $integration, bool $receiveCancelApply, bool $receiveRefundApply): void
     {
-        // [VALIDAR 99Food] 1 = receber, 2 = não receber (mesma convenção 1/2 dos demais flags).
+        // 1 = receber, 2 = não receber.
         $this->call($integration, 'POST', '/v1/shop/apply/set', [
             'receive_cancel_apply' => $receiveCancelApply ? 1 : 2,
             'receive_refund_apply' => $receiveRefundApply ? 1 : 2,
@@ -88,8 +88,7 @@ class Food99GatewayService implements Food99GatewayContract
 
     public function getMenuTaskInfo(Food99Integration $integration, string $taskId): array
     {
-        // [VALIDAR 99Food] nome do parâmetro (taskID, como no callback uploadMenuTaskStatus).
-        return (array) $this->call($integration, 'GET', '/v1/item/item/getMenuTaskInfo', ['taskID' => $taskId], 'item.getMenuTaskInfo');
+        return (array) $this->call($integration, 'POST', '/v1/item/item/getMenuTaskInfo', ['task_id' => self::id($taskId)], 'item.getMenuTaskInfo');
     }
 
     public function updateItem(Food99Integration $integration, array $item): void
@@ -172,12 +171,12 @@ class Food99GatewayService implements Food99GatewayContract
     {
         $params = [
             'order_id' => self::id($orderId),
-            // A 99 espera "items" como string JSON, não como array.
+            // A 99 espera "items" como string JSON e "app_item_ids" separado por vírgula, não arrays.
             'items' => json_encode(array_values($items), JSON_UNESCAPED_UNICODE),
         ];
 
         if ($soldOutAppItemIds !== [] && $soldOutType !== null) {
-            $params['app_item_ids'] = array_values(array_map('strval', $soldOutAppItemIds));
+            $params['app_item_ids'] = implode(',', $soldOutAppItemIds);
             $params['is_sold_out'] = $soldOutType;
         }
 
@@ -222,7 +221,8 @@ class Food99GatewayService implements Food99GatewayContract
 
     /**
      * Chamada com o auth_token da loja. Token expirado no meio (10102: a expiração da 99 é
-     * aleatória) → renova e repete uma vez, sem passar de novo pelo limitador local.
+     * aleatória) ou trocado (10100: novo vínculo da loja gira o token) → renova e repete uma vez,
+     * sem passar de novo pelo limitador local.
      */
     private function call(Food99Integration $integration, string $method, string $path, array $params, string $operation): mixed
     {
@@ -230,8 +230,19 @@ class Food99GatewayService implements Food99GatewayContract
 
         try {
             return $this->client->request($method, $path, ['auth_token' => $token] + $params, $operation, $integration)['data'];
-        } catch (Food99TokenExpiredException) {
-            $token = $this->auth->renewExpiredToken($integration, $token);
+        } catch (Food99ApiException $e) {
+            if (! $e->isTokenRejected()) {
+                throw $e;
+            }
+
+            try {
+                $token = $this->auth->renewExpiredToken($integration, $token);
+            } catch (Food99RateLimitedException $limited) {
+                // Token trocado (10100) com a renovação presa no limite: vale a recusa original,
+                // senão loja sem acesso parece só "tente de novo" e o pedido nunca vira falha com
+                // aviso. Vencido (10102) é passageiro: o job espera o limite sem gastar tentativa.
+                throw $e->errno === Food99ApiException::TOKEN_REJECTED_ERRNO ? $e : $limited;
+            }
 
             return $this->client->request($method, $path, ['auth_token' => $token] + $params, $operation, $integration, throttle: false)['data'];
         }

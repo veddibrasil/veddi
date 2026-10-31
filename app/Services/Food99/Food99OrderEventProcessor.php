@@ -5,6 +5,8 @@ namespace App\Services\Food99;
 use App\Contracts\Food99EventHandler;
 use App\Contracts\Food99GatewayContract;
 use App\Enums\OrderChannel;
+use App\Exceptions\Food99ApiException;
+use App\Exceptions\Food99RateLimitedException;
 use App\Jobs\RefreshFood99OrderDetailsJob;
 use App\Models\CompanyNotification;
 use App\Models\Food99WebhookEvent;
@@ -94,16 +96,19 @@ class Food99OrderEventProcessor implements Food99EventHandler
         try {
             $info = $this->gateway->getOrderDetails(app(Food99OrderActionService::class)->resolveIntegration($order), $details->orderId());
             $code = isset($info['status']) && (int) $info['status'] >= 900 ? (int) $info['status'] : null;
-            $refund = isset($info['refund_price']) ? round(((float) $info['refund_price']) / 100, 2) : null;
+            $refund = Food99OrderDetails::refundFrom($info);
+        } catch (Food99RateLimitedException $e) {
+            // Limite passa: o job volta pra fila e relê. A reconciliação não relê pedido cancelado.
+            throw $e;
         } catch (Throwable $e) {
             Log::channel('food99')->warning('99Food: detalhe do cancelamento indisponível, cancelando com motivo genérico', [
                 'order_id' => $order->id,
-                'error' => $e->getMessage(),
+                'error' => Food99ApiException::forLog($e),
             ]);
         }
 
         $this->sync->cancel($order, array_filter([
-            'origin' => $code !== null ? $this->originFor($code) : null,
+            'origin' => $code !== null ? Food99OrderDetails::cancelOrigin($code) : null,
             'code' => $code,
             'reason' => $code !== null ? (Food99OrderDetails::CANCEL_REASONS[$code] ?? null) : null,
             'refund' => $refund,
@@ -125,14 +130,21 @@ class Food99OrderEventProcessor implements Food99EventHandler
                 'amount' => (int) $item['submit_refund_amount'],
             ])->values()->all();
 
-        $history = $details->get('partial_cancellations', []);
-        $history[] = [
+        $fee = $info['price']['in_sale_refund_to_c_fee'] ?? null;
+        $cancellation = [
             'items' => $refunded,
-            'refund' => isset($info['refund_price']) ? round(((float) $info['refund_price']) / 100, 2) : null,
-            'refund_fee' => isset($info['in_sale_refund_to_c_fee']) ? round(((float) $info['in_sale_refund_to_c_fee']) / 100, 2) : null,
-            'at' => now()->toIso8601String(),
-            'source' => 'food99_event',
+            'refund' => Food99OrderDetails::refundFrom($info),
+            'refund_fee' => $fee === null ? null : round(((float) $fee) / 100, 2),
         ];
+
+        // A 99 não manda id de evento: reentrega com outro timestamp passa pelo dedupe, mas o
+        // pedido na 99 segue igual ao último cancelamento registrado.
+        $history = $details->get('partial_cancellations', []);
+        if ($history !== [] && array_intersect_key(end($history), $cancellation) == $cancellation) {
+            return true;
+        }
+
+        $history[] = $cancellation + ['at' => now()->toIso8601String(), 'source' => 'food99_event'];
         $this->sync->mergeMetadata($order, ['partial_cancellations' => $history]);
 
         $this->notify($order, 'Itens cancelados no pedido 99Food #'.$details->displayId(), 'Parte dos itens foi cancelada e reembolsada ao cliente. Confira no pedido.');
@@ -204,16 +216,6 @@ class Food99OrderEventProcessor implements Food99EventHandler
         }
 
         return null;
-    }
-
-    private function originFor(int $code): string
-    {
-        return match (true) {
-            in_array($code, [901, 945], true) => 'customer',
-            in_array($code, [921, 922, 923, 944, 946], true) => 'store',
-            $code >= 940 && $code < 950 => 'courier',
-            default => 'platform',
-        };
     }
 
     private function notify(Order $order, string $title, string $subtitle): void

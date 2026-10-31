@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\CheckFood99CatalogTaskJob;
 use App\Jobs\ExpireFood99RequestsJob;
 use App\Jobs\MonitorIfoodWebhookHealthJob;
 use App\Jobs\PollIfoodEventsJob;
@@ -173,24 +174,19 @@ Schedule::call(function () {
     ->withoutOverlapping(expiresAt: 2)
     ->onOneServer();
 
-// Upload de cardápio sem callback há 15 min: consulta a task direto.
+// Upload de cardápio em andamento: um job por loja consulta a task, sem HTTP dentro do scheduler.
+// Conta do envio, não de updated_at: a renovação do token mexe nele a cada 10 min.
 Schedule::call(function () {
     Food99Integration::operational()
         ->where('catalog_sync_status', 'running')
-        ->where('updated_at', '<', now()->subMinutes(15))
-        ->get()
-        ->each(function (Food99Integration $integration) {
-            try {
-                app(\App\Services\Food99\Food99CatalogSyncService::class)->refreshTaskStatus($integration);
-            } catch (\Throwable $e) {
-                report($e);
-            }
-        });
+        ->where('catalog_queued_at', '<', now()->subMinute())
+        ->pluck('id')
+        ->each(fn (int $id) => CheckFood99CatalogTaskJob::dispatch($id));
 })
     ->name('food99-catalog-task-check')
-    ->everyFifteenMinutes()
+    ->everyMinute()
     ->when($food99Enabled)
-    ->withoutOverlapping()
+    ->withoutOverlapping(expiresAt: 2)
     ->onOneServer();
 
 // Cardápio completo de madrugada (fora do horário do iFood), só lojas com cardápio publicado.

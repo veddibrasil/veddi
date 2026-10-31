@@ -62,6 +62,9 @@ use Laravel\Nightwatch\Records\OutgoingRequest;
 
 class AppServiceProvider extends ServiceProvider
 {
+    /** Parâmetros de URL cujo valor nunca sai do servidor pela telemetria. */
+    public const SECRET_QUERY_PARAMS = '/([?&](?:client_secret|app_secret|code|access_token|auth_token|input_token|appsecret_proof|fb_exchange_token|token|pin)=)[^&#]*/i';
+
     /**
      * Register any application services.
      */
@@ -164,8 +167,8 @@ class AppServiceProvider extends ServiceProvider
 
     /**
      * O Nightwatch grava a URL completa das requisições externas. A Graph API da Meta recebe
-     * client_secret, code de uso único, tokens e appsecret_proof na query: os valores nunca
-     * podem sair do servidor.
+     * client_secret, code de uso único, tokens e appsecret_proof na query, e a 99Food recebe
+     * app_secret e auth_token: os valores nunca podem sair do servidor.
      */
     protected function configureNightwatch(): void
     {
@@ -176,11 +179,7 @@ class AppServiceProvider extends ServiceProvider
         });
 
         Nightwatch::redactOutgoingRequests(function (OutgoingRequest $request) {
-            $request->url = (string) preg_replace(
-                '/([?&](?:client_secret|code|access_token|input_token|appsecret_proof|fb_exchange_token|token|pin)=)[^&#]*/i',
-                '$1[redacted]',
-                $request->url,
-            );
+            $request->url = (string) preg_replace(self::SECRET_QUERY_PARAMS, '$1[redacted]', $request->url);
         });
     }
 

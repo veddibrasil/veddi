@@ -197,6 +197,7 @@ class Food99CatalogSyncService implements Food99EventHandler
                 'catalog_task_id' => $taskId,
                 'catalog_sync_status' => 'running',
                 'catalog_sync_error' => null,
+                'catalog_queued_at' => now(),
             ]);
 
             DB::table('branch_product')->where('branch_id', $integration->branch_id)->whereIn('product_id', $built['products'])
@@ -224,6 +225,9 @@ class Food99CatalogSyncService implements Food99EventHandler
     /** Resultado da task de upload (callback ou getMenuTaskInfo). Task antiga é ignorada. */
     public function applyTaskResult(Food99Integration $integration, string $taskId, int $status, array $operationList): bool
     {
+        // Relê antes de comparar: um upload novo pode ter saído enquanto a consulta da task corria.
+        $integration->refresh();
+
         if ($taskId === '' || $taskId !== (string) $integration->catalog_task_id) {
             return false;
         }
@@ -261,13 +265,7 @@ class Food99CatalogSyncService implements Food99EventHandler
         ]);
 
         if ($state === 'failed') {
-            CompanyNotification::create([
-                'company_id' => $integration->company_id,
-                'type' => 'food99_alert',
-                'title' => '99Food: cardápio não foi aceito',
-                'subtitle' => 'A 99Food recusou o envio do cardápio. Confira os itens com erro na integração.',
-                'link' => route('admin.settings.99food'),
-            ]);
+            $this->alertCatalogFailed($integration, 'A 99Food recusou o envio do cardápio. Confira os itens com erro na integração.');
         }
 
         return true;
@@ -283,6 +281,39 @@ class Food99CatalogSyncService implements Food99EventHandler
         $info = $this->gateway->getMenuTaskInfo($integration, $integration->catalog_task_id);
 
         return $this->applyTaskResult($integration, (string) $integration->catalog_task_id, (int) ($info['status'] ?? -1), (array) ($info['operationList'] ?? $info['operation_list'] ?? []));
+    }
+
+    /** Upload sem resultado no prazo vira falha: sem isso o botão de envio fica travado até a madrugada. */
+    public function expireStaleTask(Food99Integration $integration): bool
+    {
+        $integration->refresh();
+
+        if (! $integration->isCatalogTaskStale()) {
+            return false;
+        }
+
+        DB::table('branch_product')->where('branch_id', $integration->branch_id)->where('food99_sync_status', 'pending')
+            ->update(['food99_sync_status' => 'failed', 'food99_sync_error' => 'A 99Food não confirmou o envio do cardápio.']);
+
+        $integration->update([
+            'catalog_sync_status' => 'failed',
+            'catalog_sync_error' => 'A 99Food não confirmou o envio do cardápio. Envie de novo.',
+        ]);
+
+        $this->alertCatalogFailed($integration, 'A 99Food não confirmou o envio do cardápio. Envie de novo pela integração.');
+
+        return true;
+    }
+
+    private function alertCatalogFailed(Food99Integration $integration, string $subtitle): void
+    {
+        CompanyNotification::create([
+            'company_id' => $integration->company_id,
+            'type' => 'food99_alert',
+            'title' => '99Food: cardápio não foi aceito',
+            'subtitle' => $subtitle,
+            'link' => route('admin.settings.99food'),
+        ]);
     }
 
     /**

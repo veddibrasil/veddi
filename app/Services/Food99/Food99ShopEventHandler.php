@@ -9,12 +9,12 @@ use App\Models\Food99WebhookEvent;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Callbacks da loja: vínculo/desvínculo (shopBindStatus), mudança de status (shopStatus) e
- * falha ao abrir automaticamente (autoOnlineResult).
+ * Callbacks da loja: vínculo/desvínculo (shopBindStatus), mudança de status (shopStatus), modo
+ * ocupado (shopBusyMode) e falha ao abrir automaticamente (autoOnlineResult).
  */
 class Food99ShopEventHandler implements Food99EventHandler
 {
-    public const TYPES = ['shopBindStatus', 'shopStatus', 'autoOnlineResult'];
+    public const TYPES = ['shopBindStatus', 'shopStatus', 'shopBusyMode', 'autoOnlineResult'];
 
     /** sub_biz_status da 99 traduzido. */
     public const SUB_BIZ_STATUS_LABELS = [
@@ -47,6 +47,7 @@ class Food99ShopEventHandler implements Food99EventHandler
         return match ($event->event_type) {
             'shopBindStatus' => $this->bindStatus($event),
             'shopStatus' => $this->shopStatus($event),
+            'shopBusyMode' => $this->busyMode($event),
             'autoOnlineResult' => $this->autoOnlineResult($event),
             default => false,
         };
@@ -112,6 +113,38 @@ class Food99ShopEventHandler implements Food99EventHandler
             'sub_biz_status' => isset($data['sub_biz_status']) ? (int) $data['sub_biz_status'] : null,
             'store_status_updated_at' => now(),
         ], fn ($value) => $value !== null) + Food99Integration::availabilityAttributes($data))->save();
+
+        return true;
+    }
+
+    /** Modo ocupado ligado ou desligado fora do painel (app da loja, portal ou fim do prazo). */
+    private function busyMode(Food99WebhookEvent $event): bool
+    {
+        $integration = $event->food99Integration;
+        if (! $integration) {
+            return false;
+        }
+
+        $data = $event->data();
+        if (! isset($data['busy_state'])) {
+            return true;
+        }
+
+        $state = (int) $data['busy_state'];
+        $minutes = (int) ($data['busy_duration_minutes'] ?? 0);
+        $busyMode = [
+            'busy_state' => $state,
+            'busy_duration_minutes' => $minutes,
+            'busy_cook_delay_minutes' => (int) ($data['busy_cook_delay_minutes'] ?? 0),
+        ];
+
+        if ($state === 1) {
+            // Sem duração no evento, vale o fim calculado ao ativar pelo painel.
+            $until = $minutes > 0 ? now()->addMinutes($minutes)->getTimestamp() : ($integration->busy_mode['until'] ?? null);
+            $busyMode += $until !== null ? ['until' => $until] : [];
+        }
+
+        $integration->forceFill(['busy_mode' => $busyMode])->save();
 
         return true;
     }

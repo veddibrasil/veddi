@@ -184,7 +184,7 @@ class Food99StoreStatusSync
                 } catch (Throwable $e) {
                     Log::channel('food99')->warning('99Food: pausa agendada não aplicada, nova tentativa no próximo minuto', [
                         'branch_pause_id' => $pause->id,
-                        'error' => $e->getMessage(),
+                        'error' => Food99ApiException::forLog($e),
                     ]);
                 }
             });
@@ -210,7 +210,7 @@ class Food99StoreStatusSync
             Log::channel('food99')->warning('99Food: não foi possível reabrir a loja ao remover a pausa', [
                 'branch_pause_id' => $pause->id,
                 'food99_integration_id' => $integration->id,
-                'error' => $e->getMessage(),
+                'error' => Food99ApiException::forLog($e),
             ]);
 
             return false;

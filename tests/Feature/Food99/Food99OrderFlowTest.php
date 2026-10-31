@@ -1,10 +1,17 @@
 <?php
 
 use App\Events\OrderStatusUpdated;
+use App\Exceptions\Food99ApiException;
+use App\Jobs\ProcessFood99EventJob;
 use App\Livewire\Admin\Orders\Index as OrdersIndex;
 use App\Livewire\Admin\Orders\Show as OrdersShow;
+use App\Models\CompanyNotification;
+use App\Models\Food99WebhookEvent;
 use App\Models\User;
 use App\Services\Food99\Food99OrderActionService;
+use App\Services\Food99\Food99OrderStatusSync;
+use App\Services\Order\OrderService;
+use App\Services\Order\StockService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\DB;
@@ -78,13 +85,78 @@ it('despacha e entrega com código na entrega própria, quitando o dinheiro', fu
     food99Actions()->dispatch($order->fresh(), courierName: 'Zé', courierPhone: '(62) 99999-0000');
     expect($order->fresh()->status)->toBe('out_for_delivery');
     Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/selfdelivery/dispatch')
-        && $r['courier_info'] === ['name' => 'Zé', 'phone' => '62999990000']
+        && $r['courier_info'] === [
+            'courier_name' => 'Zé',
+            'courier_first_name' => 'Zé',
+            'courier_last_name' => 'Zé',
+            'courier_phone_code' => '+55',
+            'courier_phone' => '62999990000',
+        ]
         && $r['limit_time']['delivery_time'] > now()->getTimestamp());
 
     food99Actions()->markDelivered($order->fresh(), deliveryCode: '1234');
     Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/selfdelivery/verifyDeliveryCode') && $r['delivery_code'] === '1234');
+    Http::assertNotSent(fn (Request $r) => str_ends_with($r->url(), '/order/order/finish'));
     expect($order->fresh()->status)->toBe('delivered')
         ->and($order->fresh()->payments->pluck('status')->all())->toBe(['paid']);
+});
+
+it('conclui na 99 a entrega própria sem código', function () {
+    $ctx = food99Context();
+    $ctx['branch']->update(['phone' => '(62) 3999-0000']);
+    $info = food99OrderInfo($ctx, 'order-store-delivery-cash');
+    fakeFood99Api($info);
+    $order = receiveFood99Order($this, $ctx, $info);
+    food99Actions()->accept($order);
+    food99Actions()->dispatch($order->fresh());
+
+    food99Actions()->markDelivered($order->fresh());
+
+    Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/selfdelivery/delivered'));
+    Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/order/order/finish'));
+    expect($order->fresh()->status)->toBe('delivered');
+});
+
+it('não marca entregue no VEDDI se a 99 recusar a conclusão', function () {
+    $ctx = food99Context();
+    $ctx['branch']->update(['phone' => '(62) 3999-0000']);
+    $info = food99OrderInfo($ctx, 'order-store-delivery-cash');
+    fakeFood99Api($info, ['*/v1/order/order/finish' => Http::response(food99Error(12014, 'status inválido'), 200)]);
+    $order = receiveFood99Order($this, $ctx, $info);
+    food99Actions()->accept($order);
+    food99Actions()->dispatch($order->fresh());
+
+    expect(fn () => food99Actions()->markDelivered($order->fresh()))->toThrow(Food99ApiException::class)
+        ->and($order->fresh()->status)->toBe('out_for_delivery');
+});
+
+it('despacha com o telefone da filial e separa nome e sobrenome do entregador padrão', function () {
+    $ctx = food99Context();
+    $ctx['branch']->update(['phone' => '(62) 3999-0000']);
+    $info = food99OrderInfo($ctx, 'order-store-delivery-cash');
+    fakeFood99Api($info);
+    $order = receiveFood99Order($this, $ctx, $info);
+
+    food99Actions()->accept($order);
+    food99Actions()->dispatch($order->fresh());
+
+    Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/selfdelivery/dispatch')
+        && $r['courier_info']['courier_name'] === 'Entregador da loja'
+        && $r['courier_info']['courier_first_name'] === 'Entregador'
+        && $r['courier_info']['courier_last_name'] === 'da loja'
+        && $r['courier_info']['courier_phone'] === '6239990000');
+});
+
+it('explica que falta telefone em vez de mandar despacho que a 99 recusa', function () {
+    $ctx = food99Context();
+    $info = food99OrderInfo($ctx, 'order-store-delivery-cash');
+    fakeFood99Api($info);
+    $order = receiveFood99Order($this, $ctx, $info);
+
+    food99Actions()->accept($order);
+
+    expect(fn () => food99Actions()->dispatch($order->fresh()))->toThrow(RuntimeException::class, 'telefone da filial');
+    Http::assertNotSent(fn (Request $r) => str_ends_with($r->url(), '/selfdelivery/dispatch'));
 });
 
 it('recusa despacho de entrega 99 pela loja', function () {
@@ -117,7 +189,7 @@ it('cancela localmente com o motivo 9xx do detalhe e devolve o estoque', functio
     $ctx = food99Context();
     DB::table('branch_product')->where('product_id', $ctx['product']->id)->update(['track_stock' => true, 'quantity' => 10]);
     $info = food99OrderInfo($ctx);
-    fakeFood99Api(array_merge($info, ['status' => 901, 'refund_price' => 1800]));
+    fakeFood99Api(array_replace_recursive($info, ['status' => 901, 'price' => ['refund_price' => 1800]]));
     $order = receiveFood99Order($this, $ctx, $info);
     expect(DB::table('branch_product')->where('product_id', $ctx['product']->id)->value('quantity'))->toBe(8);
 
@@ -180,6 +252,85 @@ it('cancela itens parcialmente pela linha da 99', function () {
     expect($order->fresh()->food99Details()->get('partial_cancellations'))->toHaveCount(1)
         ->and(fn () => food99Actions()->partialCancel($order->fresh(), ['7000000000000000001' => 2, '7000000000000000002' => 1]))
         ->toThrow(InvalidArgumentException::class, 'cancele o pedido inteiro');
+});
+
+it('registra o cancelamento parcial da 99 uma vez só, com o reembolso de price', function () {
+    $ctx = food99Context();
+    $info = food99OrderInfo($ctx);
+    fakeFood99Api(array_replace_recursive($info, [
+        'price' => ['refund_price' => 500, 'in_sale_refund_to_c_fee' => 50],
+        'order_items' => [['submit_refund_amount' => 1]],
+    ]));
+    $order = receiveFood99Order($this, $ctx, $info);
+
+    foreach ([1, 2] as $delay) {
+        postFood99Webhook($this, food99Callback($ctx['integration'], 'orderPartialCancel', ['order_id' => $info['order_id']], [
+            'timestamp' => now()->getTimestamp() + $delay,
+        ]))->assertOk();
+    }
+
+    $history = $order->fresh()->food99Details()->get('partial_cancellations');
+    expect($history)->toHaveCount(1)
+        ->and($history[0]['refund'])->toEqual(5.0)
+        ->and($history[0]['refund_fee'])->toEqual(0.5)
+        ->and($history[0]['items'][0]['amount'])->toBe(1)
+        ->and(CompanyNotification::withoutGlobalScopes()->where('title', 'like', 'Itens cancelados%')->count())->toBe(1);
+});
+
+it('espera o limite da 99 em vez de cancelar sem o motivo', function () {
+    $ctx = food99Context();
+    $info = food99OrderInfo($ctx);
+    $limited = false;
+    Http::fake(function (Request $request) use (&$limited, $info) {
+        if (! str_contains($request->url(), '/v1/order/order/detail')) {
+            return Http::response(food99Ok(), 200);
+        }
+
+        return Http::response($limited ? food99Error(10005) : food99Ok(array_merge($info, ['status' => 901])), 200);
+    });
+    $order = receiveFood99Order($this, $ctx, $info);
+
+    $limited = true;
+    postFood99Webhook($this, food99Callback($ctx['integration'], 'orderCancel', ['order_id' => $info['order_id']]))->assertOk();
+
+    $event = Food99WebhookEvent::where('event_type', 'orderCancel')->sole();
+    expect($order->fresh()->status)->not->toBe('cancelled')
+        ->and($event->status)->toBe(Food99WebhookEvent::STATUS_PENDING);
+
+    $limited = false;
+    (new ProcessFood99EventJob($event->id))->handle();
+
+    expect($order->fresh()->status)->toBe('cancelled')
+        ->and($order->fresh()->cancellation_reason)->toContain('Cancelado pelo cliente');
+});
+
+it('não deixa o pedido cancelado com o estoque ainda baixado', function () {
+    $ctx = food99Context();
+    DB::table('branch_product')->where('product_id', $ctx['product']->id)->update(['track_stock' => true, 'quantity' => 10]);
+    $info = food99OrderInfo($ctx);
+    fakeFood99Api($info);
+    $order = receiveFood99Order($this, $ctx, $info);
+    $sync = app(Food99OrderStatusSync::class);
+
+    $this->mock(StockService::class, fn ($mock) => $mock->shouldReceive('restoreForOrder')->once()->andThrow(new RuntimeException('falha no estoque')));
+    expect(fn () => $sync->cancel($order, ['code' => 901]))->toThrow(RuntimeException::class, 'falha no estoque')
+        ->and($order->fresh()->status)->not->toBe('cancelled');
+
+    $this->app->forgetInstance(StockService::class);
+    $sync->cancel($order->fresh(), ['code' => 901]);
+
+    expect($order->fresh()->status)->toBe('cancelled')
+        ->and(DB::table('branch_product')->where('product_id', $ctx['product']->id)->value('quantity'))->toBe(10);
+});
+
+it('não cancela pedido de marketplace só no VEDDI', function () {
+    $ctx = food99Context();
+    $info = food99OrderInfo($ctx);
+    fakeFood99Api($info);
+    $order = receiveFood99Order($this, $ctx, $info);
+
+    expect(fn () => app(OrderService::class)->cancelOrderAsAdmin($order, null, 'Cliente desistiu'))->toThrow(RuntimeException::class, 'marketplace')
+        ->and($order->fresh()->status)->not->toBe('cancelled');
 });
 
 it('propaga pronto à 99 quando o status muda fora das ações', function () {

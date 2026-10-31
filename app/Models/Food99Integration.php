@@ -20,6 +20,9 @@ class Food99Integration extends Model
     /** Passou disso na fila, o job se perdeu: o envio de cardápio volta a ser liberado. */
     private const CATALOG_QUEUE_STALE_MINUTES = 10;
 
+    /** O resultado da task vem só da consulta a getMenuTaskInfo: passou disso, não vem mais. */
+    private const CATALOG_TASK_STALE_MINUTES = 30;
+
     public const STATUS_DISCONNECTED = 'disconnected';
 
     public const STATUS_PENDING_AUTHORIZATION = 'pending_authorization';
@@ -149,6 +152,12 @@ class Food99Integration extends Model
     {
         return $this->catalog_sync_status === 'running'
             || ($this->catalog_sync_status === 'queued' && $this->catalog_queued_at?->gt(now()->subMinutes(self::CATALOG_QUEUE_STALE_MINUTES)) === true);
+    }
+
+    public function isCatalogTaskStale(): bool
+    {
+        return $this->catalog_sync_status === 'running'
+            && $this->catalog_queued_at?->lt(now()->subMinutes(self::CATALOG_TASK_STALE_MINUTES)) === true;
     }
 
     public function isBusy(): bool

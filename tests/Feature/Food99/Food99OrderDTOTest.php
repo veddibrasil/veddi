@@ -52,6 +52,40 @@ it('normaliza entrega própria em dinheiro (modelo 2) com troco e endereço masc
         ->and($dto->paymentMethods()[0])->toMatchArray(['label' => 'Dinheiro', 'value' => 21.0, 'prepaid' => false, 'change_for' => 50.0]);
 });
 
+it('lê telefone virtual, localizador e link de entrega de receive_address', function () {
+    $info = food99FixtureInfo('order-store-delivery-cash');
+    unset($info['locator'], $info['virtual_phone_number'], $info['handover_page_url']);
+    $info['receive_address'] = array_merge($info['receive_address'], [
+        'locator' => '58599549',
+        'virtual_phone_number' => '06234421649',
+        'handover_page_url' => 'https://food-b-h5.99app.com/pt-BR/v2/confirmation-entrega',
+    ]);
+
+    $dto = Food99OrderDTO::fromArray($info);
+
+    expect($dto->locator)->toBe('58599549')
+        ->and($dto->virtualPhoneNumber)->toBe('06234421649')
+        ->and($dto->handoverPageUrl)->toBe('https://food-b-h5.99app.com/pt-BR/v2/confirmation-entrega');
+});
+
+it('usa o valor de fora quando receive_address vem vazio ou mascarado', function () {
+    $info = food99FixtureInfo('order-store-delivery-cash');
+    $info['locator'] = '58599549';
+    $info['virtual_phone_number'] = '06234421649';
+    $info['handover_page_url'] = 'https://food-b-h5.99app.com/pt-BR/v2/confirmation-entrega';
+    $info['receive_address'] = array_merge($info['receive_address'], [
+        'locator' => '',
+        'virtual_phone_number' => '***',
+        'handover_page_url' => '',
+    ]);
+
+    $dto = Food99OrderDTO::fromArray($info);
+
+    expect($dto->locator)->toBe('58599549')
+        ->and($dto->virtualPhoneNumber)->toBe('06234421649')
+        ->and($dto->handoverPageUrl)->toBe('https://food-b-h5.99app.com/pt-BR/v2/confirmation-entrega');
+});
+
 it('usa o total como estimativa enquanto a 99 não informa shop_paid_money', function () {
     $info = food99FixtureInfo('order-platform-delivery');
     $info['pay_method'] = 2;

@@ -3,7 +3,9 @@
 namespace App\Jobs;
 
 use App\Contracts\Food99GatewayContract;
+use App\DTOs\Food99OrderDTO;
 use App\Enums\OrderChannel;
+use App\Exceptions\Food99ApiException;
 use App\Exceptions\Food99RateLimitedException;
 use App\Models\Food99Integration;
 use App\Models\Order;
@@ -70,7 +72,7 @@ class ReconcileFood99IntegrationJob implements ShouldBeUnique, ShouldQueue
             } catch (Throwable $e) {
                 Log::channel('food99')->warning('99Food: reconciliação do pedido falhou', [
                     'order_id' => $order->id,
-                    'error' => $e->getMessage(),
+                    'error' => Food99ApiException::forLog($e),
                 ]);
             }
         }
@@ -81,17 +83,24 @@ class ReconcileFood99IntegrationJob implements ShouldBeUnique, ShouldQueue
         $status = (int) ($info['status'] ?? 0);
 
         if ($status >= 900) {
-            $sync->cancel($order, [
-                'origin' => 'platform',
+            $sync->cancel($order, array_filter([
+                'origin' => Food99OrderDetails::cancelOrigin($status),
                 'code' => $status,
                 'reason' => Food99OrderDetails::CANCEL_REASONS[$status] ?? null,
-            ]);
+                'refund' => Food99OrderDetails::refundFrom($info),
+            ], fn ($value) => $value !== null));
 
             return;
         }
 
         if ($stage = Food99OrderDetails::STATUS_STAGES[$status] ?? null) {
             $sync->advance($order, $stage, source: 'food99_reconcile');
+        }
+
+        // shop_paid_money só vem depois de a 99 atribuir o entregador, às vezes depois do
+        // deliveryStatus 120. Sem ele não há payConfirm, e sem payConfirm o entregador não vê o endereço.
+        if ($order->food99Details()->get('pending_estimated') && ! Food99OrderDTO::fromArray($info)->pendingEstimated) {
+            RefreshFood99OrderDetailsJob::dispatch($order->id);
         }
     }
 }

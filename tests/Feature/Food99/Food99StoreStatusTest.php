@@ -71,6 +71,41 @@ it('fecha a loja no início de pausa longa futura e revoga o fechamento no fim',
         ->and(food99StoreCalls()[1])->toBe(['store_status' => 4]);
 });
 
+it('acompanha o modo ocupado ligado e desligado fora do painel', function () {
+    $ctx = food99Context();
+
+    postFood99Webhook($this, food99Callback($ctx['integration'], 'shopBusyMode', [
+        'source' => 300, 'busy_state' => 1, 'busy_duration_minutes' => 30, 'busy_cook_delay_minutes' => 10,
+    ]))->assertOk();
+
+    expect($ctx['integration']->fresh()->isBusy())->toBeTrue()
+        ->and($ctx['integration']->fresh()->busy_mode['until'])->toBeGreaterThan(now()->getTimestamp());
+
+    postFood99Webhook($this, food99Callback($ctx['integration'], 'shopBusyMode', [
+        'source' => 300, 'busy_state' => 0, 'busy_duration_minutes' => 0, 'busy_cook_delay_minutes' => 0,
+    ], ['timestamp' => now()->getTimestamp() + 60]))->assertOk();
+
+    expect($ctx['integration']->fresh()->isBusy())->toBeFalse();
+});
+
+it('mantém o fim do modo ocupado quando o evento não traz duração', function () {
+    $until = now()->addMinutes(20)->getTimestamp();
+    $ctx = food99Context(integration: ['busy_mode' => ['busy_state' => 1, 'busy_duration_minutes' => 20, 'until' => $until]]);
+
+    postFood99Webhook($this, food99Callback($ctx['integration'], 'shopBusyMode', ['source' => 300, 'busy_state' => 1]))->assertOk();
+
+    expect($ctx['integration']->fresh()->busy_mode['until'])->toBe($until);
+});
+
+it('não desliga o modo ocupado por evento sem busy_state', function () {
+    $until = now()->addMinutes(20)->getTimestamp();
+    $ctx = food99Context(integration: ['busy_mode' => ['busy_state' => 1, 'busy_duration_minutes' => 20, 'until' => $until]]);
+
+    postFood99Webhook($this, food99Callback($ctx['integration'], 'shopBusyMode', ['source' => 300]))->assertOk();
+
+    expect($ctx['integration']->fresh()->isBusy())->toBeTrue();
+});
+
 it('recusa pausa recorrente na 99Food', function () {
     $ctx = food99Context();
     $pause = new BranchPause(['recurring_annual' => true, 'starts_at' => now(), 'ends_at' => now()->addDay()]);

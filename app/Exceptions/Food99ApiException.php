@@ -17,6 +17,8 @@ class Food99ApiException extends RuntimeException
 
     public const TOKEN_EXPIRED_ERRNO = 10102;
 
+    public const TOKEN_REJECTED_ERRNO = 10100;
+
     public const RATE_LIMIT_ERRNOS = [10005, 12021];
 
     public const APP_CREDENTIAL_ERRNOS = [14105, 14106];
@@ -51,6 +53,12 @@ class Food99ApiException extends RuntimeException
         return in_array($this->errno, self::SHOP_ACCESS_ERRNOS, true);
     }
 
+    /** A 99 recusou o auth_token enviado: vencido (10102) ou trocado por um novo vínculo (10100). */
+    public function isTokenRejected(): bool
+    {
+        return in_array($this->errno, [self::TOKEN_EXPIRED_ERRNO, self::TOKEN_REJECTED_ERRNO], true);
+    }
+
     public function userMessage(): string
     {
         return match (true) {
@@ -62,6 +70,12 @@ class Food99ApiException extends RuntimeException
             $this->errmsg !== null && $this->errmsg !== '' => "A 99Food recusou: {$this->errmsg}.",
             default => "A 99Food recusou a operação (erro {$this->errno}).",
         };
+    }
+
+    /** Pro canal food99: fora das recusas da API, a mensagem pode trazer dados do cliente (SQL com bindings). */
+    public static function forLog(\Throwable $e): string
+    {
+        return $e instanceof self ? $e->getMessage() : class_basename($e).' em '.basename($e->getFile()).':'.$e->getLine();
     }
 
     /** Pra tela: recusa da API ganha o motivo; as demais exceções do fluxo 99Food já vêm com texto pro usuário. */

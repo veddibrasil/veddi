@@ -11,6 +11,7 @@ use App\Events\Food99OrderNotImported;
 use App\Events\NewOrderPlaced;
 use App\Models\CompanyNotification;
 use App\Models\Customer;
+use App\Models\Food99Request;
 use App\Models\Food99WebhookEvent;
 use App\Models\Order;
 use App\Services\Payment\PaymentOrchestrator;
@@ -96,6 +97,13 @@ class Food99OrderImporter implements Food99EventHandler
 
             $this->payments->processMarketplacePayments($order, OrderChannel::Food99->value, $dto->prepaidAmount(), $dto->pendingAmount);
             $event->update(['order_id' => $order->id]);
+
+            // Solicitação que chegou antes do pedido ficou órfã e o dedupe barra a reentrega dela.
+            Food99Request::withoutGlobalScopes()
+                ->where('company_id', $integration->company_id)
+                ->where('external_order_id', $dto->orderId)
+                ->whereNull('order_id')
+                ->update(['order_id' => $order->id]);
 
             return $order;
         });

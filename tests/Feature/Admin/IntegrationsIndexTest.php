@@ -65,6 +65,9 @@ test('lista integração iFood como conectada quando há filial ativa', function
 });
 
 test('filial suspensa ou aguardando reconexão aparece como precisando de atenção', function (string $status) {
+    // O card da 99Food mostra "Não conectado" e não faz parte do que este teste olha.
+    config(['food99.enabled' => false]);
+
     $company = integrationsTestCompany();
     app()->instance('current.company', $company);
 

@@ -1,6 +1,8 @@
 <?php
 
+use App\Jobs\CheckFood99CatalogTaskJob;
 use App\Jobs\SyncFood99CatalogJob;
+use App\Models\CompanyNotification;
 use App\Models\Food99WebhookEvent;
 use App\Models\Product;
 use App\Models\ProductOption;
@@ -128,6 +130,51 @@ it('ignora resultado de task antiga', function () {
     expect(food99Catalog()->applyTaskResult($ctx['integration'], '1', 1, []))->toBeFalse()
         ->and($ctx['integration']->fresh()->catalog_sync_status)->toBeNull();
 });
+
+it('ignora a task consultada quando um upload novo saiu no meio da consulta', function () {
+    $ctx = food99Context(integration: ['catalog_task_id' => '1', 'catalog_sync_status' => 'running']);
+    $consultada = $ctx['integration']->fresh();
+    $ctx['integration']->update(['catalog_task_id' => '2']);
+
+    expect(food99Catalog()->applyTaskResult($consultada, '1', 1, []))->toBeFalse()
+        ->and($ctx['integration']->fresh()->catalog_sync_status)->toBe('running');
+});
+
+it('aplica o resultado da task pela consulta agendada', function () {
+    $ctx = food99Context(integration: ['catalog_task_id' => '1', 'catalog_sync_status' => 'running', 'catalog_queued_at' => now()->subMinutes(2)]);
+    Http::fake(['*' => Http::response(food99Ok(['status' => 1, 'operationList' => []]), 200)]);
+
+    (new CheckFood99CatalogTaskJob($ctx['integration']->id))->handle(food99Catalog());
+
+    expect($ctx['integration']->fresh()->catalog_sync_status)->toBe('success');
+});
+
+it('mantém o upload em andamento dentro do prazo', function () {
+    $ctx = food99Context(integration: ['catalog_task_id' => '1', 'catalog_sync_status' => 'running', 'catalog_queued_at' => now()->subMinutes(29)]);
+    Http::fake(['*' => Http::response(food99Ok(['status' => 0]), 200)]);
+
+    (new CheckFood99CatalogTaskJob($ctx['integration']->id))->handle(food99Catalog());
+
+    expect($ctx['integration']->fresh()->catalog_sync_status)->toBe('running')
+        ->and($ctx['integration']->fresh()->isCatalogSyncing())->toBeTrue();
+});
+
+it('encerra o upload sem resultado no prazo, liberando o envio e avisando a loja', function (array $resposta) {
+    $ctx = food99Context(integration: ['catalog_task_id' => '1', 'catalog_sync_status' => 'running', 'catalog_queued_at' => now()->subMinutes(31)]);
+    DB::table('branch_product')->where('product_id', $ctx['product']->id)->update(['food99_sync_status' => 'pending']);
+    Http::fake(['*' => Http::response(...$resposta)]);
+
+    (new CheckFood99CatalogTaskJob($ctx['integration']->id))->handle(food99Catalog());
+
+    $integration = $ctx['integration']->fresh();
+    expect($integration->catalog_sync_status)->toBe('failed')
+        ->and($integration->isCatalogSyncing())->toBeFalse()
+        ->and(DB::table('branch_product')->where('product_id', $ctx['product']->id)->value('food99_sync_status'))->toBe('failed')
+        ->and(CompanyNotification::withoutGlobalScopes()->where('company_id', $ctx['company']->id)->where('type', 'food99_alert')->exists())->toBeTrue();
+})->with([
+    'a 99 segue dizendo que processa' => [[['errno' => 0, 'errmsg' => 'ok', 'data' => ['status' => 0]], 200]],
+    'a consulta falha' => [[['errno' => 10001, 'errmsg' => 'erro'], 200]],
+]);
 
 it('só envia automaticamente depois que o restaurante publica o cardápio', function () {
     $ctx = food99Context(integration: ['catalog_published_at' => null]);
