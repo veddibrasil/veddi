@@ -137,6 +137,14 @@ class AppServiceProvider extends ServiceProvider
         $this->configureNotifications();
         $this->configureNightwatch();
 
+        \Illuminate\Support\Facades\Session::extend('database-from-cookie', fn ($app) => new \App\Support\CookieFallbackSessionHandler(
+            $app['session']->driver('database')->getHandler(),
+            $app['cookie'],
+            config('session.lifetime'),
+            config('session.expire_on_close'),
+            config('session.encrypt') ? $app['encrypter'] : null,
+        ));
+
         FiscalNote::observe(FiscalNoteObserver::class);
         Product::observe(ProductObserver::class);
 
