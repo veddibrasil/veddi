@@ -36,7 +36,9 @@ class ChatAccess
 
     public function verify(int $companyId, string $phone): ?Customer
     {
-        session()->regenerate();
+        // Só o id muda: regenerate() trocaria o token CSRF no meio da ação Livewire, a página segue
+        // com o token antigo e o clique seguinte volta 419.
+        session()->migrate();
         $customer = Customer::withoutGlobalScopes()->where('company_id', $companyId)->where('phone', $phone)->first();
         session(["chat_identity.{$companyId}" => [
             'customer_id' => $customer?->id, 'phone' => $phone,

@@ -67,7 +67,8 @@ class RememberedDevice
             })->update(['revoked_at' => now()]);
         session()->forget(["chat_identity.{$companyId}", "chat_orders.{$companyId}", 'chat_challenge_nonce']);
         Cookie::queue(Cookie::forget("chat_device_{$companyId}"));
-        session()->regenerate();
+        // Roda em ação Livewire: ver ChatAccess::verify().
+        session()->migrate();
     }
 
     private function cookie(int $companyId, string $token, int $minutes): void
