@@ -92,7 +92,7 @@ trait HasPaymentFlow
                     $this->paymentOnDelivery = $existing->payment_on_delivery;
                     $this->trackingLink ??= $access->orderLink($existing);
                     $this->transitionTo(match (true) {
-                        in_array($existing->status, ['cancelled', 'refunded']) => 'ORDER_FAILED',
+                        in_array($existing->status, ['cancelled', 'refunded']) => 'ORDER_CANCELLED',
                         $existing->payment_on_delivery => 'ORDER_CONFIRMED',
                         in_array($existing->status, ['pending', 'awaiting_payment']) => strtoupper($existing->payment_method) === 'CARD' ? 'PAYMENT_CARD_FORM' : 'PAYMENT_PIX',
                         default => 'ORDER_CONFIRMED',
@@ -449,6 +449,13 @@ trait HasPaymentFlow
             $this->transitionTo('CHECKOUT_CONFIRM');
 
             return;
+        } catch (\App\Exceptions\OrderPlacementException $e) {
+            $this->submitting = false;
+            $this->isLoading = false;
+            $this->addMessage('bot', $e->getMessage());
+            $this->transitionTo('CHECKOUT_CONFIRM');
+
+            return;
         } catch (RuntimeException $e) {
             Log::channel('discord')->error('Falha ao criar pedido no chat', [
                 'type' => 'orders',
@@ -577,10 +584,6 @@ trait HasPaymentFlow
             return;
         }
 
-        if ($this->step === 'PAYMENT_CARD_FORM') {
-            return;
-        }
-
         $phase = in_array($this->step, ['PAYMENT_PIX', 'PAYMENT_CARD_AWAITING'], true) ? 'pay' : 'delivery';
         $rateLimitKey = "status-check:{$phase}:{$this->orderId}";
         $maxAttempts = $phase === 'pay' ? 30 : 10;
@@ -607,6 +610,20 @@ trait HasPaymentFlow
         }
 
         $status = $order->status;
+        if (in_array($status, ['cancelled', 'refunded'], true)) {
+            if ($this->lastNotifiedStatus !== $status) {
+                $outcome = $this->orderOutcome;
+                $this->addMessage('bot', trim("❌ Pedido {$order->order_number} cancelado. {$outcome['reason']} {$outcome['refund']}"));
+            }
+            $this->lastNotifiedStatus = $status;
+            $this->transitionTo('ORDER_CANCELLED');
+
+            return;
+        }
+        if ($this->step === 'PAYMENT_CARD_FORM' && in_array($status, ['pending', 'awaiting_payment'], true)) {
+            return;
+        }
+
         if ($this->trackingOnly || ! $this->findOwnOrder(true)) {
             $this->trackingSummary = [
                 'order_number' => $order->order_number, 'status' => $status,
@@ -656,11 +673,11 @@ trait HasPaymentFlow
         $messages = [
             'awaiting_payment' => "⏳ Pedido {$order->order_number} recebido! Aguardando confirmação do pagamento.",
             'scheduled' => ($order->payment_on_delivery ? '✅ Tudo certo!' : '✅ Pagamento confirmado!')." Seu pedido {$order->order_number} está agendado para {$scheduledLabel}. Você receberá atualizações quando começarmos a preparar.",
-            'paid' => $order->payment_on_delivery ? "✅ Pagamento do pedido {$order->order_number} recebido. Obrigado!" : "✅ Após a confirmação o seu pedido {$order->order_number} será preparado.",
+            'paid' => $order->payment_on_delivery ? "✅ Pagamento do pedido {$order->order_number} recebido. Obrigado!" : "✅ Pagamento confirmado! Seu pedido {$order->order_number} será preparado.",
             'preparing' => "👨‍🍳 Seu pedido {$order->order_number} está sendo preparado! Em breve ficará pronto.",
             'ready' => "✅ Pedido {$order->order_number} pronto!".($order->order_type === 'delivery' ? ' Logo sai para entrega.' : ''),
             'out_for_delivery' => "🛵 Pedido {$order->order_number} saiu para entrega! Aguarde em breve.",
-            'delivered' => "🎉 Pedido {$order->order_number} entregue! Bom apetite e obrigado pela preferência!",
+            'delivered' => "🎉 Pedido {$order->order_number} ".($order->order_type === 'pickup' ? 'retirado' : 'entregue').'! Bom apetite e obrigado pela preferência!',
             'cancelled' => "❌ Seu pedido {$order->order_number} foi cancelado. Entre em contato se precisar de ajuda.",
         ];
 
@@ -670,7 +687,7 @@ trait HasPaymentFlow
         }
 
         if ($status === 'cancelled' && $this->step !== 'ORDER_CONFIRMED') {
-            $this->transitionTo('ORDER_FAILED');
+            $this->transitionTo('ORDER_CANCELLED');
         }
     }
 
@@ -931,7 +948,7 @@ trait HasPaymentFlow
 
         if (in_array($order->status, ['cancelled', 'refunded'], true)) {
             $this->addMessage('bot', "❌ Seu pedido {$order->order_number} foi cancelado e não pode mais ser pago. Entre em contato se precisar de ajuda.");
-            $this->transitionTo('ORDER_FAILED');
+            $this->transitionTo('ORDER_CANCELLED');
 
             return;
         }
@@ -1078,27 +1095,50 @@ trait HasPaymentFlow
             ]);
         }
 
+        if ($this->orderId && ($order = $this->findOwnOrder(true))) {
+            if (! in_array($order->status, ['cancelled', 'refunded'], true) && ! app(OrderService::class)->cancelBySystem($order, 'Cliente reiniciou o pagamento', 'chat_retry')) {
+                $this->checkPaymentStatus();
+
+                return;
+            }
+        }
         $this->checkoutKey = \Illuminate\Support\Str::random(64);
-        $this->cart = [];
-        $this->orderId = null;
-        $this->pixQrCode = null;
-        $this->pixCopyPaste = null;
-        $this->paymentId = null;
-        $this->expiresAt = null;
+        $this->reset('orderId', 'trackingLink', 'trackingSummary', 'pixQrCode', 'pixCopyPaste', 'paymentId', 'expiresAt', 'cardError', 'cardNumber', 'cardExpiry', 'cardCvv', 'cardHolderName', 'customerCards', 'selectedCardId', 'lastNotifiedStatus');
         $this->submitting = false;
-        $this->notes = '';
-        $this->paymentMethod = 'PIX';
-        $this->paymentOnDelivery = false;
-        $this->orderType = 'delivery';
-        $this->deliveryFee = 0.0;
-        $this->freeDelivery = false;
-        $this->couponInput = '';
-        $this->appliedCoupon = null;
-        $this->couponDiscount = 0.0;
-        $this->couponError = null;
-        $this->scheduledAt = null;
-        $this->scheduleInput = '';
-        $this->transitionTo('MENU_BROWSE');
+        $this->isLoading = false;
+        unset($this->orderTotal, $this->cartTotal);
+        $this->recalculateCardFee();
+        $this->transitionTo($this->checkoutReady ? 'CHECKOUT_CONFIRM' : 'CART_REVIEW');
+    }
+
+    public function getOrderOutcomeProperty(): array
+    {
+        $order = $this->findOwnOrder();
+        $refund = '';
+        if ($order) {
+            if ($order->status === 'refunded') {
+                $refund = 'O estorno foi confirmado. O prazo para aparecer depende da sua instituição financeira.';
+            } elseif ($order->payments()->whereHas('refunds')->exists()) {
+                $refund = 'O estorno foi solicitado. Acompanhe a devolução com a loja e sua instituição financeira.';
+            }
+        }
+
+        return ['reason' => $order?->cancellation_reason ?? '', 'refund' => $refund];
+    }
+
+    public function getOrderFailureMessageProperty(): string
+    {
+        $reason = $this->findOwnOrder()?->cancellation_reason;
+        if ($reason && str_contains(mb_strtolower($reason), 'prazo')) {
+            return 'O prazo para pagamento expirou. Confira seu pedido para tentar novamente.';
+        }
+        if ($reason && ! str_contains(mb_strtolower($reason), 'cobrança')) {
+            return 'Pedido cancelado: '.$reason;
+        }
+
+        return $this->paymentMethod === 'CARD'
+            ? 'Não foi possível processar o cartão. Confira os dados ou escolha outra forma de pagamento.'
+            : 'Não foi possível gerar o PIX. Confira seu pedido e tente novamente.';
     }
 
     private function friendlyDeclineMessage(?string $reason): string

@@ -3,9 +3,8 @@
 namespace App\Exceptions;
 
 use App\Models\Product;
-use RuntimeException;
 
-class InsufficientStockException extends RuntimeException
+class InsufficientStockException extends OrderPlacementException
 {
     public function __construct(
         public readonly Product $product,

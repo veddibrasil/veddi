@@ -2,10 +2,10 @@
 
 namespace App\Services\Order;
 
+use App\Exceptions\OrderPlacementException;
 use App\Models\Product;
 use App\Models\ProductOption;
 use Illuminate\Support\Collection;
-use RuntimeException;
 
 class CartOptionPricing
 {
@@ -52,7 +52,7 @@ class CartOptionPricing
         foreach ($this->iterateGroups($rawGroups) as $groupId => $groupData) {
             $groupId = (int) $groupId;
             if (! $productGroupById->has($groupId)) {
-                throw new RuntimeException("Grupo de opção inválido para o produto #{$product->id}.");
+                throw new OrderPlacementException("Grupo de opção inválido para o produto #{$product->id}.");
             }
 
             $group = $productGroupById[$groupId];
@@ -72,12 +72,12 @@ class CartOptionPricing
             foreach ($selections as $optionId => $sel) {
                 $optionId = (int) (is_int($optionId) || ctype_digit((string) $optionId) ? $optionId : ($sel['id'] ?? 0));
                 if ($optionId <= 0 || ! $options->has($optionId)) {
-                    throw new RuntimeException("Opção inválida no carrinho para o produto #{$product->id}.");
+                    throw new OrderPlacementException("Opção inválida no carrinho para o produto #{$product->id}.");
                 }
 
                 $opt = $options[$optionId];
                 if ((int) $opt->product_option_group_id !== $groupId) {
-                    throw new RuntimeException("Opção #{$optionId} não pertence ao grupo #{$groupId}.");
+                    throw new OrderPlacementException("Opção #{$optionId} não pertence ao grupo #{$groupId}.");
                 }
 
                 $qty = (int) ($sel['qty'] ?? 0);
@@ -86,7 +86,7 @@ class CartOptionPricing
                 }
 
                 if (! $group->fixed && $opt->max_qty !== null && $qty > $opt->max_qty) {
-                    throw new RuntimeException("Quantidade da opção #{$optionId} excede o máximo permitido ({$opt->max_qty}).");
+                    throw new OrderPlacementException("Quantidade da opção #{$optionId} excede o máximo permitido ({$opt->max_qty}).");
                 }
 
                 $additional = ($isVariantPriceGroup || ! $group->fixed)
@@ -105,11 +105,11 @@ class CartOptionPricing
             if (! $group->fixed) {
                 $groupQty = array_sum(array_column($normSelections, 'qty'));
                 if ($groupQty > $group->total_qty) {
-                    throw new RuntimeException("Quantidade selecionada no grupo \"{$group->name}\" excede o máximo ({$group->total_qty}).");
+                    throw new OrderPlacementException("Quantidade selecionada no grupo \"{$group->name}\" excede o máximo ({$group->total_qty}).");
                 }
                 // "Não quero" (allow_skip) permite zerar o grupo mesmo com mínimo > 0 — o chat já aceita isso.
                 if ($groupQty < $group->min_qty && ! ($group->allow_skip && $groupQty === 0)) {
-                    throw new RuntimeException("Quantidade selecionada no grupo \"{$group->name}\" é menor que o mínimo ({$group->min_qty}).");
+                    throw new OrderPlacementException("Quantidade selecionada no grupo \"{$group->name}\" é menor que o mínimo ({$group->min_qty}).");
                 }
             }
 
@@ -144,7 +144,7 @@ class CartOptionPricing
             }
 
             if ($selected < (int) $group->min_qty) {
-                throw new RuntimeException("Escolha ao menos {$group->min_qty} opção(ões) em \"{$group->name}\" para \"{$product->name}\".");
+                throw new OrderPlacementException("Escolha ao menos {$group->min_qty} opção(ões) em \"{$group->name}\" para \"{$product->name}\".");
             }
         }
     }

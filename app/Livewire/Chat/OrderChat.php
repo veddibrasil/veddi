@@ -300,6 +300,9 @@ class OrderChat extends Component
                 $this->initialize();
             }
             $this->enforceChatAuthorization();
+            if ($this->orderId) {
+                $this->checkPaymentStatus();
+            }
             if ($this->paymentMethod === 'CARD' && ! $this->paysOnDelivery()) {
                 $this->recalculateCardFee();
             }

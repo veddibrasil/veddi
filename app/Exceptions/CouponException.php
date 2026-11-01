@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use RuntimeException;
-
-class CouponException extends RuntimeException
+class CouponException extends OrderPlacementException
 {
     public function __construct(string $message)
     {

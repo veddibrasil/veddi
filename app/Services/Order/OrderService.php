@@ -103,13 +103,13 @@ class OrderService implements OrderServiceInterface
 
                 if ($enforceSelfServiceRules) {
                     if ($qty < 1) {
-                        throw new RuntimeException("Quantidade inválida para \"{$product->name}\".");
+                        throw new \App\Exceptions\OrderPlacementException("Quantidade inválida para \"{$product->name}\".");
                     }
 
                     $optionPricing->assertRequiredGroupsSelected($product, $resolved['options']);
 
                     if ($unitPrice <= 0) {
-                        throw new RuntimeException("\"{$product->name}\" está sem preço: escolha as opções do produto antes de pedir.");
+                        throw new \App\Exceptions\OrderPlacementException("\"{$product->name}\" está sem preço: escolha as opções do produto antes de pedir.");
                     }
                 }
 
@@ -591,7 +591,9 @@ class OrderService implements OrderServiceInterface
                     'channel_column' => $channelColumn,
                 ]);
 
-                throw new RuntimeException("Produto #{$productId} não está disponível nesta filial.");
+                $companyId = \App\Models\Branch::withoutGlobalScopes()->whereKey($branchId)->value('company_id');
+                $name = Product::query()->where('company_id', $companyId)->find($productId)?->name ?? 'Este produto';
+                throw new \App\Exceptions\OrderPlacementException("{$name} não está disponível nesta filial.");
             }
         }
 
@@ -618,7 +620,11 @@ class OrderService implements OrderServiceInterface
 
         $previousStatus = $order->status;
 
-        $order->update(['status' => 'cancelled']);
+        $order->update($order->channel === 'chat' ? [
+            'status' => 'cancelled',
+            'cancellation_reason' => $reason ?: 'Cancelado pelo cliente.',
+            'cancelled_at' => now(),
+        ] : ['status' => 'cancelled']);
 
         app(StockService::class)->restoreForOrder($order);
 
@@ -633,7 +639,7 @@ class OrderService implements OrderServiceInterface
         ]);
 
         if ($policy->requiresRefund($order)) {
-            foreach ($order->payments()->where('status', 'paid')->get() as $payment) {
+            foreach ($order->payments()->where('status', 'paid')->whereNotIn('payment_gateway', ['cash', 'card_machine', 'pix_manual'])->get() as $payment) {
                 Log::channel('orders')->info('Cancelamento do cliente disparando reembolso', [
                     'order_id' => $order->id,
                     'customer_id' => $customerId,
@@ -685,7 +691,7 @@ class OrderService implements OrderServiceInterface
         ]);
 
         if ($policy->requiresRefund($order)) {
-            foreach ($order->payments()->where('status', 'paid')->get() as $payment) {
+            foreach ($order->payments()->where('status', 'paid')->whereNotIn('payment_gateway', ['cash', 'card_machine', 'pix_manual'])->get() as $payment) {
                 Log::channel('orders')->info('Cancelamento do admin disparando reembolso', [
                     'order_id' => $order->id,
                     'admin_id' => $adminUserId,

@@ -341,7 +341,8 @@ trait HasOrderFlow
     public function submitCpf(): void
     {
         $this->validate($this->rulesFor('CHECKOUT_CPF'), $this->messages());
-        $this->addMessage('user', $this->taxId);
+        $digits = preg_replace('/\D/', '', $this->taxId);
+        $this->addMessage('user', '***.***.***-'.substr($digits, -2));
         $this->transitionTo('CHECKOUT_CONFIRM');
     }
 

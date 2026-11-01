@@ -64,12 +64,7 @@ class OrderCancellationPolicy
             return false;
         }
 
-        // createOrder grava o método em minúsculas ('cash'); a comparação com 'CASH' nunca batia e
-        // venda em dinheiro cancelada gerava estorno de gateway (que falha) e alerta falso.
-        if (strtolower((string) $order->payment_method) === 'cash') {
-            return false;
-        }
-
-        return $order->payments()->where('status', 'paid')->exists();
+        return $order->payments()->where('status', 'paid')
+            ->whereNotIn('payment_gateway', ['cash', 'card_machine', 'pix_manual'])->exists();
     }
 }

@@ -240,31 +240,13 @@
     {{-- ════════════════════════════ INPUT AREA ══════════════════════════════ --}}
     <div class="border-t border-gray-100 bg-white px-4 py-3 shrink-0 overflow-y-auto max-h-[60vh] mc-scrollbar">
 
-        @if ($trackingLink)
-            <div class="mb-3 space-y-2" x-data="{ copied: false, canShare: !!navigator.share }">
-                <label for="chat-tracking-link" class="block text-sm font-semibold text-gray-700">Link para acompanhar seu pedido</label>
-                <input id="chat-tracking-link" type="text" readonly value="{{ $trackingLink }}" class="mc-input text-xs" x-on:click="$event.target.select()" aria-describedby="chat-tracking-link-hint" />
-                <p id="chat-tracking-link-hint" class="text-xs text-gray-500">Guarde o link: ele mostra o andamento do pedido por 7 dias.</p>
-                <div class="flex gap-2">
-                    <button type="button" class="mc-btn-outline flex-1"
-                        x-on:click="navigator.clipboard?.writeText(@js($trackingLink)).then(() => { copied = true; setTimeout(() => copied = false, 2500) })">
-                        <span x-show="!copied">Copiar link</span>
-                        <span x-show="copied" style="display:none" role="status">Link copiado ✓</span>
-                    </button>
-                    <button type="button" x-show="canShare" style="display:none" class="mc-btn-outline flex-1"
-                        x-on:click="navigator.share({ title: @js('Meu pedido — '.($currentCompany->name ?? config('app.name'))), url: @js($trackingLink) }).catch(() => {})">
-                        Compartilhar
-                    </button>
-                </div>
-            </div>
-        @endif
 
         {{-- ── IDENTIFY_PHONE ── --}}
         @if ($step === 'TRACKING_LINK')
             <p class="text-sm text-gray-600">Abra o link exclusivo que você guardou ao concluir a compra para acompanhar seu pedido.</p>
             @error('trackingLink') <p role="alert" class="text-sm text-red-600">{{ $message }}</p> @enderror
         @elseif ($step === 'ORDER_TRACKING')
-            <div wire:poll.15s="checkPaymentStatus" class="space-y-3 text-center">
+            <div @if (!in_array($trackingSummary['status'] ?? null, ['cancelled', 'refunded', 'delivered'])) wire:poll.15s="checkPaymentStatus" @endif class="space-y-3 text-center">
                 <p class="font-bold">Acompanhar pedido {{ $trackingSummary['order_number'] ?? '' }}</p>
                 <p role="status" class="text-sm">{{ $trackingSummary['status_label'] ?? 'Consultando pedido…' }}</p>
                 <a href="{{ route('chat.company', ['company' => $currentCompany->slug]) }}" class="mc-btn-primary">Fazer uma nova compra</a>
@@ -1356,24 +1338,6 @@
                     </div>
                 @endif
 
-                {{-- QR Code --}}
-                @if ($pixCopyPaste)
-                    <div class="flex justify-center" wire:ignore>
-                        <div class="mc-qr-frame"
-                            x-data
-                            x-init="
-                                QRCode.toCanvas($el.querySelector('canvas'), {{ json_encode($pixCopyPaste) }}, {
-                                    width: 160,
-                                    margin: 1,
-                                    color: { dark: '#000000', light: '#ffffff' }
-                                });
-                            "
-                        >
-                            <canvas class="rounded-lg"></canvas>
-                        </div>
-                    </div>
-                @endif
-
                 {{-- PIX copia e cola --}}
                 @if ($paymentMethod !== 'CARD')
                     @if ($pixCopyPaste)
@@ -1383,7 +1347,7 @@
                                 <input
                                     readonly
                                     value="{{ $pixCopyPaste }}"
-                                    class="flex-1 text-[11px] font-mono bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-gray-500 truncate"
+                                    class="min-w-0 flex-1 text-[11px] font-mono bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-gray-500 truncate"
                                 />
                                 <button
                                     x-on:click="
@@ -1401,6 +1365,24 @@
                             </div>
                         </div>
                     @endif
+                @endif
+
+                {{-- QR Code --}}
+                @if ($pixCopyPaste)
+                    <div class="flex justify-center" wire:ignore>
+                        <div class="mc-qr-frame"
+                            x-data
+                            x-init="
+                                QRCode.toCanvas($el.querySelector('canvas'), {{ json_encode($pixCopyPaste) }}, {
+                                    width: 160,
+                                    margin: 1,
+                                    color: { dark: '#000000', light: '#ffffff' }
+                                });
+                            "
+                        >
+                            <canvas class="rounded-lg"></canvas>
+                        </div>
+                    </div>
                 @endif
 
                 <p class="text-[11px] text-gray-400">Confirmação automática em até 5s após o pagamento.</p>
@@ -1592,7 +1574,7 @@
         {{-- ── ORDER_CONFIRMED ── --}}
         @elseif ($step === 'ORDER_CONFIRMED')
         {{-- Polling autorizado para acompanhar o pedido --}}
-            @if ($orderId && !in_array($lastNotifiedStatus, ['delivered', 'cancelled']))
+            @if ($orderId && !in_array($lastNotifiedStatus, ['delivered', 'cancelled', 'refunded']))
                 <div wire:poll.15s="checkPaymentStatus" class="hidden"></div>
             @endif
 
@@ -1715,7 +1697,10 @@
                 </div>
                 <div>
                     <p class="font-bold text-orange-600 text-base">Pedido cancelado</p>
-                    <p class="text-xs text-gray-500 mt-1">Seu pedido foi cancelado. Que tal fazer um novo?</p>
+                    <p class="text-xs text-gray-500 mt-1">{{ $this->orderOutcome['reason'] ?: 'Seu pedido foi cancelado.' }}</p>
+                    @if ($this->orderOutcome['refund'])
+                        <p role="status" class="text-xs text-gray-600 mt-1">{{ $this->orderOutcome['refund'] }}</p>
+                    @endif
                 </div>
                 <div class="flex gap-2">
                     <button wire:click="startNewOrderKeepHistory" class="mc-btn-primary flex-1">Novo pedido</button>
@@ -1731,11 +1716,30 @@
                 </div>
                 <div>
                     <p class="font-bold text-red-600 text-base">Erro ao processar pagamento</p>
-                    <p class="text-xs text-gray-500 mt-1">Não foi possível gerar o PIX. Verifique sua conexão e tente novamente.</p>
+                    <p class="text-xs text-gray-500 mt-1">{{ $this->orderFailureMessage }}</p>
                 </div>
                 <div class="flex gap-2">
                     <button wire:click="retryOrder" class="mc-btn-primary flex-1">Tentar novamente</button>
                     <button wire:click="startNewOrder" class="mc-btn-secondary flex-1">Recomeçar</button>
+                </div>
+            </div>
+        @endif
+
+        @if ($trackingLink)
+            <div class="mb-3 space-y-2" x-data="{ copied: false, canShare: !!navigator.share }">
+                <label for="chat-tracking-link" class="block text-sm font-semibold text-gray-700">Link para acompanhar seu pedido</label>
+                <input id="chat-tracking-link" type="text" readonly value="{{ $trackingLink }}" class="mc-input text-xs" x-on:click="$event.target.select()" aria-describedby="chat-tracking-link-hint" />
+                <p id="chat-tracking-link-hint" class="text-xs text-gray-500">Guarde o link: ele mostra o andamento do pedido por 7 dias.</p>
+                <div class="flex gap-2">
+                    <button type="button" class="mc-btn-outline flex-1"
+                        x-on:click="navigator.clipboard?.writeText(@js($trackingLink)).then(() => { copied = true; setTimeout(() => copied = false, 2500) })">
+                        <span x-show="!copied">Copiar link</span>
+                        <span x-show="copied" style="display:none" role="status">Link copiado ✓</span>
+                    </button>
+                    <button type="button" x-show="canShare" style="display:none" class="mc-btn-outline flex-1"
+                        x-on:click="navigator.share({ title: @js('Meu pedido — '.($currentCompany->name ?? config('app.name'))), url: @js($trackingLink) }).catch(() => {})">
+                        Compartilhar
+                    </button>
                 </div>
             </div>
         @endif
