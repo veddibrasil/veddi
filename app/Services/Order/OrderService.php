@@ -7,6 +7,7 @@ use App\Contracts\RefundServiceInterface;
 use App\Enums\OrderChannel;
 use App\Events\OrderItemsUpdated;
 use App\Jobs\NotifyScheduledOrderJob;
+use App\Models\Company;
 use App\Models\CompanyNotification;
 use App\Models\Coupon;
 use App\Models\Order;
@@ -771,6 +772,34 @@ class OrderService implements OrderServiceInterface
         \App\Events\OrderStatusUpdated::dispatch($order);
 
         return true;
+    }
+
+    public function cancelUnacceptedChat(Order $order): bool
+    {
+        $cancelled = DB::transaction(function () use ($order) {
+            $locked = Order::withoutGlobalScopes()->where('company_id', $order->company_id)->whereKey($order->id)->lockForUpdate()->first();
+            if (! $locked || $locked->channel !== 'chat' || $locked->order_type === 'pdv' || $locked->chat_accepted_at
+                || ! $locked->chat_acceptance_expires_at || $locked->chat_acceptance_expires_at->isFuture()
+                || ! in_array($locked->status, ['pending', 'awaiting_payment', 'paid', 'scheduled'], true)
+                || ! Company::whereKey($locked->company_id)->where('chat_acceptance_timeout_minutes', '>', 0)->exists()) {
+                return false;
+            }
+            $previous = $locked->status;
+            $reason = 'A loja não aceitou o pedido dentro do prazo. O pedido foi cancelado automaticamente.';
+            $locked->update(['status' => 'cancelled', 'cancellation_reason' => $reason, 'cancelled_at' => now()]);
+            app(StockService::class)->restoreForOrder($locked);
+            $this->recordStatusHistory($locked, null, $previous, 'cancelled', $reason, ['source' => 'chat_acceptance_timeout']);
+            foreach ($locked->payments()->where('status', 'paid')->whereNotIn('payment_gateway', ['cash', 'card_machine', 'pix_manual'])->get() as $payment) {
+                app(RefundServiceInterface::class)->initiateRefund($locked, $payment, (float) $payment->amount, 'system', null, 'chat_acceptance_timeout');
+            }
+
+            return true;
+        });
+        if ($cancelled) {
+            \App\Events\OrderStatusUpdated::dispatch($order->fresh());
+        }
+
+        return $cancelled;
     }
 
     /**

@@ -35,6 +35,10 @@ class CompanySettings extends Component
 
     public string $order_prefix = 'ORD';
 
+    public bool $chatAcceptanceEnabled = false;
+
+    public int $chatAcceptanceMinutes = 10;
+
     public bool $schedulingEnabled = false;
 
     public ?int $scheduleMinAdvanceMinutes = null;
@@ -73,6 +77,8 @@ class CompanySettings extends Component
             'order_prefix', 'facebook_pixel_id', 'google_analytics_id', 'google_ads_id'
         ));
         $this->chat_highlights = $company->chat_highlights ?? self::DEFAULT_HIGHLIGHTS;
+        $this->chatAcceptanceEnabled = $company->chat_acceptance_timeout_minutes > 0;
+        $this->chatAcceptanceMinutes = $company->chat_acceptance_timeout_minutes ?: 10;
         $this->schedulingEnabled = $company->schedulingEnabled();
         $this->scheduleMinAdvanceMinutes = $company->schedule_min_advance_minutes;
         $this->isFree = $company->isFree();
@@ -102,6 +108,8 @@ class CompanySettings extends Component
             'cardFeeAbsorbedByCompany' => ['boolean'],
             'pdvManualDiscountEnabled' => ['boolean'],
             'schedulingEnabled' => ['boolean'],
+            'chatAcceptanceEnabled' => ['boolean'],
+            'chatAcceptanceMinutes' => ['required', 'integer', 'min:1', 'max:1440'],
             'scheduleMinAdvanceMinutes' => ['nullable', 'integer', 'min:0', 'max:10080'],
             'logo' => ['nullable', 'image', 'max:2048'],
             'chat_highlights' => ['array', 'max:6'],
@@ -133,6 +141,8 @@ class CompanySettings extends Component
             $data['chat_highlights'] = $this->chat_highlights ?: null;
         }
 
+        unset($data['chatAcceptanceEnabled'], $data['chatAcceptanceMinutes']);
+        $data['chat_acceptance_timeout_minutes'] = $this->chatAcceptanceEnabled ? $this->chatAcceptanceMinutes : 0;
         $data['slug'] = $company->slug;
         $data['pix_fee_absorbed_by_company'] = $this->pixFeeAbsorbedByCompany;
         $data['card_fee_absorbed_by_company'] = $this->cardFeeAbsorbedByCompany;

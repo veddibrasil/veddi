@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Cache;
 
 class Order extends Model
 {
+    use \App\Models\Concerns\HasChatAcceptance;
     use BelongsToCompany;
 
     /** Pedido já pago e não cancelado/reembolsado — só esses podem ter nota fiscal emitida. */
@@ -43,6 +44,8 @@ class Order extends Model
     protected $hidden = ['checkout_session_hash'];
 
     protected $casts = [
+        'chat_acceptance_expires_at' => 'datetime',
+        'chat_accepted_at' => 'datetime',
         'fiscal_recipient' => 'array',
         'delivered_email_sent_at' => 'datetime',
         'confirmation_email_sent_at' => 'datetime',

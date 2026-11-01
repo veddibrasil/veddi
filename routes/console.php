@@ -76,6 +76,12 @@ Schedule::command('whatsapp:sync-templates --pending')
 //     ->withoutOverlapping()
 //     ->onOneServer();
 
+Schedule::job(new \App\Jobs\ExpireUnacceptedChatOrders)
+    ->name('expire-unaccepted-chat-orders')
+    ->everyMinute()
+    ->withoutOverlapping(expiresAt: 5)
+    ->onOneServer();
+
 // Resolve pagamentos Vindi presos em pending após expiração (webhook perdido)
 Schedule::job(new ResolveExpiredVindiPaymentsJob)
     ->name('resolve-expired-vindi-payments')

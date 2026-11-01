@@ -278,6 +278,15 @@
         </div>
     @endif
 
+    <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
+        <h2 class="font-semibold text-sm uppercase tracking-wide">Prazo para aceitar pedidos do chat</h2>
+        <flux:switch wire:model.live="chatAcceptanceEnabled" label="Cancelar automaticamente pedidos não aceitos no prazo" />
+        <p class="text-xs text-neutral-600 dark:text-neutral-400">Aceite o pedido passando para Preparando. O prazo começa após o pagamento online ou a criação de pedidos para pagar ao receber. Em pedidos agendados, começa no horário marcado. Sem aceite, o cliente é avisado do cancelamento e o pagamento online é estornado.</p>
+        @if ($chatAcceptanceEnabled)
+            <flux:input wire:model="chatAcceptanceMinutes" type="number" min="1" max="1440" label="Prazo para aceite (minutos)" />
+        @endif
+    </div>
+
     {{-- Agendamento de Pedidos --}}
     <div id="agendamento" class="bg-white border rounded-xl shadow-sm p-6 space-y-4 scroll-mt-4 dark:bg-zinc-800 dark:border-zinc-700">
         <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Agendamento de Pedidos</h2>

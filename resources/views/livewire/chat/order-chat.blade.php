@@ -1591,6 +1591,10 @@
                 </div>
                 <div>
                     <p class="font-black text-green-700 text-lg">Pedido enviado!</p>
+                    @php $acceptanceOrder = $orderId ? $this->findOwnOrder() : null; @endphp
+                    @if ($acceptanceOrder?->chat_acceptance_expires_at && !$acceptanceOrder->chat_accepted_at)
+                        <p class="text-sm text-gray-600">Aguardando aceite da loja até {{ $acceptanceOrder->chat_acceptance_expires_at->format('H:i') }}. Sem aceite, o pedido será cancelado e o pagamento online será estornado.</p>
+                    @endif
                     <p class="text-sm text-gray-600 mt-0.5">
                         @if ($scheduledAt)
                             A loja recebeu seu pedido agendado. Avisaremos aqui quando ele andar.
