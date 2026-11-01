@@ -1081,9 +1081,7 @@
                         <p class="font-bold text-gray-800 text-sm">PIX</p>
                         <p class="text-xs text-gray-500">
                             Pagamento instantâneo
-                            @if(!($currentCompany?->pix_fee_absorbed_by_company))
-                                · <span class="text-amber-600">+ R$ {{ number_format(config('payments.pix_payment_fee', 0.50), 2, ',', '.') }} de taxa</span>
-                            @endif
+
                         </p>
                     </div>
                     <div class="ml-auto">
@@ -1328,11 +1326,6 @@
 
                 {{-- Breakdown do valor --}}
                 @if ($paymentMethod !== 'CARD')
-                    @php
-                        $pixFeeCharged = !($currentCompany?->pix_fee_absorbed_by_company);
-                        $pixFeeAmount  = $pixFeeCharged ? (float) config('payments.pix_payment_fee', 0.50) : 0.0;
-                        $totalWithFee  = $this->orderTotal + $pixFeeAmount;
-                    @endphp
                     <div class="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100 text-left space-y-1">
                         <div class="flex justify-between text-xs text-gray-500">
                             <span>Subtotal dos itens</span>
@@ -1355,15 +1348,10 @@
                                 <span>- R$ {{ number_format($this->couponDiscount, 2, ',', '.') }}</span>
                             </div>
                         @endif
-                        @if ($pixFeeCharged)
-                            <div class="flex justify-between text-xs text-amber-600">
-                                <span>Taxa PIX</span>
-                                <span>+ R$ {{ number_format($pixFeeAmount, 2, ',', '.') }}</span>
-                            </div>
-                        @endif
+
                         <div class="flex justify-between text-sm font-bold text-gray-800 border-t border-gray-200 pt-1.5 mt-1">
                             <span>Total a pagar</span>
-                            <span class="mc-text-primary">R$ {{ number_format($totalWithFee, 2, ',', '.') }}</span>
+                            <span class="mc-text-primary">R$ {{ number_format($this->orderTotal, 2, ',', '.') }}</span>
                         </div>
                     </div>
                 @endif
@@ -1473,7 +1461,7 @@
                     <div>
                         <label class="block text-xs text-neutral-500 mb-1">Número do cartão</label>
                         <input
-                            wire:model="cardNumber"
+                            wire:model.live.debounce.400ms="cardNumber"
                             placeholder="0000 0000 0000 0000"
                             maxlength="19"
                             inputmode="numeric"

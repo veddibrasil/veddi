@@ -61,7 +61,10 @@ test('frete grátis acima de R$ 100 não vale para pedido real de R$ 20 com pre�
         'active' => true,
     ]);
 
-    flowAuditDeliveryChat($ctx, tamperedPrice: 999.0)->confirmOrder();
+    $chat = flowAuditDeliveryChat($ctx, tamperedPrice: 999.0);
+    $chat->confirmOrder();
+    expect($chat->orderId)->toBeNull()->and($chat->step)->toBe('CHECKOUT_CONFIRM');
+    $chat->confirmOrder();
 
     $order = Order::withoutGlobalScopes()->where('company_id', $ctx['company']->id)->latest('id')->firstOrFail();
 

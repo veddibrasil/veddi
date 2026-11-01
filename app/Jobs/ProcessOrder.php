@@ -25,6 +25,8 @@ class ProcessOrder implements ShouldBeUnique, ShouldQueue
 
     public int $uniqueFor = 3600;
 
+    public ?string $paymentAttempt = null;
+
     public function uniqueId(): string
     {
         return (string) $this->order->id;
@@ -47,6 +49,7 @@ class ProcessOrder implements ShouldBeUnique, ShouldQueue
         public int $installments = 1,
         public array $cardData = [],
     ) {
+        $this->paymentAttempt = (string) \Illuminate\Support\Str::random(16);
         // Guest contacts are reconstructed from the persisted order, never serialized as models.
         if ($order->buyer_data !== null) {
             $this->customer = null;
@@ -56,6 +59,7 @@ class ProcessOrder implements ShouldBeUnique, ShouldQueue
 
     public function handle(PaymentOrchestrator $orchestrator): void
     {
+        $this->order->refresh();
         $this->customer = $this->order->buyer_data !== null ? $this->order->customer : $this->customer;
 
         // Retentativa de um pedido que já saiu do fluxo de cobrança (cliente trocou a forma de
@@ -87,6 +91,7 @@ class ProcessOrder implements ShouldBeUnique, ShouldQueue
                 method: $this->paymentMethod,
                 cardData: $this->cardData,
                 installments: $this->installments,
+                attempt: $this->paymentAttempt,
             );
 
             // A cobrança leva segundos na Vindi: o pedido pode ter sido cancelado nesse meio-tempo
@@ -127,7 +132,7 @@ class ProcessOrder implements ShouldBeUnique, ShouldQueue
                 'channel' => 'payments',
                 'order_id' => $this->order->id,
                 'attempt' => $this->attempts(),
-                'error' => $e->getMessage(),
+                'exception_type' => $e::class,
             ]);
             $this->fail($e);
         } catch (\Throwable $e) {
@@ -137,14 +142,13 @@ class ProcessOrder implements ShouldBeUnique, ShouldQueue
                 'channel' => 'orders',
                 'order_id' => $this->order->id,
                 'attempt' => $this->attempts(),
-                'error' => $e->getMessage(),
+                'exception_type' => $e::class,
             ]);
             Log::channel('discord')->error('Falha ao criar cobrança', [
                 'channel' => 'payments',
                 'order_id' => $this->order->id,
                 'attempt' => $this->attempts(),
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
+                'exception_type' => $e::class,
             ]);
             throw $e;
         }
@@ -157,7 +161,7 @@ class ProcessOrder implements ShouldBeUnique, ShouldQueue
             'order_id' => $this->order->id,
             'order_number' => $this->order->order_number,
             'payment_method' => $this->paymentMethod,
-            'error' => $e->getMessage(),
+            'exception_type' => $e::class,
         ]);
 
         // cancelBySystem só cancela se o pedido ainda espera cobrança (o cliente pode ter trocado a

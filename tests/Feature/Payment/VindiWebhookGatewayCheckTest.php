@@ -134,7 +134,7 @@ test('pagamento achado pelo order_number passa a guardar o token da transação'
     ['order' => $order, 'payment' => $payment] = vindiGatewayCheckContext(token: null);
 
     (new ProcessVindiWebhook('vindi_tok_novo_999', 'Aprovada', [
-        'transaction' => ['status_name' => 'Aprovada', 'order_number' => "ambiente-{$order->id}"],
+        'transaction' => ['status_name' => 'Aprovada', 'order_number' => substr(md5((string) config('database.connections.sqlite.database')), 0, 6)."-{$order->id}"],
     ]))->handle();
 
     $payment->refresh();

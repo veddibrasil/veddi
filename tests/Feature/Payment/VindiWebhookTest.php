@@ -228,7 +228,7 @@ test('ProcessVindiWebhook fallback por order_number namespaced (sem token local 
         'transaction' => [
             'token' => 'vindi_tok_wh_002',
             'status_name' => 'Aprovada',
-            'order_number' => 'a1b2c3-'.$ctx['order']->id,
+            'order_number' => substr(md5((string) config('database.connections.sqlite.database')), 0, 6).'-'.$ctx['order']->id,
         ],
     ];
 

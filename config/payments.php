@@ -1,6 +1,8 @@
 <?php
 
 return [
+    // Abandoned chat checkout; PIX QR validity remains 30 minutes.
+    'chat_checkout_timeout_minutes' => (int) env('CHAT_CHECKOUT_TIMEOUT_MINUTES', 35),
     /*
     |--------------------------------------------------------------------------
     | Vindi Intermediador (Yapay) — credenciais e taxas de pedido

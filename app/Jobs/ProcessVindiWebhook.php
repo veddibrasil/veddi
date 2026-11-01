@@ -79,7 +79,6 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
         if ($realStatus !== $this->status) {
             Log::channel('discord')->critical('Vindi webhook: status do payload não confere com a API — ignorado', [
                 'type' => 'payments',
-                'transaction_token' => $this->transactionToken,
                 'payload_status' => $this->status,
                 'gateway_status' => $realStatus,
             ]);
@@ -109,17 +108,27 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
                         ? (str_contains((string) $orderNumber, '-') ? substr(strrchr((string) $orderNumber, '-'), 1) : $orderNumber)
                         : null;
 
-                    if ($orderId) {
+                    if ($orderId && ctype_digit((string) $orderId)) {
                         $payment = Payment::where('order_id', $orderId)
-                            ->whereNull('vindi_transaction_token')
-                            ->lockForUpdate()
-                            ->first();
+                            ->where('payment_gateway', 'vindi')
+                            ->where('vindi_order_number', (string) $orderNumber)
+                            ->lockForUpdate()->first();
+                        $database = (string) config('database.connections.'.config('database.default').'.database');
+                        $legacyReferences = [(string) $orderId, substr(md5($database), 0, 6).'-'.$orderId];
+                        if (! $payment && in_array((string) $orderNumber, $legacyReferences, true)) {
+                            $payment = Payment::where('order_id', $orderId)->where('payment_gateway', 'vindi')
+                                ->whereNull('vindi_transaction_token')->whereNull('vindi_order_number')->lockForUpdate()->first();
+                        }
+                        if ($payment) {
+                            Log::channel('discord')->critical('Vindi: pagamento recuperado pelo número da tentativa', [
+                                'type' => 'payments', 'order_id' => $payment->order_id, 'payment_id' => $payment->id,
+                            ]);
+                        }
                     }
                 }
 
                 if (! $payment) {
                     Log::channel('webhook')->warning('Vindi webhook: Payment não encontrado', [
-                        'transaction_token' => $this->transactionToken,
                     ]);
 
                     return;
@@ -127,7 +136,6 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
 
                 if ($payment->status === 'paid') {
                     Log::channel('webhook')->info('Vindi webhook: pagamento já confirmado (duplicado ignorado)', [
-                        'transaction_token' => $this->transactionToken,
                         'order_id' => $payment->order_id,
                     ]);
 
@@ -155,7 +163,6 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
                     Log::channel('discord')->critical('Vindi webhook: divergência de valor entre cobrança local e pagamento real', [
                         'type' => 'payments',
                         'order_id' => $order->id,
-                        'transaction_token' => $this->transactionToken,
                         'expected_amount' => $payment->amount,
                         'real_amount_paid' => $realAmountPaid,
                         'diff' => round($realAmountPaid - (float) $payment->amount, 2),
@@ -172,7 +179,6 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
                         'type' => 'payments',
                         'company_id' => $company->id,
                         'order_id' => $order->id,
-                        'transaction_token' => $this->transactionToken,
                         'amount' => $payment->amount,
                     ]);
                 }
@@ -203,7 +209,6 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
 
                 Log::channel('payments')->info('Pagamento Vindi confirmado', [
                     'order_id' => $order->id,
-                    'transaction_token' => $this->transactionToken,
                     'amount' => $payment->amount,
                     'real_amount_paid' => $realAmountPaid,
                 ]);
@@ -221,7 +226,6 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
             });
         } catch (\Illuminate\Database\UniqueConstraintViolationException) {
             Log::channel('webhook')->info('Vindi webhook: duplicado ignorado via idempotency_key', [
-                'transaction_token' => $this->transactionToken,
             ]);
         }
     }
@@ -235,7 +239,6 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
 
             if (! $payment) {
                 Log::channel('webhook')->warning('Vindi webhook: Payment não encontrado para falha', [
-                    'transaction_token' => $this->transactionToken,
                 ]);
 
                 return;
@@ -248,7 +251,6 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
             $payment->update(['status' => 'failed']);
 
             Log::channel('payments')->info('Pagamento Vindi falhou/cancelado', [
-                'transaction_token' => $this->transactionToken,
                 'status' => $this->status,
             ]);
 
@@ -285,7 +287,6 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
 
         if (! $payment) {
             Log::channel('webhook')->warning('Vindi webhook: Payment não encontrado para estorno', [
-                'transaction_token' => $this->transactionToken,
             ]);
 
             return;
@@ -321,7 +322,6 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
 
         if (! $payment) {
             Log::channel('webhook')->warning('Vindi webhook: Payment não encontrado para chargeback', [
-                'transaction_token' => $this->transactionToken,
             ]);
 
             return;
@@ -368,7 +368,6 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
             Log::channel('discord')->critical('Chargeback recebido via Vindi', [
                 'type' => 'payments',
                 'order_id' => $order->id,
-                'transaction_token' => $this->transactionToken,
                 'amount' => $payment->amount,
                 'company_id' => $order->company_id,
             ]);
@@ -380,7 +379,6 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
     private function logIgnored(): void
     {
         Log::channel('webhook')->debug('Vindi webhook: status ignorado', [
-            'transaction_token' => $this->transactionToken,
             'status' => $this->status,
         ]);
     }
@@ -389,9 +387,8 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
     {
         Log::channel('discord')->error('Falha ao processar webhook Vindi', [
             'type' => 'webhook',
-            'transaction_token' => $this->transactionToken,
             'status' => $this->status,
-            'error' => $exception->getMessage(),
+            'exception_type' => $exception::class,
         ]);
     }
 }

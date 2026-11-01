@@ -3,6 +3,7 @@
 namespace App\Livewire\Chat\Concerns;
 
 use App\Contracts\OrderServiceInterface;
+use App\Enums\CardBrand;
 use App\Events\OrderStatusUpdated;
 use App\Models\Branch;
 use App\Models\CompanyNotification;
@@ -166,7 +167,7 @@ trait HasPaymentFlow
             return;
         }
 
-        $total = (float) $this->getOrderTotalProperty();
+        $total = (float) ($this->findOwnOrder()?->total ?? $this->getOrderTotalProperty());
 
         if ($total <= 0) {
             $this->cardFeeBreakdown = [];
@@ -174,7 +175,10 @@ trait HasPaymentFlow
             return;
         }
 
-        $cardRate = (float) config('payments.credit_card.default_rate', 0.028);
+        $saved = ! $this->useNewCard && $this->selectedCardId
+            ? $this->verifiedCustomer(true)?->cards()->find($this->selectedCardId) : null;
+        $brand = $saved ? CardBrand::from($saved->brand) : CardBrand::fromNumber($this->cardNumber);
+        $cardRate = $brand->rate();
         $platformFeeRate = $company->feePercentageForOrder();
 
         $this->cardFeeBreakdown = app(PaymentCalculatorService::class)->calculate(
@@ -182,6 +186,11 @@ trait HasPaymentFlow
             $cardRate,
             $platformFeeRate,
         );
+    }
+
+    public function updatedCardNumber(): void
+    {
+        $this->recalculateCardFee();
     }
 
     /**
@@ -389,6 +398,7 @@ trait HasPaymentFlow
         $fiscalRecipient = $this->fiscalRecipientForCheckout();
 
         try {
+            $expectedTotal = $this->getOrderTotalProperty();
             $this->reauthorizeDeliveryFee();
 
             $order = $orderService->createOrder(
@@ -406,6 +416,7 @@ trait HasPaymentFlow
                 checkoutKey: $this->checkoutKey,
                 fiscalRecipient: $fiscalRecipient,
                 paymentOnDelivery: $this->paysOnDelivery(),
+                expectedTotal: $expectedTotal,
             );
 
             Log::channel('orders')->info('Pedido criado no chat', [
@@ -417,6 +428,18 @@ trait HasPaymentFlow
                 'status' => $initialStatus,
             ]);
 
+        } catch (\App\Exceptions\CheckoutPriceChanged $e) {
+            $this->cart = $e->cart;
+            unset($this->cartTotal, $this->orderTotal);
+            $this->deliveryFee = $e->deliveryFee;
+            $this->couponDiscount = $e->discount;
+            $this->recalculateCardFee();
+            $this->submitting = false;
+            $this->isLoading = false;
+            $this->addMessage('bot', $e->getMessage());
+            $this->transitionTo('CHECKOUT_CONFIRM');
+
+            return;
         } catch (RuntimeException $e) {
             Log::channel('discord')->error('Falha ao criar pedido no chat', [
                 'type' => 'orders',
@@ -424,7 +447,7 @@ trait HasPaymentFlow
                 'branch_id' => $this->selectedBranchId,
                 'payment_method' => $this->paymentMethod,
                 'order_type' => $this->orderType,
-                'error' => $e->getMessage(),
+                'exception_type' => $e::class,
             ]);
 
             if ($company = $this->currentCompany()) {
@@ -658,15 +681,31 @@ trait HasPaymentFlow
             return;
         }
 
+        if ($order->payment_on_delivery) {
+            return;
+        }
+        if (! in_array($order->status, ['pending', 'awaiting_payment'], true) || $order->payments()->where('status', 'paid')->exists()) {
+            $this->checkPaymentStatus();
+            $this->transitionTo(in_array($order->status, ['cancelled', 'refunded'], true) ? 'ORDER_CANCELLED' : 'ORDER_CONFIRMED');
+
+            return;
+        }
+        $payment = $order->payments()->reorder('id', 'desc')->first();
+        if (! $payment || $payment->status !== 'pending' || ! $payment->expires_at?->isPast()) {
+            return;
+        }
+
+        $renewed = app(PaymentService::class)->expireAndRenew($order, $order->customer, $this->currentCompany(), $this->paymentMethod);
+        if (! $renewed) {
+            $this->checkPaymentStatus();
+
+            return;
+        }
         $this->pixQrCode = null;
         $this->pixCopyPaste = null;
         $this->expiresAt = null;
         $this->paymentId = null;
 
-        $customer = $order?->customer;
-        $company = $this->currentCompany();
-
-        app(PaymentService::class)->expireAndRenew($order, $customer, $company, $this->paymentMethod);
         $this->addMessage('bot', 'O tempo para pagamento expirou. Gerando nova cobrança...');
     }
 
@@ -701,6 +740,7 @@ trait HasPaymentFlow
         }
         $this->selectedCardId = $cardId;
         $this->useNewCard = false;
+        $this->recalculateCardFee();
         $this->cardCvv = '';
         $this->cardError = null;
     }
@@ -709,6 +749,7 @@ trait HasPaymentFlow
     {
         $this->useNewCard = true;
         $this->selectedCardId = null;
+        $this->recalculateCardFee();
         $this->cardError = null;
     }
 
@@ -858,7 +899,7 @@ trait HasPaymentFlow
             Log::channel('discord')->error('Erro ao processar cartão no chat', [
                 'type' => 'payments',
                 'order_id' => $this->orderId,
-                'error' => $e->getMessage(),
+                'exception_type' => $e::class,
             ]);
             $this->cardCvv = '';
             $this->cardError = 'Não foi possível processar o pagamento. Tente novamente.';
@@ -918,7 +959,7 @@ trait HasPaymentFlow
             Log::channel('orders')->info('Cancelamento pelo cliente rejeitado pela política', [
                 'order_id' => $order->id,
                 'customer_id' => $this->customerId,
-                'error' => $e->getMessage(),
+                'exception_type' => $e::class,
             ]);
 
             return;
@@ -946,7 +987,7 @@ trait HasPaymentFlow
             Log::channel('orders')->info('Cancelamento confirmado pelo cliente falhou', [
                 'order_id' => $order->id,
                 'customer_id' => $this->customerId,
-                'error' => $e->getMessage(),
+                'exception_type' => $e::class,
             ]);
 
             return;

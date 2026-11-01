@@ -63,15 +63,12 @@ class VindiService
 
         Log::channel('payments')->info('Vindi PIX criado', [
             'external_ref' => $externalRef,
-            'transaction_token' => $result['transaction_token'] ?? null,
             'amount' => $amount,
-            'result' => $result,
         ]);
 
         if (empty($result['pix_qr_code']) && empty($result['pix_copy_paste'])) {
             Log::channel('discord_pix')->critical('PIX: cobrança criada sem QR code/copia-e-cola', [
                 'external_ref' => $externalRef,
-                'transaction_token' => $result['transaction_token'] ?? null,
                 'status_name' => $result['status_name'] ?? null,
             ]);
         }
@@ -146,15 +143,14 @@ class VindiService
             ],
         ];
 
-        Log::channel('payments')->debug('Vindi payload cartão', [
-            'payload' => $this->redactCardPayload($payload),
+        Log::channel('payments')->debug('Vindi cobrança cartão', [
+            'external_ref' => $externalRef, 'amount' => $amount, 'installments' => $installments,
         ]);
 
         $result = $this->createTransaction($payload);
 
         Log::channel('payments')->info('Vindi cartão criado', [
             'external_ref' => $externalRef,
-            'transaction_token' => $result['transaction_token'] ?? null,
             'amount' => $amount,
             'installments' => $installments,
         ]);
@@ -180,16 +176,13 @@ class VindiService
         $status = $data['data_response']['transaction']['status_name'] ?? 'unknown';
 
         Log::channel('payments')->debug('Vindi getTransactionStatus', [
-            'transaction_token' => $transactionToken,
             'http_status' => $response->status(),
             'status_name' => $status,
         ]);
 
         if ($response->failed() || $status === 'unknown') {
             Log::channel('payments')->warning('Vindi getTransactionStatus: resposta inesperada', [
-                'transaction_token' => $transactionToken,
                 'http_status' => $response->status(),
-                'body' => $data,
             ]);
         }
 
@@ -266,18 +259,13 @@ class VindiService
         $response = Http::asJson()->timeout(15)->post("{$this->baseUrl}/transactions/payment", $payload);
 
         $data = $response->json();
-        $safePayload = $this->redactCardPayload($payload);
 
         Log::channel('payments')->debug('Vindi createTransaction resposta', [
             'status' => $response->status(),
-            'response' => $data,
-            'payload' => $safePayload,
         ]);
 
         Log::channel('discord')->debug('Vindi createTransaction resposta', [
             'status' => $response->status(),
-            'response' => $data,
-            'payload' => $safePayload,
         ]);
 
         // Yapay sometimes returns HTTP 4xx with validation warnings but still creates the transaction.
@@ -302,8 +290,7 @@ class VindiService
             // Failing hard here would wrongly cancel an order that may already be paid.
             if ($duplicateOrderNumber) {
                 Log::channel('payments')->warning('Vindi: order_number duplicado — transação já existe remotamente, aguardando webhook', [
-                    'payload' => $safePayload,
-                    'validation_errors' => $validationErrors,
+                    'order_number' => $payload['transaction']['order_number'] ?? null,
                 ]);
 
                 Log::channel('discord')->warning('Vindi: order_number duplicado — pedido sem QR/confirmação local, aguardando webhook', [
@@ -319,11 +306,10 @@ class VindiService
             }
 
             Log::channel('payments')->error('Vindi API erro', [
-                'body' => json_encode($data ?? $response->body()),
-                'payload' => $safePayload,
+                'http_status' => $response->status(), 'validation_error_count' => count($validationErrors),
             ]);
 
-            $message = "Vindi API error {$response->status()}: {$response->body()}";
+            $message = "Vindi API error {$response->status()}: cobrança recusada pelo gateway.";
 
             throw $response->status() === 422 && $validationErrors !== []
                 ? new \App\Exceptions\VindiValidationException($message)
@@ -333,9 +319,7 @@ class VindiService
         if ($response->failed() && $fallbackToken) {
             $validationErrors = $data['error_response']['validation_errors'] ?? [];
             Log::channel('payments')->warning('Vindi soft validation error — transação criada via additional_data', [
-                'token' => $fallbackToken,
                 'status' => $fallbackStatus,
-                'validation_errors' => $validationErrors,
             ]);
         }
 
@@ -343,7 +327,7 @@ class VindiService
         $tokenTransaction = $transaction['token_transaction'] ?? $fallbackToken ?? null;
 
         if (! $tokenTransaction) {
-            Log::channel('payments')->error('Vindi resposta inesperada', ['body' => $data]);
+            Log::channel('payments')->error('Vindi resposta inesperada', ['http_status' => $response->status()]);
             throw new \RuntimeException('Vindi: resposta sem transaction token');
         }
 

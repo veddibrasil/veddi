@@ -47,19 +47,56 @@ class ResolveExpiredVindiPaymentsJob implements ShouldQueue
             ->whereNotNull('vindi_transaction_token')
             ->where('expires_at', '<', $cutoff)
             ->whereNotNull('expires_at')
+            ->orderBy('updated_at')->orderBy('id')
             ->limit(50)
             ->get();
-
-        if ($stuckPayments->isEmpty()) {
-            return;
-        }
 
         Log::channel('payments')->info('ResolveExpiredVindiPayments: verificando pagamentos pendentes expirados', [
             'count' => $stuckPayments->count(),
         ]);
 
         foreach ($stuckPayments as $payment) {
+            $payment->touch();
             $this->resolvePayment($vindi, $payment);
+        }
+        $this->expireAbandonedChats($vindi);
+    }
+
+    private function expireAbandonedChats(VindiService $vindi): void
+    {
+        // Global maintenance: select chat orders across tenants, then retain their company on every order lookup.
+        $orders = Order::withoutGlobalScopes()->where('channel', 'chat')->where('payment_on_delivery', false)
+            ->whereIn('status', ['pending', 'awaiting_payment'])
+            ->where('created_at', '<=', now()->subMinutes(max(1, (int) config('payments.chat_checkout_timeout_minutes', 35))))
+            ->whereDoesntHave('payments', fn ($query) => $query->where('status', 'paid'))
+            ->orderBy('updated_at')->orderBy('id')->limit(50)->get();
+
+        foreach ($orders as $order) {
+            $order->touch(); // Rotate unresolved records so the next batch can progress.
+            $payments = $order->payments()->whereIn('status', ['pending', 'expired'])->get();
+            if ($payments->contains(fn ($payment) => $payment->expires_at?->isAfter(now()->subMinutes(5)))) {
+                continue;
+            }
+            $safeToCancel = true;
+            foreach ($payments as $payment) {
+                if (! $payment->vindi_transaction_token) {
+                    continue;
+                }
+                try {
+                    $status = $vindi->getTransactionStatus($payment->vindi_transaction_token);
+                    if ($status === 'Aprovada') {
+                        $this->markAsPaid($payment);
+                        $safeToCancel = false;
+                    } elseif (! in_array($status, ['Cancelada', 'Não Aprovada', 'Reprovada', 'Aguardando Pagamento', 'Aguardando pagamento'], true)) {
+                        $safeToCancel = false;
+                    }
+                } catch (\Throwable) {
+                    $safeToCancel = false;
+                }
+            }
+            if ($safeToCancel && app(OrderService::class)->cancelBySystem($order, 'Pagamento não confirmado dentro do prazo', 'payment_expired')) {
+                $order->payments()->where('status', 'pending')->update(['status' => 'expired']);
+            }
         }
     }
 
@@ -70,21 +107,19 @@ class ResolveExpiredVindiPaymentsJob implements ShouldQueue
 
             Log::channel('payments')->info('ResolveExpiredVindiPayments: status consultado', [
                 'payment_id' => $payment->id,
-                'vindi_token' => $payment->vindi_transaction_token,
                 'vindi_status' => $statusName,
             ]);
 
             match ($statusName) {
                 'Aprovada' => $this->markAsPaid($payment),
-                'Cancelada', 'Não Aprovada', 'Reprovada', 'unknown' => $this->markAsExpired($payment),
+                'Cancelada', 'Não Aprovada', 'Reprovada' => $this->markAsExpired($payment),
                 // Ainda em processamento na Yapay — aguarda próxima rodada
                 default => null,
             };
         } catch (\Throwable $e) {
             Log::channel('payments')->warning('ResolveExpiredVindiPayments: falha ao consultar status', [
                 'payment_id' => $payment->id,
-                'vindi_token' => $payment->vindi_transaction_token,
-                'error' => $e->getMessage(),
+                'exception_type' => $e::class,
             ]);
         }
     }
@@ -104,7 +139,7 @@ class ResolveExpiredVindiPaymentsJob implements ShouldQueue
                 }
 
                 // Lock no pedido: concorre com cancelBySystem.
-                $order = Order::whereKey($payment->order_id)->lockForUpdate()->first();
+                $order = Order::withoutGlobalScopes()->whereKey($payment->order_id)->lockForUpdate()->first();
                 if (! $order) {
                     return;
                 }
@@ -138,7 +173,6 @@ class ResolveExpiredVindiPaymentsJob implements ShouldQueue
                 Log::channel('payments')->info('ResolveExpiredVindiPayments: pagamento recuperado via polling', [
                     'payment_id' => $payment->id,
                     'order_id' => $order->id,
-                    'vindi_token' => $payment->vindi_transaction_token,
                 ]);
             });
         } catch (\Illuminate\Database\UniqueConstraintViolationException) {
@@ -162,8 +196,8 @@ class ResolveExpiredVindiPaymentsJob implements ShouldQueue
             // PIX do chat já está 'awaiting_payment' quando expira (ProcessOrder muda o status
             // assim que a cobrança é criada). cancelBySystem só cancela pending/awaiting_payment e
             // devolve o estoque baixado na criação do pedido.
-            $order = Order::find($payment->order_id);
-            if ($order) {
+            $order = Order::withoutGlobalScopes()->find($payment->order_id);
+            if ($order && ! $order->payments()->whereKeyNot($payment->id)->where('status', 'pending')->exists()) {
                 app(OrderService::class)->cancelBySystem($order, 'Pagamento não confirmado dentro do prazo', 'payment_expired');
             }
 
@@ -178,7 +212,7 @@ class ResolveExpiredVindiPaymentsJob implements ShouldQueue
     {
         Log::channel('discord')->error('Job de resolução de pagamentos expirados Vindi falhou', [
             'type' => 'payments',
-            'error' => $exception->getMessage(),
+            'exception_type' => $exception::class,
         ]);
     }
 }

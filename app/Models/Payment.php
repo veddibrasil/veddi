@@ -13,6 +13,7 @@ class Payment extends Model
         'asaas_payment_id',
         'vindi_transaction_token',
         'vindi_transaction_id',
+        'vindi_order_number',
         'payment_gateway',
         'pix_qr_code',
         'pix_copy_paste',

@@ -32,7 +32,6 @@ class VindiWebhookController extends Controller
             Log::channel('webhook')->warning('Vindi webhook: token_account inválido ou não configurado', [
                 'ip' => $request->ip(),
                 'token_missing' => $expected === '',
-                'received_prefix' => $sellerToken !== '' ? substr((string) $sellerToken, 0, 4).'…' : '(vazio)',
                 'content_type' => $request->header('Content-Type'),
                 'keys_recebidos' => array_keys($data),
             ]);
@@ -57,7 +56,6 @@ class VindiWebhookController extends Controller
         }
 
         Log::channel('webhook')->info('Vindi webhook recebido', [
-            'transaction_token' => $transactionToken,
             'status' => $status,
         ]);
 

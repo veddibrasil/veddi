@@ -102,6 +102,8 @@ test('total do pedido usa a taxa de entrega recalculada no servidor, mesmo se o 
     $component->deliveryFee = 0.0;
 
     $component->confirmOrder();
+    expect($component->orderId)->toBeNull()->and($component->step)->toBe('CHECKOUT_CONFIRM');
+    $component->confirmOrder();
 
     $order = Order::withoutGlobalScopes()->where('company_id', $company->id)->latest()->firstOrFail();
 

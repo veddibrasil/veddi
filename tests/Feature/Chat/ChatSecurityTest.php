@@ -24,7 +24,7 @@ function securityGuestChat(array $ctx): OrderChat
     $chat = new OrderChat;
     $chat->companyId = $ctx['company']->id;
     $chat->selectedBranchId = $ctx['branch']->id;
-    $chat->cart = [$ctx['product']->id => ['qty' => 1, 'price' => 0.01, 'name' => 'Item']];
+    $chat->cart = [$ctx['product']->id => ['qty' => 1, 'price' => 20.0, 'name' => 'Item']];
     $chat->phone = $ctx['customer']->phone;
     $chat->submitPhone();
     $chat->continueAsGuest();

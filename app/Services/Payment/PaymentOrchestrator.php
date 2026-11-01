@@ -30,12 +30,35 @@ class PaymentOrchestrator
      * reusam o mesmo autoincrement de order.id, colidindo remotamente. Prefixamos
      * com um hash curto do nome do banco pra namespacear por ambiente.
      */
-    private function vindiExternalRef(Order $order): string
+    private function reserveAttempt(Order $order, array $attributes, ?string $attempt = null): Payment
     {
-        $database = (string) config('database.connections.'.config('database.default').'.database');
-        $namespace = substr(md5($database), 0, 6);
+        return DB::transaction(function () use ($order, $attributes, $attempt) {
+            $locked = Order::withoutGlobalScopes()->where('company_id', $order->company_id)->whereKey($order->id)->lockForUpdate()->firstOrFail();
+            if ($attempt !== null) {
+                $database = (string) config('database.connections.'.config('database.default').'.database');
+                $reference = substr(md5($database), 0, 6)."-{$attempt}-{$order->id}";
+                $existing = $locked->payments()->where('vindi_order_number', $reference)->first();
+            } else {
+                $existing = $locked->payments()->where('payment_gateway', 'vindi')->whereIn('status', ['pending', 'paid'])->reorder('id', 'desc')->first();
+                $database = (string) config('database.connections.'.config('database.default').'.database');
+                $reference = substr(md5($database), 0, 6).'-'.Str::random(16)."-{$order->id}";
+            }
+            if ($existing) {
+                return $existing;
+            }
+            if ($locked->payment_on_delivery || ! in_array($locked->status, ['pending', 'awaiting_payment'], true)
+                || $locked->payments()->where('status', 'paid')->exists()) {
+                throw new \RuntimeException('Este pedido não está mais aguardando pagamento.');
+            }
 
-        return "{$namespace}-{$order->id}";
+            return $locked->payments()->create([
+                ...$attributes,
+                'vindi_order_number' => $reference,
+                'payment_gateway' => 'vindi',
+                'status' => 'pending',
+                'payment_token' => hash('sha256', Str::random(64)),
+            ]);
+        });
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -62,12 +85,13 @@ class PaymentOrchestrator
         string $method,
         array $cardData = [],
         int $installments = 1,
+        ?string $attempt = null,
     ): array {
         return match (strtoupper($method)) {
             'CREDIT_CARD' => $this->processCreditCard($order, $customer, $company, $cardData, $installments),
             'CASH' => $this->processCash($order),
             'CARD_MACHINE' => $this->processCardMachine($order),
-            default => $this->processPix($order, $customer, $company),
+            default => $this->processPix($order, $customer, $company, $attempt),
         };
     }
 
@@ -77,7 +101,8 @@ class PaymentOrchestrator
     public function processPix(
         Order $order,
         Customer $customer,
-        Company $company
+        Company $company,
+        ?string $attempt = null,
     ): array {
         $chargeAmount = (float) $order->total;
         $affiliateEmail = $company->email;
@@ -125,11 +150,20 @@ class PaymentOrchestrator
             ]);
         }
 
+        $payment = $this->reserveAttempt($order, [
+            'amount' => $chargeAmount, 'pix_fee' => 0.0,
+            'platform_fee' => $split->platformFee, 'company_net_amount' => $split->companyNet,
+            'expires_at' => now()->addMinutes(30),
+        ], $attempt);
+        if ($payment->vindi_transaction_token || $payment->status === 'paid') {
+            return ['id' => $payment->vindi_transaction_token, 'status' => $payment->status, 'method' => 'pix', 'gateway' => 'vindi', 'qr_code' => $payment->pix_qr_code, 'copy_paste' => $payment->pix_copy_paste];
+        }
+
         if ($tokenAccount) {
             try {
                 $result = $this->vindi->createPixCharge(
                     amount: $chargeAmount,
-                    externalRef: $this->vindiExternalRef($order),
+                    externalRef: $payment->vindi_order_number,
                     customer: $customer,
                     affiliateEmail: $affiliateEmail,
                     affiliatePercentual: $affiliatePercentual,
@@ -141,13 +175,13 @@ class PaymentOrchestrator
                     'order_id' => $order->id,
                     'company_id' => $company->id,
                     'amount' => $chargeAmount,
-                    'error' => $e->getMessage(),
+                    'exception_type' => $e::class,
                 ]);
 
                 throw $e;
             }
 
-            $payment = Payment::create([
+            $payment->update([
                 'order_id' => $order->id,
                 'vindi_transaction_token' => $result['transaction_token'],
                 'vindi_transaction_id' => $result['transaction_id'] ?? null,
@@ -158,27 +192,24 @@ class PaymentOrchestrator
                 'pix_fee' => 0.0,
                 'platform_fee' => $split->platformFee,
                 'company_net_amount' => $split->companyNet,
-                'status' => 'pending',
                 'expires_at' => now()->addMinutes(30),
                 'payment_token' => hash('sha256', $order->id.$customer->id.Str::random(32)),
             ]);
 
             Log::channel('payments')->info('PIX Vindi criado', [
                 'order_id' => $order->id,
-                'vindi_transaction_token' => $result['transaction_token'],
                 'charge_amount' => $chargeAmount,
             ]);
 
             Log::channel('discord_pix')->info('PIX: cobrança criada com sucesso', [
                 'order_id' => $order->id,
-                'vindi_transaction_token' => $result['transaction_token'],
                 'amount' => $chargeAmount,
                 'has_qr_code' => ! empty($result['pix_qr_code']),
             ]);
         } else {
             // Modo simulação (sem credenciais Vindi configuradas)
             $companyName = $company->name ?? config('app.name');
-            $payment = Payment::create([
+            $payment->update([
                 'order_id' => $order->id,
                 'vindi_transaction_token' => 'sim_vindi_'.uniqid(),
                 'payment_gateway' => 'vindi',
@@ -192,7 +223,6 @@ class PaymentOrchestrator
                 'pix_fee' => 0.0,
                 'platform_fee' => $split->platformFee,
                 'company_net_amount' => $split->companyNet,
-                'status' => 'pending',
                 'expires_at' => now()->addMinutes(30),
                 'payment_token' => hash('sha256', $order->id.$customer->id.Str::random(32)),
             ]);
@@ -281,7 +311,7 @@ class PaymentOrchestrator
         // Fee not absorbed: inflate charge so customer pays the card fee
         // Fee absorbed: company takes the hit from their net
         $chargeAmount = (! $cardFeeAbsorbed && $cardRate < 1.0)
-            ? round((float) $order->total / (1.0 - $cardRate), 3)
+            ? round((float) $order->total / (1.0 - $cardRate), 2)
             : (float) $order->total;
 
         $cardFee = round($chargeAmount * $cardRate, 3);
@@ -306,6 +336,16 @@ class PaymentOrchestrator
             'has_affiliate' => (bool) $affiliateEmail,
         ]);
 
+        $payment = $this->reserveAttempt($order, [
+            'amount' => $chargeAmount, 'original_amount' => (float) $order->total,
+            'card_fee' => $cardFee, 'card_fee_rate' => $cardRate,
+            'platform_fee' => $split->platformFee, 'company_net_amount' => $split->companyNet,
+            'installments' => $installments,
+        ]);
+        if ($payment->vindi_transaction_token || $payment->status === 'paid') {
+            return ['id' => $payment->vindi_transaction_token, 'approved' => $payment->status === 'paid', 'status' => $payment->status, 'method' => 'credit_card', 'gateway' => 'vindi'];
+        }
+
         $tokenAccount = config('payments.vindi_token_account');
 
         if (! $tokenAccount && config('app.env') === 'production') {
@@ -322,7 +362,7 @@ class PaymentOrchestrator
             try {
                 $result = $this->vindi->createCreditCardCharge(
                     amount: $chargeAmount,
-                    externalRef: $this->vindiExternalRef($order),
+                    externalRef: $payment->vindi_order_number,
                     card: new CreditCardDTO(
                         holderName: $savedCard ? ($customer->name ?? '') : $cardData['holderName'],
                         number: $savedCard ? '' : $cardData['number'],
@@ -358,7 +398,7 @@ class PaymentOrchestrator
                     'order_id' => $order->id,
                     'company_id' => $company->id,
                     'amount' => $chargeAmount,
-                    'error' => $e->getMessage(),
+                    'exception_type' => $e::class,
                 ]);
 
                 throw $e;
@@ -378,7 +418,6 @@ class PaymentOrchestrator
 
             Log::channel('payments')->info('Cartão Vindi criado', [
                 'order_id' => $order->id,
-                'vindi_transaction_token' => $transactionToken,
                 'charge_amount' => $chargeAmount,
                 'installments' => $installments,
                 'approved' => $approved,
@@ -406,8 +445,12 @@ class PaymentOrchestrator
         $closedDuringCharge = false;
 
         try {
-            DB::transaction(function () use ($order, $customer, $cardData, $savedCard, $brand, $cardToken, $transactionToken, $transactionId, $chargeAmount, $cardFee, $cardRate, $split, $installments, $paymentToken, $approved, &$closedDuringCharge) {
-                $payment = Payment::create([
+            DB::transaction(function () use ($order, $customer, $cardData, $savedCard, $brand, $cardToken, $transactionToken, $transactionId, $chargeAmount, $cardFee, $cardRate, $split, $installments, $paymentToken, $approved, $declined, $payment, &$closedDuringCharge) {
+                $payment = Payment::whereKey($payment->id)->lockForUpdate()->firstOrFail();
+                if ($payment->status === 'paid') {
+                    return;
+                }
+                $payment->update([
                     'order_id' => $order->id,
                     'vindi_transaction_token' => $transactionToken,
                     'vindi_transaction_id' => $transactionId,
@@ -419,7 +462,7 @@ class PaymentOrchestrator
                     'platform_fee' => $split->platformFee,
                     'company_net_amount' => $split->companyNet,
                     'installments' => $installments,
-                    'status' => $approved ? 'paid' : 'pending',
+                    'status' => $approved ? 'paid' : ($declined ? 'failed' : 'pending'),
                     'paid_at' => $approved ? now() : null,
                     'payment_token' => $paymentToken,
                 ]);
@@ -463,9 +506,8 @@ class PaymentOrchestrator
             Log::channel('discord')->critical('Cartão: transação local falhou após resposta da Vindi — possível cobrança sem pedido pago', [
                 'type' => 'payments',
                 'order_id' => $order->id,
-                'vindi_transaction_token' => $transactionToken,
                 'gateway_approved' => $approved,
-                'error' => $e->getMessage(),
+                'exception_type' => $e::class,
             ]);
 
             throw $e;
@@ -473,7 +515,6 @@ class PaymentOrchestrator
 
         Log::channel('payments')->info('Cartão: pagamento local persistido', [
             'order_id' => $order->id,
-            'vindi_transaction_token' => $transactionToken,
             'approved' => $approved,
         ]);
 
@@ -492,7 +533,7 @@ class PaymentOrchestrator
         return [
             'id' => $transactionToken,
             'approved' => $approved,
-            'status' => $approved ? 'paid' : 'pending',
+            'status' => $approved ? 'paid' : ($declined ? 'failed' : 'pending'),
             'method' => 'credit_card',
             'gateway' => 'vindi',
             'declined' => $declined,

@@ -29,6 +29,7 @@ interface OrderServiceInterface
         ?string $checkoutKey = null,
         ?array $fiscalRecipient = null,
         bool $paymentOnDelivery = false,
+        ?float $expectedTotal = null,
     ): Order;
 
     public function cancelOrder(Order $order, int $customerId): void;

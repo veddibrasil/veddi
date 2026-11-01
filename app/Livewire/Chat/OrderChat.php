@@ -292,6 +292,9 @@ class OrderChat extends Component
                 $this->initialize();
             }
             $this->enforceChatAuthorization();
+            if ($this->paymentMethod === 'CARD' && ! $this->paysOnDelivery()) {
+                $this->recalculateCardFee();
+            }
             if (! $this->checkoutReady && in_array($this->step, ['MENU_BROWSE', 'BRANCH_SELECT'], true)) {
                 $this->restoreCheckoutProfile();
                 $this->saveToSession();
@@ -314,6 +317,9 @@ class OrderChat extends Component
     public function hydrate(): void
     {
         $this->enforceChatAuthorization();
+        if ($this->paymentMethod === 'CARD' && ! $this->paysOnDelivery()) {
+            $this->recalculateCardFee();
+        }
     }
 
     private function verifiedCustomer(bool $recent = false): ?\App\Models\Customer
@@ -550,11 +556,14 @@ class OrderChat extends Component
 
     public function getOrderTotalProperty(): float
     {
+        if ($this->orderId && ($order = $this->findOwnOrder())) {
+            return (float) $order->total;
+        }
         $deliveryFeeAfterCoupon = ($this->appliedCoupon && $this->appliedCoupon['type'] === 'free_delivery')
             ? 0.0
             : $this->deliveryFee;
 
-        return max(0, $this->cartTotal + $deliveryFeeAfterCoupon - $this->couponDiscount);
+        return max(0, $this->getCartTotalProperty() + $deliveryFeeAfterCoupon - $this->couponDiscount);
     }
 
     public function getCartCountProperty(): int

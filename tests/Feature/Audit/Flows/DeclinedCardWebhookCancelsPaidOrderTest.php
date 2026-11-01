@@ -55,8 +55,8 @@ test('webhook de recusa da 1ª tentativa de cartão não cancela o pedido já pa
     expect($second['approved'])->toBeTrue();
     expect($order->fresh()->status)->toBe('paid');
 
-    // A 1ª transação ficou gravada como 'pending' mesmo tendo sido recusada.
-    expect(Payment::where('vindi_transaction_token', 'tok_recusada')->value('status'))->toBe('pending');
+    // Recusa síncrona já é uma tentativa encerrada antes do webhook.
+    expect(Payment::where('vindi_transaction_token', 'tok_recusada')->value('status'))->toBe('failed');
 
     // Minutos depois chega o webhook de status da transação recusada.
     (new ProcessVindiWebhook('tok_recusada', 'Não Aprovada', []))->handle();

@@ -48,6 +48,7 @@ class OrderService implements OrderServiceInterface
         ?string $checkoutKey = null,
         ?array $fiscalRecipient = null,
         bool $paymentOnDelivery = false,
+        ?float $expectedTotal = null,
     ): Order {
         $currentCompany = app()->bound('current.company') ? app('current.company') : null;
 
@@ -77,8 +78,9 @@ class OrderService implements OrderServiceInterface
             throw new RuntimeException('Cliente não encontrado nesta empresa.');
         }
 
-        $order = $this->transactionRetryingOnOrderNumberCollision(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer, $extraDiscount, $serviceFee, $couvertFee, $channel, $externalOrderId, $externalMetadata, $buyerData, $checkoutKey, $fiscalRecipient, $paymentOnDelivery) {
+        $order = $this->transactionRetryingOnOrderNumberCollision(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer, $extraDiscount, $serviceFee, $couvertFee, $channel, $externalOrderId, $externalMetadata, $buyerData, $checkoutKey, $fiscalRecipient, $paymentOnDelivery, $expectedTotal) {
             $subtotal = 0.0;
+            $quotedCart = $cart;
             $optionPricing = app(CartOptionPricing::class);
             // Pedido do cliente no chat público: o servidor não confia que a UI travou item sem escolha
             // obrigatória ou sem preço. PDV (atendente) e iFood têm o próprio fluxo e ficam fora.
@@ -96,6 +98,7 @@ class OrderService implements OrderServiceInterface
                 $optionsExtra = (float) $resolved['extra'];
                 $unitPrice = (float) $product->effective_price + $optionsExtra;
                 $qty = (int) ($item['qty'] ?? 0);
+                $quotedCart[$cartKey] = [...$item, 'price' => (float) $product->effective_price, 'name' => $product->name, 'options' => $resolved['options']];
 
                 if ($enforceSelfServiceRules) {
                     if ($qty < 1) {
@@ -134,6 +137,10 @@ class OrderService implements OrderServiceInterface
             $safeServiceFee = max(0.0, (float) $serviceFee);
             $safeCouvertFee = max(0.0, (float) $couvertFee);
             $total = max(0, $subtotal + $deliveryFee + $safeServiceFee + $safeCouvertFee - $discount - $safeExtraDiscount);
+
+            if ($expectedTotal !== null && abs(round($total, 2) - round($expectedTotal, 2)) >= 0.01) {
+                throw new \App\Exceptions\CheckoutPriceChanged($quotedCart, $deliveryFee, $discount);
+            }
 
             // Calculate platform fee based on company plan (fee applies only to products, not shipping)
             $fee = 0.0;

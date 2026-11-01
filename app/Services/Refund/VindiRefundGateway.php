@@ -28,7 +28,6 @@ class VindiRefundGateway implements PaymentRefundGatewayInterface
         if (! $transactionId) {
             Log::channel('payments')->error('Vindi estorno falhou: vindi_transaction_id ausente', [
                 'payment_id' => $payment->id,
-                'vindi_transaction_token' => $token,
             ]);
 
             return ['external_refund_id' => null, 'status' => 'failed', 'raw' => []];
@@ -38,7 +37,6 @@ class VindiRefundGateway implements PaymentRefundGatewayInterface
 
         Log::channel('payments')->info('Solicitando estorno Vindi', [
             'vindi_transaction_id' => $transactionId,
-            'vindi_transaction_token' => $token,
             'amount' => $amount,
         ]);
 
@@ -50,10 +48,8 @@ class VindiRefundGateway implements PaymentRefundGatewayInterface
 
         Log::channel('payments')->info('Resposta do estorno Vindi', [
             'vindi_transaction_id' => $transactionId,
-            'vindi_transaction_token' => $token,
             'amount' => $amount,
             'status' => $response->status(),
-            'body' => $response->body(),
         ]);
 
         $data = $response->json();
@@ -62,10 +58,8 @@ class VindiRefundGateway implements PaymentRefundGatewayInterface
         if ($response->failed() && ! $statusName) {
             Log::channel('payments')->error('Vindi estorno falhou', [
                 'vindi_transaction_id' => $transactionId,
-                'vindi_transaction_token' => $token,
                 'amount' => $amount,
                 'status' => $response->status(),
-                'body' => $response->body(),
             ]);
 
             return ['external_refund_id' => null, 'status' => 'failed', 'raw' => $data ?? []];
@@ -75,7 +69,6 @@ class VindiRefundGateway implements PaymentRefundGatewayInterface
 
         Log::channel('payments')->info('Vindi estorno solicitado', [
             'vindi_transaction_id' => $transactionId,
-            'vindi_transaction_token' => $token,
             'amount' => $amount,
             'vindi_status' => $statusName,
             'immediate' => $succeeded,

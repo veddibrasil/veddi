@@ -8,6 +8,7 @@ use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Payment;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class PaymentService
@@ -70,25 +71,27 @@ class PaymentService
     /**
      * Expira o pagamento atual e gera uma nova cobrança.
      */
-    public function expireAndRenew(Order $order, Customer $customer, ?Company $company, string $paymentMethod): void
+    public function expireAndRenew(Order $order, Customer $customer, ?Company $company, string $paymentMethod): bool
     {
-        $order->payment?->update(['status' => 'expired']);
+        $renew = DB::transaction(function () use ($order) {
+            $locked = Order::withoutGlobalScopes()->where('company_id', $order->company_id)->whereKey($order->id)->lockForUpdate()->first();
+            if (! $locked || $locked->payment_on_delivery || ! in_array($locked->status, ['pending', 'awaiting_payment'], true)
+                || $locked->payments()->where('status', 'paid')->exists()) {
+                return false;
+            }
+            $payment = $locked->payments()->reorder('id', 'desc')->lockForUpdate()->first();
+            if (! $payment || $payment->status !== 'pending' || ! $payment->expires_at?->isPast()) {
+                return false;
+            }
+            $payment->update(['status' => 'expired']);
 
-        session()->forget('payment_token_'.$order->id);
-
-        if (in_array($order->status, ['pending', 'awaiting_payment'])) {
-            ProcessOrder::dispatch($order, $customer, $company, $paymentMethod)->onQueue('critical');
-
-            Log::channel('payments')->info('Cobrança expirada — nova gerada', [
-                'order_id' => $order->id,
-                'payment_method' => $paymentMethod,
-                'queue' => 'critical',
-            ]);
-        } else {
-            Log::channel('payments')->info('expireAndRenew: pedido não está mais pendente/aguardando pagamento, ignorado', [
-                'order_id' => $order->id,
-                'status' => $order->status,
-            ]);
+            return true;
+        });
+        if ($renew) {
+            session()->forget('payment_token_'.$order->id);
+            ProcessOrder::dispatch($order->fresh(), $customer, $company, $paymentMethod)->onQueue('critical');
         }
+
+        return $renew;
     }
 }
