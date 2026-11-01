@@ -21,6 +21,7 @@ class Order extends Model
     public const FISCAL_ISSUABLE_STATUSES = ['paid', 'preparing', 'ready', 'out_for_delivery', 'delivered'];
 
     protected $fillable = [
+        'checkout_session_hash',
         'fiscal_recipient',
         'fiscal_error',
         'checkout_key', 'buyer_data', 'company_id', 'order_number', 'customer_id', 'branch_id', 'subtotal', 'delivery_fee', 'total',
@@ -38,6 +39,8 @@ class Order extends Model
         'cancelled_by',
         'cancelled_at',
     ];
+
+    protected $hidden = ['checkout_session_hash'];
 
     protected $casts = [
         'fiscal_recipient' => 'array',

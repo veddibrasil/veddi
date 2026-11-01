@@ -57,6 +57,7 @@ function deviceProfileGuest(array $ctx): OrderChat
 }
 
 test('pedido visitante lembra somente seus dados criptografados e preserva Customer', function () {
+    $this->freezeTime();
     $ctx = flowAuditContext();
     $original = $ctx['customer']->fresh()->getAttributes();
     $chat = deviceProfileGuest($ctx);

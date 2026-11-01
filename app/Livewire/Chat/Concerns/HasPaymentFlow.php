@@ -81,8 +81,16 @@ trait HasPaymentFlow
         \Illuminate\Support\Facades\Cache::lock('chat-checkout:'.$this->checkoutKey, 30)->block(5, function () {
             $existing = Order::withoutGlobalScopes()->where('company_id', $this->companyId)->where('checkout_key', $this->checkoutKey)->first();
             if ($existing) {
-                if (app(\App\Services\Chat\ChatAccess::class)->canAccessOrder($existing)) {
+                $access = app(\App\Services\Chat\ChatAccess::class);
+                $sameSession = $existing->created_at->gte(now()->subMinutes(10)) && $existing->checkout_session_hash && hash_equals($existing->checkout_session_hash, hash('sha256', session()->getId()));
+                if ($sameSession) {
+                    $access->grantOrder($existing);
+                }
+                if ($sameSession || $access->canAccessOrder($existing, true)) {
                     $this->orderId = $existing->id;
+                    $this->paymentMethod = strtoupper($existing->payment_method);
+                    $this->paymentOnDelivery = $existing->payment_on_delivery;
+                    $this->trackingLink ??= $access->orderLink($existing);
                     $this->transitionTo(match (true) {
                         in_array($existing->status, ['cancelled', 'refunded']) => 'ORDER_FAILED',
                         $existing->payment_on_delivery => 'ORDER_CONFIRMED',
@@ -417,6 +425,7 @@ trait HasPaymentFlow
                 fiscalRecipient: $fiscalRecipient,
                 paymentOnDelivery: $this->paysOnDelivery(),
                 expectedTotal: $expectedTotal,
+                checkoutSessionHash: hash('sha256', session()->getId()),
             );
 
             Log::channel('orders')->info('Pedido criado no chat', [
@@ -629,6 +638,10 @@ trait HasPaymentFlow
             }
         }
 
+        if (in_array($status, ['paid', 'scheduled', 'preparing', 'ready', 'out_for_delivery', 'delivered'], true)) {
+            $this->transitionTo('ORDER_CONFIRMED');
+        }
+
         if ($status === $this->lastNotifiedStatus) {
             return;
         }
@@ -654,10 +667,6 @@ trait HasPaymentFlow
         if (isset($messages[$status])) {
             $this->addMessage('bot', $messages[$status]);
             $this->lastNotifiedStatus = $status;
-        }
-
-        if (in_array($status, ['paid', 'scheduled'])) {
-            $this->transitionTo('ORDER_CONFIRMED');
         }
 
         if ($status === 'cancelled' && $this->step !== 'ORDER_CONFIRMED') {
@@ -730,6 +739,7 @@ trait HasPaymentFlow
 
         $this->selectedCardId = $this->customerCards[0]['id'] ?? null;
         $this->useNewCard = $this->customerCards === [];
+        $this->recalculateCardFee();
     }
 
     public function selectSavedCard(int $cardId): void

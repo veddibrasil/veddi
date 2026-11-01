@@ -49,6 +49,7 @@ class OrderService implements OrderServiceInterface
         ?array $fiscalRecipient = null,
         bool $paymentOnDelivery = false,
         ?float $expectedTotal = null,
+        ?string $checkoutSessionHash = null,
     ): Order {
         $currentCompany = app()->bound('current.company') ? app('current.company') : null;
 
@@ -78,7 +79,7 @@ class OrderService implements OrderServiceInterface
             throw new RuntimeException('Cliente não encontrado nesta empresa.');
         }
 
-        $order = $this->transactionRetryingOnOrderNumberCollision(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer, $extraDiscount, $serviceFee, $couvertFee, $channel, $externalOrderId, $externalMetadata, $buyerData, $checkoutKey, $fiscalRecipient, $paymentOnDelivery, $expectedTotal) {
+        $order = $this->transactionRetryingOnOrderNumberCollision(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer, $extraDiscount, $serviceFee, $couvertFee, $channel, $externalOrderId, $externalMetadata, $buyerData, $checkoutKey, $fiscalRecipient, $paymentOnDelivery, $expectedTotal, $checkoutSessionHash) {
             $subtotal = 0.0;
             $quotedCart = $cart;
             $optionPricing = app(CartOptionPricing::class);
@@ -163,6 +164,7 @@ class OrderService implements OrderServiceInterface
                 'customer_id' => $customerId,
                 'buyer_data' => $buyerData,
                 'checkout_key' => $checkoutKey,
+                'checkout_session_hash' => $checkoutSessionHash,
                 'branch_id' => $branchId,
                 'subtotal' => $subtotal,
                 'delivery_fee' => $deliveryFee,

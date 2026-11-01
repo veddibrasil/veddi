@@ -264,6 +264,14 @@ class OrderChat extends Component
         if ($this->trackingOnly) {
             $this->companyId = $currentCompanyId;
             $this->step = 'TRACKING_LINK';
+            $orderId = session("chat_tracking.{$currentCompanyId}");
+            $order = $orderId ? \App\Models\Order::withoutGlobalScopes()->where('company_id', $currentCompanyId)->find($orderId) : null;
+            if ($order && app(\App\Services\Chat\ChatAccess::class)->canAccessOrder($order)) {
+                $this->orderId = $order->id;
+                $this->selectedBranchId = $order->branch_id;
+                $this->step = 'ORDER_TRACKING';
+                $this->checkPaymentStatus();
+            }
 
             return;
         }
@@ -330,9 +338,22 @@ class OrderChat extends Component
     private function enforceChatAuthorization(): void
     {
         if ($this->customerId && $this->verifiedCustomer()?->id !== $this->customerId) {
+            $accessible = $this->findOwnOrder();
             $this->clearCheckoutIdentity();
             $this->messages = [];
-            $this->step = 'MENU_BROWSE';
+            if ($accessible) {
+                $this->step = match (true) {
+                    in_array($accessible->status, ['cancelled', 'refunded'], true) => 'ORDER_CANCELLED',
+                    ! $accessible->payment_on_delivery && in_array($accessible->status, ['pending', 'awaiting_payment'], true) => strtoupper($accessible->payment_method) === 'CARD' ? 'PAYMENT_CARD_FORM' : 'PAYMENT_PIX',
+                    default => 'ORDER_CONFIRMED',
+                };
+                $this->lastNotifiedStatus = null;
+            } else {
+                $this->orderId = null;
+                $this->checkoutKey = \Illuminate\Support\Str::random(64);
+                $this->reset('trackingLink', 'trackingSummary', 'pixQrCode', 'pixCopyPaste', 'paymentId', 'expiresAt');
+                $this->step = 'MENU_BROWSE';
+            }
         }
         if (! $this->verifiedCustomer(true)) {
             $this->customerCards = [];
@@ -355,6 +376,7 @@ class OrderChat extends Component
 
             return;
         }
+        session(["chat_tracking.{$this->companyId}" => $order->id]);
         $this->orderId = $order->id;
         $this->selectedBranchId = $order->branch_id;
         $this->lastNotifiedStatus = null;
