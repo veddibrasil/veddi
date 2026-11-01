@@ -130,6 +130,10 @@ class OrderChat extends Component
 
     public string $paymentMethod = 'PIX';
 
+    // Cliente paga ao receber: $paymentMethod diz como, e a loja confirma o recebimento, como no PDV.
+    #[Locked]
+    public bool $paymentOnDelivery = false;
+
     // Troco do pagamento em dinheiro: vira uma linha nas observações do pedido (placeOrder).
     public bool $needsChange = false;
 
@@ -804,6 +808,7 @@ class OrderChat extends Component
             'scheduleDate' => $this->scheduleDate,
             'scheduleTime' => $this->scheduleTime,
             'paymentMethod' => $this->paymentMethod,
+            'paymentOnDelivery' => $this->paymentOnDelivery,
             'orderType' => $this->orderType,
             'deliveryFee' => $this->deliveryFee,
             'freeDelivery' => $this->freeDelivery,
@@ -868,6 +873,7 @@ class OrderChat extends Component
         $this->paymentId = null;
         $this->expiresAt = null;
         $this->paymentMethod = 'PIX';
+        $this->paymentOnDelivery = false;
         $this->orderType = 'delivery';
         $this->deliveryFee = 0.0;
         $this->freeDelivery = false;

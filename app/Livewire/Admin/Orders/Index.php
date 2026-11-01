@@ -398,9 +398,9 @@ class Index extends Component
     }
 
     /**
-     * Confirma pagamento coletado na entrega (PDV "receber na entrega"). Restrito a pedidos
-     * do PDV pra não abranger pedidos online aguardando webhook Vindi/Asaas (mesmo status
-     * 'awaiting_payment' é usado nesse fluxo, mas ali quem confirma é o gateway, não o admin).
+     * Confirma pagamento coletado na entrega (PDV "receber na entrega" ou chat "pagar na entrega").
+     * Restrito a esses pedidos pra não abranger pedidos online aguardando webhook Vindi/Asaas (mesmo
+     * status 'awaiting_payment' é usado nesse fluxo, mas ali quem confirma é o gateway, não o admin).
      */
     public function openConfirmPaymentModal(int $orderId): void
     {

@@ -155,9 +155,10 @@ class WhatsAppService
             return $this->skip($order, $event, 'canal ou tipo de pedido fora do escopo');
         }
 
-        // Pedido em dinheiro nasce 'paid' mas o pagamento só acontece na entrega.
-        if ($event === 'paid' && strtoupper((string) $order->payment_method) === 'CASH') {
-            return $this->skip($order, $event, 'pagamento em dinheiro na entrega');
+        // Recebimento na entrega não é o marco que o cliente acompanha; pedidos antigos em dinheiro
+        // nasciam 'paid' sem ter recebido nada.
+        if ($event === 'paid' && ($order->payment_on_delivery || strtoupper((string) $order->payment_method) === 'CASH')) {
+            return $this->skip($order, $event, 'pagamento na entrega');
         }
 
         $template = $this->resolveTemplate($order, $event);

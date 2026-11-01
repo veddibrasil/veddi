@@ -30,7 +30,11 @@
     <div style="padding: 32px 40px;">
         <h2 style="font-size: 20px; margin-top: 0; color: #111;">Obrigado pelo seu pedido, {{ $buyer->name }}! 🎉</h2>
         <p style="font-size: 15px; line-height: 1.6; color: #555;">
-            Recebemos o seu pedido com sucesso. Assim que o pagamento for confirmado, começaremos a preparar tudo para você.
+            @if($order->payment_on_delivery)
+                Recebemos o seu pedido com sucesso. O pagamento será feito ao receber.
+            @else
+                Recebemos o seu pedido com sucesso. Assim que o pagamento for confirmado, começaremos a preparar tudo para você.
+            @endif
         </p>
 
         {{-- Order info box --}}
@@ -38,7 +42,7 @@
             <p style="margin: 0 0 8px; font-size: 14px;"><span style="color: #888;">Número do pedido:</span> &nbsp;<strong style="color: #111;">#{{ $order->order_number }}</strong></p>
             <p style="margin: 0 0 8px; font-size: 14px;"><span style="color: #888;">Data:</span> &nbsp;{{ $order->created_at->format('d/m/Y H:i') }}</p>
             @if($order->payment_method)
-            <p style="margin: 0; font-size: 14px;"><span style="color: #888;">Pagamento:</span> &nbsp;{{ Str::upper($order->payment_method) }}</p>
+            <p style="margin: 0; font-size: 14px;"><span style="color: #888;">Pagamento:</span> &nbsp;{{ $order->paymentOnDeliveryLabel() ?? Str::upper($order->payment_method) }}</p>
             @endif
         </div>
 

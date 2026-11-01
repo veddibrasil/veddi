@@ -545,7 +545,8 @@ class PaymentOrchestrator
     {
         $gateway = match ($order->payment_method) {
             'cash' => 'cash',
-            'credit_card' => 'card_machine',
+            // 'card': cliente do chat que escolheu pagar na maquininha.
+            'credit_card', 'card' => 'card_machine',
             'pix' => 'pix_manual',
             default => $order->payment_method,
         };

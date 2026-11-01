@@ -151,6 +151,14 @@ test('pagamento em dinheiro na entrega não dispara "pagamento confirmado"', fun
     Queue::assertNothingPushed();
 });
 
+test('recebimento na entrega de pedido do chat não dispara "pagamento confirmado"', function (string $method) {
+    ['order' => $order] = whatsappOrderContext(['status' => 'paid', 'payment_method' => $method, 'payment_on_delivery' => true]);
+
+    notifyStatus($order);
+
+    Queue::assertNothingPushed();
+})->with(['pix', 'card']);
+
 test('pagamento online confirmado dispara "pagamento confirmado"', function (string $method) {
     ['order' => $order] = whatsappOrderContext(['status' => 'paid', 'payment_method' => $method]);
 

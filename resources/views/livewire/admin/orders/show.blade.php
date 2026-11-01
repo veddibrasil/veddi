@@ -789,7 +789,8 @@
                 <div class="grid grid-cols-2 gap-2 text-sm">
                     <div class="text-neutral-500 dark:text-neutral-400">Método</div>
                     <div class="font-semibold text-neutral-800 dark:text-neutral-100">
-                        @if ($order->payment_method === 'pix') PIX
+                        @if ($order->payment_on_delivery) {{ $order->paymentOnDeliveryLabel() }}
+                        @elseif ($order->payment_method === 'pix') PIX
                         @elseif ($order->payment_method === 'card') Cartão de Crédito
                         @elseif ($order->payment_method === 'cash') Dinheiro
                         @elseif ($order->payment_method === 'split') Dividido
@@ -842,7 +843,7 @@
 
                 @if ($order->needsPdvPaymentConfirmation())
                     <div class="mt-3 bg-yellow-50 border border-yellow-200 rounded-xl p-3 dark:bg-yellow-900/20 dark:border-yellow-700">
-                        <p class="text-xs text-yellow-700 dark:text-yellow-400 mb-2">A receber na entrega.</p>
+                        <p class="text-xs text-yellow-700 dark:text-yellow-400 mb-2">{{ $order->payment_on_delivery ? 'A receber: '.$order->paymentOnDeliveryLabel().'.' : 'A receber na entrega.' }}</p>
                         <button wire:click="openConfirmPaymentModal"
                                 class="w-full text-sm bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 px-4 py-2 rounded-lg transition-colors">
                             Confirmar pagamento

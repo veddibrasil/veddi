@@ -168,10 +168,13 @@ class EscPosPrinterService implements PrinterServiceInterface
             }
             $this->divider($printer);
             $this->printCustomerAndAddress($printer, $order);
-        } elseif ($isDeliveryTicket && $order->payment_method === 'cash' && ! $order->payment) {
+        } elseif ($isDeliveryTicket && ($order->payment_method === 'cash' || $order->payment_on_delivery) && ! $order->payment) {
             $this->divider($printer);
             $printer->setEmphasis(true);
             $printer->text('COBRAR: R$ '.number_format((float) $order->total, 2, ',', '.')."\n");
+            if ($order->payment_on_delivery) {
+                $printer->text(\Illuminate\Support\Str::ascii($order->paymentOnDeliveryLabel())."\n");
+            }
             $printer->setEmphasis(false);
         }
 

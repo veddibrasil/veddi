@@ -18,6 +18,7 @@ trait HasOrderRecovery
             ->where('company_id', $companyId)
             ->whereIn('status', ['pending', 'awaiting_payment'])
             ->where('payment_method', '!=', 'CASH')
+            ->where('payment_on_delivery', false)
             ->latest()
             ->first();
     }
@@ -41,7 +42,7 @@ trait HasOrderRecovery
             ->where('company_id', $this->companyId)
             ->first();
 
-        if (! $order || ! in_array($order->status, ['pending', 'awaiting_payment'])) {
+        if (! $order || $order->payment_on_delivery || ! in_array($order->status, ['pending', 'awaiting_payment'])) {
             $this->pendingOrderSummary = null;
             $this->addMessage('bot', 'Pedido anterior não encontrado ou já finalizado. Vamos fazer um novo!');
             $this->transitionTo('MENU_BROWSE');

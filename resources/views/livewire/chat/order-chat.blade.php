@@ -988,6 +988,11 @@
                     </p>
                 @endif
 
+                <div>
+                    <p class="text-sm font-bold text-gray-800">{{ $orderType === 'pickup' ? 'Pagar na retirada' : 'Pagar na entrega' }}</p>
+                    <p class="text-xs text-gray-600">Escolha como você vai pagar ao receber</p>
+                </div>
+
                 {{-- Dinheiro --}}
                 <button
                     wire:click="selectPaymentMethod('CASH')"
@@ -1009,6 +1014,55 @@
                         <span class="text-xs font-bold text-yellow-800 bg-yellow-100 px-2 py-0.5 rounded-full">{{ $orderType === 'pickup' ? 'Na retirada' : 'Na entrega' }}</span>
                     </div>
                 </button>
+
+                {{-- Cartão na maquininha, ao receber --}}
+                <button
+                    wire:click="selectPaymentMethod('CARD', true)"
+                    wire:loading.attr="disabled"
+                    @disabled($restrictedPaymentMethod && $restrictedPaymentMethod !== 'CARD')
+                    class="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 border-yellow-200 bg-yellow-50 hover:bg-yellow-100 hover:border-yellow-400 transition-all text-left
+                        {{ ($restrictedPaymentMethod && $restrictedPaymentMethod !== 'CARD') ? 'opacity-40 grayscale cursor-not-allowed hover:bg-yellow-50 hover:border-yellow-200' : '' }}"
+                >
+                    <div class="w-9 h-9 rounded-full bg-yellow-500 flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="font-bold text-gray-800 text-sm">Cartão</p>
+                        <p class="text-xs text-gray-600">Crédito ou débito, na maquininha</p>
+                    </div>
+                    <div class="ml-auto shrink-0">
+                        <span class="text-xs font-bold text-yellow-800 bg-yellow-100 px-2 py-0.5 rounded-full whitespace-nowrap">{{ $orderType === 'pickup' ? 'Na retirada' : 'Na entrega' }}</span>
+                    </div>
+                </button>
+
+                {{-- PIX ao receber --}}
+                <button
+                    wire:click="selectPaymentMethod('PIX', true)"
+                    wire:loading.attr="disabled"
+                    @disabled($restrictedPaymentMethod && $restrictedPaymentMethod !== 'PIX')
+                    class="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 border-yellow-200 bg-yellow-50 hover:bg-yellow-100 hover:border-yellow-400 transition-all text-left
+                        {{ ($restrictedPaymentMethod && $restrictedPaymentMethod !== 'PIX') ? 'opacity-40 grayscale cursor-not-allowed hover:bg-yellow-50 hover:border-yellow-200' : '' }}"
+                >
+                    <div class="w-9 h-9 rounded-full bg-yellow-500 flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M11.85 3.15a.5.5 0 01.3 0l7 2.5A.5.5 0 0119.5 6v6c0 3.5-2.5 6.5-7 8.5-.12.05-.26.05-.38 0C7.5 18.5 5 15.5 5 12V6a.5.5 0 01.35-.47l7-2.5-.5-.88zm0 1.02L6 6.38V12c0 3 2.1 5.6 6 7.47 3.9-1.87 6-4.47 6-7.47V6.38l-6.15-2.21z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="font-bold text-gray-800 text-sm">PIX</p>
+                        <p class="text-xs text-gray-600">Pague direto para a loja</p>
+                    </div>
+                    <div class="ml-auto shrink-0">
+                        <span class="text-xs font-bold text-yellow-800 bg-yellow-100 px-2 py-0.5 rounded-full whitespace-nowrap">{{ $orderType === 'pickup' ? 'Na retirada' : 'Na entrega' }}</span>
+                    </div>
+                </button>
+
+                <div class="pt-1">
+                    <p class="text-sm font-bold text-gray-800">Pagar agora, pelo chat</p>
+                    <p class="text-xs text-gray-600">O pagamento é feito aqui, antes do preparo</p>
+                </div>
 
                 {{-- PIX --}}
                 <button
@@ -1051,8 +1105,8 @@
                         </svg>
                     </div>
                     <div>
-                        <p class="font-bold text-gray-800 text-sm">Cartão de Crédito</p>
-                        <p class="text-xs text-gray-500">Visa, Mastercard e outros</p>
+                        <p class="font-bold text-gray-800 text-sm">Cartão de crédito online</p>
+                        <p class="text-xs text-gray-500">Digite os dados do cartão aqui no chat</p>
                     </div>
                 </button>
 
@@ -1161,12 +1215,7 @@
                     </div>
                     <div class="flex justify-between gap-3">
                         <dt class="text-gray-600 shrink-0">Pagamento</dt>
-                        <dd class="text-gray-800 text-right">
-                            @if ($paymentMethod === 'CASH') Dinheiro
-                            @elseif ($paymentMethod === 'CARD') Cartão de Crédito
-                            @else PIX
-                            @endif
-                        </dd>
+                        <dd class="text-gray-800 text-right">{{ $this->paymentChoiceLabel }}</dd>
                     </div>
                     @if ($notes)
                         <div class="flex justify-between gap-3">

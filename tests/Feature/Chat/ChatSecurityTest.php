@@ -114,7 +114,7 @@ test('link exclusivo só acompanha um pedido e não permite cancelar renovar PIX
     $reader->confirmCancelOrder();
     $reader->handlePaymentExpired();
     $reader->goToOrderHistory();
-    expect($order->fresh()->status)->toBe('paid')
+    expect($order->fresh()->status)->toBe('awaiting_payment')
         ->and($reader->orderHistory)->toBe([]);
     DB::table('chat_order_access')->update(['revoked_at' => now()]);
     expect(app(ChatAccess::class)->canAccessOrder($order))->toBeFalse();

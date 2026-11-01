@@ -24,7 +24,7 @@ class Order extends Model
         'fiscal_recipient',
         'fiscal_error',
         'checkout_key', 'buyer_data', 'company_id', 'order_number', 'customer_id', 'branch_id', 'subtotal', 'delivery_fee', 'total',
-        'status', 'notes', 'scheduled_at', 'payment_method', 'order_type', 'delivery_type', 'coupon_id', 'discount', 'fee', 'net_value',
+        'status', 'notes', 'scheduled_at', 'payment_method', 'payment_on_delivery', 'order_type', 'delivery_type', 'coupon_id', 'discount', 'fee', 'net_value',
         'channel', 'external_order_id', 'external_metadata',
         'delivery_address_id',
         'cash_received', 'cash_change',
@@ -45,6 +45,7 @@ class Order extends Model
         'confirmation_email_sent_at' => 'datetime',
         'scheduled_at' => 'datetime',
         'is_open_tab' => 'boolean',
+        'payment_on_delivery' => 'boolean',
         'external_metadata' => 'array',
         'cancelled_at' => 'datetime',
         'buyer_data' => 'array',
@@ -310,15 +311,16 @@ class Order extends Model
     }
 
     /**
-     * Pedido do PDV "a receber" (na entrega/retirada) que ainda não tem Payment registrado.
+     * Pedido do PDV ou do chat "a receber" (na entrega/retirada) que ainda não tem Payment registrado.
      * Não dá pra olhar só pro status 'awaiting_payment': o operador costuma avançar o pedido
      * (preparando, pronto, entregue...) antes de receber — principalmente agendado, que fica
-     * horas esperando — e o pagamento continua pendente. Usa `payments_exists` quando a
-     * query trouxe `withExists('payments')`, pra listagem não fazer uma query por pedido.
+     * horas esperando — e o pagamento continua pendente. Pagamento online do chat fica de fora:
+     * quem confirma é o gateway, nunca a loja. Usa `payments_exists` quando a query trouxe
+     * `withExists('payments')`, pra listagem não fazer uma query por pedido.
      */
     public function needsPdvPaymentConfirmation(): bool
     {
-        if ($this->order_type !== 'pdv' || in_array($this->status, ['cancelled', 'refunded'], true)) {
+        if (($this->order_type !== 'pdv' && ! $this->payment_on_delivery) || in_array($this->status, ['cancelled', 'refunded'], true)) {
             return false;
         }
 
@@ -329,6 +331,22 @@ class Order extends Model
         };
 
         return ! $hasPayment;
+    }
+
+    /** Como o cliente do chat disse que vai pagar ao receber ("Cartão na entrega"); null nos demais pedidos. */
+    public function paymentOnDeliveryLabel(): ?string
+    {
+        if (! $this->payment_on_delivery) {
+            return null;
+        }
+
+        $method = match ($this->payment_method) {
+            'card' => 'Cartão',
+            'pix' => 'PIX',
+            default => 'Dinheiro',
+        };
+
+        return $method.($this->order_type === 'pickup' ? ' na retirada' : ' na entrega');
     }
 
     /** Returns the delivery address snapshot, falling back to customer address for legacy orders. */
@@ -372,6 +390,10 @@ class Order extends Model
             if ($marketplace->awaitingConfirmation()) {
                 return $this->status === 'scheduled' ? 'Agendado (aguardando aceite)' : 'Aguardando aceite';
             }
+        }
+
+        if ($this->payment_on_delivery && $this->status === 'awaiting_payment') {
+            return $this->order_type === 'pickup' ? 'Pagamento na retirada' : 'Pagamento na entrega';
         }
 
         return static::statusLabel($this->status);

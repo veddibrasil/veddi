@@ -123,7 +123,7 @@
                     @endif
                 </td>
             </tr>
-            @if ($order->payment_method === 'cash' && ! $order->payment)
+            @if (($order->payment_method === 'cash' || $order->payment_on_delivery) && ! $order->payment)
                 <tr>
                     <td class="total-label">COBRAR</td>
                     <td class="total-value">R$ {{ number_format($order->total, 2, ',', '.') }}</td>

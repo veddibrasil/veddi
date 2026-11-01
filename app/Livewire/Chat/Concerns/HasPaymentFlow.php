@@ -24,7 +24,7 @@ use RuntimeException;
 
 trait HasPaymentFlow
 {
-    public function selectPaymentMethod(string $method): void
+    public function selectPaymentMethod(string $method, bool $onDelivery = false): void
     {
         abort_unless(in_array($method, ['PIX', 'CARD', 'CASH'], true), 422);
         $restrictedMethod = $this->appliedCoupon['payment_method'] ?? null;
@@ -33,19 +33,16 @@ trait HasPaymentFlow
         }
 
         $this->paymentMethod = $method;
+        $this->paymentOnDelivery = $onDelivery;
+        $this->cardFeeBreakdown = [];
 
-        if ($method === 'CARD') {
+        if ($method === 'CARD' && ! $this->paysOnDelivery()) {
             $this->recalculateCardFee();
         }
 
-        $label = match ($method) {
-            'CASH' => 'Dinheiro',
-            'CARD' => 'Cartão de Crédito',
-            default => 'PIX',
-        };
-        $this->addMessage('user', $label);
+        $this->addMessage('user', $this->paymentChoiceLabel);
 
-        if ($this->taxId === '' && in_array($method, ['PIX', 'CARD'])) {
+        if ($this->taxId === '' && ! $this->paysOnDelivery()) {
             $this->addMessage('bot', 'Para gerar o pagamento precisamos do seu CPF. Por favor, informe.');
             $this->transitionTo('CHECKOUT_CPF');
 
@@ -53,6 +50,26 @@ trait HasPaymentFlow
         }
 
         $this->transitionTo('CHECKOUT_CONFIRM');
+    }
+
+    /** Dinheiro é sempre ao receber; PIX e cartão só quando o cliente escolhe pagar ao receber. */
+    private function paysOnDelivery(): bool
+    {
+        return $this->paymentOnDelivery || $this->paymentMethod === 'CASH';
+    }
+
+    /** Forma de pagamento escolhida, como o cliente lê no chat. */
+    public function getPaymentChoiceLabelProperty(): string
+    {
+        $moment = $this->orderType === 'pickup' ? 'na retirada' : 'na entrega';
+
+        return match (true) {
+            $this->paymentMethod === 'CASH' => "Dinheiro {$moment}",
+            $this->paymentMethod === 'CARD' && $this->paysOnDelivery() => "Cartão {$moment} (maquininha)",
+            $this->paymentMethod === 'CARD' => 'Cartão de crédito online',
+            $this->paysOnDelivery() => "PIX {$moment}",
+            default => 'PIX',
+        };
     }
 
     public function confirmOrder(): void
@@ -67,6 +84,7 @@ trait HasPaymentFlow
                     $this->orderId = $existing->id;
                     $this->transitionTo(match (true) {
                         in_array($existing->status, ['cancelled', 'refunded']) => 'ORDER_FAILED',
+                        $existing->payment_on_delivery => 'ORDER_CONFIRMED',
                         in_array($existing->status, ['pending', 'awaiting_payment']) => strtoupper($existing->payment_method) === 'CARD' ? 'PAYMENT_CARD_FORM' : 'PAYMENT_PIX',
                         default => 'ORDER_CONFIRMED',
                     });
@@ -89,8 +107,9 @@ trait HasPaymentFlow
 
     private function placeConfirmedOrder(): void
     {
-        if ($this->paymentMethod === 'CASH') {
-            $status = $this->scheduledAt ? 'scheduled' : 'paid';
+        // Mesma regra do PDV "receber na entrega": não nasce 'paid', a loja confirma ao receber.
+        if ($this->paysOnDelivery()) {
+            $status = $this->scheduledAt ? 'scheduled' : 'awaiting_payment';
         } else {
             $status = 'pending';
         }
@@ -100,6 +119,7 @@ trait HasPaymentFlow
     public function backToPaymentMethod(): void
     {
         $this->paymentMethod = '';
+        $this->paymentOnDelivery = false;
         $this->cardFeeBreakdown = [];
         $this->needsChange = false;
         $this->cashChange = '';
@@ -322,7 +342,7 @@ trait HasPaymentFlow
             'complement' => ['nullable', 'string', 'max:100'],
             'customer_latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'customer_longitude' => ['nullable', 'numeric', 'between:-180,180'],
-            'taxId' => [in_array($this->paymentMethod, ['PIX', 'CARD']) ? 'required' : 'nullable', 'regex:/^\d{3}\.?\d{3}\.?\d{3}-?\d{2}$/'],
+            'taxId' => [$this->paysOnDelivery() ? 'nullable' : 'required', 'regex:/^\d{3}\.?\d{3}\.?\d{3}-?\d{2}$/'],
             ...($this->orderType === 'delivery' ? [
                 'address' => ['required', 'string', 'min:5', 'max:255'],
                 'number' => ['required', 'string', 'max:20'],
@@ -385,6 +405,7 @@ trait HasPaymentFlow
                 buyerData: $this->checkoutBuyerData(),
                 checkoutKey: $this->checkoutKey,
                 fiscalRecipient: $fiscalRecipient,
+                paymentOnDelivery: $this->paysOnDelivery(),
             );
 
             Log::channel('orders')->info('Pedido criado no chat', [
@@ -471,13 +492,11 @@ trait HasPaymentFlow
 
         if ($initialStatus === 'scheduled') {
             $scheduledLabel = Carbon::parse($this->scheduledAt)->setTimezone(config('app.timezone'))->format('d/m/Y \à\s H:i');
-            $this->addMessage('bot', $summary."\n\n🕐 Pedido agendado para {$scheduledLabel}. Pagamento em dinheiro na entrega. Obrigado!");
+            $this->addMessage('bot', $summary."\n\n🕐 Pedido agendado para {$scheduledLabel}. Pagamento: {$this->paymentChoiceLabel}. Obrigado!");
             $this->transitionTo('ORDER_CONFIRMED');
-        } elseif ($initialStatus === 'paid') {
-            // Pedido nasce 'paid' (dinheiro) e nunca passa por outra transição de status depois —
-            // sem isso, os listeners de OrderStatusUpdated (WhatsApp, e-mail) nunca disparam.
-            OrderStatusUpdated::dispatch($order);
-            $this->addMessage('bot', $summary."\n\nPagamento em dinheiro na entrega. Obrigado!");
+        } elseif ($initialStatus === 'awaiting_payment') {
+            $this->lastNotifiedStatus = 'awaiting_payment';
+            $this->addMessage('bot', $summary."\n\nPagamento: {$this->paymentChoiceLabel}. Obrigado!");
             $this->transitionTo('ORDER_CONFIRMED');
         } elseif ($this->paymentMethod === 'CARD') {
             $this->loadCustomerCards($customer);
@@ -565,7 +584,7 @@ trait HasPaymentFlow
             return;
         }
 
-        if ($status === 'awaiting_payment' && ! $this->pixCopyPaste && $this->findOwnOrder(true)) {
+        if ($status === 'awaiting_payment' && ! $order->payment_on_delivery && ! $this->pixCopyPaste && $this->findOwnOrder(true)) {
             $payment = $order->payment;
             if ($payment) {
                 $sessionKey = 'payment_token_'.$this->orderId;
@@ -600,8 +619,8 @@ trait HasPaymentFlow
         $scheduledLabel = $order->scheduled_at?->setTimezone(config('app.timezone'))->format('d/m/Y \à\s H:i');
         $messages = [
             'awaiting_payment' => "⏳ Pedido {$order->order_number} recebido! Aguardando confirmação do pagamento.",
-            'scheduled' => "✅ Pagamento confirmado! Seu pedido {$order->order_number} está agendado para {$scheduledLabel}. Você receberá atualizações quando começarmos a preparar.",
-            'paid' => "✅ Após a confirmação o seu pedido {$order->order_number} será preparado.",
+            'scheduled' => ($order->payment_on_delivery ? '✅ Tudo certo!' : '✅ Pagamento confirmado!')." Seu pedido {$order->order_number} está agendado para {$scheduledLabel}. Você receberá atualizações quando começarmos a preparar.",
+            'paid' => $order->payment_on_delivery ? "✅ Pagamento do pedido {$order->order_number} recebido. Obrigado!" : "✅ Após a confirmação o seu pedido {$order->order_number} será preparado.",
             'preparing' => "👨‍🍳 Seu pedido {$order->order_number} está sendo preparado! Em breve ficará pronto.",
             'ready' => "✅ Pedido {$order->order_number} pronto!".($order->order_type === 'delivery' ? ' Logo sai para entrega.' : ''),
             'out_for_delivery' => "🛵 Pedido {$order->order_number} saiu para entrega! Aguarde em breve.",
@@ -977,6 +996,7 @@ trait HasPaymentFlow
 
         $this->checkoutKey = \Illuminate\Support\Str::random(64);
         $this->orderId = null;
+        $this->paymentOnDelivery = false;
         $this->paymentId = null;
         $this->pixQrCode = null;
         $this->pixCopyPaste = null;
@@ -1017,6 +1037,7 @@ trait HasPaymentFlow
         $this->submitting = false;
         $this->notes = '';
         $this->paymentMethod = 'PIX';
+        $this->paymentOnDelivery = false;
         $this->orderType = 'delivery';
         $this->deliveryFee = 0.0;
         $this->freeDelivery = false;
