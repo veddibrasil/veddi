@@ -44,6 +44,9 @@
                     @elseif ($step === 'CLOSED')
                         <span class="w-2 h-2 rounded-full bg-red-400 shadow-sm shadow-red-300"></span>
                         <p class="text-white/75 text-xs">Fechado no momento</p>
+                    @elseif ($selectedBranchId && $currentCompany?->schedulingEnabled() && !$this->immediateOrderAvailable)
+                        <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                        <p class="text-white/75 text-xs">Somente agendamentos</p>
                     @else
                         <span class="w-2 h-2 rounded-full bg-green-400 shadow-sm shadow-green-300"></span>
                         <p class="text-white/75 text-xs">Online • Pedidos abertos</p>
@@ -756,9 +759,13 @@
 
                 @if (!$showScheduleForm)
                     <div class="space-y-2">
+                        @if ($this->immediateOrderAvailable)
                         <button wire:click="selectScheduleOption('now')" class="mc-btn-primary">
                             <span aria-hidden="true">⚡</span> Agora, o mais rápido possível
                         </button>
+                        @else
+                            <p class="text-sm text-amber-700">Estamos fechados agora. Seu pedido precisa ser agendado.</p>
+                        @endif
                         <button wire:click="$set('showScheduleForm', true)" class="mc-btn-secondary w-full">
                             <span aria-hidden="true">🕐</span> Escolher dia e horário
                         </button>
@@ -1588,7 +1595,7 @@
                         @if ($scheduledAt)
                             A loja recebeu seu pedido agendado. Avisaremos aqui quando ele andar.
                         @else
-                            A loja recebeu seu pedido. Acompanhe o andamento por aqui ou pelo link acima.
+                            A loja recebeu seu pedido. Acompanhe o andamento por aqui ou pelo link abaixo.
                         @endif
                     </p>
                 </div>

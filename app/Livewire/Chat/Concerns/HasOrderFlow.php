@@ -477,6 +477,12 @@ trait HasOrderFlow
     public function selectScheduleOption(string $option): void
     {
         if ($option === 'now') {
+            if (! $this->immediateOrderAvailable) {
+                $this->showScheduleForm = true;
+                $this->addError('scheduledAt', 'A filial está fechada agora. Escolha um horário para agendar.');
+
+                return;
+            }
             $this->scheduledAt = null;
             $this->scheduleInput = '';
             $this->addMessage('user', 'Agora, o mais rápido possível');
@@ -489,9 +495,6 @@ trait HasOrderFlow
     public function submitScheduleTime(): void
     {
         $this->resetErrorBag('scheduledAt');
-
-        $company = $this->currentCompany();
-        $minMinutes = $company?->schedule_min_advance_minutes ?? 60;
 
         if (empty($this->scheduleDate) || empty($this->scheduleTime)) {
             $this->addError('scheduledAt', 'Informe a data e horário desejados.');
@@ -514,76 +517,12 @@ trait HasOrderFlow
             return;
         }
 
-        if ($scheduled->isPast()) {
-            $this->addError('scheduledAt', 'O horário deve ser no futuro.');
-
-            Log::channel('chat')->info('Agendamento rejeitado: horário no passado', [
-                'customer_id' => $this->customerId,
-                'branch_id' => $this->selectedBranchId,
-                'attempted_at' => $scheduled->toIso8601String(),
-            ]);
+        $branch = Branch::withoutGlobalScopes()->where('company_id', $this->companyId)->where('active', true)->find($this->selectedBranchId);
+        $refusal = $branch ? $this->scheduleRefusal($branch, $scheduled) : 'A filial escolhida não está disponível.';
+        if ($refusal) {
+            $this->addError('scheduledAt', $refusal);
 
             return;
-        }
-
-        $minTime = now(config('app.timezone'))->addMinutes($minMinutes);
-        if ($scheduled->lt($minTime)) {
-            $this->addError('scheduledAt', "Agende com pelo menos {$minMinutes} minutos de antecedência.");
-
-            Log::channel('chat')->info('Agendamento rejeitado: antecedência mínima não atingida', [
-                'customer_id' => $this->customerId,
-                'branch_id' => $this->selectedBranchId,
-                'attempted_at' => $scheduled->toIso8601String(),
-                'min_minutes' => $minMinutes,
-            ]);
-
-            return;
-        }
-
-        $branch = Branch::find($this->selectedBranchId);
-        if ($branch) {
-            $dayOfWeek = (int) $scheduled->format('w');
-            $timeStr = $scheduled->format('H:i');
-
-            $availableDays = $branch->available_days;
-            if ($availableDays !== null && ! in_array($dayOfWeek, $availableDays)) {
-                $this->addError('scheduledAt', 'A filial não atende no dia selecionado.');
-
-                Log::channel('chat')->info('Agendamento rejeitado: filial fechada no dia', [
-                    'customer_id' => $this->customerId,
-                    'branch_id' => $this->selectedBranchId,
-                    'attempted_at' => $scheduled->toIso8601String(),
-                    'day_of_week' => $dayOfWeek,
-                ]);
-
-                return;
-            }
-
-            if (! $branch->isWithinSchedulingSlot($dayOfWeek, $timeStr)) {
-                $this->addError('scheduledAt', 'Não há agendamento disponível nesse horário.');
-
-                Log::channel('chat')->info('Agendamento rejeitado: fora dos horários de agendamento', [
-                    'customer_id' => $this->customerId,
-                    'branch_id' => $this->selectedBranchId,
-                    'attempted_time' => $timeStr,
-                ]);
-
-                return;
-            }
-
-            if ($pause = $branch->activePauseAt($scheduled)) {
-                $reasonText = $pause->reason ? " Motivo: {$pause->reason}." : '';
-                $this->addError('scheduledAt', "A filial estará fechada nesse período.{$reasonText}");
-
-                Log::channel('chat')->info('Agendamento rejeitado: filial em pausa', [
-                    'customer_id' => $this->customerId,
-                    'branch_id' => $this->selectedBranchId,
-                    'attempted_at' => $scheduled->toIso8601String(),
-                    'pause_id' => $pause->id,
-                ]);
-
-                return;
-            }
         }
 
         Log::channel('chat')->info('Agendamento confirmado', [

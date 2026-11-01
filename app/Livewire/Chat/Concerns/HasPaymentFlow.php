@@ -297,8 +297,7 @@ trait HasPaymentFlow
 
         $refusal = match (true) {
             $branch === null => 'A filial escolhida não está disponível no momento.',
-            // Agendado: o horário escolhido já foi validado contra a grade da filial.
-            $scheduledAt !== null => null,
+            $scheduledAt !== null => $this->scheduleRefusal($branch, $scheduledAt),
             $branch->isPaused() => "A filial {$branch->name} está temporariamente fechada. Tente mais tarde.",
             ! $this->branchOpenNow($branch) => "A filial {$branch->name} está fechada no momento. Tente mais tarde.",
             default => null,
@@ -314,6 +313,11 @@ trait HasPaymentFlow
         ]);
 
         $this->addMessage('bot', $refusal);
+        if ($this->currentCompany()?->schedulingEnabled()) {
+            $this->showScheduleForm = true;
+            $this->addError('scheduledAt', $refusal);
+            $this->transitionTo('CHECKOUT_SCHEDULE');
+        }
 
         return false;
     }
@@ -322,8 +326,27 @@ trait HasPaymentFlow
      * Branch::isOpen() não cobre a janela que vira a noite (ex.: 18:00–02:00); o initialize()
      * do chat cobre, então a mesma tolerância vale aqui para não travar loja noturna.
      */
+    private function scheduleRefusal(Branch $branch, Carbon $scheduled): ?string
+    {
+        $company = $this->currentCompany();
+        $minimum = $company?->schedule_min_advance_minutes ?? 60;
+        $day = (int) $scheduled->format('w');
+
+        return match (true) {
+            ! $company?->schedulingEnabled() => 'O agendamento não está disponível nesta loja.',
+            $scheduled->lt(now(config('app.timezone'))->addMinutes($minimum)) => "Agende com pelo menos {$minimum} minutos de antecedência.",
+            $branch->available_days !== null && ! in_array($day, $branch->available_days) => 'A filial não atende no dia selecionado.',
+            ! $branch->isWithinSchedulingSlot($day, $scheduled->format('H:i')) => 'Não há agendamento disponível nesse horário.',
+            $branch->isPaused($scheduled) => 'A filial estará fechada nesse período.',
+            default => null,
+        };
+    }
+
     private function branchOpenNow(Branch $branch): bool
     {
+        if ($branch->isPaused()) {
+            return false;
+        }
         if ($branch->isOpen()) {
             return true;
         }

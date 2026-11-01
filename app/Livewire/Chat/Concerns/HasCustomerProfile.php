@@ -242,14 +242,14 @@ trait HasCustomerProfile
             ->where('active', true)
             ->firstOrFail();
 
-        if ($pause = $branch->activePauseAt()) {
+        if (($pause = $branch->activePauseAt()) && ! $this->currentCompany()?->schedulingEnabled()) {
             $reasonText = $pause->reason ? " Motivo: {$pause->reason}." : '';
             $this->addMessage('bot', "A filial {$branch->name} está temporariamente fechada.{$reasonText} Escolha outra filial ou tente mais tarde.");
 
             return;
         }
 
-        if (! $branch->isOpen()) {
+        if (! $this->branchOpenNow($branch) && ! $this->currentCompany()?->schedulingEnabled()) {
             $this->addMessage('bot', "A filial {$branch->name} está fechada no momento. Horário: {$branch->opens_at} às {$branch->closes_at}. Escolha outra filial ou tente mais tarde.");
 
             return;

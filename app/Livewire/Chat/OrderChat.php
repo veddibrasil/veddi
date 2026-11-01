@@ -429,13 +429,16 @@ class OrderChat extends Component
             }
         );
 
-        if (! $hasOpenBranch) {
+        if (! $hasOpenBranch && (! $company?->schedulingEnabled() || ! Branch::withoutGlobalScopes()->where('company_id', $companyId)->where('active', true)->exists())) {
             $this->addMessage('bot', "Olá! Bem-vindo ao {$companyName}! No momento estamos fora do horário de atendimento. Consulte os horários de cada filial e volte mais tarde. 😊");
             $this->transitionTo('CLOSED');
 
             return;
         }
 
+        if (! $hasOpenBranch) {
+            $this->addMessage('bot', 'Estamos fechados agora, mas você pode montar um pedido agendado para um horário disponível.');
+        }
         $this->restoreCheckoutProfile();
         $branches = $this->branches;
 
@@ -460,6 +463,15 @@ class OrderChat extends Component
         $this->fillCustomerData($customer);
         $this->useSavedProfile = true;
         $this->checkoutReady = true;
+    }
+
+    #[Computed]
+    public function immediateOrderAvailable(): bool
+    {
+        $branch = Branch::withoutGlobalScopes()->where('company_id', $this->companyId)
+            ->where('active', true)->find($this->selectedBranchId);
+
+        return $branch && $this->branchOpenNow($branch);
     }
 
     #[Computed]

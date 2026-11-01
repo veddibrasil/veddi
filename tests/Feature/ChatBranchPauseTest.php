@@ -14,6 +14,7 @@ function chatBranchPauseCompany(): Company
         'slug' => 'empresa-pausa-chat-'.uniqid(),
         'order_prefix' => 'PCH',
         'active' => true,
+        'schedule_min_advance_minutes' => 0,
         'status' => 'ACTIVE',
         'email' => 'contato@empresa.com',
     ]);
