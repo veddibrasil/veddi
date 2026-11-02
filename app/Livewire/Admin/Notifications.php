@@ -2,15 +2,21 @@
 
 namespace App\Livewire\Admin;
 
+use App\Models\Order;
+use App\Services\Order\ChatOrderAcceptance;
+use Livewire\Attributes\Computed;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 class Notifications extends Component
 {
+    #[Locked]
     public int $companyId = 0;
 
     public array $notifications = [];
 
     /** Estação do usuário logado ('cozinha'|'bar'|'entrega') quando o papel é restrito a uma estação, senão null. */
+    #[Locked]
     public ?string $userStation = null;
 
     public function mount(): void
@@ -31,9 +37,38 @@ class Notifications extends Component
         }
 
         return [
+            'chat-order-accepted' => '$refresh',
             "echo-private:orders.{$this->companyId},NewOrderPlaced" => 'onNewOrder',
             "echo-private:orders.{$this->companyId},OrderItemsUpdated" => 'onOrderItemsUpdated',
+            "echo-private:orders.{$this->companyId},OrderStatusUpdated" => '$refresh',
         ];
+    }
+
+    #[Computed]
+    public function pendingChatOrders(): \Illuminate\Support\Collection
+    {
+        $company = app()->bound('current.company') ? app('current.company') : null;
+        $user = auth()->user();
+        if (! $company || $company->id !== $this->companyId || ! $user || $this->userStation
+            || ! ($user->isSuperAdmin() || ($user->hasPermission('orders.view', $company) && $user->hasPermission('orders.update', $company)))) {
+            return collect();
+        }
+
+        return Order::where('company_id', $this->companyId)->where('channel', 'chat')
+            ->where('order_type', '!=', 'pdv')->whereNull('chat_accepted_at')
+            ->where(fn ($q) => $q->whereIn('status', ['paid', 'scheduled'])
+                ->orWhere(fn ($q) => $q->where('status', 'awaiting_payment')->where('payment_on_delivery', true)))
+            ->when($user->isBranchScoped($company), fn ($q) => $q->where('branch_id', $user->branchIdForCompany($company)))
+            ->with(['customer', 'company'])->oldest()->get()
+            ->reject(fn (Order $order) => $order->chatAcceptanceExpired())->values();
+    }
+
+    public function acceptChatOrder(int $orderId): void
+    {
+        $order = Order::where('company_id', $this->companyId)->findOrFail($orderId);
+        app(ChatOrderAcceptance::class)->accept($order, auth()->user());
+        unset($this->pendingChatOrders);
+        $this->dispatch('chat-order-accepted');
     }
 
     public function onNewOrder(array $data): void
@@ -48,6 +83,8 @@ class Notifications extends Component
             'order_number' => $data['order_number'],
             'customer_name' => $data['customer_name'],
             'total' => $data['total'],
+            'channel' => $data['channel'] ?? null,
+            'order_type' => $data['order_type'] ?? null,
         ]);
     }
 

@@ -139,6 +139,7 @@ class Index extends Component
         }
 
         $listeners = [
+            'chat-order-accepted' => '$refresh',
             "echo-private:orders.{$this->companyId},NewOrderPlaced" => '$refresh',
             "echo-private:orders.{$this->companyId},OrderStatusUpdated" => '$refresh',
             "echo-private:orders.{$this->companyId},OrderItemsUpdated" => '$refresh',
@@ -318,6 +319,12 @@ class Index extends Component
             return;
         }
 
+        if ($order->requiresChatAcceptance() && $newStatus !== $previousStatus) {
+            $this->addError('chatAcceptance', 'Aceite o pedido antes de alterar o status. Pedidos online precisam estar pagos.');
+
+            return;
+        }
+
         // "Pago" num pedido PDV ainda sem Payment (a receber) arrastado no kanban, sem passar
         // pelo modal "Confirmar pagamento", cai aqui — sem isso o pedido vira "paid" sem Payment,
         // e o fechamento de caixa conta a venda no TOTAL VENDAS mas não em nenhuma forma de
@@ -341,6 +348,14 @@ class Index extends Component
             'status_anterior' => $previousStatus,
             'status_novo' => $newStatus,
         ]);
+    }
+
+    public function acceptChatOrder(int $orderId): void
+    {
+        abort_unless($this->canUpdate && ! $this->userStation, 403);
+        app(\App\Services\Order\ChatOrderAcceptance::class)->accept($this->findActionableOrder($orderId), auth()->user());
+        $this->resetErrorBag('chatAcceptance');
+        $this->dispatch('chat-order-accepted');
     }
 
     public function openCancelModal(int $orderId): void

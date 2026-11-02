@@ -8,6 +8,26 @@ use Illuminate\Validation\ValidationException;
 
 trait HasChatAcceptance
 {
+    public function requiresChatAcceptance(): bool
+    {
+        return ($this->channel ?? 'chat') === 'chat' && $this->order_type !== 'pdv'
+            && ! $this->chat_accepted_at
+            && in_array($this->status, ['pending', 'awaiting_payment', 'paid', 'scheduled'], true);
+    }
+
+    public function awaitingChatAcceptance(): bool
+    {
+        return $this->requiresChatAcceptance()
+            && (in_array($this->status, ['paid', 'scheduled'], true)
+                || ($this->payment_on_delivery && $this->status === 'awaiting_payment'));
+    }
+
+    public function chatAcceptanceExpired(): bool
+    {
+        return $this->chat_acceptance_expires_at?->isPast()
+            && (int) $this->company?->chat_acceptance_timeout_minutes > 0;
+    }
+
     protected static function bootHasChatAcceptance(): void
     {
         static::saving(function (Order $order) {

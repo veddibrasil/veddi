@@ -388,6 +388,10 @@ class Order extends Model
 
     public function getStatusLabelAttribute(): string
     {
+        if ($this->awaitingChatAcceptance()) {
+            return $this->status === 'scheduled' ? 'Agendado (aguardando aceite)' : 'Aguardando aceite';
+        }
+
         if ($marketplace = $this->marketplaceDetails()) {
             if ($this->status === 'delivered') {
                 return 'Concluído';

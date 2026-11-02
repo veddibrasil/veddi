@@ -29,6 +29,7 @@ class NewOrderPlaced implements ShouldBroadcast
             'order_number' => $this->order->order_number,
             'branch_id' => $this->order->branch_id,
             'order_type' => $this->order->order_type,
+            'channel' => $this->order->channel ?? 'chat',
             'customer_name' => $this->order->customer?->name ?? 'Cliente',
             'total' => $this->order->total,
             'payment_method' => $this->order->payment_method,

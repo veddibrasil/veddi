@@ -6,6 +6,7 @@ import './admin/report-tooltip.js';
 import './admin/pdv-app.js';
 import './admin/orders-kanban.js';
 import './admin/ifood-countdown.js';
+import './admin/order-notification-sound.js';
 import './admin/products-reorder.js';
 import './admin/kitchen-print.js';
 import './admin/whatsapp-signup.js';

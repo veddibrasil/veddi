@@ -1,4 +1,7 @@
 <div class="space-y-4" x-data="stationPrintListener()">
+@error('chatAcceptance')
+    <p role="alert" class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">{{ $message }}</p>
+@enderror
 @if (session('status'))
     <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm dark:bg-green-900/30 dark:border-green-700 dark:text-green-400">
         {{ session('status') }}
@@ -472,7 +475,13 @@
                         'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' => $order->channel === '99food',
                         'bg-neutral-100 text-neutral-500 dark:bg-zinc-700 dark:text-neutral-400' => ! $order->isMarketplaceOrder(),
                     ])>{{ ($marketplace = $order->marketplaceDetails()) ? $marketplace->channelLabel().' · '.$marketplace->orderTypeLabel() : $order->origin_label }}</span>
-                    @if ($marketplace && $marketplace->awaitingConfirmation() && $marketplace->confirmationExpired())
+                    @if ($order->awaitingChatAcceptance())
+                        <p class="mt-2 text-xs font-semibold text-purple-700 dark:text-purple-300">Aguardando aceite</p>
+                        @if ($canUpdate && ! $userStation && ! $order->chatAcceptanceExpired())
+                            <button wire:click.stop="acceptChatOrder({{ $order->id }})" wire:loading.attr="disabled" wire:target="acceptChatOrder({{ $order->id }})"
+                                    class="mt-2 w-full rounded-lg bg-green-600 py-1 text-xs font-semibold text-white hover:bg-green-700 disabled:opacity-50">Aceitar pedido</button>
+                        @endif
+                    @elseif ($marketplace && $marketplace->awaitingConfirmation() && $marketplace->confirmationExpired())
                         <p class="mt-2 rounded-lg bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 dark:bg-red-900/20 dark:text-red-300">Prazo de aceite encerrado: confira no {{ $order->channel === 'ifood' ? 'Gestor de Pedidos' : 'app da '.$marketplace->channelLabel() }}</p>
                     @elseif ($marketplace && $marketplace->awaitingConfirmation())
                         @php $cardDeadline = $marketplace->confirmationDeadline(); @endphp

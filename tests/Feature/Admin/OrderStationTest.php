@@ -343,7 +343,9 @@ test('cozinha e bar só veem botões de status preparando e pronto', function ()
 
 test('admin em pedido de entrega vê o status "a caminho"', function () {
     ['admin' => $admin, 'order' => $order] = stationOrderContext();
-    $order->update(['order_type' => 'delivery']);
+    $order->update(['order_type' => 'delivery', 'status' => 'paid']);
+    app(\App\Services\Order\ChatOrderAcceptance::class)->accept($order, $admin);
+    $order->refresh();
 
     $this->actingAs($admin);
 
@@ -404,7 +406,9 @@ test('updateStatus rejeita "out_for_delivery" pra pedido que não é de entrega'
 
 test('updateStatus aceita "out_for_delivery" pra pedido de entrega', function () {
     ['admin' => $admin, 'order' => $order] = stationOrderContext();
-    $order->update(['order_type' => 'delivery']);
+    $order->update(['order_type' => 'delivery', 'status' => 'paid']);
+    app(\App\Services\Order\ChatOrderAcceptance::class)->accept($order, $admin);
+    $order->refresh();
 
     $this->actingAs($admin);
 
@@ -904,7 +908,7 @@ test('show: "Confirmar pagamento" continua disponível depois que o pedido avan�
         ->assertDontSee('A receber na entrega.');
 });
 
-test('kanban: pedido online (order_type=delivery) aguardando webhook Vindi/Asaas não ganha Payment fake ao ser arrastado pra pago', function () {
+test('kanban: pedido online aguardando webhook não pode ser arrastado para pago nem ganha Payment fake', function () {
     ['company' => $company, 'admin' => $admin, 'branch' => $branch] = stationOrderContext();
     $order = pdvAwaitingPaymentOrder($company, $branch);
     $order->update(['order_type' => 'delivery']);
@@ -912,10 +916,11 @@ test('kanban: pedido online (order_type=delivery) aguardando webhook Vindi/Asaas
     $this->actingAs($admin);
 
     Livewire::test(OrdersIndex::class)
-        ->call('updateOrderStatus', $order->id, 'paid');
+        ->call('updateOrderStatus', $order->id, 'paid')
+        ->assertHasErrors(['chatAcceptance']);
 
     $order->refresh();
-    expect($order->status)->toBe('paid');
+    expect($order->status)->toBe('awaiting_payment');
     expect(\App\Models\Payment::where('order_id', $order->id)->exists())->toBeFalse();
 });
 

@@ -169,6 +169,7 @@ class Show extends Component
     public function getListeners(): array
     {
         return [
+            'chat-order-accepted' => '$refresh',
             "echo-private:order.{$this->order->id},OrderStatusUpdated" => '$refresh',
             "echo-private:order.{$this->order->id},OrderItemsUpdated" => '$refresh',
             "echo-private:order.{$this->order->id},IfoodOrderUpdated" => '$refresh',
@@ -309,6 +310,12 @@ class Show extends Component
             return;
         }
 
+        if ($this->order->requiresChatAcceptance() && $status !== $previousStatus) {
+            $this->addError('chatAcceptance', 'Aceite o pedido antes de alterar o status. Pedidos online precisam estar pagos.');
+
+            return;
+        }
+
         // "Pago" num pedido PDV ainda sem Payment (a receber) sem confirmar via modal dedicado
         // cai aqui — sem isso o pedido vira "paid" sem Payment (detalhe mostra "Pago", cupom
         // sai "NAO PAGO") e o fechamento de caixa conta a venda no TOTAL VENDAS mas não em
@@ -334,6 +341,14 @@ class Show extends Component
         ]);
 
         session()->flash('status', 'Status atualizado.');
+    }
+
+    public function acceptChatOrder(): void
+    {
+        abort_unless($this->canUpdate && ! $this->userStation, 403);
+        $this->order = app(\App\Services\Order\ChatOrderAcceptance::class)->accept($this->order, auth()->user());
+        $this->resetErrorBag('chatAcceptance');
+        $this->dispatch('chat-order-accepted');
     }
 
     private function updateIfoodStatus(string $status): void

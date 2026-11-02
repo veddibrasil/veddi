@@ -153,7 +153,8 @@ test('acompanhamento do cliente não trata pagamento ao receber como cobrança p
     expect($chat->messages)->toHaveCount($messages);
 
     $order = Order::withoutGlobalScopes()->findOrFail($chat->orderId);
-    expect($order->status_label)->toBe('Pagamento na retirada');
+    expect($order->status_label)->toBe('Aguardando aceite')
+        ->and($order->paymentOnDeliveryLabel())->toBe('Cartão na retirada');
 
     app(PaymentOrchestrator::class)->confirmDeliveryPayment($order);
     $chat->checkPaymentStatus();

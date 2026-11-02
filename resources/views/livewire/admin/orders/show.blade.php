@@ -771,6 +771,21 @@
                         Atual: <span class="font-semibold text-neutral-700 dark:text-neutral-300">{{ $order->status_label }}</span>
                     </p>
                 </div>
+                @error('chatAcceptance')
+                    <p role="alert" class="text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
+                @enderror
+                @if ($order->requiresChatAcceptance())
+                    <p class="text-sm text-neutral-600 dark:text-neutral-300">
+                        {{ $order->awaitingChatAcceptance() ? 'Aceite o pedido para liberar o preparo.' : 'Aguardando pagamento online para liberar o aceite.' }}
+                    </p>
+                    @if ($canUpdate && ! $userStation && $order->awaitingChatAcceptance() && ! $order->chatAcceptanceExpired())
+                        <button wire:click="acceptChatOrder" wire:loading.attr="disabled" wire:target="acceptChatOrder"
+                                class="w-full rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">Aceitar pedido</button>
+                    @endif
+                    @if ($canUpdate && ! $userStation)
+                        <button wire:click="openCancelModal" class="text-sm font-medium text-red-600 hover:text-red-700 dark:text-red-400">Recusar pedido</button>
+                    @endif
+                @else
                 <div class="flex flex-wrap gap-2">
                     @foreach ($this->visibleStatusMap as $status => $meta)
                         <button wire:click="updateStatus('{{ $status }}')"
@@ -779,6 +794,7 @@
                         </button>
                     @endforeach
                 </div>
+                @endif
             </x-admin.form-card>
             @endif
 
