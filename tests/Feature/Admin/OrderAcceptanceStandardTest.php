@@ -151,6 +151,48 @@ test('levar pra preparando aceita em todo canal', function (string $channel) {
         ->and($order->fresh()->awaitingAcceptance())->toBeFalse();
 })->with(['chat', 'ifood', '99food']);
 
+test('alarme continua até aceitar e para no aceite em qualquer tela', function (string $channel, string $surface) {
+    Event::fake([NewOrderPlaced::class, OrderStatusUpdated::class]);
+    ['order' => $order, 'admin' => $admin] = acceptanceScenario($this, $channel);
+    acceptanceIfoodGateway();
+
+    $alarm = Livewire::actingAs($admin)->test(OrderAcceptanceAlarm::class)
+        ->assertSee('pedido aguardando aceite');
+    foreach (range(1, 3) as $poll) {
+        $alarm->call('$refresh')->assertSee('pedido aguardando aceite');
+        expect($alarm->get('awaitingOrders')->pluck('id')->all())->toBe([$order->id]);
+    }
+
+    $component = match ($surface) {
+        'alarm' => $alarm,
+        'index' => Livewire::test(OrdersIndex::class),
+        'show' => Livewire::test(Show::class, ['order' => $order]),
+    };
+    $component->call('acceptOrder', $order->id)->assertStatus(200)->assertHasNoErrors()
+        ->assertDispatched('order-accepted');
+
+    $alarm->call('$refresh')->assertDontSeeHtml('data-testid="order-acceptance-alert"');
+    expect($order->fresh()->status)->toBe('preparing')
+        ->and($alarm->get('awaitingOrders'))->toBeEmpty();
+})->with(['chat', 'ifood', '99food'])->with(['alarm', 'index', 'show']);
+
+test('aceitar um pedido mantém o alarme dos outros pedidos pendentes', function () {
+    Event::fake([NewOrderPlaced::class, OrderStatusUpdated::class]);
+    ['order' => $first, 'admin' => $admin] = acceptanceScenario($this, 'chat');
+    $second = $first->replicate(['order_number']);
+    $second->save();
+
+    $alarm = Livewire::actingAs($admin)->test(OrderAcceptanceAlarm::class)
+        ->assertSee('2 pedidos aguardando aceite')
+        ->call('acceptOrder', $first->id)->assertStatus(200)->assertHasNoErrors()
+        ->assertSee('1 pedido aguardando aceite');
+    expect($alarm->get('awaitingOrders')->pluck('id')->all())->toBe([$second->id]);
+
+    $alarm->call('acceptOrder', $second->id)->assertStatus(200)->assertHasNoErrors()
+        ->assertDontSeeHtml('data-testid="order-acceptance-alert"');
+    expect($alarm->get('awaitingOrders'))->toBeEmpty();
+});
+
 test('soltar o pedido na coluna do próprio status não muda nada sem aceite', function () {
     ['order' => $order, 'admin' => $admin] = acceptanceScenario($this, 'chat');
 
