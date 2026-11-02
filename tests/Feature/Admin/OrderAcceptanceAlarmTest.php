@@ -149,6 +149,29 @@ test('cozinha toca e aceita pedido da própria estação', function () {
         ->and(OrderStatusHistory::where('order_id', $order->id)->where('metadata->source', 'chat_acceptance')->sole()->user_id)->toBe($kitchen->id);
 });
 
+test('aceite em um perfil para o alarme dos outros da filial mesmo sem broadcast', function () {
+    Event::fake([NewOrderPlaced::class, OrderStatusUpdated::class]);
+    $ctx = flowAuditContext();
+    $order = flowAuditChatOrder($ctx, status: 'paid');
+    $kitchen = alarmUser($ctx['company'], 'cozinha', $ctx['branch']->id);
+    $manager = alarmUser($ctx['company'], 'branch_manager', $ctx['branch']->id);
+
+    $panel = Livewire::actingAs($manager)->test(OrderAcceptanceAlarm::class)
+        ->assertSee($order->order_number)
+        ->assertSee('wire:poll.3s.keep-alive', false)
+        ->assertDontSee('wire:poll.15s.keep-alive', false);
+
+    Livewire::actingAs($kitchen)->test(OrderAcceptanceAlarm::class)
+        ->call('acceptOrder', $order->id)
+        ->assertHasNoErrors();
+
+    Livewire::actingAs($manager);
+    $panel->call('$refresh')
+        ->assertDontSee('data-testid="order-acceptance-alert"', false)
+        ->assertSee('wire:poll.15s.keep-alive', false)
+        ->assertDontSee('wire:poll.3s.keep-alive', false);
+});
+
 test('fila da cozinha aceita pedido do chat em vez de barrar o preparo', function () {
     Event::fake([NewOrderPlaced::class, OrderStatusUpdated::class]);
     $ctx = flowAuditContext();

@@ -27,7 +27,7 @@ class OrderAcceptanceAlarm extends Component
     public bool $canReject = false;
 
     /**
-     * Motivo do último aceite que falhou, por pedido. O poll limpa o bag de erros em até 15 s, e
+     * Motivo do último aceite que falhou, por pedido. O poll limpa o bag de erros em segundos, e
      * a loja precisa ler o motivo (app 99 fechado, por exemplo) enquanto o pedido segue tocando.
      *
      * @var array<int, string>

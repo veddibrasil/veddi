@@ -1,11 +1,13 @@
-{{-- Alarme de aceite: o poll segura o toque se o Reverb cair. `contents` tira a raiz do grid do layout. --}}
-<div class="contents" @if ($canAccept) x-data="orderAcceptanceAlarm()" x-on:orders-awaiting-acceptance.window="sync($event.detail.ids)" wire:poll.15s.keep-alive @endif>
+{{-- Alarme de aceite. `contents` tira a raiz do grid do layout. --}}
+<div class="contents" @if ($canAccept) x-data="orderAcceptanceAlarm()" x-on:orders-awaiting-acceptance.window="sync($event.detail.ids)" @endif>
     @if ($canAccept)
         @php
             $awaitingOrders = $this->awaitingOrders;
             $awaitingIds = $awaitingOrders->pluck('id')->all();
         @endphp
+        {{-- O poll cobre Reverb ou fila parados: aperta enquanto toca para parar logo quando outro perfil aceitar. A chave troca o span quando a lista muda, e é isso que aplica o novo intervalo. --}}
         <span wire:key="order-acceptance-{{ md5(implode(',', $awaitingIds)) }}"
+              @if ($awaitingIds) wire:poll.3s.keep-alive @else wire:poll.15s.keep-alive @endif
               x-init="$dispatch('orders-awaiting-acceptance', { ids: @js($awaitingIds) })" class="hidden"></span>
 
         {{-- O navegador só libera som depois de um toque na página: avisa antes de chegar pedido. --}}
