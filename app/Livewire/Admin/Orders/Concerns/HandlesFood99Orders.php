@@ -72,13 +72,6 @@ trait HandlesFood99Orders
         });
     }
 
-    public function acceptFood99Order(int $orderId): void
-    {
-        abort_unless($this->canOperateFood99(), 403);
-
-        $this->updateFood99OrderStatus($this->food99ActionableOrder($orderId), 'preparing');
-    }
-
     public function finishFood99Order(int $orderId, string $code = ''): void
     {
         abort_unless($this->canOperateFood99(), 403);

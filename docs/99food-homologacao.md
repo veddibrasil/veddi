@@ -71,7 +71,7 @@ Antes: filial com cardápio no VEDDI (produtos marcados "Disponível na 99Food")
 
 | # | Cenário | Esperado no VEDDI |
 |---|---|---|
-| 1 | Pedido online, entrega 99: aceitar → pronto → acompanhar entregador → concluir | Kanban: pendente (contagem de 5 min) → preparando → pronto → a caminho (coleta, `deliveryStatus 140`) → entregue (`orderFinish`). Cupom com `99Food #<order_index>` e `ID 99: <order_id>` |
+| 1 | Pedido online, entrega 99: aceitar → pronto → acompanhar entregador → concluir | Kanban: aguardando aceite (contagem de 5 min) → preparando → pronto → a caminho (coleta, `deliveryStatus 140`) → entregue (`orderFinish`). Cupom com `99Food #<order_index>` e `ID 99: <order_id>` |
 | 2 | Pedido em dinheiro, entrega 99 | Pagamento pendente; após atribuir entregador o valor vira `shop_paid_money`; botão "Recebi o dinheiro do entregador" chama `payConfirm` e quita |
 | 3 | Pedido entrega própria: despachar → entregar com código | "Saiu para entrega" (`selfdelivery/dispatch`), "Entregue" com o código do cliente (`verifyDeliveryCode`) |
 | 4 | Pedido para retirada | "Cliente retirou" (pronto + `order/finish`), conferindo o código de retirada se informado |
@@ -82,7 +82,7 @@ Antes: filial com cardápio no VEDDI (produtos marcados "Disponível na 99Food")
 | 9 | Solicitação de cancelamento e de reembolso (aceitar e recusar) | Bloco no pedido com prazo; reembolso só recusa com motivo da lista da 99 |
 | 10 | Upload de cardápio com item inválido proposital | Envio "aceito com pendências"; erro no item (aba Cardápio e cadastro do produto) |
 | 11 | Pausa/fechamento/reabertura da loja | Aba Loja e pausas da filial; status confirmado pelo `shopStatus` |
-| 12 | Aceite fora do prazo | Pedido sai do alerta de aceite; reconciliação aplica o cancelamento 922 |
+| 12 | Aceite fora do prazo | Pedido sai do alarme de aceite; reconciliação aplica o cancelamento 922 |
 
 ## Checklist de go-live da 99Food
 
@@ -95,7 +95,7 @@ Antes: filial com cardápio no VEDDI (produtos marcados "Disponível na 99Food")
 | `shop_paid_money` e `payConfirm` | `RefreshFood99OrderDetailsJob`, `Food99OrderActionService::confirmCashPayment()` |
 | Duas estruturas de preço/endereço | `Food99OrderDTO` (entrega 99 × entrega própria, endereço mascarado) |
 | Promoções e estrutura completa de preços | `promotions`, `raw_prices` e `reported_*` no snapshot |
-| Confirmar pela API em até 5 min | Kanban, alerta no topo dos pedidos e tela do pedido |
+| Confirmar pela API em até 5 min | Alarme do painel, coluna "Aguardando aceite" do kanban, fila da cozinha e tela do pedido |
 | Recusar/cancelar pela API | Modal de motivos |
 | Guardar `requestId` | Log `food99`, `food99_webhook_events.request_id`, `food99_integrations.last_request_id` |
 

@@ -293,10 +293,10 @@ test('kanban com filtro iFood começa pelos pedidos aguardando aceite e alerta o
     Livewire::test(OrdersIndex::class)
         ->set('viewMode', 'kanban')
         ->set('channelFilter', 'ifood')
-        ->assertViewHas('kanbanColumns', fn ($columns) => $columns->keys()->all() === ['pending', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled'])
-        ->assertSee('1 pedido iFood aguardando aceite')
+        ->assertViewHas('kanbanColumns', fn ($columns) => $columns->keys()->all() === ['awaiting_acceptance', 'pending', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled'])
+        ->assertSee('Aguardando aceite')
         ->assertSee('iFood #1846')
-        ->call('acceptIfoodOrder', $order->id);
+        ->call('acceptOrder', $order->id);
 
     expect($order->fresh()->status)->toBe('preparing');
 });

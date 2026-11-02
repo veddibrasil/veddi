@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Cache;
 class Order extends Model
 {
     use \App\Models\Concerns\HasChatAcceptance;
+    use \App\Models\Concerns\HasOrderAcceptance;
     use BelongsToCompany;
 
     /** Pedido já pago e não cancelado/reembolsado — só esses podem ter nota fiscal emitida. */
@@ -388,18 +389,12 @@ class Order extends Model
 
     public function getStatusLabelAttribute(): string
     {
-        if ($this->awaitingChatAcceptance()) {
+        if ($this->awaitingAcceptance()) {
             return $this->status === 'scheduled' ? 'Agendado (aguardando aceite)' : 'Aguardando aceite';
         }
 
-        if ($marketplace = $this->marketplaceDetails()) {
-            if ($this->status === 'delivered') {
-                return 'Concluído';
-            }
-
-            if ($marketplace->awaitingConfirmation()) {
-                return $this->status === 'scheduled' ? 'Agendado (aguardando aceite)' : 'Aguardando aceite';
-            }
+        if ($this->status === 'delivered' && $this->isMarketplaceOrder()) {
+            return 'Concluído';
         }
 
         if ($this->payment_on_delivery && $this->status === 'awaiting_payment') {

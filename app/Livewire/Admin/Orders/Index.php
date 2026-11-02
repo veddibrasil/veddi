@@ -13,6 +13,7 @@ use App\Models\IfoodOrderEvent;
 use App\Models\Order;
 use App\Models\Scopes\CompanyScope;
 use App\Services\Ifood\IfoodOrderActionService;
+use App\Services\Order\OrderAcceptance;
 use App\Services\Order\OrderService;
 use App\Services\Payment\PaymentOrchestrator;
 use Illuminate\Support\Facades\Cache;
@@ -82,7 +83,13 @@ class Index extends Component
 
     public string $cancelReason = '';
 
+    /** Modal de cancelamento aberto pelo "Recusar": muda o texto, a ação é a mesma. */
+    public bool $rejectingOrder = false;
+
     const KANBAN_STATUSES = ['scheduled', 'pending', 'awaiting_payment', 'paid', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled'];
+
+    /** Coluna do kanban que junta os pedidos aguardando aceite de todo canal; não é um status. */
+    const AWAITING_COLUMN = 'awaiting_acceptance';
 
     const KANBAN_PER_PAGE = 15;
 
@@ -139,7 +146,7 @@ class Index extends Component
         }
 
         $listeners = [
-            'chat-order-accepted' => '$refresh',
+            'order-accepted' => '$refresh',
             "echo-private:orders.{$this->companyId},NewOrderPlaced" => '$refresh',
             "echo-private:orders.{$this->companyId},OrderStatusUpdated" => '$refresh',
             "echo-private:orders.{$this->companyId},OrderItemsUpdated" => '$refresh',
@@ -319,8 +326,15 @@ class Index extends Component
             return;
         }
 
-        if ($order->requiresChatAcceptance() && $newStatus !== $previousStatus) {
-            $this->addError('chatAcceptance', 'Aceite o pedido antes de alterar o status. Pedidos online precisam estar pagos.');
+        // Levar pra "preparando" é aceitar, como já é no iFood e na 99Food.
+        if ($newStatus === 'preparing' && $order->awaitingChatAcceptance()) {
+            $this->acceptOrder($order->id);
+
+            return;
+        }
+
+        if ($order->requiresChatAcceptance()) {
+            $this->addError('orderAcceptance', 'Aceite o pedido antes de alterar o status. Pedidos online precisam estar pagos.');
 
             return;
         }
@@ -350,12 +364,28 @@ class Index extends Component
         ]);
     }
 
-    public function acceptChatOrder(int $orderId): void
+    public function acceptOrder(int $orderId): void
+    {
+        abort_unless($this->canUpdate && $this->userStation !== 'entrega', 403);
+        app(OrderAcceptance::class)->accept($this->findActionableOrder($orderId), auth()->user());
+        $this->resetErrorBag('orderAcceptance');
+        $this->dispatch('order-accepted');
+    }
+
+    /** Recusar abre o modal do canal: cada um tem os próprios motivos e estorno. */
+    public function rejectOrder(int $orderId): void
     {
         abort_unless($this->canUpdate && ! $this->userStation, 403);
-        app(\App\Services\Order\ChatOrderAcceptance::class)->accept($this->findActionableOrder($orderId), auth()->user());
-        $this->resetErrorBag('chatAcceptance');
-        $this->dispatch('chat-order-accepted');
+
+        $order = $this->findActionableOrder($orderId);
+
+        match ($order->channel) {
+            OrderChannel::Ifood->value => $this->openIfoodCancelModal($order->id),
+            OrderChannel::Food99->value => $this->openFood99CancelModal($order->id),
+            default => $this->openCancelModal($order->id),
+        };
+
+        $this->rejectingOrder = true;
     }
 
     public function openCancelModal(int $orderId): void
@@ -363,6 +393,7 @@ class Index extends Component
         abort_unless($this->canUpdate, 403);
 
         $this->cancelOrderId = $orderId;
+        $this->rejectingOrder = false;
         $this->cancelReason = '';
         $this->resetErrorBag('cancelReason');
     }
@@ -451,17 +482,6 @@ class Index extends Component
             'order_id' => $order->id,
             'admin_id' => auth()->id(),
         ]);
-    }
-
-    /** Botão "Aceitar" do card/alerta de pedido de marketplace: "preparando" passa pela API da plataforma. */
-    public function acceptMarketplaceOrder(int $orderId): void
-    {
-        $this->updateOrderStatus($orderId, 'preparing');
-    }
-
-    public function acceptIfoodOrder(int $orderId): void
-    {
-        $this->acceptMarketplaceOrder($orderId);
     }
 
     private function updateIfoodOrderStatus(Order $order, string $newStatus): void
@@ -627,14 +647,18 @@ class Index extends Component
 
             $perPage = self::KANBAN_PER_PAGE;
 
+            // Pedidos aguardando aceite saem da coluna do status: no chat seriam "Pago", entre as vendas do PDV.
+            $awaiting = (clone $baseQuery)->with('company')->withExists('payments')->whereAwaitingAcceptance()->oldest()->get();
+            $baseQuery->whereKeyNot($awaiting->modelKeys());
+
             $totals = (clone $baseQuery)
                 ->whereIn('status', self::KANBAN_STATUSES)
                 ->selectRaw('status, COUNT(*) as total')
                 ->groupBy('status')
                 ->pluck('total', 'status');
 
-            $kanbanColumns = collect($this->kanbanStatuses($totals))
-                ->mapWithKeys(function ($status) use ($baseQuery, $perPage, $totals) {
+            $kanbanColumns = collect([self::AWAITING_COLUMN => ['orders' => $awaiting, 'hasMore' => false, 'total' => $awaiting->count()]])
+                ->merge(collect($this->kanbanStatuses($totals))->mapWithKeys(function ($status) use ($baseQuery, $perPage, $totals) {
                     $limit = $this->kanbanPages[$status] * $perPage;
                     // payments_exists alimenta o botão "Confirmar pagamento" do card sem uma query por pedido.
                     $fetched = (clone $baseQuery)->withExists('payments')->where('status', $status)->latest()->limit($limit + 1)->get();
@@ -647,12 +671,11 @@ class Index extends Component
                             'total' => $totals->get($status, 0),
                         ],
                     ];
-                });
+                }));
 
-            $ifoodAwaiting = $this->ifoodAwaitingOrders();
             $ifoodNotImported = $this->ifoodNotImported();
 
-            return view('livewire.admin.orders.index', compact('kanbanColumns', 'companies', 'closing', 'ifoodAwaiting', 'ifoodNotImported'))
+            return view('livewire.admin.orders.index', compact('kanbanColumns', 'companies', 'closing', 'ifoodNotImported'))
                 ->layout('layouts.app', ['title' => 'Pedidos']);
         }
 
@@ -670,7 +693,8 @@ class Index extends Component
             ->when(in_array($this->userStation, ['cozinha', 'bar']), fn ($q) => $q->forStation($this->userStation))
             ->when($this->userBranchId, fn ($q) => $q->where('branch_id', $this->userBranchId))
             ->when($this->statusFilter === 'new', fn ($q) => $q->whereIn('status', ['pending', 'awaiting_payment', 'paid']))
-            ->when($this->statusFilter && $this->statusFilter !== 'new', fn ($q) => $q->where('status', $this->statusFilter))
+            ->when($this->statusFilter === self::AWAITING_COLUMN, fn ($q) => $q->whereAwaitingAcceptance())
+            ->when($this->statusFilter && ! in_array($this->statusFilter, ['new', self::AWAITING_COLUMN], true), fn ($q) => $q->where('status', $this->statusFilter))
             // Agrupado: o orWhereHas solto ignorava filial, estação, status e canal.
             ->when($this->search, fn ($q) => $q->where(fn ($s) => $s
                 ->where('order_number', 'like', "%{$this->search}%")
@@ -683,17 +707,15 @@ class Index extends Component
             ->latest()
             ->paginate(20);
 
-        $ifoodAwaiting = $this->ifoodAwaitingOrders();
         $ifoodNotImported = $this->ifoodNotImported();
 
-        return view('livewire.admin.orders.index', compact('orders', 'companies', 'closing', 'ifoodAwaiting', 'ifoodNotImported'))
+        return view('livewire.admin.orders.index', compact('orders', 'companies', 'closing', 'ifoodNotImported'))
             ->layout('layouts.app', ['title' => 'Pedidos']);
     }
 
     /**
-     * Colunas do kanban. Com o filtro iFood, "aguardando aceite" (pending) vem primeiro e
-     * somem as colunas que pedido iFood não usa quando estão vazias — antes, três colunas
-     * vazias empurravam os pedidos novos pra fora da tela.
+     * Colunas de status do kanban, depois de "aguardando aceite". Com filtro de marketplace somem
+     * as colunas que ele não usa quando estão vazias, pra não empurrar os pedidos pra fora da tela.
      *
      * @param  \Illuminate\Support\Collection<string, int>  $totals
      * @return array<int, string>
@@ -797,63 +819,5 @@ class Index extends Component
             ]);
 
         return $disputes->concat($failed)->values();
-    }
-
-    /**
-     * Pedidos 99Food esperando aceite (a 99 cancela em 5 min), pro alerta no topo da tela.
-     *
-     * @return \Illuminate\Support\Collection<int, Order>
-     */
-    #[\Livewire\Attributes\Computed]
-    public function food99AwaitingOrders(): \Illuminate\Support\Collection
-    {
-        if ($this->userStation || ! $this->canView || ! config('food99.enabled')) {
-            return collect();
-        }
-
-        $query = $this->isSuperAdmin
-            ? Order::withoutGlobalScope(CompanyScope::class)->when($this->companyFilter, fn ($q) => $q->where('company_id', $this->companyFilter))
-            : Order::query();
-
-        return $query
-            ->where('channel', OrderChannel::Food99->value)
-            ->where('status', 'pending')
-            ->where('external_metadata->food99_stage', 'CREATED')
-            ->when($this->userBranchId, fn ($q) => $q->where('branch_id', $this->userBranchId))
-            ->oldest()
-            ->limit(20)
-            ->get()
-            ->reject(fn (Order $order) => $order->food99Details()->confirmationExpired())
-            ->take(10)
-            ->values();
-    }
-
-    /**
-     * Pedidos iFood esperando aceite, pro alerta no topo da tela (com contagem do prazo).
-     * Cozinha/bar/entrega não aceitam pedido, então não veem o alerta.
-     *
-     * @return \Illuminate\Support\Collection<int, Order>
-     */
-    private function ifoodAwaitingOrders(): \Illuminate\Support\Collection
-    {
-        if ($this->userStation || ! $this->canView) {
-            return collect();
-        }
-
-        $query = $this->isSuperAdmin
-            ? Order::withoutGlobalScope(CompanyScope::class)->when($this->companyFilter, fn ($q) => $q->where('company_id', $this->companyFilter))
-            : Order::query();
-
-        return $query
-            ->where('channel', OrderChannel::Ifood->value)
-            ->whereIn('status', ['pending', 'paid', 'scheduled'])
-            ->where('external_metadata->ifood_status', 'PLACED')
-            ->when($this->userBranchId, fn ($q) => $q->where('branch_id', $this->userBranchId))
-            ->oldest()
-            ->limit(20)
-            ->get()
-            ->reject(fn (Order $order) => $order->ifoodDetails()->confirmationExpired())
-            ->take(10)
-            ->values();
     }
 }

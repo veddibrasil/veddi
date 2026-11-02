@@ -12,12 +12,7 @@ class ChatOrderAcceptance
 {
     public function accept(Order $order, User $user): Order
     {
-        $company = $order->company;
-        abort_unless($company && ($user->isSuperAdmin() || (
-            $user->hasPermission('orders.update', $company)
-            && $user->canAccessBranch($company, $order->branch_id)
-            && ! in_array($user->roleForCompany($company), ['cozinha', 'bar', 'entrega'], true)
-        )), 403);
+        abort_unless(app(OrderAcceptance::class)->canAcceptOrder($user, $order), 403);
 
         return DB::transaction(function () use ($order, $user) {
             $locked = Order::withoutGlobalScopes()->where('company_id', $order->company_id)
@@ -29,7 +24,7 @@ class ChatOrderAcceptance
             }
 
             if (! $locked->awaitingChatAcceptance() || $locked->chatAcceptanceExpired()) {
-                throw ValidationException::withMessages(['chatAcceptance' => 'Este pedido não está disponível para aceite. Atualize a página.']);
+                throw ValidationException::withMessages(['orderAcceptance' => 'Este pedido não está disponível para aceite. Atualize a página.']);
             }
 
             $previousStatus = $locked->status;

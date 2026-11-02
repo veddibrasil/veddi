@@ -1,44 +1,9 @@
 {{-- Pilha de toasts: o mais novo fica na frente, os anteriores aparecem atrás; passar o mouse abre a lista e pausa o fechamento. --}}
 <div
-    x-data="chatOrderAlerts()"
-    x-on:chat-orders-pending.window="sync($event.detail.ids)"
-    wire:poll.15s.keep-alive
     class="notif-stack fixed bottom-4 right-4 z-[60] w-72 max-w-[calc(100vw-2rem)] pointer-events-none"
     aria-live="polite"
     aria-atomic="false"
 >
-    @php
-        $pendingChatOrders = $this->pendingChatOrders;
-        $pendingChatIds = $pendingChatOrders->pluck('id')->all();
-    @endphp
-    <span wire:key="chat-pending-{{ md5(implode(',', $pendingChatIds)) }}"
-          x-init="$dispatch('chat-orders-pending', { ids: @js($pendingChatIds) })" class="hidden"></span>
-    @if ($pendingChatOrders->isNotEmpty())
-        <section data-testid="chat-awaiting-alert" class="pointer-events-auto fixed top-20 right-4 w-80 max-w-[calc(100vw-2rem)] max-h-[60vh] overflow-y-auto rounded-xl border border-purple-300 bg-white p-3 shadow-xl dark:border-purple-700 dark:bg-zinc-800">
-            <p role="alert" class="text-sm font-bold text-purple-800 dark:text-purple-200">{{ $pendingChatOrders->count() }} {{ $pendingChatOrders->count() === 1 ? 'pedido do chat aguardando aceite' : 'pedidos do chat aguardando aceite' }}</p>
-            <button x-show="!audioReady" x-on:click="enableAudio()" type="button" class="mt-2 rounded-lg bg-purple-100 px-3 py-2 text-sm font-semibold text-purple-800 dark:bg-purple-900/50 dark:text-purple-200">Ativar som dos pedidos</button>
-            @error('chatAcceptance')
-                <p role="alert" class="mt-2 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
-            @enderror
-            @foreach ($pendingChatOrders as $pending)
-                <div wire:key="chat-awaiting-{{ $pending->id }}" class="mt-3 space-y-2 border-t border-neutral-200 pt-3 dark:border-zinc-700">
-                    <a href="{{ route('admin.orders.show', $pending) }}" wire:navigate class="block text-sm font-semibold text-neutral-800 hover:underline dark:text-neutral-100">{{ $pending->order_number }} · {{ $pending->customer?->name ?? 'Cliente' }}</a>
-                    <p class="text-xs text-neutral-600 dark:text-neutral-300">R$ {{ number_format($pending->total, 2, ',', '.') }} · {{ $pending->origin_label }}</p>
-                    @if ($pending->scheduled_at)
-                        <p class="text-xs text-amber-700 dark:text-amber-300">Agendado: {{ $pending->scheduled_at->format('d/m H:i') }}</p>
-                    @endif
-                    @if ($pending->chat_acceptance_expires_at && $pending->company->chat_acceptance_timeout_minutes > 0)
-                        <p class="text-xs text-neutral-600 dark:text-neutral-300">Aceitar até {{ $pending->chat_acceptance_expires_at->format('d/m H:i') }}</p>
-                    @endif
-                    <button wire:click="acceptChatOrder({{ $pending->id }})" wire:loading.attr="disabled" wire:target="acceptChatOrder({{ $pending->id }})"
-                            aria-label="Aceitar pedido {{ $pending->order_number }}" class="w-full rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">
-                        <span wire:loading.remove wire:target="acceptChatOrder({{ $pending->id }})">Aceitar pedido</span>
-                        <span wire:loading wire:target="acceptChatOrder({{ $pending->id }})">Aceitando…</span>
-                    </button>
-                </div>
-            @endforeach
-        </section>
-    @endif
     <div @class(['relative', 'h-14' => count($notifications) > 0])>
     @foreach ($notifications as $notification)
         @php

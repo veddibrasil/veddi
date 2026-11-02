@@ -48,18 +48,6 @@
 
     @if ($canUpdate)
         <div class="flex flex-wrap gap-2">
-            @if ($ifood->awaitingConfirmation() && ! $ifood->confirmationExpired() && in_array('preparing', $allowed, true))
-                <button wire:click="updateStatus('preparing')" wire:loading.attr="disabled" wire:target="updateStatus"
-                        class="{{ $buttonBase }} flex-1 bg-green-600 text-white hover:bg-green-700">
-                    Aceitar pedido
-                </button>
-            @endif
-            @if ($ifood->awaitingConfirmation() && ! $ifood->confirmationExpired() && in_array('cancelled', $allowed, true))
-                <button wire:click="openIfoodCancelModal" wire:loading.attr="disabled" wire:target="openIfoodCancelModal"
-                        class="{{ $buttonBase }} bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50">
-                    Recusar
-                </button>
-            @endif
             @if ($ifood->canStartPreparation() && in_array('preparing', $allowed, true))
                 <button wire:click="updateStatus('preparing')" wire:loading.attr="disabled" wire:target="updateStatus"
                         class="{{ $buttonBase }} flex-1 bg-blue-600 text-white hover:bg-blue-700">

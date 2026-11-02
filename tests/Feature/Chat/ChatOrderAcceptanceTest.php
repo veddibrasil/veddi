@@ -5,6 +5,7 @@ require_once __DIR__.'/endings_helpers.php';
 use App\Events\NewOrderPlaced;
 use App\Events\OrderStatusUpdated;
 use App\Livewire\Admin\Notifications;
+use App\Livewire\Admin\OrderAcceptanceAlarm;
 use App\Livewire\Admin\Orders\Index as OrdersIndex;
 use App\Livewire\Admin\Orders\Show;
 use App\Models\OrderStatusHistory;
@@ -36,15 +37,14 @@ test('fluxo completo do chat até aceite pelo operador e atualização do client
         ->and($order->chat_accepted_at)->toBeNull();
     Event::assertDispatched(NewOrderPlaced::class, fn ($event) => $event->order->id === $order->id);
 
-    $panel = Livewire::actingAs($operator)->test(Notifications::class)
-        ->call('onNewOrder', (new NewOrderPlaced($order))->broadcastWith())
-        ->assertSee('pedido do chat aguardando aceite');
+    $panel = Livewire::actingAs($operator)->test(OrderAcceptanceAlarm::class)
+        ->assertSee('pedido aguardando aceite');
     Livewire::test(OrdersIndex::class)->call('updateOrderStatus', $order->id, 'ready')
-        ->assertHasErrors(['chatAcceptance']);
+        ->assertHasErrors(['orderAcceptance']);
     expect($order->fresh()->status)->toBe('awaiting_payment');
 
-    $panel->call('acceptChatOrder', $order->id)->assertHasNoErrors()
-        ->assertDontSee('data-testid="chat-awaiting-alert"', false);
+    $panel->call('acceptOrder', $order->id)->assertHasNoErrors()
+        ->assertDontSee('data-testid="order-acceptance-alert"', false);
     $chat->checkPaymentStatus();
     expect($order->fresh()->status)->toBe('preparing')
         ->and($order->fresh()->chat_accepted_at)->not->toBeNull()
@@ -65,10 +65,10 @@ test('pedido pago exige aceite no detalhe e no kanban mesmo sem prazo configurad
     expect($order->status_label)->toBe('Aguardando aceite');
 
     Livewire::actingAs($admin)->test(Show::class, ['order' => $order])
-        ->assertSee('Aceitar pedido')->call('updateStatus', $target)->assertHasErrors(['chatAcceptance']);
-    Livewire::test(OrdersIndex::class)->call('updateOrderStatus', $order->id, $target)->assertHasErrors(['chatAcceptance']);
+        ->assertSee('Aceitar pedido')->call('updateStatus', $target)->assertHasErrors(['orderAcceptance']);
+    Livewire::test(OrdersIndex::class)->call('updateOrderStatus', $order->id, $target)->assertHasErrors(['orderAcceptance']);
     expect($order->fresh()->status)->toBe('paid')->and($order->fresh()->chat_accepted_at)->toBeNull();
-})->with(['preparing', 'ready', 'delivered', 'awaiting_payment']);
+})->with(['ready', 'delivered', 'awaiting_payment']);
 
 test('aceitar no detalhe registra operador, libera preparo e não duplica aceite', function () {
     $ctx = flowAuditContext(['chat_acceptance_timeout_minutes' => 10]);
@@ -76,7 +76,7 @@ test('aceitar no detalhe registra operador, libera preparo e não duplica aceite
     $admin = User::factory()->create(['is_super_admin' => true]);
 
     Livewire::actingAs($admin)->test(Show::class, ['order' => $order])
-        ->call('acceptChatOrder')->assertHasNoErrors()->assertDispatched('chat-order-accepted')
+        ->call('acceptOrder', $order->id)->assertHasNoErrors()->assertDispatched('order-accepted')
         ->call('updateStatus', 'ready')->assertHasNoErrors();
     $acceptedAt = $order->fresh()->chat_accepted_at;
     app(ChatOrderAcceptance::class)->accept($order->fresh(), $admin);
@@ -93,14 +93,15 @@ test('alerta persiste após fechar toast e desaparece ao aceitar no painel', fun
     $order = flowAuditChatOrder($ctx, status: 'paid');
     $admin = User::factory()->create(['is_super_admin' => true]);
 
-    $panel = Livewire::actingAs($admin)->test(Notifications::class)
-        ->assertSee('pedido do chat aguardando aceite')->assertSee($order->order_number)
+    $toasts = Livewire::actingAs($admin)->test(Notifications::class)
         ->call('onNewOrder', (new NewOrderPlaced($order))->broadcastWith())
         ->assertSet('notifications.0.channel', 'chat');
-    $panel->call('dismiss', $panel->get('notifications')[0]['id'])->assertSet('notifications', [])
-        ->assertSee('pedido do chat aguardando aceite')
-        ->call('acceptChatOrder', $order->id)->assertHasNoErrors()
-        ->assertDontSee('data-testid="chat-awaiting-alert"', false);
+    $toasts->call('dismiss', $toasts->get('notifications')[0]['id'])->assertSet('notifications', []);
+
+    Livewire::actingAs($admin)->test(OrderAcceptanceAlarm::class)
+        ->assertSee('pedido aguardando aceite')->assertSee($order->order_number)
+        ->call('acceptOrder', $order->id)->assertHasNoErrors()
+        ->assertDontSee('data-testid="order-acceptance-alert"', false);
     expect($order->fresh()->status)->toBe('preparing');
 });
 
@@ -110,7 +111,7 @@ test('kanban aceita pagamento na entrega sem registrar pagamento antecipado', fu
     $order->update(['payment_on_delivery' => true, 'status' => 'awaiting_payment']);
     $admin = User::factory()->create(['is_super_admin' => true]);
 
-    Livewire::actingAs($admin)->test(OrdersIndex::class)->call('acceptChatOrder', $order->id)->assertHasNoErrors();
+    Livewire::actingAs($admin)->test(OrdersIndex::class)->call('acceptOrder', $order->id)->assertHasNoErrors();
     expect($order->fresh()->status)->toBe('preparing')->and($order->payments()->count())->toBe(0);
 });
 
@@ -119,9 +120,9 @@ test('pedido online não pago não oferece aceite e rejeita chamada direta', fun
     $order = flowAuditChatOrder($ctx, status: 'awaiting_payment');
     $admin = User::factory()->create(['is_super_admin' => true]);
 
-    Livewire::actingAs($admin)->test(Notifications::class)->assertDontSee('data-testid="chat-awaiting-alert"', false);
-    Livewire::test(Show::class, ['order' => $order])->assertDontSee('wire:click="acceptChatOrder"', false)
-        ->call('acceptChatOrder')->assertHasErrors(['chatAcceptance']);
+    Livewire::actingAs($admin)->test(OrderAcceptanceAlarm::class)->assertDontSee('data-testid="order-acceptance-alert"', false);
+    Livewire::test(Show::class, ['order' => $order])->assertDontSee('acceptOrder', false)
+        ->call('acceptOrder', $order->id)->assertHasErrors(['orderAcceptance']);
     expect($order->fresh()->status)->toBe('awaiting_payment');
 });
 
@@ -134,7 +135,7 @@ test('aceite vencido ou cancelado não pode iniciar preparo', function (bool $ca
         app(\App\Services\Order\OrderService::class)->cancelUnacceptedChat($order);
     }
 
-    Livewire::actingAs($admin)->test(OrdersIndex::class)->call('acceptChatOrder', $order->id)->assertHasErrors(['chatAcceptance']);
+    Livewire::actingAs($admin)->test(OrdersIndex::class)->call('acceptOrder', $order->id)->assertHasErrors(['orderAcceptance']);
     expect($order->fresh()->status)->toBe($cancelled ? 'cancelled' : 'paid');
 })->with([true, false]);
 
@@ -144,7 +145,7 @@ test('aceite de agendado preserva horário e status até iniciar preparo', funct
     $order->update(['scheduled_at' => now()->addDay(), 'status' => 'scheduled']);
     $admin = User::factory()->create(['is_super_admin' => true]);
 
-    Livewire::actingAs($admin)->test(Show::class, ['order' => $order])->call('acceptChatOrder')->assertHasNoErrors();
+    Livewire::actingAs($admin)->test(Show::class, ['order' => $order])->call('acceptOrder', $order->id)->assertHasNoErrors();
     expect($order->fresh()->status)->toBe('scheduled')->and($order->fresh()->chat_accepted_at)->not->toBeNull();
     Livewire::test(Show::class, ['order' => $order->fresh()])->call('updateStatus', 'preparing')->assertHasNoErrors();
     expect($order->fresh()->status)->toBe('preparing');
@@ -159,31 +160,31 @@ test('alerta e aceite respeitam empresa, filial, permissão e estação', functi
     $manager = User::factory()->create();
     $manager->companies()->attach($ctx['company']->id, ['role' => 'branch_manager', 'branch_id' => $ctx['branch']->id]);
 
-    $panel = Livewire::actingAs($manager)->test(Notifications::class)->assertSee($order->order_number)->assertDontSee($foreignOrder->order_number);
-    expect(fn () => $panel->call('acceptChatOrder', $foreignOrder->id))->toThrow(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
+    $panel = Livewire::actingAs($manager)->test(OrderAcceptanceAlarm::class)->assertSee($order->order_number)->assertDontSee($foreignOrder->order_number);
+    expect(fn () => $panel->call('acceptOrder', $foreignOrder->id))->toThrow(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
 
     $manager->companies()->updateExistingPivot($ctx['company']->id, ['branch_id' => $other['branch']->id]);
-    Livewire::actingAs($manager->fresh())->test(Notifications::class)->assertDontSee('data-testid="chat-awaiting-alert"', false)
-        ->call('acceptChatOrder', $order->id)->assertForbidden();
+    Livewire::actingAs($manager->fresh())->test(OrderAcceptanceAlarm::class)->assertDontSee('data-testid="order-acceptance-alert"', false)
+        ->call('acceptOrder', $order->id)->assertForbidden();
 
-    $kitchen = User::factory()->create();
-    $kitchen->companies()->attach($ctx['company']->id, ['role' => 'cozinha', 'branch_id' => $ctx['branch']->id]);
-    Livewire::actingAs($kitchen)->test(Notifications::class)->assertDontSee('data-testid="chat-awaiting-alert"', false)
-        ->call('acceptChatOrder', $order->id)->assertForbidden();
+    $courier = User::factory()->create();
+    $courier->companies()->attach($ctx['company']->id, ['role' => 'entrega', 'branch_id' => $ctx['branch']->id]);
+    Livewire::actingAs($courier)->test(OrderAcceptanceAlarm::class)->assertDontSee('data-testid="order-acceptance-alert"', false)
+        ->call('acceptOrder', $order->id)->assertForbidden();
 
-    Livewire::actingAs(User::factory()->create())->test(Notifications::class)
-        ->assertDontSee('data-testid="chat-awaiting-alert"', false)
-        ->call('acceptChatOrder', $order->id)->assertForbidden();
+    Livewire::actingAs(User::factory()->create())->test(OrderAcceptanceAlarm::class)
+        ->assertDontSee('data-testid="order-acceptance-alert"', false)
+        ->call('acceptOrder', $order->id)->assertForbidden();
     expect($order->fresh()->status)->toBe('paid');
 });
 
-test('pdv e marketplaces não entram no alerta de chat nem podem ser aceitos por essa ação', function (string $channel) {
+test('pdv e marketplace sem espera de aceite não entram no alarme nem podem ser aceitos', function (string $channel) {
     $ctx = flowAuditContext();
     $order = flowAuditChatOrder($ctx);
     $order->update(['channel' => $channel, 'status' => 'paid']);
     $admin = User::factory()->create(['is_super_admin' => true]);
 
-    Livewire::actingAs($admin)->test(Notifications::class)->assertDontSee('data-testid="chat-awaiting-alert"', false)
-        ->call('acceptChatOrder', $order->id)->assertHasErrors(['chatAcceptance']);
+    Livewire::actingAs($admin)->test(OrderAcceptanceAlarm::class)->assertDontSee('data-testid="order-acceptance-alert"', false)
+        ->call('acceptOrder', $order->id)->assertHasErrors(['orderAcceptance']);
     expect($order->fresh()->status)->toBe('paid')->and($order->fresh()->chat_accepted_at)->toBeNull();
 })->with(['pdv', 'ifood', '99food']);

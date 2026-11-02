@@ -89,27 +89,21 @@
                 @endforeach
             </div>
 
-            @php $stationMarketplace = $order->marketplaceDetails(); $stationDeadline = $stationMarketplace?->awaitingConfirmation() ? $stationMarketplace->confirmationDeadline() : null; @endphp
-            @if ($stationDeadline && ! $stationMarketplace->confirmationExpired())
-                {{-- O botão abaixo aceita no iFood: a cozinha precisa ver o prazo, como no kanban. --}}
-                <div class="mx-4 mb-3 flex items-center justify-between gap-2 rounded-lg bg-red-50 px-3 py-2 dark:bg-red-900/20">
-                    <span class="text-xs font-semibold text-red-700 dark:text-red-300">Aceitar no iFood até {{ $stationDeadline->timezone(config('app.timezone'))->format('H:i') }}</span>
-                    <span x-data="acceptanceCountdown({{ $stationDeadline->getTimestampMs() }})" x-text="label" aria-hidden="true"
-                          class="font-mono text-xs font-bold" :class="urgent ? 'text-red-600 dark:text-red-400' : 'text-amber-700 dark:text-amber-400'"></span>
-                </div>
-            @endif
-
             @if ($order->notes)
                 <div class="mx-4 mb-3 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-xs text-amber-800 dark:text-amber-300">
                     {{ $order->notes }}
                 </div>
             @endif
 
-            @if ($canUpdate && in_array($order->status, ['pending', 'awaiting_payment', 'paid']))
+            @if ($order->awaitingAcceptance())
+                <div class="px-4 pb-4">
+                    @include('livewire.admin.orders.partials.order-acceptance', ['canAccept' => $canUpdate, 'canReject' => false, 'large' => true])
+                </div>
+            @elseif ($canUpdate && in_array($order->status, ['pending', 'awaiting_payment', 'paid']))
                 <button wire:click="updateOrderStatus({{ $order->id }}, 'preparing')"
                         wire:loading.attr="disabled" wire:target="updateOrderStatus({{ $order->id }}, 'preparing')"
                         class="w-full py-3.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 transition-colors border-t dark:border-zinc-700">
-                    {{ $stationMarketplace?->awaitingConfirmation() ? 'Aceitar no '.$stationMarketplace->channelLabel().' e iniciar preparo' : 'Iniciar preparo' }}
+                    Iniciar preparo
                 </button>
             @elseif ($canUpdate && $order->status === 'preparing')
                 <button wire:click="updateOrderStatus({{ $order->id }}, 'ready')"

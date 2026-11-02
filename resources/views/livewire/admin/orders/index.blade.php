@@ -1,5 +1,5 @@
 <div class="space-y-4" x-data="stationPrintListener()">
-@error('chatAcceptance')
+@error('orderAcceptance')
     <p role="alert" class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">{{ $message }}</p>
 @enderror
 @if (session('status'))
@@ -28,83 +28,6 @@
                     <flux:button size="sm" variant="ghost" wire:click="dismissIfoodNotImported({{ $item['event_id'] }})" wire:target="dismissIfoodNotImported({{ $item['event_id'] }})">
                         Já resolvi
                     </flux:button>
-                @endif
-            </div>
-        @endforeach
-    </div>
-@endif
-
-@if ($ifoodAwaiting->isNotEmpty())
-    {{-- Pedidos iFood esperando aceite: o iFood cancela o pedido imediato não confirmado no prazo. --}}
-    {{-- role=alert só no título: a contagem muda a cada segundo e não pode virar anúncio contínuo. --}}
-    <div data-testid="ifood-awaiting-alert" class="rounded-xl border border-red-300 bg-red-50 p-3 space-y-2 dark:border-red-800 dark:bg-red-900/20">
-        <p role="alert" class="text-sm font-bold text-red-700 dark:text-red-300">
-            {{ $ifoodAwaiting->count() === 1 ? '1 pedido iFood aguardando aceite' : $ifoodAwaiting->count().' pedidos iFood aguardando aceite' }}
-        </p>
-        @foreach ($ifoodAwaiting as $awaiting)
-            @php $awaitingIfood = $awaiting->ifoodDetails(); $awaitingDeadline = $awaitingIfood->confirmationDeadline(); @endphp
-            <div wire:key="ifood-awaiting-{{ $awaiting->id }}" class="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-white px-3 py-2 dark:bg-zinc-800">
-                <a href="{{ route('admin.orders.show', $awaiting) }}" class="font-mono font-bold text-neutral-800 hover:underline dark:text-neutral-100">#{{ $awaitingIfood->displayId() }}</a>
-                <span class="text-sm text-neutral-600 dark:text-neutral-300">{{ $awaitingIfood->orderTypeLabel() }} · R$ {{ number_format($awaiting->total, 2, ',', '.') }}</span>
-                @if ($awaitingDeadline)
-                    <span x-data="acceptanceCountdown({{ $awaitingDeadline->getTimestampMs() }})"
-                          aria-hidden="true"
-                          class="rounded px-2 py-0.5 font-mono text-sm font-bold"
-                          :class="urgent ? 'bg-red-600 text-white' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'"
-                          x-text="label"></span>
-                    <span class="sr-only">Aceitar até {{ $awaitingDeadline->timezone(config('app.timezone'))->format('H:i') }}</span>
-                @endif
-                @if ($awaitingIfood->isScheduled())
-                    <span class="text-sm text-amber-700 dark:text-amber-400">Agendado: {{ $awaitingIfood->scheduleWindow() }}</span>
-                @endif
-                @if ($canUpdate)
-                    <span class="ml-auto flex gap-2">
-                        <button wire:click="acceptIfoodOrder({{ $awaiting->id }})" wire:loading.attr="disabled" wire:target="acceptIfoodOrder({{ $awaiting->id }})"
-                                aria-label="Aceitar pedido iFood #{{ $awaitingIfood->displayId() }}"
-                                class="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">
-                            <span wire:loading.remove wire:target="acceptIfoodOrder({{ $awaiting->id }})">Aceitar</span>
-                            <span wire:loading wire:target="acceptIfoodOrder({{ $awaiting->id }})">Aceitando…</span>
-                        </button>
-                        <button wire:click="openIfoodCancelModal({{ $awaiting->id }})" wire:loading.attr="disabled" wire:target="openIfoodCancelModal({{ $awaiting->id }})"
-                                aria-label="Recusar pedido iFood #{{ $awaitingIfood->displayId() }}"
-                                class="rounded-lg bg-red-100 px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-200 disabled:opacity-50 dark:bg-red-900/40 dark:text-red-300">Recusar</button>
-                    </span>
-                @endif
-            </div>
-        @endforeach
-    </div>
-@endif
-
-@if ($this->food99AwaitingOrders->isNotEmpty())
-    {{-- Pedidos 99Food esperando aceite: a 99Food cancela o pedido não confirmado em 5 minutos. --}}
-    <div data-testid="food99-awaiting-alert" class="rounded-xl border border-amber-300 bg-amber-50 p-3 space-y-2 dark:border-amber-800 dark:bg-amber-900/20">
-        <p role="alert" class="text-sm font-bold text-amber-800 dark:text-amber-300">
-            {{ $this->food99AwaitingOrders->count() === 1 ? '1 pedido 99Food aguardando aceite' : $this->food99AwaitingOrders->count().' pedidos 99Food aguardando aceite' }}
-        </p>
-        @foreach ($this->food99AwaitingOrders as $awaiting)
-            @php $awaiting99 = $awaiting->food99Details(); $awaitingDeadline = $awaiting99->confirmationDeadline(); @endphp
-            <div wire:key="food99-awaiting-{{ $awaiting->id }}" class="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-white px-3 py-2 dark:bg-zinc-800">
-                <a href="{{ route('admin.orders.show', $awaiting) }}" class="font-mono font-bold text-neutral-800 hover:underline dark:text-neutral-100">99Food #{{ $awaiting99->displayId() }}</a>
-                <span class="text-sm text-neutral-600 dark:text-neutral-300">{{ $awaiting99->orderTypeLabel() }} · R$ {{ number_format($awaiting->total, 2, ',', '.') }}</span>
-                @if ($awaitingDeadline)
-                    <span x-data="acceptanceCountdown({{ $awaitingDeadline->getTimestampMs() }})" aria-hidden="true"
-                          class="rounded px-2 py-0.5 font-mono text-sm font-bold"
-                          :class="urgent ? 'bg-red-600 text-white' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'"
-                          x-text="label"></span>
-                    <span class="sr-only">Aceitar até {{ $awaitingDeadline->timezone(config('app.timezone'))->format('H:i') }}</span>
-                @endif
-                @if ($canUpdate)
-                    <span class="ml-auto flex gap-2">
-                        <button wire:click="acceptMarketplaceOrder({{ $awaiting->id }})" wire:loading.attr="disabled" wire:target="acceptMarketplaceOrder({{ $awaiting->id }})"
-                                aria-label="Aceitar pedido 99Food #{{ $awaiting99->displayId() }}"
-                                class="rounded-lg bg-green-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">
-                            <span wire:loading.remove wire:target="acceptMarketplaceOrder({{ $awaiting->id }})">Aceitar</span>
-                            <span wire:loading wire:target="acceptMarketplaceOrder({{ $awaiting->id }})">Aceitando…</span>
-                        </button>
-                        <button wire:click="openFood99CancelModal({{ $awaiting->id }})" wire:loading.attr="disabled"
-                                aria-label="Recusar pedido 99Food #{{ $awaiting99->displayId() }}"
-                                class="rounded-lg bg-red-100 px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-200 disabled:opacity-50 dark:bg-red-900/40 dark:text-red-300">Recusar</button>
-                    </span>
                 @endif
             </div>
         @endforeach
@@ -293,6 +216,7 @@
         @if($viewMode === 'list')
         <flux:select wire:model.live="statusFilter" placeholder="Todos os status" class="w-full sm:w-44 shrink-0">
             <flux:select.option value="">Todos os status</flux:select.option>
+            <flux:select.option value="awaiting_acceptance">Aguardando aceite</flux:select.option>
             <flux:select.option value="pending">Pendente</flux:select.option>
             <flux:select.option value="awaiting_payment">Aguardando Pagamento</flux:select.option>
             <flux:select.option value="scheduled">Agendado</flux:select.option>
@@ -366,7 +290,8 @@
                         <div class="flex items-center gap-3 shrink-0 sm:gap-4">
                             <p class="font-bold text-sm text-neutral-800 dark:text-neutral-100">R$ {{ number_format($order->total, 2, ',', '.') }}</p>
                             <span class="text-xs px-2 py-1 rounded-full min-w-20 text-center
-                                @if($order->status === 'paid' || $order->status === 'delivered') bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400
+                                @if($order->awaitingAcceptance()) bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400
+                                @elseif($order->status === 'paid' || $order->status === 'delivered') bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-400
                                 @elseif($order->status === 'preparing' || $order->status === 'ready') bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-400
                                 @elseif($order->status === 'cancelled') bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400
                                 @elseif($order->status === 'scheduled') bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400
@@ -407,6 +332,7 @@
 
     @php
         $kanbanMeta = [
+            $this::AWAITING_COLUMN => ['label' => 'Aguardando aceite', 'bg' => 'bg-red-50 dark:bg-red-900/20',     'text' => 'text-red-700 dark:text-red-400',           'dot' => 'bg-red-500'],
             'scheduled'       => ['label' => 'Agendado',           'bg' => 'bg-amber-50 dark:bg-amber-900/20', 'text' => 'text-amber-700 dark:text-amber-400',       'dot' => 'bg-amber-500'],
             'pending'         => ['label' => 'Pendente',            'bg' => 'bg-neutral-100 dark:bg-zinc-700',   'text' => 'text-neutral-600 dark:text-neutral-300',  'dot' => 'bg-neutral-400'],
             'awaiting_payment'=> ['label' => 'Ag. Pagamento',       'bg' => 'bg-yellow-50 dark:bg-yellow-900/20','text' => 'text-yellow-700 dark:text-yellow-400',     'dot' => 'bg-yellow-400'],
@@ -475,32 +401,10 @@
                         'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' => $order->channel === '99food',
                         'bg-neutral-100 text-neutral-500 dark:bg-zinc-700 dark:text-neutral-400' => ! $order->isMarketplaceOrder(),
                     ])>{{ ($marketplace = $order->marketplaceDetails()) ? $marketplace->channelLabel().' · '.$marketplace->orderTypeLabel() : $order->origin_label }}</span>
-                    @if ($order->awaitingChatAcceptance())
-                        <p class="mt-2 text-xs font-semibold text-purple-700 dark:text-purple-300">Aguardando aceite</p>
-                        @if ($canUpdate && ! $userStation && ! $order->chatAcceptanceExpired())
-                            <button wire:click.stop="acceptChatOrder({{ $order->id }})" wire:loading.attr="disabled" wire:target="acceptChatOrder({{ $order->id }})"
-                                    class="mt-2 w-full rounded-lg bg-green-600 py-1 text-xs font-semibold text-white hover:bg-green-700 disabled:opacity-50">Aceitar pedido</button>
-                        @endif
-                    @elseif ($marketplace && $marketplace->awaitingConfirmation() && $marketplace->confirmationExpired())
-                        <p class="mt-2 rounded-lg bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 dark:bg-red-900/20 dark:text-red-300">Prazo de aceite encerrado: confira no {{ $order->channel === 'ifood' ? 'Gestor de Pedidos' : 'app da '.$marketplace->channelLabel() }}</p>
-                    @elseif ($marketplace && $marketplace->awaitingConfirmation())
-                        @php $cardDeadline = $marketplace->confirmationDeadline(); @endphp
-                        <div class="mt-2 flex items-center justify-between gap-2 rounded-lg bg-red-50 px-2 py-1 dark:bg-red-900/20">
-                            <span class="text-xs font-semibold text-red-700 dark:text-red-300">Aguardando aceite</span>
-                            @if ($cardDeadline)
-                                <span x-data="acceptanceCountdown({{ $cardDeadline->getTimestampMs() }})" x-text="label" aria-hidden="true"
-                                      class="font-mono text-xs font-bold" :class="urgent ? 'text-red-600 dark:text-red-400' : 'text-amber-700 dark:text-amber-400'"></span>
-                                <span class="sr-only">até {{ $cardDeadline->timezone(config('app.timezone'))->format('H:i') }}</span>
-                            @endif
+                    @if ($order->awaitingAcceptance())
+                        <div class="mt-2">
+                            @include('livewire.admin.orders.partials.order-acceptance', ['canAccept' => $canUpdate, 'canReject' => $canUpdate])
                         </div>
-                        @if ($canUpdate)
-                            <button wire:click.stop="acceptMarketplaceOrder({{ $order->id }})"
-                                    wire:loading.attr="disabled" wire:target="acceptMarketplaceOrder({{ $order->id }})"
-                                    class="w-full mt-2 py-1 text-xs font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 transition-colors">
-                                <span wire:loading.remove wire:target="acceptMarketplaceOrder({{ $order->id }})">Aceitar pedido</span>
-                                <span wire:loading wire:target="acceptMarketplaceOrder({{ $order->id }})">Aceitando…</span>
-                            </button>
-                        @endif
                     @endif
                     <div class="flex items-center justify-between mt-2">
                         <p class="text-xs text-neutral-400 dark:text-neutral-500">{{ $order->created_at->format('d/m H:i') }}</p>
@@ -592,7 +496,7 @@
                     </svg>
                 </div>
                 <div>
-                    <h3 class="text-lg font-semibold text-neutral-800 dark:text-neutral-100">Cancelar pedido</h3>
+                    <h3 class="text-lg font-semibold text-neutral-800 dark:text-neutral-100">{{ $rejectingOrder ? 'Recusar pedido' : 'Cancelar pedido' }}</h3>
                     <p class="text-sm text-neutral-500 dark:text-neutral-400 mt-1">Informe o motivo do cancelamento. Essa ação fica registrada no histórico do pedido com seu usuário como operador.</p>
                 </div>
             </div>

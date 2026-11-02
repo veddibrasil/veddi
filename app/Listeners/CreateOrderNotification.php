@@ -18,9 +18,13 @@ class CreateOrderNotification
             'title' => ($marketplace = $event->order->marketplaceDetails())
                 ? 'Novo pedido '.$marketplace->channelLabel().' #'.$marketplace->displayId()
                 : 'Novo pedido: '.$event->order->order_number,
-            'subtitle' => $marketplace?->awaitingConfirmation()
-                ? ($marketplace->isScheduled() ? 'Agendado: aceite no '.$marketplace->channelLabel() : 'Aceite em até '.$marketplace->confirmationMinutes().' min')
-                : ($event->order->customer?->name ?? 'Cliente'),
+            'subtitle' => match (true) {
+                (bool) $marketplace?->awaitingConfirmation() => $marketplace->isScheduled()
+                    ? 'Agendado: aceite no '.$marketplace->channelLabel()
+                    : 'Aceite em até '.$marketplace->confirmationMinutes().' min',
+                $event->order->awaitingAcceptance() => 'Aguardando aceite',
+                default => $event->order->customer?->name ?? 'Cliente',
+            },
             'link' => route('admin.orders.show', $event->order->id),
         ]);
     }

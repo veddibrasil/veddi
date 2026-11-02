@@ -62,7 +62,7 @@ test('empresa com plano sem PDV recebe 403', function () {
         ->assertForbidden();
 });
 
-test('telas do PDV não montam os toasts de pedido, que seguem no resto do painel', function () {
+test('telas do PDV não montam toasts, sino nem alarme de aceite', function () {
     ['admin' => $admin] = pdvContext();
 
     $this->actingAs($admin);
@@ -70,7 +70,9 @@ test('telas do PDV não montam os toasts de pedido, que seguem no resto do paine
     foreach (['admin.pdv', 'admin.pdv.checkout', 'admin.pdv.tabs'] as $route) {
         $this->get(route($route))
             ->assertOk()
-            ->assertDontSeeLivewire(\App\Livewire\Admin\Notifications::class);
+            ->assertDontSeeLivewire(\App\Livewire\Admin\Notifications::class)
+            ->assertDontSeeLivewire(\App\Livewire\Admin\NotificationBell::class)
+            ->assertDontSeeLivewire(\App\Livewire\Admin\OrderAcceptanceAlarm::class);
     }
 
     $this->get(route('admin.orders.index'))

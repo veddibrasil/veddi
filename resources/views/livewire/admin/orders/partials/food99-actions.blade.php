@@ -47,14 +47,6 @@
 
     @if ($canUpdate)
         <div class="flex flex-wrap gap-2">
-            @if ($food99->awaitingConfirmation() && ! $food99->confirmationExpired() && in_array('preparing', $allowed, true))
-                <button wire:click="updateStatus('preparing')" wire:loading.attr="disabled" wire:target="updateStatus"
-                        class="{{ $buttonBase }} flex-1 bg-green-600 text-white hover:bg-green-700">Aceitar pedido</button>
-            @endif
-            @if ($food99->awaitingConfirmation() && ! $food99->confirmationExpired() && in_array('cancelled', $allowed, true))
-                <button wire:click="openFood99CancelModal({{ $order->id }})" wire:loading.attr="disabled"
-                        class="{{ $buttonBase }} bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50">Recusar</button>
-            @endif
             @if ($food99->canMarkReady() && in_array('ready', $allowed, true))
                 <button wire:click="updateStatus('ready')" wire:loading.attr="disabled" wire:target="updateStatus"
                         class="{{ $buttonBase }} flex-1 bg-indigo-600 text-white hover:bg-indigo-700">Pedido pronto</button>

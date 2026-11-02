@@ -176,7 +176,8 @@ Regras importantes:
 - disponibilidade de produto e filial deve ser validada no backend;
 - estoque e cupom fazem parte da criacao do pedido;
 - taxa da plataforma e valor liquido precisam ser calculados no backend;
-- o gateway pode variar por metodo de pagamento.
+- o gateway pode variar por metodo de pagamento;
+- o aceite e igual em todo canal: telas e alarme usam `Order::awaitingAcceptance()`, `OrderAcceptance` e o partial `orders/partials/order-acceptance`, nunca uma regra por canal.
 
 ### Webhooks e processamento assincrono
 

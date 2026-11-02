@@ -16,6 +16,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Services\Ifood\IfoodOrderActionService;
+use App\Services\Order\OrderAcceptance;
 use App\Services\Order\OrderService;
 use App\Services\Order\StockService;
 use App\Services\Payment\PaymentOrchestrator;
@@ -49,6 +50,9 @@ class Show extends Component
     // ── Cancelar pedido (motivo obrigatório, registra o operador) ───────────
 
     public bool $showCancelModal = false;
+
+    /** Modal de cancelamento aberto pelo "Recusar": muda o texto, a ação é a mesma. */
+    public bool $rejectingOrder = false;
 
     public string $cancelReason = '';
 
@@ -169,7 +173,7 @@ class Show extends Component
     public function getListeners(): array
     {
         return [
-            'chat-order-accepted' => '$refresh',
+            'order-accepted' => '$refresh',
             "echo-private:order.{$this->order->id},OrderStatusUpdated" => '$refresh',
             "echo-private:order.{$this->order->id},OrderItemsUpdated" => '$refresh',
             "echo-private:order.{$this->order->id},IfoodOrderUpdated" => '$refresh',
@@ -217,6 +221,11 @@ class Show extends Component
 
         if ($this->canViewHistory) {
             $this->order->loadMissing(['statusHistories' => fn ($q) => $q->latest()->with('user')]);
+        }
+
+        // "Recusar" do alarme: o modal de cada canal vive nesta tela.
+        if (request()->boolean('recusar') && $this->canUpdate && ! $this->userStation && $this->order->awaitingAcceptance()) {
+            $this->rejectOrder($this->order->id);
         }
     }
 
@@ -310,8 +319,15 @@ class Show extends Component
             return;
         }
 
+        // Levar pra "preparando" é aceitar, como já é no iFood e na 99Food.
+        if ($status === 'preparing' && $this->order->awaitingChatAcceptance()) {
+            $this->acceptOrder($this->order->id);
+
+            return;
+        }
+
         if ($this->order->requiresChatAcceptance() && $status !== $previousStatus) {
-            $this->addError('chatAcceptance', 'Aceite o pedido antes de alterar o status. Pedidos online precisam estar pagos.');
+            $this->addError('orderAcceptance', 'Aceite o pedido antes de alterar o status. Pedidos online precisam estar pagos.');
 
             return;
         }
@@ -343,12 +359,27 @@ class Show extends Component
         session()->flash('status', 'Status atualizado.');
     }
 
-    public function acceptChatOrder(): void
+    public function acceptOrder(int $orderId): void
     {
-        abort_unless($this->canUpdate && ! $this->userStation, 403);
-        $this->order = app(\App\Services\Order\ChatOrderAcceptance::class)->accept($this->order, auth()->user());
-        $this->resetErrorBag('chatAcceptance');
-        $this->dispatch('chat-order-accepted');
+        abort_unless($orderId === $this->order->id && $this->canUpdate && $this->userStation !== 'entrega', 403);
+        app(OrderAcceptance::class)->accept($this->order, auth()->user());
+        $this->order->refresh();
+        $this->resetErrorBag('orderAcceptance');
+        $this->dispatch('order-accepted');
+    }
+
+    /** Recusar abre o modal do canal: cada um tem os próprios motivos e estorno. */
+    public function rejectOrder(int $orderId): void
+    {
+        abort_unless($orderId === $this->order->id && $this->canUpdate && ! $this->userStation, 403);
+
+        match ($this->order->channel) {
+            OrderChannel::Ifood->value => $this->openIfoodCancelModal(),
+            OrderChannel::Food99->value => $this->openFood99CancelModal($this->order->id),
+            default => $this->openCancelModal(),
+        };
+
+        $this->rejectingOrder = true;
     }
 
     private function updateIfoodStatus(string $status): void
@@ -412,6 +443,7 @@ class Show extends Component
 
         $this->cancelReason = '';
         $this->resetErrorBag('cancelReason');
+        $this->rejectingOrder = false;
         $this->showCancelModal = true;
     }
 

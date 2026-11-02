@@ -147,12 +147,13 @@ it('mostra o card da 99Food nas integrações', function () {
     Livewire::test(IntegrationsIndex::class)->assertDontSee('99Food');
 });
 
-it('alerta no topo dos pedidos o pedido 99Food aguardando aceite', function () {
+it('mostra o pedido 99Food na coluna de aceite do kanban', function () {
     $ctx = food99Context();
     receiveFood99Order($this, $ctx, food99OrderInfo($ctx));
     $this->actingAs(food99Admin($ctx['company']));
 
     Livewire::test(OrdersIndex::class)
-        ->assertSee('1 pedido 99Food aguardando aceite')
+        ->set('viewMode', 'kanban')
+        ->assertSee('Aguardando aceite')
         ->assertSee('99Food #12');
 });

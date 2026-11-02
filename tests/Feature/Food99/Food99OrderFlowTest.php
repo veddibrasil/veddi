@@ -357,7 +357,7 @@ it('opera o pedido 99Food pelo kanban: aceite pela API e cancelamento pelo modal
     $this->actingAs(User::factory()->create(['is_super_admin' => true]));
 
     Livewire::test(OrdersIndex::class)
-        ->call('acceptMarketplaceOrder', $order->id)
+        ->call('acceptOrder', $order->id)
         ->call('updateOrderStatus', $order->id, 'cancelled')
         ->assertSet('food99CancelOrderId', $order->id)
         ->assertSet('food99CancelAccepted', true)

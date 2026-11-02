@@ -67,6 +67,16 @@
         </div>
     @enderror
 
+    @error('orderAcceptance')
+        <p role="alert" class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">{{ $message }}</p>
+    @enderror
+
+    @if ($order->awaitingAcceptance())
+        <x-admin.form-card padding="p-4">
+            @include('livewire.admin.orders.partials.order-acceptance', ['canAccept' => $canUpdate && $userStation !== 'entrega', 'canReject' => $canUpdate && ! $userStation, 'large' => true])
+        </x-admin.form-card>
+    @endif
+
     @if ($order->channel === 'ifood')
         @include('livewire.admin.orders.partials.ifood-summary')
         @include('livewire.admin.orders.partials.ifood-disputes')
@@ -771,18 +781,11 @@
                         Atual: <span class="font-semibold text-neutral-700 dark:text-neutral-300">{{ $order->status_label }}</span>
                     </p>
                 </div>
-                @error('chatAcceptance')
-                    <p role="alert" class="text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
-                @enderror
                 @if ($order->requiresChatAcceptance())
                     <p class="text-sm text-neutral-600 dark:text-neutral-300">
                         {{ $order->awaitingChatAcceptance() ? 'Aceite o pedido para liberar o preparo.' : 'Aguardando pagamento online para liberar o aceite.' }}
                     </p>
-                    @if ($canUpdate && ! $userStation && $order->awaitingChatAcceptance() && ! $order->chatAcceptanceExpired())
-                        <button wire:click="acceptChatOrder" wire:loading.attr="disabled" wire:target="acceptChatOrder"
-                                class="w-full rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">Aceitar pedido</button>
-                    @endif
-                    @if ($canUpdate && ! $userStation)
+                    @if ($canUpdate && ! $userStation && ! $order->awaitingAcceptance())
                         <button wire:click="openCancelModal" class="text-sm font-medium text-red-600 hover:text-red-700 dark:text-red-400">Recusar pedido</button>
                     @endif
                 @else
@@ -1127,7 +1130,7 @@
                         </svg>
                     </div>
                     <div>
-                        <h3 class="text-lg font-semibold text-neutral-800 dark:text-neutral-100">Cancelar pedido</h3>
+                        <h3 class="text-lg font-semibold text-neutral-800 dark:text-neutral-100">{{ $rejectingOrder ? 'Recusar pedido' : 'Cancelar pedido' }}</h3>
                         <p class="text-sm text-neutral-500 dark:text-neutral-400 mt-1">Informe o motivo do cancelamento. Essa ação fica registrada no histórico do pedido com seu usuário como operador.</p>
                     </div>
                 </div>

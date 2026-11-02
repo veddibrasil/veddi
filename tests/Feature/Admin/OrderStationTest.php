@@ -917,7 +917,7 @@ test('kanban: pedido online aguardando webhook não pode ser arrastado para pago
 
     Livewire::test(OrdersIndex::class)
         ->call('updateOrderStatus', $order->id, 'paid')
-        ->assertHasErrors(['chatAcceptance']);
+        ->assertHasErrors(['orderAcceptance']);
 
     $order->refresh();
     expect($order->status)->toBe('awaiting_payment');

@@ -1,7 +1,6 @@
 {{-- Pedido iFood: número do iFood, prazo de aceite e as informações que o iFood exige mostrar à loja. --}}
 @php
     $ifood = $order->ifoodDetails();
-    $deadline = $ifood->confirmationDeadline();
     $cancelRequest = $ifood->cancellationRequest();
     $cancellation = $ifood->cancellation();
     $localizerExpires = $ifood->phoneLocalizerExpiresAt();
@@ -26,33 +25,6 @@
             @endif
         </div>
     </div>
-
-    @if ($deadline && $ifood->confirmationExpired())
-        <div role="alert" class="px-4 py-3 border-b border-red-200 bg-red-100 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/40 dark:text-red-200">
-            <p class="font-semibold">Prazo de aceite encerrado às {{ $deadline->format('H:i') }}.</p>
-            <p>Sem confirmação, o iFood cancela o pedido. Confira a situação no Gestor de Pedidos do iFood.</p>
-        </div>
-    @elseif ($deadline)
-        <div x-data="acceptanceCountdown({{ $deadline->getTimestampMs() }})"
-             class="px-4 py-3 border-b border-red-100 dark:border-red-900/40 space-y-2"
-             :class="urgent ? 'bg-red-600 text-white' : 'bg-amber-50 text-amber-900 dark:bg-amber-900/20 dark:text-amber-200'">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-                <p class="text-sm font-semibold">Aceite ou recuse até {{ $deadline->format('H:i') }}: o iFood cancela pedido não confirmado.</p>
-                <p class="font-mono text-2xl font-bold" x-text="label" aria-hidden="true"></p>
-            </div>
-            {{-- No celular a coluna de ações fica no fim da página; aqui o aceite fica junto do prazo. --}}
-            @if ($canUpdate && in_array($userStation, [null, 'cozinha', 'bar'], true))
-                <div class="flex gap-2 lg:hidden">
-                    <button wire:click="updateStatus('preparing')" wire:loading.attr="disabled" wire:target="updateStatus"
-                            class="flex-1 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">Aceitar pedido</button>
-                    @unless ($userStation)
-                        <button wire:click="openIfoodCancelModal" wire:loading.attr="disabled" wire:target="openIfoodCancelModal"
-                                class="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50">Recusar</button>
-                    @endunless
-                </div>
-            @endif
-        </div>
-    @endif
 
     @if ($ifood->isScheduled())
         <div class="px-4 py-2 border-b border-neutral-100 text-sm text-neutral-700 dark:border-zinc-700 dark:text-neutral-300">

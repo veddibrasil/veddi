@@ -16,6 +16,7 @@
         $isStationOnly = $company && in_array($user?->roleForCompany($company), ['cozinha', 'bar']);
         // Caixa não precisa de notificações de pedido — opera o PDV diretamente.
         $isCashier = $company && $user?->roleForCompany($company) === 'caixa';
+        $showOrderNotifications = $orderNotifications && !$isWaiterOnly && !$isCashier && !request()->routeIs('admin.pdv*');
         // Botão de suporte via WhatsApp só aparece pros papéis administrativos.
         $isAdmin = $company && in_array($user?->roleForCompany($company), ['company_admin', 'branch_manager']);
     @endphp
@@ -25,7 +26,7 @@
                 <x-app-logo :sidebar="true" href="{{ $user ? route($user->homeRouteName()) : route('admin.dashboard') }}" wire:navigate />
 
                 @auth
-                    @if(!auth()->user()?->isSuperAdmin() && !$isWaiterOnly && !$isCashier)
+                    @if(!auth()->user()?->isSuperAdmin() && $showOrderNotifications)
                         <livewire:admin.notification-bell />
                     @endif
                 @endauth
@@ -262,7 +263,7 @@
             <flux:spacer />
 
             @auth
-                @if(!auth()->user()?->isSuperAdmin() && !$isWaiterOnly && !$isCashier)
+                @if(!auth()->user()?->isSuperAdmin() && $showOrderNotifications)
                     <livewire:admin.notification-bell />
                 @endif
             @endauth
@@ -320,9 +321,10 @@
         {{ $slot }}
 
         @auth
-            {{-- PDV desliga os toasts de pedido (orderNotifications=false): atrapalham a operação do caixa. --}}
-            @if($orderNotifications && !$isWaiterOnly && !$isCashier)
+            {{-- Caixa e telas do PDV ficam sem sino, toasts ou alarme de pedidos. --}}
+            @if($showOrderNotifications)
                 <livewire:admin.notifications />
+                <livewire:admin.order-acceptance-alarm />
             @endif
             <livewire:admin.profile-modal />
             @if($isAdmin)
