@@ -65,7 +65,10 @@ class ResolveExpiredVindiPaymentsJob implements ShouldQueue
     private function expireAbandonedChats(VindiService $vindi): void
     {
         // Global maintenance: select chat orders across tenants, then retain their company on every order lookup.
-        $orders = Order::withoutGlobalScopes()->where('channel', 'chat')->where('payment_on_delivery', false)
+        // PDV também grava channel 'chat': sem excluir order_type 'pdv', pedido a receber, agendado
+        // ou comanda aberta era cancelado como checkout abandonado depois de 35 minutos.
+        $orders = Order::withoutGlobalScopes()->where('channel', 'chat')->where('order_type', '!=', 'pdv')
+            ->where('payment_on_delivery', false)
             ->whereIn('status', ['pending', 'awaiting_payment'])
             ->where('created_at', '<=', now()->subMinutes(max(1, (int) config('payments.chat_checkout_timeout_minutes', 35))))
             ->whereDoesntHave('payments', fn ($query) => $query->where('status', 'paid'))

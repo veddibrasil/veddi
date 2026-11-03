@@ -286,3 +286,30 @@ test('segunda cobrança paga do mesmo pedido avisa a equipe para estorno manual'
         ->and($order->fresh()->status)->toBe('paid')
         ->and($discord->hasCriticalThatContains('segunda cobrança paga'))->toBeTrue();
 });
+
+test('checkout abandonado do chat não cancela pedido do PDV a receber, agendado ou comanda aberta', function () {
+    $ctx = flowAuditContext(stock: null);
+    $abandoned = flowAuditChatOrder($ctx, qty: 1, paymentMethod: 'CARD');
+    $pdv = [
+        'agendado' => ['status' => 'awaiting_payment', 'payment_method' => 'credit_card', 'scheduled_at' => now()->addMinutes(30)],
+        'a receber' => ['status' => 'awaiting_payment', 'payment_method' => 'cash'],
+        'comanda' => ['status' => 'pending', 'payment_method' => '', 'is_open_tab' => true],
+    ];
+    foreach ($pdv as $kind => $attributes) {
+        $pdv[$kind] = flowAuditChatOrder($ctx, qty: 1);
+        $pdv[$kind]->forceFill(['order_type' => 'pdv', ...$attributes])->save();
+    }
+    foreach ([$abandoned, ...array_values($pdv)] as $order) {
+        $order->forceFill(['created_at' => now()->subHour()])->save();
+    }
+    $vindi = Mockery::mock(VindiService::class);
+    $vindi->shouldNotReceive('getTransactionStatus');
+    app()->forgetInstance('current.company');
+
+    (new ResolveExpiredVindiPaymentsJob)->handle($vindi);
+
+    expect($abandoned->fresh()->status)->toBe('cancelled');
+    foreach ($pdv as $kind => $order) {
+        expect($order->fresh()->status)->not->toBe('cancelled', "PDV {$kind} foi cancelado");
+    }
+});
