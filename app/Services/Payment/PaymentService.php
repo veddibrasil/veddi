@@ -4,6 +4,7 @@ namespace App\Services\Payment;
 
 use App\Events\OrderStatusUpdated;
 use App\Jobs\ProcessOrder;
+use App\Jobs\ProcessVindiWebhook;
 use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Order;
@@ -73,6 +74,10 @@ class PaymentService
      */
     public function expireAndRenew(Order $order, Customer $customer, ?Company $company, string $paymentMethod): bool
     {
+        if ($this->currentVindiChargeApproved($order)) {
+            return false;
+        }
+
         $renew = DB::transaction(function () use ($order) {
             $locked = Order::withoutGlobalScopes()->where('company_id', $order->company_id)->whereKey($order->id)->lockForUpdate()->first();
             if (! $locked || $locked->payment_on_delivery || ! in_array($locked->status, ['pending', 'awaiting_payment'], true)
@@ -93,5 +98,51 @@ class PaymentService
         }
 
         return $renew;
+    }
+
+    /**
+     * O QR da Vindi continua pagável depois do prazo do chat (vale 24 h no portal). Antes de
+     * trocar a cobrança, pergunta à Vindi se a atual já foi paga (webhook atrasado ou perdido):
+     * paga, confirma pelo mesmo fluxo do webhook e não gera um segundo PIX pagável.
+     * Vindi sem resposta segue o fluxo antigo (renova) para não travar o cliente.
+     */
+    private function currentVindiChargeApproved(Order $order): bool
+    {
+        $payment = $order->payments()->reorder('id', 'desc')->first();
+        $token = (string) $payment?->vindi_transaction_token;
+
+        if (! $payment || $payment->status !== 'pending' || $payment->payment_gateway !== 'vindi' || $token === ''
+            || empty(config('payments.vindi_token_account')) || str_starts_with($token, 'sim_vindi_')) {
+            return false;
+        }
+
+        try {
+            if (app(VindiService::class)->getTransactionStatus($token) !== 'Aprovada') {
+                return false;
+            }
+        } catch (\Throwable $e) {
+            Log::channel('payments')->warning('Renovação PIX: falha ao consultar a cobrança atual na Vindi', [
+                'order_id' => $order->id,
+                'payment_id' => $payment->id,
+                'exception_type' => $e::class,
+            ]);
+
+            return false;
+        }
+
+        // Já sabemos que foi paga: nunca renova, mesmo se a confirmação local falhar agora
+        // (o webhook retentado e o ResolveExpiredVindiPaymentsJob concluem depois).
+        try {
+            ProcessVindiWebhook::dispatchSync($token, 'Aprovada', []);
+        } catch (\Throwable $e) {
+            Log::channel('discord')->critical('Renovação PIX: cobrança paga na Vindi sem confirmação local', [
+                'type' => 'payments',
+                'order_id' => $order->id,
+                'payment_id' => $payment->id,
+                'exception_type' => $e::class,
+            ]);
+        }
+
+        return true;
     }
 }

@@ -72,12 +72,26 @@ function vindiGatewayCheckContext(?string $token = 'vindi_tok_check_001'): array
 function fakeVindiTransactionStatus(string $status, int $httpStatus = 200): void
 {
     Http::fake([
-        '*/transactions/*' => Http::response(
+        '*/transactions/get_by_token*' => Http::response(
             $httpStatus === 200 ? ['data_response' => ['transaction' => ['status_name' => $status]]] : ['error' => 'x'],
             $httpStatus,
         ),
+        // Qualquer outra rota de consulta é a que não existe na Yapay (404 HTML).
+        '*/transactions/*' => Http::response('<html>Página não encontrada (404)</html>', 404),
     ]);
 }
+
+test('consulta de status usa o endpoint get_by_token da Yapay com o token na query', function () {
+    config()->set('payments.vindi_token_account', 'tok_test');
+    fakeVindiTransactionStatus('Aprovada');
+
+    $status = app(\App\Services\Payment\VindiService::class)->getTransactionStatus('vindi_tok_check_001');
+
+    expect($status)->toBe('Aprovada');
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/api/v3/transactions/get_by_token?')
+        && $request['token_transaction'] === 'vindi_tok_check_001'
+        && $request['token_account'] === 'tok_test');
+});
 
 test('webhook Vindi recusa requisição sem token quando o token da conta não está configurado', function () {
     Bus::fake();

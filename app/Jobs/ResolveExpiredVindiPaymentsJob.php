@@ -155,6 +155,15 @@ class ResolveExpiredVindiPaymentsJob implements ShouldQueue
                 // para o futuro continua 'scheduled'.
                 $closed = in_array($order->status, ['cancelled', 'refunded'], true);
 
+                // Mesma regra do webhook: segunda tentativa paga não é estornada sozinha (o estorno
+                // marcaria o pedido inteiro como estornado), só avisa para estorno manual.
+                if (! $closed && $order->payments()->whereKeyNot($payment->id)->where('status', 'paid')->exists()) {
+                    Log::channel('discord')->critical('Vindi: segunda cobrança paga para pedido já pago — estornar manualmente', [
+                        'type' => 'payments', 'order_id' => $order->id, 'payment_id' => $payment->id,
+                        'company_id' => $order->company_id, 'amount' => $payment->amount,
+                    ]);
+                }
+
                 if (in_array($order->status, ['pending', 'awaiting_payment'], true)) {
                     $order->update(['status' => ($order->scheduled_at && $order->scheduled_at->isFuture()) ? 'scheduled' : 'paid']);
                 }

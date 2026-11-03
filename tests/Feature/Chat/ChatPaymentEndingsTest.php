@@ -240,3 +240,49 @@ test('fallback legado do webhook não associa namespace de outro ambiente', func
     (new ProcessVindiWebhook('foreign-environment', 'Aprovada', ['transaction' => ['order_number' => 'ffffff-'.$order->id]]))->handle();
     expect($payment->fresh()->status)->toBe('pending')->and($order->fresh()->status)->toBe('pending');
 });
+
+test('PIX vencido que já foi pago na Vindi confirma o pedido em vez de gerar outro código', function () {
+    $ctx = flowAuditContext();
+    $order = flowAuditChatOrder($ctx, status: 'awaiting_payment');
+    $payment = endingsPayment($order, ['vindi_transaction_token' => 'paid-before-renew']);
+    config(['payments.vindi_token_account' => 'fake']);
+    // dispatchSync de job enfileirável vai para a conexão 'sync': deixa só ele rodar de verdade.
+    Queue::fake()->except([ProcessVindiWebhook::class]);
+    Http::fake(['*/transactions/get_by_token*' => Http::response(['data_response' => ['transaction' => ['status_name' => 'Aprovada']]])]);
+
+    $renewed = app(PaymentService::class)->expireAndRenew($order, $ctx['customer'], $ctx['company'], 'PIX');
+
+    expect($renewed)->toBeFalse()
+        ->and($payment->fresh()->status)->toBe('paid')
+        ->and($order->fresh()->status)->toBe('paid');
+    Queue::assertNotPushed(ProcessOrder::class);
+});
+
+test('PIX vencido ainda aguardando na Vindi é renovado', function () {
+    $ctx = flowAuditContext();
+    $order = flowAuditChatOrder($ctx, status: 'awaiting_payment');
+    $payment = endingsPayment($order, ['vindi_transaction_token' => 'still-waiting']);
+    config(['payments.vindi_token_account' => 'fake']);
+    Http::fake(['*/transactions/get_by_token*' => Http::response(['data_response' => ['transaction' => ['status_name' => 'Aguardando Pagamento']]])]);
+
+    $renewed = app(PaymentService::class)->expireAndRenew($order, $ctx['customer'], $ctx['company'], 'PIX');
+
+    expect($renewed)->toBeTrue()->and($payment->fresh()->status)->toBe('expired');
+    Queue::assertPushed(ProcessOrder::class);
+});
+
+test('segunda cobrança paga do mesmo pedido avisa a equipe para estorno manual', function () {
+    $ctx = flowAuditContext();
+    $order = flowAuditChatOrder($ctx, status: 'paid');
+    endingsPayment($order, ['status' => 'paid', 'paid_at' => now(), 'vindi_transaction_token' => 'first-paid']);
+    $second = endingsPayment($order, ['status' => 'expired', 'vindi_transaction_token' => 'second-paid']);
+    config(['payments.vindi_token_account' => 'fake']);
+    Http::fake(['*/transactions/get_by_token*' => Http::response(['data_response' => ['transaction' => ['status_name' => 'Aprovada']]])]);
+    $discord = whatsappCaptureDiscord();
+
+    (new ProcessVindiWebhook('second-paid', 'Aprovada', []))->handle();
+
+    expect($second->fresh()->status)->toBe('paid')
+        ->and($order->fresh()->status)->toBe('paid')
+        ->and($discord->hasCriticalThatContains('segunda cobrança paga'))->toBeTrue();
+});

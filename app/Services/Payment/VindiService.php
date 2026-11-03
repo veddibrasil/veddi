@@ -167,8 +167,12 @@ class VindiService
 
     public function getTransactionStatus(string $transactionToken): string
     {
-        $response = Http::timeout(15)->get("{$this->baseUrl}/transactions/{$transactionToken}", [
+        // Consulta da Yapay é GET /transactions/get_by_token com o token na query string.
+        // "/transactions/{token}" não existe na API (devolve página HTML 404) e fazia todo
+        // webhook "Aprovada" e o polling de PIX expirado falharem com status 'unknown'.
+        $response = Http::timeout(15)->acceptJson()->get("{$this->baseUrl}/transactions/get_by_token", [
             'token_account' => config('payments.vindi_token_account'),
+            'token_transaction' => $transactionToken,
             'reseller_token' => config('payments.vindi_reseller_token'),
         ]);
 

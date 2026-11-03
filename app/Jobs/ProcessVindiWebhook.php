@@ -198,6 +198,16 @@ class ProcessVindiWebhook implements ShouldBeUnique, ShouldQueue
                 // reabre: o pagamento é registrado como recebido e estornado logo abaixo.
                 $closed = in_array($order->status, ['cancelled', 'refunded'], true);
 
+                // Cliente pagou duas tentativas do mesmo pedido (ex.: PIX renovado com o antigo ainda
+                // pagável). Estornar por RefundService marcaria o pedido inteiro como estornado, então
+                // só avisa para estornar esta cobrança à mão.
+                if (! $closed && $order->payments()->whereKeyNot($payment->id)->where('status', 'paid')->exists()) {
+                    Log::channel('discord')->critical('Vindi: segunda cobrança paga para pedido já pago — estornar manualmente', [
+                        'type' => 'payments', 'order_id' => $order->id, 'payment_id' => $payment->id,
+                        'company_id' => $order->company_id, 'amount' => $payment->amount,
+                    ]);
+                }
+
                 // Pedido agendado: pagamento confirma normalmente (carteira/transação abaixo), mas o
                 // status do pedido só vira 'paid' se a hora agendada já passou — senão fica 'scheduled'
                 // pra não disparar preparo/nota fiscal antes da hora (mesma regra do webhook Asaas).
