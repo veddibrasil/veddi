@@ -32,7 +32,7 @@ class VindiService
         float $deliveryFee = 0.0,
     ): array {
         $payload = $this->buildBasePayload($externalRef);
-        $payload['customer'] = $this->buildCustomerPayload($customer, $address);
+        $payload['customer'] = $this->buildCustomerPayload($customer, $externalRef, $address);
         $payload['payment'] = ['payment_method_id' => '27'];
 
         $affiliates = [];
@@ -95,7 +95,7 @@ class VindiService
         float $deliveryFee = 0.0,
     ): array {
         $payload = $this->buildBasePayload($externalRef);
-        $payload['customer'] = $this->buildHolderPayload($holder);
+        $payload['customer'] = $this->buildHolderPayload($holder, $externalRef);
 
         $basePayment = ['payment_method_id' => $brand->methodId()];
 
@@ -372,21 +372,32 @@ class VindiService
         ];
     }
 
-    private function resolveCustomerEmail(Customer $customer): string
+    private function resolveCustomerEmail(?string $email, string $taxId, ?string $phone, string $externalRef): string
     {
-        $email = trim((string) $customer->email);
+        $email = trim((string) $email);
+        if ($email !== '') {
+            return $email;
+        }
 
-        return $email !== '' ? $email : "cliente{$customer->id}@sememail.veddi.com.br";
+        // Contatos do checkout não têm customer.id. Um e-mail genérico associa
+        // compradores distintos ao mesmo cadastro na Vindi. Use a mesma identidade
+        // no PIX e no cartão, sem incluir CPF/telefone em texto puro no endereço.
+        $document = preg_replace('/\D/', '', $taxId);
+        $phone = preg_replace('/\D/', '', $phone ?? '');
+        $identity = $document !== '' ? "document:{$document}" : ($phone !== '' ? "phone:{$phone}" : "order:{$externalRef}");
+        $hash = substr(hash_hmac('sha256', $identity, (string) config('app.key')), 0, 40);
+
+        return "cliente{$hash}@sememail.veddi.com.br";
     }
 
-    private function buildCustomerPayload(Customer $customer, array $address = []): array
+    private function buildCustomerPayload(Customer $customer, string $externalRef, array $address = []): array
     {
         $taxId = preg_replace('/\D/', '', $customer->tax_id ?? '');
         $isCnpj = strlen($taxId) === 14;
 
         $data = [
             'name' => $customer->name,
-            'email' => $this->resolveCustomerEmail($customer),
+            'email' => $this->resolveCustomerEmail($customer->email, $taxId, $customer->phone, $externalRef),
             'cpf' => $isCnpj ? null : $taxId,
             'cnpj' => $isCnpj ? $taxId : null,
             'company_name' => null,
@@ -431,14 +442,14 @@ class VindiService
         return $data;
     }
 
-    private function buildHolderPayload(CreditCardHolderDTO $holder): array
+    private function buildHolderPayload(CreditCardHolderDTO $holder, string $externalRef): array
     {
         $cpfCnpj = preg_replace('/\D/', '', $holder->cpfCnpj);
         $isCnpj = strlen($cpfCnpj) === 14;
 
         $data = [
             'name' => $holder->name,
-            'email' => $holder->email,
+            'email' => $this->resolveCustomerEmail($holder->email, $cpfCnpj, $holder->mobilePhone ?? $holder->phone, $externalRef),
             'cpf' => $isCnpj ? null : $cpfCnpj,
             'cnpj' => $isCnpj ? $cpfCnpj : null,
             'company_name' => null,

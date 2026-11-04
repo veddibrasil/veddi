@@ -104,6 +104,7 @@ class PaymentOrchestrator
         Company $company,
         ?string $attempt = null,
     ): array {
+        $customer = $order->buyer_data !== null ? $order->customer : $customer;
         $chargeAmount = (float) $order->total;
         $affiliateEmail = $company->email;
 
@@ -357,7 +358,10 @@ class PaymentOrchestrator
         }
 
         if ($tokenAccount) {
-            $vindiAddress = $this->vindiAddressFromOrder($order, $customer);
+            // O cadastro verificado autoriza o cartão salvo; os dados da cobrança
+            // vêm do contato confirmado neste pedido, inclusive nome e e-mail.
+            $billingCustomer = $order->buyer_data !== null ? $order->customer : $customer;
+            $vindiAddress = $this->vindiAddressFromOrder($order, $billingCustomer);
 
             try {
                 $result = $this->vindi->createCreditCardCharge(
@@ -372,13 +376,13 @@ class PaymentOrchestrator
                         token: $savedCard?->vindi_card_token,
                     ),
                     holder: new CreditCardHolderDTO(
-                        name: $customer->name,
-                        email: $customer->email ?? '',
-                        cpfCnpj: $cardData['cpfCnpj'] ?? $customer->tax_id ?? '',
+                        name: $billingCustomer->name,
+                        email: $billingCustomer->email ?? '',
+                        cpfCnpj: $cardData['cpfCnpj'] ?? $billingCustomer->tax_id ?? '',
                         // O chat manda '' quando o visitante não tem CEP: cai para o endereço do pedido/filial.
                         postalCode: $this->firstFilled($cardData['postalCode'] ?? null, $vindiAddress['postal_code']) ?? '',
                         addressNumber: $this->firstFilled($cardData['addressNumber'] ?? null, $vindiAddress['number']),
-                        phone: $customer->phone ?? null,
+                        phone: $billingCustomer->phone ?? null,
                         street: $vindiAddress['street'],
                         complement: $vindiAddress['complement'],
                         neighborhood: $vindiAddress['neighborhood'],
