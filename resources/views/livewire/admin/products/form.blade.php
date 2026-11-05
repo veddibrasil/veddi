@@ -186,6 +186,10 @@
                             <flux:checkbox wire:model="available_in_99food" label="Disponível na 99Food"
                                 description="A 99Food aceita nome com até 180 caracteres e foto JPG ou PNG." />
                         @endif
+                        @if ($this->keetaEnabled)
+                            <flux:checkbox wire:model="available_in_keeta" label="Disponível na Keeta"
+                                description="Entra no cardápio publicado da Keeta. Foto só com endereço HTTPS público." />
+                        @endif
                     </div>
                     @foreach ($this->food99SyncStatus as $sync)
                         @if ($sync['error'] || in_array($sync['status'], ['failed', 'invalid'], true))

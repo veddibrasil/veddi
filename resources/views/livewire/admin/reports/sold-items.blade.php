@@ -79,10 +79,16 @@
                 </flux:select>
             </div>
             <div>
-                <flux:select wire:model.live="channelFilter" label="Canal">
+                {{-- Chat do VEDDI e PDV separados das integrações; option dentro de optgroup precisa do tema escuro explícito. --}}
+                <flux:select wire:model.live="channelFilter" label="Canal" class="dark:[&_optgroup]:bg-zinc-700 dark:[&_optgroup]:text-white dark:[&_option]:bg-zinc-700 dark:[&_option]:text-white">
                     <flux:select.option value="">Todos</flux:select.option>
-                    @foreach (\App\Livewire\Admin\Reports\SoldItems::CHANNELS as $value => $label)
-                        <flux:select.option value="{{ $value }}">{{ $label }}</flux:select.option>
+                    @php($channelGroups = collect(\App\Livewire\Admin\Reports\SoldItems::CHANNELS)->partition(fn ($label, $value) => in_array($value, \App\Livewire\Admin\Reports\SoldItems::OWN_CHANNELS, true)))
+                    @foreach (['VEDDI' => $channelGroups[0], 'Integrações' => $channelGroups[1]] as $groupLabel => $groupChannels)
+                        <optgroup label="{{ $groupLabel }}">
+                            @foreach ($groupChannels as $value => $label)
+                                <flux:select.option value="{{ $value }}">{{ $label }}</flux:select.option>
+                            @endforeach
+                        </optgroup>
                     @endforeach
                 </flux:select>
             </div>

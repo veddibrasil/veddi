@@ -13,7 +13,7 @@ use Throwable;
  */
 readonly class SoldItemsFilters
 {
-    public const CHANNELS = ['chat', 'pdv', 'ifood', '99food'];
+    public const CHANNELS = ['chat', 'pdv', 'ifood', '99food', 'keeta'];
 
     public function __construct(
         public CarbonImmutable $start,

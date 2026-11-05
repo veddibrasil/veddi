@@ -7,6 +7,7 @@ use App\Models\Branch;
 use App\Models\BranchPause;
 use App\Services\Food99\Food99StoreStatusSync;
 use App\Services\Ifood\IfoodBranchPauseSync;
+use App\Services\Keeta\KeetaStoreStatusSync;
 use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
@@ -38,6 +39,9 @@ class Pauses extends Component
 
     /** Replica a pausa como fechamento/pausa da loja na 99Food (só aparece com a 99Food conectada). */
     public bool $close_in_99food = false;
+
+    /** Replica a pausa como loja fechada na Keeta (só aparece com a Keeta conectada). */
+    public bool $close_in_keeta = false;
 
     public function mount(Branch $branch): void
     {
@@ -130,6 +134,8 @@ class Pauses extends Component
             return;
         }
 
+        $keetaIntegration = $this->close_in_keeta ? app(KeetaStoreStatusSync::class)->integrationFor($this->branch) : null;
+
         $pause->save();
         $message = 'Pausa cadastrada.';
 
@@ -154,7 +160,17 @@ class Pauses extends Component
             }
         }
 
-        $this->reset(['reason', 'recurring_annual', 'starts_date', 'starts_time', 'ends_date', 'ends_time', 'close_in_ifood', 'close_in_99food']);
+        if ($keetaIntegration) {
+            try {
+                app(KeetaStoreStatusSync::class)->mirror($pause, $keetaIntegration);
+                $message .= ' Na Keeta a loja também fecha nesse período.';
+            } catch (Throwable $e) {
+                report($e);
+                session()->flash('error', 'A pausa foi cadastrada no painel, mas a Keeta não aceitou fechar a loja. '.\App\Exceptions\KeetaApiException::messageFor($e).' Feche pela tela da integração Keeta, na aba Loja.');
+            }
+        }
+
+        $this->reset(['reason', 'recurring_annual', 'starts_date', 'starts_time', 'ends_date', 'ends_time', 'close_in_ifood', 'close_in_99food', 'close_in_keeta']);
         $this->forgetCaches();
 
         session()->flash('status', $message);
@@ -177,6 +193,7 @@ class Pauses extends Component
         $pause = $this->branch->pauses()->findOrFail($this->deletingId);
         $removedFromIfood = app(IfoodBranchPauseSync::class)->remove($pause);
         $reopenedIn99food = app(Food99StoreStatusSync::class)->remove($pause);
+        $reopenedInKeeta = app(KeetaStoreStatusSync::class)->remove($pause);
         $pause->delete();
         $this->deletingId = null;
         $this->forgetCaches();
@@ -184,6 +201,9 @@ class Pauses extends Component
         session()->flash('status', 'Pausa removida.');
         if (! $reopenedIn99food) {
             session()->flash('error', 'A pausa foi removida do painel, mas não conseguimos reabrir a loja na 99Food. Reabra pela tela da integração 99Food, na aba Loja.');
+        }
+        if (! $reopenedInKeeta) {
+            session()->flash('error', 'A pausa foi removida do painel, mas não conseguimos reabrir a loja na Keeta. Reabra pela tela da integração Keeta, na aba Loja.');
         }
         if (! $removedFromIfood) {
             session()->flash('error', 'A pausa foi removida do painel, mas não conseguimos reabrir a loja no iFood. Remova a pausa pela tela da integração iFood, na aba Pausas.');
@@ -220,6 +240,11 @@ class Pauses extends Component
                 && $user->canAccessBranch($company, $this->branch->id),
             403
         );
+    }
+
+    public function getKeetaConnectedProperty(): bool
+    {
+        return config('keeta.enabled') && app(KeetaStoreStatusSync::class)->integrationFor($this->branch) !== null;
     }
 
     public function getFood99ConnectedProperty(): bool

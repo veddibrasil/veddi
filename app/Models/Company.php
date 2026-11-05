@@ -343,7 +343,7 @@ class Company extends Model
         return (bool) $this->fiscal_notes_enabled;
     }
 
-    /** Integrações de marketplace (iFood, 99Food): plano pago ou algum módulo extra contratado. */
+    /** Integrações de marketplace (iFood, 99Food, Keeta): plano pago ou algum módulo extra contratado. */
     public function canUseMarketplaceIntegrations(): bool
     {
         return ! $this->isFree()
@@ -363,6 +363,20 @@ class Company extends Model
         $allowed = (array) config('food99.company_ids', []);
 
         return config('food99.enabled')
+            && $this->canUseMarketplaceIntegrations()
+            && ($allowed === [] || in_array($this->id, $allowed, true));
+    }
+
+    /**
+     * Quem vê a tela da Keeta e pode conectar: plataforma ligada, módulo liberado e empresa em
+     * KEETA_COMPANY_IDS (vazia = todas). Mesmo critério da 99Food: loja já ligada segue operando
+     * por KeetaIntegration::isOperational().
+     */
+    public function canUseKeetaIntegration(): bool
+    {
+        $allowed = (array) config('keeta.company_ids', []);
+
+        return config('keeta.enabled')
             && $this->canUseMarketplaceIntegrations()
             && ($allowed === [] || in_array($this->id, $allowed, true));
     }

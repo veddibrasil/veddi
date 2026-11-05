@@ -18,6 +18,7 @@ class Customer extends Model
         'phone',
         'ifood_customer_id',
         'food99_customer_id',
+        'keeta_customer_id',
         'email',
         'tax_id',
         'address_id',

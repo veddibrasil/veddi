@@ -52,7 +52,10 @@ trait HasOrderAcceptance
                     ->where('external_metadata->ifood_status', 'PLACED'))
                 ->orWhere(fn ($q) => $q->where('channel', OrderChannel::Food99->value)
                     ->where('status', 'pending')
-                    ->where('external_metadata->food99_stage', 'CREATED')))
+                    ->where('external_metadata->food99_stage', 'CREATED'))
+                ->orWhere(fn ($q) => $q->where('channel', OrderChannel::Keeta->value)
+                    ->where('status', 'pending')
+                    ->where('external_metadata->keeta_stage', 'CREATED')))
             ->where(fn ($q) => $q->where('created_at', '>=', now()->subHours(self::ACCEPTANCE_LOOKBACK_HOURS))
                 ->orWhere('scheduled_at', '>', now()));
     }

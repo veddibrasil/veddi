@@ -8,6 +8,7 @@ use App\Contracts\EmailMarketingProviderInterface;
 use App\Contracts\FiscalNoteProviderInterface;
 use App\Contracts\Food99GatewayContract;
 use App\Contracts\IfoodGatewayContract;
+use App\Contracts\KeetaGatewayContract;
 use App\Contracts\OrderServiceInterface;
 use App\Contracts\PrinterServiceInterface;
 use App\Contracts\RefundServiceInterface;
@@ -39,6 +40,7 @@ use App\Services\Finance\WalletService;
 use App\Services\Fiscal\FocusNfeService;
 use App\Services\Food99\Food99GatewayService;
 use App\Services\Ifood\IfoodGatewayService;
+use App\Services\Keeta\KeetaGatewayService;
 use App\Services\Marketing\Providers\MailMarketingProvider;
 use App\Services\Marketing\Providers\ResendProvider;
 use App\Services\Messaging\MetaCloudApiProvider;
@@ -113,6 +115,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(PrinterServiceInterface::class, EscPosPrinterService::class);
         $this->app->bind(IfoodGatewayContract::class, IfoodGatewayService::class);
         $this->app->bind(Food99GatewayContract::class, Food99GatewayService::class);
+        $this->app->bind(KeetaGatewayContract::class, KeetaGatewayService::class);
         $this->app->bind(WhatsAppProviderInterface::class, MetaCloudApiProvider::class);
         $this->app->bind(WhatsAppManagementInterface::class, MetaCloudApiProvider::class);
         $this->app->bind(EmailMarketingProviderInterface::class, fn () => match (config('marketing.provider')) {

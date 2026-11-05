@@ -50,7 +50,10 @@ class SoldItems extends Component
         'name' => 'Nome',
     ];
 
-    public const CHANNELS = ['chat' => 'Chat', 'pdv' => 'PDV', 'ifood' => 'iFood', '99food' => '99Food'];
+    public const CHANNELS = ['chat' => 'Chat VEDDI', 'pdv' => 'PDV', 'ifood' => 'iFood', '99food' => '99Food', 'keeta' => 'Keeta'];
+
+    /** Canais próprios do VEDDI; os demais de CHANNELS são integrações (marketplaces). */
+    public const OWN_CHANNELS = ['chat', 'pdv'];
 
     private const PER_PAGE = 25;
 

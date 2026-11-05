@@ -242,6 +242,20 @@ return [
             'replace_placeholders' => true,
         ],
 
+        'keeta' => [
+            'driver' => 'stack',
+            'channels' => ['keeta_target', ...$nightwatch],
+            'ignore_exceptions' => false,
+            'tap' => [\App\Logging\DiscordWebhookTap::class],
+        ],
+
+        'keeta_target' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/laravel.log'),
+            'level' => 'debug',
+            'replace_placeholders' => true,
+        ],
+
         'webhook_target' => [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),

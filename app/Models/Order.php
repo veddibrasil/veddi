@@ -6,6 +6,7 @@ use App\Enums\OrderChannel;
 use App\Models\Concerns\BelongsToCompany;
 use App\Support\Food99\Food99OrderDetails;
 use App\Support\Ifood\IfoodOrderDetails;
+use App\Support\Keeta\KeetaOrderDetails;
 use App\Support\Marketplace\MarketplaceOrderDetails;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -416,7 +417,13 @@ class Order extends Model
         return Food99OrderDetails::for($this);
     }
 
-    /** Pedido que nasceu num marketplace (iFood, 99Food). */
+    /** Snapshot e regras do pedido Keeta; null pra pedidos de outros canais. */
+    public function keetaDetails(): ?KeetaOrderDetails
+    {
+        return KeetaOrderDetails::for($this);
+    }
+
+    /** Pedido que nasceu num marketplace (iFood, 99Food, Keeta). */
     public function isMarketplaceOrder(): bool
     {
         return OrderChannel::isMarketplaceValue($this->channel);
@@ -425,7 +432,7 @@ class Order extends Model
     /** Snapshot e regras do pedido de marketplace, qualquer que seja a plataforma; null pros demais canais. */
     public function marketplaceDetails(): ?MarketplaceOrderDetails
     {
-        return $this->ifoodDetails() ?? $this->food99Details();
+        return $this->ifoodDetails() ?? $this->food99Details() ?? $this->keetaDetails();
     }
 
     /** Número pra exibir: "iFood #1234"/"99Food #12" no marketplace, order_number nos demais. */

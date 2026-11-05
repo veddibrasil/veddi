@@ -74,6 +74,13 @@
                 </div>
             @endif
 
+            @if ($this->keetaConnected)
+                <div>
+                    <flux:checkbox wire:model="close_in_keeta" label="Fechar também a loja na Keeta"
+                        description="A loja fica fechada na Keeta do início ao fim da pausa e reabre sozinha depois." />
+                </div>
+            @endif
+
             <flux:button wire:click="create" variant="primary">Adicionar pausa</flux:button>
         </x-admin.form-card>
     @endif

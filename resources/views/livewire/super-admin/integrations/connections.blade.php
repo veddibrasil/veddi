@@ -7,7 +7,7 @@
 <div class="space-y-6">
     <div>
         <h1 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100">Integrações</h1>
-        <p class="text-sm text-neutral-500 dark:text-neutral-400 mt-1">Lojas do iFood e da 99Food conectadas em todas as empresas.</p>
+        <p class="text-sm text-neutral-500 dark:text-neutral-400 mt-1">Lojas do iFood, da 99Food e da Keeta conectadas em todas as empresas.</p>
     </div>
 
     @if($notice)
@@ -22,6 +22,7 @@
             <flux:select.option value="">Todos os canais</flux:select.option>
             <flux:select.option value="ifood">iFood</flux:select.option>
             <flux:select.option value="99food">99Food</flux:select.option>
+            <flux:select.option value="keeta">Keeta</flux:select.option>
         </flux:select>
         <flux:select wire:model.live="state" class="max-w-52" aria-label="Situação">
             <flux:select.option value="">Todas as situações</flux:select.option>
@@ -95,6 +96,28 @@
                     @endforeach
                 </ul>
             @elseif($unlinkedLoaded)
+                <p class="text-sm text-neutral-500 dark:text-neutral-400">Nenhuma loja aguardando vínculo.</p>
+            @endif
+        </x-admin.form-card>
+    @endif
+
+    @if($keetaEnabled)
+        <x-admin.form-card padding="p-6 space-y-4">
+            <div>
+                <h2 class="font-semibold text-neutral-800 dark:text-neutral-100">Lojas da Keeta sem filial</h2>
+                <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">Autorizaram o app VEDDI no portal da Keeta (aviso 1301), mas ainda não foram ligadas a nenhuma filial.</p>
+            </div>
+
+            @if($keetaUnlinked->isNotEmpty())
+                <ul class="divide-y divide-neutral-100 text-sm dark:divide-zinc-700">
+                    @foreach($keetaUnlinked as $shop)
+                        <li class="flex flex-wrap items-center justify-between gap-2 py-2" wire:key="keeta-unlinked-{{ $shop['shop_id'] }}">
+                            <span class="text-neutral-800 dark:text-neutral-100">{{ $shop['shop_name'] }}</span>
+                            <span class="font-mono text-xs text-neutral-500 dark:text-neutral-400">{{ $shop['shop_id'] }} · auth {{ $shop['auth_id'] }} · {{ $shop['at']?->timezone($tz)->format('d/m/Y H:i') }}</span>
+                        </li>
+                    @endforeach
+                </ul>
+            @else
                 <p class="text-sm text-neutral-500 dark:text-neutral-400">Nenhuma loja aguardando vínculo.</p>
             @endif
         </x-admin.form-card>

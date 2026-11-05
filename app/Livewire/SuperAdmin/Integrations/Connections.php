@@ -6,6 +6,8 @@ use App\Exceptions\Food99ApiException;
 use App\Livewire\SuperAdmin\Concerns\RequiresSuperAdmin;
 use App\Models\Food99Integration;
 use App\Models\IfoodIntegration;
+use App\Models\KeetaIntegration;
+use App\Models\KeetaWebhookEvent;
 use App\Services\Food99\Food99AuthService;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -16,7 +18,7 @@ use Livewire\WithPagination;
 use Throwable;
 
 /**
- * Lojas de marketplace (iFood e 99Food) de todas as empresas, uma linha por filial conectada.
+ * Lojas de marketplace (iFood, 99Food e Keeta) de todas as empresas, uma linha por filial conectada.
  * As duas tabelas têm colunas diferentes: cada uma vira uma linha no mesmo formato e a lista
  * é filtrada e paginada em memória.
  */
@@ -91,6 +93,8 @@ class Connections extends Component
         return view('livewire.super-admin.integrations.connections', [
             'connections' => new LengthAwarePaginator($rows->forPage($page, self::PER_PAGE)->values(), $rows->count(), self::PER_PAGE, $page),
             'food99Enabled' => (bool) config('food99.enabled'),
+            'keetaEnabled' => (bool) config('keeta.enabled'),
+            'keetaUnlinked' => config('keeta.enabled') ? $this->keetaUnlinkedShops() : collect(),
         ])->layout('layouts.app', ['title' => 'Super Admin — Integrações']);
     }
 
@@ -144,6 +148,58 @@ class Connections extends Component
                 'token_expires_at' => $integration->token_expires_at,
             ]);
 
-        return $ifood->toBase()->concat($food99->toBase());
+        $keeta = KeetaIntegration::withoutGlobalScopes()
+            ->with(['company:id,name', 'branch' => fn ($query) => $query->withoutGlobalScopes()->select('id', 'name')])
+            ->where(fn ($query) => $query->whereNotNull('keeta_merchant_id')->orWhereIn('status', [KeetaIntegration::STATUS_PENDING_AUTHORIZATION, KeetaIntegration::STATUS_PENDING_MAPPING]))
+            ->get()
+            ->map(fn (KeetaIntegration $integration) => [
+                'key' => "keeta-{$integration->id}",
+                'channel' => 'keeta',
+                'channel_label' => 'Keeta',
+                'company_id' => $integration->company_id,
+                'company' => $integration->company?->name ?? "Empresa #{$integration->company_id}",
+                'branch' => $integration->branch?->name ?? "Filial #{$integration->branch_id}",
+                'store' => $integration->shop_name ?: 'Loja',
+                'store_id' => (string) $integration->keeta_merchant_id,
+                'state' => match ($integration->status) {
+                    KeetaIntegration::STATUS_ACTIVE => 'connected',
+                    KeetaIntegration::STATUS_PAUSED => 'paused',
+                    KeetaIntegration::STATUS_ERROR, KeetaIntegration::STATUS_REVOKED => 'error',
+                    default => 'pending',
+                },
+                'last_event_at' => $integration->last_webhook_received_at ?? $integration->last_polled_at,
+                'token_expires_at' => null,
+            ]);
+
+        return $ifood->toBase()->concat($food99->toBase())->concat($keeta->toBase());
+    }
+
+    /**
+     * Lojas que autorizaram o app VEDDI na Keeta (webhook 1301) e ainda não estão ligadas a
+     * nenhuma filial; revogação posterior (1302) tira da lista.
+     *
+     * @return Collection<int, array{shop_id: string, shop_name: string, auth_id: string, at: mixed}>
+     */
+    private function keetaUnlinkedShops(): Collection
+    {
+        $linked = KeetaIntegration::withoutGlobalScopes()->whereNotNull('keeta_merchant_id')->pluck('keeta_merchant_id')->all();
+
+        return KeetaWebhookEvent::query()
+            ->where('source', KeetaWebhookEvent::SOURCE_AUTHORIZATION)
+            ->latest('id')
+            ->limit(500)
+            ->get(['id', 'event_type', 'payload', 'created_at'])
+            ->groupBy(fn (KeetaWebhookEvent $event) => (string) ($event->payload['shopId'] ?? ''))
+            ->map(fn (Collection $events) => $events->first())
+            ->filter(fn (KeetaWebhookEvent $event, string $shopId) => $shopId !== ''
+                && $event->event_type === \App\Http\Controllers\KeetaAuthorizationWebhookController::TYPE_GRANTED
+                && ! in_array($shopId, $linked, true))
+            ->map(fn (KeetaWebhookEvent $event, string $shopId) => [
+                'shop_id' => $shopId,
+                'shop_name' => (string) ($event->payload['shopName'] ?? 'Loja'),
+                'auth_id' => (string) ($event->payload['authId'] ?? ''),
+                'at' => $event->created_at,
+            ])
+            ->values();
     }
 }

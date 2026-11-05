@@ -7,6 +7,7 @@ enum OrderChannel: string
     case Chat = 'chat';
     case Ifood = 'ifood';
     case Food99 = '99food';
+    case Keeta = 'keeta';
 
     public function label(): string
     {
@@ -14,11 +15,12 @@ enum OrderChannel: string
             self::Chat => 'Chat',
             self::Ifood => 'iFood',
             self::Food99 => '99Food',
+            self::Keeta => 'Keeta',
         };
     }
 
     /**
-     * Marketplace: o pedido nasce e é cobrado fora do VEDDI (iFood, 99Food). Itens, valores e
+     * Marketplace: o pedido nasce e é cobrado fora do VEDDI (iFood, 99Food, Keeta). Itens, valores e
      * endereço vêm da plataforma, o pedido não é editável aqui e cada etapa passa pela API dela.
      */
     public function isMarketplace(): bool
@@ -32,6 +34,7 @@ enum OrderChannel: string
         return match ($this) {
             self::Ifood => 'available_in_ifood',
             self::Food99 => 'available_in_99food',
+            self::Keeta => 'available_in_keeta',
             default => null,
         };
     }
@@ -42,6 +45,7 @@ enum OrderChannel: string
         return match ($this) {
             self::Ifood => 'ifood',
             self::Food99 => 'food99',
+            self::Keeta => 'keeta',
             default => 'orders',
         };
     }

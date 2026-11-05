@@ -58,13 +58,19 @@
             <option value="cancelled">Cancelada</option>
             <option value="all">Todas</option>
         </flux:select>
-        <flux:select wire:model.live="channelFilter" label="Canal">
+        {{-- Chat do VEDDI e PDV separados das integrações; option dentro de optgroup precisa do tema escuro explícito. --}}
+        <flux:select wire:model.live="channelFilter" label="Canal" class="dark:[&_optgroup]:bg-zinc-700 dark:[&_optgroup]:text-white dark:[&_option]:bg-zinc-700 dark:[&_option]:text-white">
             <option value="">Todos os canais</option>
-            <option value="balcao">PDV balcão</option>
-            <option value="comanda">Comanda / mesa</option>
-            <option value="chat">Chat</option>
-            <option value="ifood">iFood</option>
-            <option value="99food">99Food</option>
+            <optgroup label="VEDDI">
+                <option value="chat">Chat VEDDI</option>
+                <option value="balcao">PDV balcão</option>
+                <option value="comanda">Comanda / mesa</option>
+            </optgroup>
+            <optgroup label="Integrações">
+                <option value="ifood">iFood</option>
+                <option value="99food">99Food</option>
+                <option value="keeta">Keeta</option>
+            </optgroup>
         </flux:select>
         <flux:select wire:model.live="paymentFilter" label="Pagamento">
             <option value="">Todas as formas</option>

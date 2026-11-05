@@ -3,15 +3,19 @@
 use App\Jobs\CheckFood99CatalogTaskJob;
 use App\Jobs\ExpireFood99RequestsJob;
 use App\Jobs\MonitorIfoodWebhookHealthJob;
+use App\Jobs\MonitorKeetaWebhookHealthJob;
 use App\Jobs\PollIfoodEventsJob;
+use App\Jobs\PollKeetaEventsJob;
 use App\Jobs\ReconcileFood99OrdersJob;
 use App\Jobs\ReconcilePendingFiscalNotesJob;
 use App\Jobs\RefreshFood99TokensJob;
 use App\Jobs\ResolveExpiredVindiPaymentsJob;
 use App\Jobs\SyncFood99CatalogJob;
 use App\Jobs\SyncIfoodCatalogJob;
+use App\Jobs\SyncKeetaCatalogJob;
 use App\Models\Food99Integration;
 use App\Models\IfoodIntegration;
+use App\Models\KeetaIntegration;
 use App\Services\Payment\AsaasCircuitBreaker;
 use App\Services\Payment\AsaasService;
 use Illuminate\Foundation\Inspiring;
@@ -207,6 +211,60 @@ Schedule::call(function () {
     ->name('sync-food99-catalog-full')
     ->dailyAt('04:30')
     ->when($food99Enabled)
+    ->withoutOverlapping()
+    ->onOneServer();
+
+// ─── Keeta (tudo desligado com KEETA_ENABLED=false) ─────────────────────────
+$keetaEnabled = fn () => (bool) config('keeta.enabled');
+
+// Avisa restaurantes com Keeta revogada/sem vínculo ou cardápio recusado; fecha a loja na Keeta
+// de empresa que não pode operar.
+Schedule::command('keeta:check-connections')
+    ->name('keeta-check-connections')
+    ->everyTenMinutes()
+    ->when($keetaEnabled)
+    ->withoutOverlapping()
+    ->onOneServer();
+
+// Fallback do webhook: polling das lojas sem webhook saudável (2 chamadas/min por token, até 100 lojas cada).
+Schedule::job(new PollKeetaEventsJob)
+    ->name('poll-keeta-events')
+    ->everyThirtySeconds()
+    ->when($keetaEnabled)
+    ->withoutOverlapping(expiresAt: 1)
+    ->onOneServer();
+
+// Loja que parou de receber webhook entra no polling acima (webhook_status=degraded).
+Schedule::job(new MonitorKeetaWebhookHealthJob)
+    ->name('monitor-keeta-webhook-health')
+    ->everyFiveMinutes()
+    ->when($keetaEnabled)
+    ->withoutOverlapping(expiresAt: 3)
+    ->onOneServer();
+
+// Solicitações de reembolso sem resposta no prazo + pausas da filial replicadas na Keeta.
+Schedule::call(function () {
+    app(\App\Services\Keeta\KeetaRequestService::class)->expireOverdue();
+    app(\App\Services\Keeta\KeetaStoreStatusSync::class)->applyDuePauses();
+})
+    ->name('keeta-minutely')
+    ->everyMinute()
+    ->when($keetaEnabled)
+    ->withoutOverlapping(expiresAt: 2)
+    ->onOneServer();
+
+// Aviso diário de cardápio (a Keeta busca o GET merchant de novo), só lojas com cardápio publicado.
+Schedule::call(function () {
+    KeetaIntegration::operational()
+        ->with('company')
+        ->whereNotNull('catalog_published_at')
+        ->get()
+        ->filter(fn (KeetaIntegration $integration) => $integration->isOperational())
+        ->each(fn (KeetaIntegration $integration) => SyncKeetaCatalogJob::dispatch($integration->branch_id));
+})
+    ->name('sync-keeta-catalog-full')
+    ->dailyAt('04:45')
+    ->when($keetaEnabled)
     ->withoutOverlapping()
     ->onOneServer();
 

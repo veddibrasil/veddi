@@ -1,0 +1,102 @@
+{
+  "id": "783441058793308",
+  "type": "DELIVERY",
+  "displayId": "1042",
+  "sourceAppId": "keeta",
+  "category": "FOOD",
+  "createdAt": "{CREATED_AT}",
+  "lastEvent": "CREATED",
+  "orderTiming": "INSTANT",
+  "preparationStartDateTime": "{CREATED_AT}",
+  "merchant": { "id": "{MERCHANT_REF}", "name": "Loja Keeta" },
+  "items": [
+    {
+      "id": "359379560",
+      "index": 0,
+      "name": "Coxinha",
+      "externalCode": "veddi-p{PRODUCT_ID}",
+      "unit": "UN",
+      "quantity": 2,
+      "specialInstructions": "Bem quente",
+      "unitPrice": { "value": 8.0, "currency": "BRL" },
+      "optionsPrice": { "value": 0, "currency": "BRL" },
+      "totalPrice": { "value": 16.0, "currency": "BRL" },
+      "options": []
+    },
+    {
+      "id": "359379561",
+      "index": 1,
+      "name": "Refrigerante do portal",
+      "externalCode": "spu-2720",
+      "unit": "UN",
+      "quantity": 1,
+      "unitPrice": { "value": 6.5, "currency": "BRL" },
+      "optionsPrice": { "value": 1.0, "currency": "BRL" },
+      "totalPrice": { "value": 7.5, "currency": "BRL" },
+      "options": [
+        {
+          "id": "1",
+          "index": 0,
+          "name": "Gelo",
+          "externalCode": "cgp-1",
+          "unit": "UN",
+          "quantity": 1,
+          "unitPrice": { "value": 1.0, "currency": "BRL" },
+          "totalPrice": { "value": 1.0, "currency": "BRL" }
+        }
+      ]
+    }
+  ],
+  "otherFees": [
+    { "name": "Taxa de entrega", "type": "DELIVERY_FEE", "receivedBy": "MARKETPLACE", "price": { "value": 5.99, "currency": "BRL" } },
+    { "name": "Taxa de serviço", "type": "SERVICE_FEE", "receivedBy": "MARKETPLACE", "price": { "value": 0.99, "currency": "BRL" } }
+  ],
+  "discounts": [
+    {
+      "amount": { "value": 3.5, "currency": "BRL" },
+      "target": "CART",
+      "sponsorshipValues": [
+        { "name": "MERCHANT", "amount": { "value": 1.5, "currency": "BRL" } },
+        { "name": "MARKETPLACE", "amount": { "value": 2.0, "currency": "BRL" }, "discountCode": "KEETA10" }
+      ]
+    }
+  ],
+  "total": {
+    "itemsPrice": { "value": 23.5, "currency": "BRL" },
+    "otherFees": { "value": 6.98, "currency": "BRL" },
+    "discount": { "value": 3.5, "currency": "BRL" },
+    "orderAmount": { "value": 26.98, "currency": "BRL" }
+  },
+  "payments": {
+    "prepaid": 26.98,
+    "pending": 0,
+    "methods": [
+      { "value": 26.98, "currency": "BRL", "type": "PREPAID", "method": "CREDIT", "brand": "VISA" }
+    ]
+  },
+  "customer": {
+    "id": "88123",
+    "name": "Maria Keeta",
+    "phone": { "number": "ENC_ab12cd34" },
+    "documentNumber": "",
+    "ordersCountOnMerchant": 3
+  },
+  "delivery": {
+    "deliveredBy": "MARKETPLACE",
+    "deliveryAddress": {
+      "country": "BR",
+      "state": "SP",
+      "city": "São Paulo",
+      "district": "ENC_dist",
+      "street": "Rua das Flores",
+      "number": "ENC_num",
+      "complement": "ENC_comp",
+      "formattedAddress": "ENC_fmt",
+      "postalCode": "01000-000",
+      "coordinates": { "latitude": -23.55, "longitude": -46.63 }
+    },
+    "estimatedDeliveryDateTime": "{CREATED_AT}",
+    "pickupCode": "7731"
+  },
+  "extraInfo": "Sem cebola"
+}

@@ -892,3 +892,175 @@ function food99Calls(): array
         ->map(fn ($pair) => parse_url($pair[0]->url(), PHP_URL_PATH))
         ->values()->all();
 }
+
+/*
+|--------------------------------------------------------------------------
+| Keeta helpers
+|--------------------------------------------------------------------------
+|
+| Empresa + filial + produto + KeetaIntegration ativa (loja ligada e cardápio publicado),
+| espelhando food99Context(). O token é do app e vem do fake de /oauth/token.
+|
+*/
+
+const KEETA_TEST_CLIENT_ID = '2666245991';
+const KEETA_TEST_CLIENT_SECRET = 'keeta-test-secret-0123456789';
+
+function keetaConfig(array $overrides = []): void
+{
+    config(array_merge([
+        'keeta.enabled' => true,
+        'keeta.client_id' => KEETA_TEST_CLIENT_ID,
+        'keeta.client_secret' => KEETA_TEST_CLIENT_SECRET,
+        'keeta.app_id' => 'keeta-app',
+        'keeta.api_base_url' => 'https://open.keeta.test/api/open/opendelivery',
+        'keeta.auto_accept_default' => false,
+    ], $overrides));
+}
+
+function keetaContext(string $suffix = 'A', array $integration = []): array
+{
+    keetaConfig();
+
+    $company = \App\Models\Company::create([
+        'name' => "Empresa Keeta {$suffix}",
+        'slug' => "empresa-keeta-ctx-{$suffix}-".uniqid(),
+        'order_prefix' => 'K'.strtoupper(substr($suffix, 0, 1)),
+        'active' => true,
+    ]);
+
+    app()->instance('current.company', $company);
+
+    $branch = \App\Models\Branch::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => "Filial {$suffix}",
+        'address' => 'Rua X, 1',
+        'city' => 'SP',
+        'phone' => '11988887777',
+        'active' => true,
+        'opens_at' => '10:00:00',
+        'closes_at' => '22:00:00',
+    ]);
+
+    $category = \App\Models\ProductCategory::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'name' => 'Salgados',
+        'active' => true,
+        'sort_order' => 1,
+    ]);
+
+    $product = \App\Models\Product::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'product_category_id' => $category->id,
+        'name' => 'Coxinha',
+        'price' => 8.00,
+        'active' => true,
+        'available_in_keeta' => true,
+        'sort_order' => 1,
+    ]);
+
+    \Illuminate\Support\Facades\DB::table('branch_product')->insert([
+        'branch_id' => $branch->id,
+        'product_id' => $product->id,
+        'available' => 1,
+    ]);
+
+    $integration = \App\Models\KeetaIntegration::create(array_merge([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'merchant_ref' => \App\Models\KeetaIntegration::merchantRefFor($company->id, $branch->id),
+        'keeta_merchant_id' => (string) (478000 + ord($suffix) * 100 + $branch->id),
+        'shop_name' => "Loja Keeta {$suffix}",
+        'menu_api_key' => "menu-key-{$suffix}",
+        'status' => 'active',
+        'activated_at' => now(),
+        'auto_accept' => false,
+        'catalog_published_at' => now(),
+    ], $integration));
+
+    return compact('company', 'branch', 'category', 'product', 'integration');
+}
+
+/** Pedido de fixture (tests/Fixtures/keeta/{name}.json) com produto e loja do contexto. */
+function keetaOrder(array $ctx, array $overrides = [], string $fixture = 'order-delivery'): array
+{
+    $raw = file_get_contents(base_path("tests/Fixtures/keeta/{$fixture}.json"));
+    $raw = str_replace(
+        ['{PRODUCT_ID}', '{MERCHANT_REF}', '{CREATED_AT}'],
+        [(string) $ctx['product']->id, $ctx['integration']->merchant_ref, now()->subMinute()->utc()->format('Y-m-d\TH:i:s.v\Z')],
+        $raw,
+    );
+
+    return array_replace_recursive(json_decode($raw, true, 512, JSON_BIGINT_AS_STRING), $overrides);
+}
+
+/** API da Keeta falsa: token, detalhe do pedido ($order) e 202 vazio no resto. */
+function fakeKeetaApi(array $order = [], array $extra = []): void
+{
+    \Illuminate\Support\Facades\Cache::forget('keeta:app_token');
+
+    $defaults = [
+        '*/oauth/token' => \Illuminate\Support\Facades\Http::response(['access_token' => 'keeta-token', 'token_type' => 'bearer', 'expires_in' => 7200], 200),
+        '*/v1/orders/*/confirm' => \Illuminate\Support\Facades\Http::response('', 202),
+        '*/v1/orders/*/readyForPickup' => \Illuminate\Support\Facades\Http::response('', 202),
+        '*/v1/orders/*/requestCancellation' => \Illuminate\Support\Facades\Http::response('', 202),
+        '*/v1/orders/*/acceptRefund' => \Illuminate\Support\Facades\Http::response('', 204),
+        '*/v1/orders/*/rejectRefund' => \Illuminate\Support\Facades\Http::response('', 204),
+        '*/v1/orders/*' => \Illuminate\Support\Facades\Http::response($order, 200),
+        '*/v1/batchDecrypt' => \Illuminate\Support\Facades\Http::response(['plainInfos' => []], 200),
+        '*' => \Illuminate\Support\Facades\Http::response('', 204),
+    ];
+
+    // Fake novo a cada chamada (os stubs acumulam entre fakes); os do teste vêm antes (o fake
+    // casa na ordem) e substituem o padrão de mesma chave.
+    \Illuminate\Support\Facades\Http::swap(new \Illuminate\Http\Client\Factory(app('events')));
+    \Illuminate\Support\Facades\Http::fake(array_merge($extra, array_diff_key($defaults, $extra)));
+}
+
+/** Evento de pedido da Keeta. */
+function keetaEvent(string $type, string $orderId, array $overrides = []): array
+{
+    return array_merge([
+        'eventId' => (string) \Illuminate\Support\Str::uuid(),
+        'eventType' => $type,
+        'orderId' => $orderId,
+        'orderURL' => "https://open.keeta.test/api/open/opendelivery/v1/orders/{$orderId}",
+        'createdAt' => now()->utc()->format('Y-m-d\TH:i:s.v\Z'),
+        'sourceAppId' => 'keeta-app',
+    ], $overrides);
+}
+
+/** POST assinado no webhook de pedidos da Keeta (HMAC-SHA256 base64 do corpo). */
+function postKeetaWebhook(\Illuminate\Foundation\Testing\TestCase $test, array|string $payload, ?string $merchantRef, ?string $signature = null, string $uri = '/webhooks/keeta/orders'): \Illuminate\Testing\TestResponse
+{
+    $raw = is_string($payload) ? $payload : json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    return $test->call('POST', $uri, [], [], [], array_filter([
+        'CONTENT_TYPE' => 'application/json',
+        'HTTP_X_APP_ID' => 'keeta-app',
+        'HTTP_X_APP_MERCHANTID' => $merchantRef,
+        'HTTP_X_APP_SIGNATURE' => $signature ?? base64_encode(hash_hmac('sha256', $raw, KEETA_TEST_CLIENT_SECRET, true)),
+    ], fn ($value) => $value !== null), $raw);
+}
+
+/** Recebe o CREATED pelo webhook e roda o job (fila sync nos testes). */
+function receiveKeetaOrder(\Illuminate\Foundation\Testing\TestCase $test, array $ctx, array $order): \App\Models\Order
+{
+    fakeKeetaApi($order);
+
+    postKeetaWebhook($test, keetaEvent('CREATED', $order['id']), $ctx['integration']->merchant_ref)->assertNoContent();
+
+    return \App\Models\Order::withoutGlobalScopes()
+        ->where('channel', 'keeta')
+        ->where('external_order_id', (string) $order['id'])
+        ->firstOrFail();
+}
+
+/** Caminhos chamados na API da Keeta (na ordem), sem o token. */
+function keetaCalls(): array
+{
+    return collect(\Illuminate\Support\Facades\Http::recorded())
+        ->map(fn ($pair) => $pair[0]->method().' '.str_replace('/api/open/opendelivery', '', (string) parse_url($pair[0]->url(), PHP_URL_PATH)))
+        ->reject(fn (string $call) => str_ends_with($call, '/oauth/token'))
+        ->values()->all();
+}

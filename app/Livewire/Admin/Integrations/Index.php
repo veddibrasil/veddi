@@ -5,6 +5,7 @@ namespace App\Livewire\Admin\Integrations;
 use App\Models\Branch;
 use App\Models\Food99Integration;
 use App\Models\IfoodIntegration;
+use App\Models\KeetaIntegration;
 use Livewire\Component;
 
 class Index extends Component
@@ -50,6 +51,35 @@ class Index extends Component
         if ($company->canUseFood99Integration()) {
             $this->integrations[] = $this->food99Card($company->id, $branches);
         }
+
+        if ($company->canUseKeetaIntegration()) {
+            $this->integrations[] = $this->keetaCard($company->id, $branches);
+        }
+    }
+
+    private function keetaCard(int $companyId, int $branches): array
+    {
+        $integrations = KeetaIntegration::where('company_id', $companyId)->whereNotNull('keeta_merchant_id')->get(['status']);
+        $connected = $integrations->where('status', KeetaIntegration::STATUS_ACTIVE)->count();
+        $attention = $integrations->whereIn('status', [KeetaIntegration::STATUS_PAUSED, KeetaIntegration::STATUS_ERROR, KeetaIntegration::STATUS_REVOKED])->count();
+
+        return [
+            'key' => 'keeta',
+            'name' => 'Keeta',
+            'description' => 'Receba pedidos da Keeta no painel com aceite automático e cardápio sincronizado com o VEDDI.',
+            'icon' => 'shopping-bag',
+            'state' => match (true) {
+                $attention > 0 => 'attention',
+                $connected > 0 => 'connected',
+                default => 'disconnected',
+            },
+            'status' => match (true) {
+                $attention > 0 => $attention === 1 ? '1 filial precisa de atenção' : "{$attention} filiais precisam de atenção",
+                $connected > 0 => "{$connected} de {$branches} ".($branches === 1 ? 'filial conectada' : 'filiais conectadas'),
+                default => 'Nenhuma filial conectada',
+            },
+            'route' => route('admin.settings.keeta'),
+        ];
     }
 
     private function food99Card(int $companyId, int $branches): array

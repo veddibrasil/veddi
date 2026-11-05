@@ -61,6 +61,7 @@ class OrderAcceptanceAlarm extends Component
             "echo-private:orders.{$this->companyId},OrderStatusUpdated" => '$refresh',
             "echo-private:orders.{$this->companyId},IfoodOrderUpdated" => '$refresh',
             "echo-private:orders.{$this->companyId},Food99OrderUpdated" => '$refresh',
+            "echo-private:orders.{$this->companyId},KeetaOrderUpdated" => '$refresh',
         ];
     }
 

@@ -128,7 +128,7 @@ class SoldItemsReportService
         $marketplaces = OrderChannel::marketplaceValues();
 
         match ($channel) {
-            'ifood', '99food' => $query->where('o.channel', $channel),
+            'ifood', '99food', 'keeta' => $query->where('o.channel', $channel),
             'pdv' => $query->where('o.order_type', 'pdv')
                 ->where(fn ($q) => $q->whereNull('o.channel')->orWhereNotIn('o.channel', $marketplaces)),
             default => $query

@@ -5,17 +5,19 @@ namespace App\Services\Order;
 use App\Enums\OrderChannel;
 use App\Exceptions\Food99ApiException;
 use App\Exceptions\IfoodApiException;
+use App\Exceptions\KeetaApiException;
 use App\Models\Company;
 use App\Models\Order;
 use App\Models\User;
 use App\Services\Food99\Food99OrderActionService;
 use App\Services\Ifood\IfoodOrderActionService;
+use App\Services\Keeta\KeetaOrderActionService;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 use Throwable;
 
 /**
- * Pedidos que esperam a loja aceitar, venham do chat, do iFood ou da 99Food, e quem pode
+ * Pedidos que esperam a loja aceitar, venham do chat, do iFood, da 99Food ou da Keeta, e quem pode
  * aceitá-los. É o que decide até quando o alarme do painel toca.
  */
 class OrderAcceptance
@@ -73,6 +75,7 @@ class OrderAcceptance
             match ($order->channel) {
                 OrderChannel::Ifood->value => app(IfoodOrderActionService::class)->accept($order, $user->id),
                 OrderChannel::Food99->value => app(Food99OrderActionService::class)->accept($order, $user->id),
+                OrderChannel::Keeta->value => app(KeetaOrderActionService::class)->accept($order, $user->id),
                 default => app(ChatOrderAcceptance::class)->accept($order, $user),
             };
         } catch (ValidationException $e) {
@@ -83,9 +86,11 @@ class OrderAcceptance
             }
 
             // Plataforma fora ou pedido já decidido nela: o alarme continua até a loja resolver.
-            throw ValidationException::withMessages(['orderAcceptance' => $order->channel === OrderChannel::Ifood->value
-                ? IfoodApiException::messageFor($e)
-                : Food99ApiException::messageFor($e)]);
+            throw ValidationException::withMessages(['orderAcceptance' => match ($order->channel) {
+                OrderChannel::Ifood->value => IfoodApiException::messageFor($e),
+                OrderChannel::Keeta->value => KeetaApiException::messageFor($e),
+                default => Food99ApiException::messageFor($e),
+            }]);
         }
     }
 }

@@ -203,15 +203,25 @@
             @endforeach
         </flux:select>
         @endif
-        <flux:select wire:model.live="channelFilter" placeholder="Todos os canais" class="w-full sm:w-40 shrink-0">
+        {{-- Chat do VEDDI e PDV separados das integrações; opções dentro de optgroup precisam do tema escuro explícito (o Flux só pinta option filho direto). --}}
+        <flux:select wire:model.live="channelFilter" placeholder="Todos os canais" class="w-full sm:w-44 shrink-0 dark:[&_optgroup]:bg-zinc-700 dark:[&_optgroup]:text-white dark:[&_option]:bg-zinc-700 dark:[&_option]:text-white">
             <flux:select.option value="">Todos os canais</flux:select.option>
-            <flux:select.option value="chat">Chat</flux:select.option>
-            <flux:select.option value="pdv">PDV</flux:select.option>
-            <flux:select.option value="delivery">Entrega</flux:select.option>
-            <flux:select.option value="ifood">iFood</flux:select.option>
-            @if (config('food99.enabled') && (auth()->user()->isSuperAdmin() || app('current.company')->canUseFood99Integration()))
-                <flux:select.option value="99food">99Food</flux:select.option>
-            @endif
+            <optgroup label="VEDDI">
+                <flux:select.option value="chat">Chat VEDDI</flux:select.option>
+                <flux:select.option value="pdv">PDV</flux:select.option>
+            </optgroup>
+            <optgroup label="Integrações">
+                <flux:select.option value="ifood">iFood</flux:select.option>
+                @if (config('food99.enabled') && (auth()->user()->isSuperAdmin() || app('current.company')->canUseFood99Integration()))
+                    <flux:select.option value="99food">99Food</flux:select.option>
+                @endif
+                @if (config('keeta.enabled') && (auth()->user()->isSuperAdmin() || app('current.company')->canUseKeetaIntegration()))
+                    <flux:select.option value="keeta">Keeta</flux:select.option>
+                @endif
+            </optgroup>
+            <optgroup label="Tipo">
+                <flux:select.option value="delivery">Entregas (todos os canais)</flux:select.option>
+            </optgroup>
         </flux:select>
         @if($viewMode === 'list')
         <flux:select wire:model.live="statusFilter" placeholder="Todos os status" class="w-full sm:w-44 shrink-0">
@@ -280,6 +290,7 @@
                                     'ml-1 px-1.5 py-0.5 rounded',
                                     'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400' => $order->channel === 'ifood',
                                     'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' => $order->channel === '99food',
+                                    'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300' => $order->channel === 'keeta',
                                     'bg-neutral-100 text-neutral-500 dark:bg-zinc-700 dark:text-neutral-400' => ! $order->isMarketplaceOrder(),
                                 ])>{{ $order->origin_label }}</span>
                             </p>
@@ -399,6 +410,7 @@
                         'inline-block text-xs px-1.5 py-0.5 rounded',
                         'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400' => $order->channel === 'ifood',
                         'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' => $order->channel === '99food',
+                                    'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300' => $order->channel === 'keeta',
                         'bg-neutral-100 text-neutral-500 dark:bg-zinc-700 dark:text-neutral-400' => ! $order->isMarketplaceOrder(),
                     ])>{{ ($marketplace = $order->marketplaceDetails()) ? $marketplace->channelLabel().' · '.$marketplace->orderTypeLabel() : $order->origin_label }}</span>
                     @if ($order->awaitingAcceptance())
@@ -484,6 +496,10 @@
 
 @if ($food99CancelOrderId)
     @include('livewire.admin.orders.partials.food99-cancel-modal')
+@endif
+
+@if ($keetaCancelOrderId)
+    @include('livewire.admin.orders.partials.keeta-cancel-modal')
 @endif
 
 @if ($cancelOrderId)

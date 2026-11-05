@@ -17,7 +17,7 @@ Tambem ha integracoes de pagamento e webhook:
 - Vindi para PIX e parte do fluxo financeiro;
 - carteira (historico e saldo interno por empresa) e conciliacao; saque e antecipacao sao feitos no portal Vindi. O split do pagamento e calculado uma vez em `PaymentSplitCalculator`, gravado no `Payment` (`platform_fee`, `company_net_amount`) e reusado pela carteira e pelas transacoes;
 - WhatsApp Cloud API (Meta) para avisar o cliente a cada etapa do pedido, com numero proprio de cada empresa (detalhes na secao "Notificacoes por WhatsApp");
-- marketplaces iFood e 99Food recebendo pedidos no painel (detalhes da 99Food na secao "Integracao 99Food");
+- marketplaces iFood, 99Food e Keeta recebendo pedidos no painel (detalhes nas secoes "Integracao 99Food" e "Integracao Keeta");
 - e-mail marketing da plataforma para os usuarios das empresas, com provedor atras de Contract (detalhes na secao "E-mail marketing").
 
 ## Stack principal
@@ -44,6 +44,8 @@ Tambem ha integracoes de pagamento e webhook:
 - `POST /webhooks/fiscal`: eventos de nota fiscal
 - `POST /webhooks/ifood`: eventos do iFood
 - `POST /webhooks/99food`: callbacks da 99Food (assinatura `didi-header-sign`, resposta sempre `{"errno":0,"errmsg":"ok"}`)
+- `POST /webhooks/keeta/orders` e `POST /webhooks/keeta/authorization`: eventos de pedido e autorizacoes 1301/1302 da Keeta (assinatura `X-App-Signature`, HMAC-SHA256)
+- `GET /integrations/keeta/merchant/{merchantRef}`: cardapio da filial no formato Open Delivery, buscado pela Keeta (`X-API-KEY` por loja)
 - `GET|POST /webhooks/whatsapp`: verificacao do endpoint e eventos da WhatsApp Cloud API (assinatura `X-Hub-Signature-256`)
 - `POST /webhooks/email`: eventos do provedor de e-mail marketing (Resend, assinatura Svix)
 - `GET|POST /email/u/{recipient}`, `GET /email/o/{recipient}`, `GET /email/c/{recipient}`: descadastro (One-Click), pixel e redirect de clique do e-mail marketing, todos com URL assinada
@@ -67,7 +69,7 @@ Principais modulos:
 - faturamento
 - carteira
 - whatsapp (conexao do numero e notificacoes de pedido)
-- integracoes (iFood e 99Food, por filial)
+- integracoes (iFood, 99Food e Keeta, por filial)
 - usuarios e papeis
 
 ### Painel super admin
@@ -82,7 +84,7 @@ Principais modulos:
 - taxas/cartoes
 - simulacao de pagamento
 - conexoes de WhatsApp de todas as empresas (`/superadmin/whatsapp`)
-- lojas iFood e 99Food de todas as empresas (`/superadmin/integracoes`)
+- lojas iFood, 99Food e Keeta de todas as empresas (`/superadmin/integracoes`)
 - e-mail marketing: campanhas, templates, segmentos, automacoes e supressoes (`/superadmin/marketing`)
 
 ## Estrutura do codigo
@@ -236,6 +238,21 @@ Regras que nao podem quebrar:
 - a tela chama a 99 antes de mudar o status local; callbacks so avancam etapa (nunca regridem);
 - a lista de lojas autorizadas e do app inteiro: nunca mostrar pro restaurante (ele informa o ID da propria loja e confirma o nome antes de ligar);
 - token e `app_secret` nunca vao pro log; consultas fora de request usam `withoutGlobalScopes()` com `company_id` explicito.
+
+### Integracao Keeta
+
+Pedidos da Keeta pela Keeta Open Delivery API, no mesmo molde da 99Food: app parceiro unico (`config/keeta.php`, token do app `app_level_token` em cache) e uma `KeetaIntegration` por filial. Tudo atras de `KEETA_ENABLED`, com `KEETA_COMPANY_IDS` opcional (`Company::canUseKeetaIntegration()`). Guia completo, roteiro da SIT e itens a validar: `docs/keeta-homologacao.md`.
+
+Onde esta cada coisa: `app/Services/Keeta` (assinatura, cliente, gateway atras de `KeetaGatewayContract`, auth/onboarding, importacao, acoes, status, polling, cardapio, loja, monitor), `app/Support/Keeta/KeetaOrderDetails`, `app/DTOs/KeetaOrderDTO`, jobs `*Keeta*`, tela `app/Livewire/Admin/Settings/KeetaIntegrationSettings`, concerns `HandlesKeetaOrders`/`HandlesKeetaRequests` e partials `keeta-*` dos pedidos.
+
+Regras que nao podem quebrar:
+
+- toda chamada de saida assina `X-App-Signature` sobre o JSON canonico (RFC 8785) e envia exatamente esse JSON; webhook so valida, persiste com `event_id` unico (o mesmo evento pelo webhook e pelo polling vira um so) e enfileira, respondendo 204;
+- o vinculo usa so as lojas da autorizacao recebida no callback (com `state` da filial), nunca a lista do app; loja ja ligada em outra filial e recusada; sem `merchantOnboarding` nenhum evento chega;
+- a tela chama a Keeta antes de mudar o status local; eventos so avancam etapa; 422 e acao repetida (rele o pedido e aplica a etapa real); cancelamento pela loja so cancela com o evento `CANCELLED` (unico ponto que devolve estoque);
+- dados `ENC_` nunca vao para campo de cliente; `batchDecrypt` so na entrega propria;
+- ids da Keeta sao int64: colunas string, `JSON_BIGINT_AS_STRING`; valores do pedido vem em reais, metadata de reembolso em centavos;
+- token, `client_secret`, `menu_api_key` e corpo das chamadas nunca vao pro log; consultas fora de request usam `withoutGlobalScopes()` com `company_id` explicito.
 
 ### E-mail marketing
 

@@ -6,6 +6,7 @@ use App\Enums\OrderChannel;
 use App\Events\OrderStatusUpdated;
 use App\Exceptions\IfoodApiException;
 use App\Livewire\Admin\Orders\Concerns\HandlesFood99Orders;
+use App\Livewire\Admin\Orders\Concerns\HandlesKeetaOrders;
 use App\Models\Company;
 use App\Models\IfoodDispute;
 use App\Models\IfoodIntegration;
@@ -26,7 +27,7 @@ use Throwable;
 
 class Index extends Component
 {
-    use HandlesFood99Orders, WithPagination;
+    use HandlesFood99Orders, HandlesKeetaOrders, WithPagination;
 
     public string $statusFilter = '';
 
@@ -34,7 +35,10 @@ class Index extends Component
 
     public string $companyFilter = '';
 
-    /** Filtro de canal: '' (todos), 'chat' (order_type delivery/pickup), 'pdv' (order_type pdv) ou 'delivery' (todo pedido com entrega, via ou não do PDV). */
+    /**
+     * Filtro de canal: '' (todos), 'chat' (só o chat do VEDDI, sem marketplace), 'pdv' (order_type pdv),
+     * 'delivery' (todo pedido com entrega, de qualquer canal) ou o valor de um marketplace (iFood, 99Food, Keeta).
+     */
     public string $channelFilter = '';
 
     // Permissão e escopo calculados no mount: Locked, senão o navegador poderia mandar
@@ -154,6 +158,8 @@ class Index extends Component
             "echo-private:orders.{$this->companyId},IfoodOrderNotImported" => '$refresh',
             "echo-private:orders.{$this->companyId},Food99OrderUpdated" => '$refresh',
             "echo-private:orders.{$this->companyId},Food99OrderNotImported" => '$refresh',
+            "echo-private:orders.{$this->companyId},KeetaOrderUpdated" => '$refresh',
+            "echo-private:orders.{$this->companyId},KeetaOrderNotImported" => '$refresh',
         ];
 
         // "Minha fila" é a tela que cozinha/bar realmente usa no dia a dia (não tem
@@ -220,9 +226,12 @@ class Index extends Component
 
     private function applyChannelFilter(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
     {
+        // Pedido de marketplace também é delivery/pickup: o chat do VEDDI exclui o canal deles.
         return $query
             ->when($this->channelFilter === 'pdv', fn ($q) => $q->where('order_type', 'pdv'))
-            ->when($this->channelFilter === 'chat', fn ($q) => $q->whereIn('order_type', ['delivery', 'pickup']))
+            ->when($this->channelFilter === 'chat', fn ($q) => $q
+                ->whereIn('order_type', ['delivery', 'pickup'])
+                ->where(fn ($c) => $c->whereNull('channel')->orWhereNotIn('channel', OrderChannel::marketplaceValues())))
             ->when($this->channelFilter === 'delivery', fn ($q) => $q->deliveryOnly())
             ->when(OrderChannel::isMarketplaceValue($this->channelFilter), fn ($q) => $q->where('channel', $this->channelFilter));
     }
@@ -317,6 +326,12 @@ class Index extends Component
             return;
         }
 
+        if ($order->channel === OrderChannel::Keeta->value) {
+            $this->updateKeetaOrderStatus($order, $newStatus);
+
+            return;
+        }
+
         // Cancelamento exige motivo obrigatório — abre modal em vez de aplicar direto.
         if ($newStatus === 'cancelled') {
             if ($previousStatus !== 'cancelled') {
@@ -382,6 +397,7 @@ class Index extends Component
         match ($order->channel) {
             OrderChannel::Ifood->value => $this->openIfoodCancelModal($order->id),
             OrderChannel::Food99->value => $this->openFood99CancelModal($order->id),
+            OrderChannel::Keeta->value => $this->openKeetaCancelModal($order->id),
             default => $this->openCancelModal($order->id),
         };
 
@@ -735,6 +751,17 @@ class Index extends Component
     protected function food99ActionableOrder(int $orderId): Order
     {
         return $this->findActionableOrder($orderId);
+    }
+
+    protected function keetaActionableOrder(int $orderId): Order
+    {
+        return $this->findActionableOrder($orderId);
+    }
+
+    /** Recusar/cancelar na Keeta é do balcão; cozinha/bar/entrega só avançam a etapa. */
+    protected function canOperateKeeta(): bool
+    {
+        return $this->canUpdate && ! $this->userStation;
     }
 
     /** Recusar/cancelar e confirmar dinheiro na 99 é do balcão; cozinha/bar/entrega só avançam a etapa. */

@@ -83,6 +83,9 @@
     @elseif ($order->channel === '99food')
         @include('livewire.admin.orders.partials.food99-summary')
         @include('livewire.admin.orders.partials.food99-requests')
+    @elseif ($order->channel === 'keeta')
+        @include('livewire.admin.orders.partials.keeta-summary')
+        @include('livewire.admin.orders.partials.keeta-requests')
     @endif
 
     @if ($order->scheduled_at && ! $order->isMarketplaceOrder())
@@ -773,6 +776,10 @@
             <x-admin.form-card padding="p-4">
                 @include('livewire.admin.orders.partials.food99-actions')
             </x-admin.form-card>
+            @elseif ($order->channel === 'keeta')
+            <x-admin.form-card padding="p-4">
+                @include('livewire.admin.orders.partials.keeta-actions')
+            </x-admin.form-card>
             @else
             <x-admin.form-card padding="p-4 space-y-3">
                 <div class="flex items-center justify-between">
@@ -815,6 +822,7 @@
                         @elseif ($order->payment_method === 'split') Dividido
                         @elseif ($order->payment_method === 'ifood') iFood
                         @elseif ($order->payment_method === '99food') 99Food
+                        @elseif ($order->payment_method === 'keeta') Keeta
                         @else {{ $order->payment_method }}
                         @endif
                     </div>
@@ -951,7 +959,7 @@
                                         <span class="text-xs text-neutral-400 dark:text-neutral-500 shrink-0">{{ $history->created_at->format('d/m/Y H:i') }}</span>
                                     </div>
                                     <p class="text-xs text-neutral-500 dark:text-neutral-400">
-                                        Por {{ $history->user->name ?? (match ($history->metadata['source'] ?? '') { 'ifood_event' => 'iFood', 'food99_event' => '99Food', default => 'Cliente' }) }}
+                                        Por {{ $history->user->name ?? (match ($history->metadata['source'] ?? '') { 'ifood_event' => 'iFood', 'food99_event' => '99Food', 'keeta_event', 'keeta_reconcile' => 'Keeta', default => 'Cliente' }) }}
                                     </p>
                                     @if ($history->reason)
                                         <p class="text-xs text-neutral-600 dark:text-neutral-300 mt-1">Motivo: {{ $history->reason }}</p>
@@ -1164,6 +1172,10 @@
 
     @if ($food99CancelOrderId)
         @include('livewire.admin.orders.partials.food99-cancel-modal')
+    @endif
+
+    @if ($keetaCancelOrderId)
+        @include('livewire.admin.orders.partials.keeta-cancel-modal')
     @endif
 
     @if ($showIfoodCancelModal)

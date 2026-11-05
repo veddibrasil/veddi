@@ -33,6 +33,10 @@ function acceptanceScenario(object $test, string $channel): array
         $order = ifoodKanbanOrder($ctx, 'pending');
         $order->update(['external_metadata' => ['ifood_status' => 'PLACED', 'created_at' => now()->toIso8601String()]]);
         $modal = 'ifoodCancelOrderId';
+    } elseif ($channel === 'keeta') {
+        $ctx = keetaContext('padrao'.uniqid());
+        $order = receiveKeetaOrder($test, $ctx, keetaOrder($ctx));
+        $modal = 'keetaCancelOrderId';
     } else {
         $ctx = food99Context();
         $info = food99OrderInfo($ctx);
@@ -63,7 +67,7 @@ test('o pedido segue o mesmo contrato de aceite em todo canal', function (string
         ->and($order->acceptanceDeadline())->not->toBeNull()
         ->and($order->status_label)->toBe('Aguardando aceite')
         ->and(Order::whereKey($order->id)->whereAwaitingAcceptance()->exists())->toBeTrue();
-})->with(['chat', 'ifood', '99food']);
+})->with(['chat', 'ifood', '99food', 'keeta']);
 
 test('kanban junta todo canal na coluna de aceite, com aceitar e recusar', function (string $channel) {
     ['order' => $order, 'admin' => $admin] = acceptanceScenario($this, $channel);
@@ -77,7 +81,7 @@ test('kanban junta todo canal na coluna de aceite, com aceitar e recusar', funct
         })
         ->assertSee('Aceitar pedido')
         ->assertSee('Recusar');
-})->with(['chat', 'ifood', '99food']);
+})->with(['chat', 'ifood', '99food', 'keeta']);
 
 test('tela do pedido mostra o mesmo bloco de aceite', function (string $channel) {
     ['order' => $order, 'admin' => $admin] = acceptanceScenario($this, $channel);
@@ -87,7 +91,7 @@ test('tela do pedido mostra o mesmo bloco de aceite', function (string $channel)
         ->assertSeeHtml('acceptOrder('.$order->id.')')
         ->assertSeeHtml('rejectOrder('.$order->id.')')
         ->assertSee('Aguardando aceite');
-})->with(['chat', 'ifood', '99food']);
+})->with(['chat', 'ifood', '99food', 'keeta']);
 
 test('fila da cozinha usa o mesmo aceite e não cita outra plataforma', function (string $channel) {
     ['order' => $order, 'company' => $company] = acceptanceScenario($this, $channel);
@@ -99,7 +103,7 @@ test('fila da cozinha usa o mesmo aceite e não cita outra plataforma', function
         ->assertDontSeeHtml('rejectOrder('.$order->id.')')
         ->assertDontSee('Iniciar preparo')
         ->assertDontSee('Aceitar no ');
-})->with(['chat', '99food']);
+})->with(['chat', '99food', 'keeta']);
 
 test('recusar abre o modal do canal no kanban e na tela do pedido', function (string $channel) {
     ['order' => $order, 'admin' => $admin, 'modal' => $modal] = acceptanceScenario($this, $channel);
@@ -112,7 +116,7 @@ test('recusar abre o modal do canal no kanban e na tela do pedido', function (st
 
     $show = Livewire::test(Show::class, ['order' => $order])->call('rejectOrder', $order->id);
     expect($show->get('rejectingOrder'))->toBeTrue();
-})->with(['chat', 'ifood', '99food']);
+})->with(['chat', 'ifood', '99food', 'keeta']);
 
 test('recusar pelo alarme leva à tela do pedido com o modal aberto', function () {
     ['order' => $order, 'admin' => $admin] = acceptanceScenario($this, 'chat');
@@ -149,7 +153,7 @@ test('levar pra preparando aceita em todo canal', function (string $channel) {
 
     expect($order->fresh()->status)->toBe('preparing')
         ->and($order->fresh()->awaitingAcceptance())->toBeFalse();
-})->with(['chat', 'ifood', '99food']);
+})->with(['chat', 'ifood', '99food', 'keeta']);
 
 test('alarme continua até aceitar e para no aceite em qualquer tela', function (string $channel, string $surface) {
     Event::fake([NewOrderPlaced::class, OrderStatusUpdated::class]);
@@ -174,7 +178,7 @@ test('alarme continua até aceitar e para no aceite em qualquer tela', function 
     $alarm->call('$refresh')->assertDontSeeHtml('data-testid="order-acceptance-alert"');
     expect($order->fresh()->status)->toBe('preparing')
         ->and($alarm->get('awaitingOrders'))->toBeEmpty();
-})->with(['chat', 'ifood', '99food'])->with(['alarm', 'index', 'show']);
+})->with(['chat', 'ifood', '99food', 'keeta'])->with(['alarm', 'index', 'show']);
 
 test('aceitar um pedido mantém o alarme dos outros pedidos pendentes', function () {
     Event::fake([NewOrderPlaced::class, OrderStatusUpdated::class]);

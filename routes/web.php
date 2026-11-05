@@ -7,6 +7,9 @@ use App\Http\Controllers\EmailProviderWebhookController;
 use App\Http\Controllers\FiscalWebhookController;
 use App\Http\Controllers\Food99WebhookController;
 use App\Http\Controllers\IfoodWebhookController;
+use App\Http\Controllers\KeetaAuthorizationWebhookController;
+use App\Http\Controllers\KeetaMerchantController;
+use App\Http\Controllers\KeetaWebhookController;
 use App\Http\Controllers\MarketingTrackingController;
 use App\Http\Controllers\MarketingUnsubscribeController;
 use App\Http\Controllers\RegisterCompanyController;
@@ -64,6 +67,21 @@ Route::post('/webhooks/ifood', IfoodWebhookController::class)
 Route::post('/webhooks/99food', Food99WebhookController::class)
     ->middleware('throttle:600,1')
     ->name('webhook.99food');
+
+// --- Webhooks Keeta (sem auth, sem CSRF — coberto por webhooks/* em bootstrap/app.php) ---
+// Hub único: eventos de pedido de todas as lojas (X-App-MerchantId) e autorizações 1301/1302.
+Route::post('/webhooks/keeta/orders', KeetaWebhookController::class)
+    ->middleware('throttle:600,1')
+    ->name('webhook.keeta.orders');
+Route::post('/webhooks/keeta/authorization', KeetaAuthorizationWebhookController::class)
+    ->middleware('throttle:120,1')
+    ->name('webhook.keeta.authorization');
+
+// GET merchant do Open Delivery: a Keeta busca aqui o cardápio de cada filial (X-API-KEY).
+Route::get('/integrations/keeta/merchant/{merchantRef}', KeetaMerchantController::class)
+    ->middleware('throttle:120,1')
+    ->where('merchantRef', '[A-Za-z0-9\-]{36,100}')
+    ->name('integrations.keeta.merchant');
 
 // --- Webhook WhatsApp Cloud API (sem auth, sem CSRF — coberto por webhooks/* em bootstrap/app.php) ---
 // GET = verificação do endpoint pela Meta; POST = eventos de todas as WABAs (assinatura X-Hub-Signature-256).
@@ -165,6 +183,8 @@ Route::middleware(['auth', 'verified', 'company.active'])
             Route::get('/settings/whatsapp', \App\Livewire\Admin\Settings\WhatsAppSettings::class)->name('settings.whatsapp');
             Route::get('/settings/ifood', \App\Livewire\Admin\Settings\IfoodIntegrationSettings::class)->name('settings.ifood');
             Route::get('/settings/99food', \App\Livewire\Admin\Settings\Food99IntegrationSettings::class)->name('settings.99food');
+            Route::get('/settings/keeta', \App\Livewire\Admin\Settings\KeetaIntegrationSettings::class)->name('settings.keeta');
+            Route::get('/settings/keeta/callback', \App\Http\Controllers\Admin\KeetaAuthorizationCallbackController::class)->name('settings.keeta.callback');
             Route::get('/integrations', \App\Livewire\Admin\Integrations\Index::class)->name('integrations.index');
             Route::get('/reports/sold-items', \App\Livewire\Admin\Reports\SoldItems::class)->name('reports.sold-items');
 

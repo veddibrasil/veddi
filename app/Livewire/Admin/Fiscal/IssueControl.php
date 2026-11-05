@@ -424,7 +424,7 @@ class IssueControl extends Component
             'balcao' => $query->where('order_type', 'pdv')->whereNull('table_label'),
             'comanda' => $query->where('order_type', 'pdv')->whereNotNull('table_label'),
             'chat' => $query->where('order_type', '!=', 'pdv')->whereNotIn('channel', OrderChannel::marketplaceValues()),
-            'ifood', '99food' => $query->where('channel', $this->channelFilter),
+            'ifood', '99food', 'keeta' => $query->where('channel', $this->channelFilter),
             default => null,
         };
     }

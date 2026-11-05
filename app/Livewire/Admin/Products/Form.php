@@ -71,6 +71,8 @@ class Form extends Component
 
     public bool $available_in_99food = true;
 
+    public bool $available_in_keeta = true;
+
     public int $sort_order = 0;
 
     public $image;
@@ -137,6 +139,7 @@ class Form extends Component
             'available_in_delivery' => ['boolean'],
             'available_in_ifood' => ['boolean'],
             'available_in_99food' => ['boolean'],
+            'available_in_keeta' => ['boolean'],
             'sort_order' => ['integer', 'min:0'],
             'image' => ['nullable', 'image', 'max:2048', ...($this->appliesIfoodRules() ? ['mimes:jpg,jpeg,png'] : [])],
             'selectedBranches' => ['array'],
@@ -215,6 +218,15 @@ class Form extends Component
 
         return config('food99.enabled') && $companyId && $this->ifoodEnabled
             && Food99Integration::withoutGlobalScopes()->where('company_id', $companyId)->whereNotNull('shop_id')->exists();
+    }
+
+    /** Canal Keeta só aparece com a integração ligada na plataforma e conectada em alguma filial da empresa. */
+    public function getKeetaEnabledProperty(): bool
+    {
+        $companyId = $this->isSuperAdmin ? $this->company_id : (app()->bound('current.company') ? app('current.company')->id : null);
+
+        return config('keeta.enabled') && $companyId && $this->ifoodEnabled
+            && \App\Models\KeetaIntegration::withoutGlobalScopes()->where('company_id', $companyId)->whereNotNull('keeta_merchant_id')->exists();
     }
 
     /**
@@ -312,6 +324,7 @@ class Form extends Component
             $this->fill($product->only('product_category_id', 'name', 'active', 'available_in_pdv', 'available_in_delivery', 'sort_order'));
             $this->available_in_ifood = (bool) ($product->available_in_ifood ?? true);
             $this->available_in_99food = (bool) ($product->available_in_99food ?? true);
+            $this->available_in_keeta = (bool) ($product->available_in_keeta ?? true);
             $this->description = $product->description ?? '';
             $this->price = (string) $product->price;
             $this->isVariant = (bool) $product->is_variant;
@@ -796,6 +809,7 @@ class Form extends Component
             'available_in_delivery' => $validated['available_in_delivery'],
             'available_in_ifood' => $validated['available_in_ifood'],
             'available_in_99food' => $validated['available_in_99food'],
+            'available_in_keeta' => $validated['available_in_keeta'],
             'sort_order' => $validated['sort_order'],
             'image_path' => $imagePath,
             'fiscal_data' => array_replace($this->fiscalData, ['taxes' => $taxes]),

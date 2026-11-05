@@ -11,6 +11,8 @@ use App\Exceptions\InsufficientStockException;
 use App\Jobs\IssueFiscalNote;
 use App\Livewire\Admin\Orders\Concerns\HandlesFood99Orders;
 use App\Livewire\Admin\Orders\Concerns\HandlesFood99Requests;
+use App\Livewire\Admin\Orders\Concerns\HandlesKeetaOrders;
+use App\Livewire\Admin\Orders\Concerns\HandlesKeetaRequests;
 use App\Models\IfoodDispute;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -32,6 +34,8 @@ class Show extends Component
     use \App\Livewire\Concerns\HasFiscalRecipient;
     use HandlesFood99Orders;
     use HandlesFood99Requests;
+    use HandlesKeetaOrders;
+    use HandlesKeetaRequests;
 
     public Order $order;
 
@@ -178,6 +182,7 @@ class Show extends Component
             "echo-private:order.{$this->order->id},OrderItemsUpdated" => '$refresh',
             "echo-private:order.{$this->order->id},IfoodOrderUpdated" => '$refresh',
             "echo-private:order.{$this->order->id},Food99OrderUpdated" => '$refresh',
+            "echo-private:order.{$this->order->id},KeetaOrderUpdated" => '$refresh',
         ];
     }
 
@@ -310,6 +315,14 @@ class Show extends Component
             return;
         }
 
+        if ($this->order->channel === OrderChannel::Keeta->value) {
+            if ($this->updateKeetaOrderStatus($this->order, $status)) {
+                $this->order->refresh();
+            }
+
+            return;
+        }
+
         // Cancelamento exige motivo obrigatório — abre modal em vez de aplicar direto.
         if ($status === 'cancelled') {
             if ($previousStatus !== 'cancelled') {
@@ -376,6 +389,7 @@ class Show extends Component
         match ($this->order->channel) {
             OrderChannel::Ifood->value => $this->openIfoodCancelModal(),
             OrderChannel::Food99->value => $this->openFood99CancelModal($this->order->id),
+            OrderChannel::Keeta->value => $this->openKeetaCancelModal($this->order->id),
             default => $this->openCancelModal(),
         };
 
@@ -433,6 +447,19 @@ class Show extends Component
     }
 
     protected function canOperateFood99(): bool
+    {
+        return $this->canUpdate && ! $this->userStation;
+    }
+
+    /** A tela só opera o próprio pedido (o id vem do navegador nas ações do trait Keeta). */
+    protected function keetaActionableOrder(int $orderId): Order
+    {
+        abort_unless($orderId === $this->order->id, 404);
+
+        return $this->order;
+    }
+
+    protected function canOperateKeeta(): bool
     {
         return $this->canUpdate && ! $this->userStation;
     }

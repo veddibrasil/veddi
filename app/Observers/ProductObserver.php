@@ -6,6 +6,7 @@ use App\Jobs\DisableIfoodItemJob;
 use App\Jobs\SetFood99ItemStatusJob;
 use App\Jobs\SyncFood99CatalogJob;
 use App\Jobs\SyncIfoodCatalogJob;
+use App\Jobs\SyncKeetaCatalogJob;
 use App\Models\Food99Integration;
 use App\Models\IfoodIntegration;
 use App\Models\Product;
@@ -21,6 +22,7 @@ class ProductObserver
     public function saved(Product $product): void
     {
         $this->syncFood99($product);
+        $this->syncKeeta($product);
 
         if (! $product->wasChanged(['active', 'available_in_ifood'])) {
             return;
@@ -35,6 +37,19 @@ class ProductObserver
         foreach ($branchIds as $branchId) {
             SyncIfoodCatalogJob::dispatch($branchId, $product->id);
         }
+    }
+
+    /**
+     * Keeta: a Keeta busca o cardápio inteiro no GET merchant; qualquer mudança que aparece lá
+     * (nome, preço, descrição, foto, pausa, entrar/sair do canal) vira um aviso com debounce.
+     */
+    private function syncKeeta(Product $product): void
+    {
+        if (! config('keeta.enabled') || ! $product->wasChanged(['active', 'available_in_keeta', 'name', 'price', 'promo_price_enabled', 'promo_price_type', 'promo_price_value', 'description', 'image_path', 'product_category_id', 'sort_order'])) {
+            return;
+        }
+
+        SyncKeetaCatalogJob::debounceForCompany($product->company_id, $product->branches()->pluck('branches.id')->all());
     }
 
     /**
