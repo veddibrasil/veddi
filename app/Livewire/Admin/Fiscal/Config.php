@@ -6,6 +6,7 @@ use App\Exceptions\FocusNfeCompanyRegistrationException;
 use App\Models\Branch;
 use App\Models\Company;
 use App\Models\CompanyFiscalConfig;
+use App\Services\Fiscal\FiscalNoteService;
 use App\Services\Fiscal\FocusNfeService;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\DB;
@@ -31,8 +32,6 @@ class Config extends Component
     public string $providerToken = '';
 
     public bool $hasProviderToken = false;
-
-    public string $environment = 'homologacao';
 
     public string $nfceSerie = '1';
 
@@ -95,7 +94,7 @@ class Config extends Component
     public bool $hasBranch = false;
 
     // Cada filial tem sua própria configuração fiscal completa (CNPJ, certificado,
-    // token, série, ambiente) — trocar a filial selecionada troca o registro
+    // token, série) — trocar a filial selecionada troca o registro
     // inteiro carregado/salvo pelo formulário, não só o endereço exibido.
     public ?int $branchId = null;
 
@@ -180,7 +179,6 @@ class Config extends Component
         $this->inscricaoEstadual = $config?->inscricao_estadual ?? '';
         $this->inscricaoMunicipal = $config?->inscricao_municipal ?? '';
         $this->provider = $config?->provider ?? 'focus_nfe';
-        $this->environment = $config?->environment ?? 'homologacao';
         $this->nfceSerie = (string) ($config?->nfce_serie ?? '1');
         $this->nfeSerie = (string) ($config?->nfe_serie ?? '1');
         $this->hasProviderToken = filled($config?->provider_token);
@@ -213,11 +211,11 @@ class Config extends Component
     {
         $company = app('current.company');
         abort_unless($this->canManage, 403);
+        $environment = FiscalNoteService::resolveEmissionEnvironment();
 
         $this->validate([
             'crt' => ['required', 'integer', 'in:1,2,3'],
             'providerToken' => ['nullable', 'string', 'max:255'],
-            'environment' => ['required', 'in:homologacao,producao'],
             'nfceSerie' => ['required', 'integer', 'min:1', 'max:999'],
             'nfeSerie' => ['required', 'integer', 'min:1', 'max:999'],
             'inscricaoEstadual' => ['nullable', 'string', 'max:50'],
@@ -282,7 +280,7 @@ class Config extends Component
         // NFC-e em produção exige CSC + ID do Token gerados na SEFAZ: sem eles a Focus aceita
         // o cadastro, mas rejeita toda nota ("Código CSC não configurado"). Raw original pra
         // checar o CSC salvo sem decifrar (config antiga cifrada com outra APP_KEY quebra).
-        if ($this->enabled && $this->environment === 'producao') {
+        if ($this->enabled && $environment === 'producao') {
             $missingCsc = $this->cscNfceProducao === '' && blank($config->getRawOriginal('csc_nfce_producao'));
             $missingIdToken = trim($this->idTokenNfceProducao) === '';
 
@@ -320,7 +318,7 @@ class Config extends Component
         $config->inscricao_estadual = $this->inscricaoEstadual ?: null;
         $config->inscricao_municipal = $this->inscricaoMunicipal ?: null;
         $config->provider = $this->provider;
-        $config->environment = $this->environment;
+        $config->environment = $environment;
         $config->nfce_serie = (int) $this->nfceSerie;
         // NF-e sempre habilitada: CNPJ no destinatário sempre emite NF-e.
         $config->nfe_enabled = true;

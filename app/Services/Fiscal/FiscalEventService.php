@@ -55,7 +55,7 @@ class FiscalEventService
 
         return DB::transaction(function () use ($config, $data) {
             CompanyFiscalConfig::whereKey($config->id)->lockForUpdate()->firstOrFail();
-            $environment = FiscalNoteService::resolveEffectiveEnvironment($config->environment);
+            $environment = FiscalNoteService::resolveEmissionEnvironment();
             $events = FiscalNoteEvent::where('company_id', $config->company_id)->where('fiscal_config_id', $config->id)
                 ->where('type', 'invalidation')->whereIn('status', ['pending', 'authorized'])->get();
             foreach ($events as $event) {
@@ -67,7 +67,7 @@ class FiscalEventService
                 }
             }
 
-            return $this->send($config, null, 'nfe/inutilizacao', $data);
+            return $this->send($config, $environment, 'nfe/inutilizacao', $data);
         });
     }
 

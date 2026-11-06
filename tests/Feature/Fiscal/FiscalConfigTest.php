@@ -94,6 +94,7 @@ function grantFiscalSettingsPermission(User $user, Company $company): void
 
 test('usuário com permissão fiscal.settings salva configuração fiscal', function () {
     fakeFocusNfeEmpresaCreated();
+    app()->instance('env', 'production');
 
     $company = fiscalConfigTestCompany();
     app()->instance('current.company', $company);
@@ -108,7 +109,6 @@ test('usuário com permissão fiscal.settings salva configuração fiscal', func
         ->set('enabled', true)
         ->set('crt', 3)
         ->set('inscricaoEstadual', '123456789')
-        ->set('environment', 'producao')
         ->set('nfceSerie', '2')
         ->set('providerToken', 'meu-token-secreto')
         ->set('cscNfceProducao', 'csc-producao')
@@ -126,6 +126,36 @@ test('usuário com permissão fiscal.settings salva configuração fiscal', func
     expect($config->nfce_serie)->toBe(2);
     expect($config->provider_token)->toBe('meu-token-secreto');
 });
+
+test('configuração fiscal salva ambiente automático e não exibe seletor', function (string $appEnvironment, string $expectedEnvironment, string $previousEnvironment) {
+    app()->instance('env', $appEnvironment);
+    $company = fiscalConfigTestCompany();
+    app()->instance('current.company', $company);
+
+    $config = CompanyFiscalConfig::create([
+        'company_id' => $company->id,
+        'branch_id' => fiscalConfigTestBranch($company)->id,
+        'environment' => $previousEnvironment,
+        'enabled' => false,
+    ]);
+
+    $admin = User::factory()->create();
+    $admin->companies()->attach($company->id, ['role' => 'company_admin']);
+    grantFiscalSettingsPermission($admin, $company);
+
+    Livewire::actingAs($admin)
+        ->test(Config::class)
+        ->assertDontSeeHtml('wire:model="environment"')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect($config->fresh()->environment)->toBe($expectedEnvironment);
+})->with([
+    ['production', 'producao', 'homologacao'],
+    ['local', 'homologacao', 'producao'],
+    ['testing', 'homologacao', 'producao'],
+    ['staging', 'homologacao', 'producao'],
+]);
 
 test('token não é sobrescrito quando campo fica em branco no reenvio', function () {
     fakeFocusNfeEmpresaCreated();
@@ -546,6 +576,7 @@ test('salvar envia inscrição municipal, CSC e telefone/complemento da filial n
 
 test('habilitar produção sem CSC e ID do Token barra o salvamento antes da Focus NFe', function () {
     Http::fake();
+    app()->instance('env', 'production');
 
     $company = fiscalConfigTestCompany();
     app()->instance('current.company', $company);
@@ -557,7 +588,6 @@ test('habilitar produção sem CSC e ID do Token barra o salvamento antes da Foc
     Livewire::actingAs($admin)
         ->test(Config::class)
         ->set('enabled', true)
-        ->set('environment', 'producao')
         ->call('save')
         ->assertHasErrors(['cscNfceProducao', 'idTokenNfceProducao']);
 
@@ -567,6 +597,7 @@ test('habilitar produção sem CSC e ID do Token barra o salvamento antes da Foc
 
 test('CSC já salvo dispensa redigitar ao manter produção, mas o ID do Token continua obrigatório', function () {
     fakeFocusNfeEmpresaCreated();
+    app()->instance('env', 'production');
 
     $company = fiscalConfigTestCompany();
     app()->instance('current.company', $company);
@@ -699,7 +730,6 @@ test('registro na Focus NFe sempre bate no domínio de produção, mesmo fora de
     Livewire::actingAs($admin)
         ->test(Config::class)
         ->set('enabled', true)
-        ->set('environment', 'homologacao')
         ->call('save')
         ->assertHasNoErrors();
 
@@ -756,6 +786,8 @@ test('salvar em produção registra webhook (POST /v2/hooks) quando ainda não e
     Livewire::actingAs($admin)
         ->test(Config::class)
         ->set('enabled', true)
+        ->set('cscNfceProducao', 'csc-producao')
+        ->set('idTokenNfceProducao', '000001')
         ->call('save')
         ->assertHasNoErrors();
 
@@ -802,6 +834,8 @@ test('salvar em produção não recria webhook quando já existe um pro cnpj+eve
     Livewire::actingAs($admin)
         ->test(Config::class)
         ->set('crt', 3)
+        ->set('cscNfceProducao', 'csc-producao')
+        ->set('idTokenNfceProducao', '000001')
         ->call('save')
         ->assertHasNoErrors();
 
@@ -833,6 +867,8 @@ test('falha ao registrar webhook não impede salvar a configuração fiscal', fu
     Livewire::actingAs($admin)
         ->test(Config::class)
         ->set('enabled', true)
+        ->set('cscNfceProducao', 'csc-producao')
+        ->set('idTokenNfceProducao', '000001')
         ->call('save')
         ->assertHasNoErrors();
 
