@@ -219,8 +219,7 @@ class FiscalNoteService
             throw new \RuntimeException('Configuração fiscal não habilitada para esta filial.');
         }
 
-        $environment = $companyConfig->environment ?: config('fiscal.environment');
-        $effectiveEnvironment = $this->effectiveEnvironment($environment);
+        $effectiveEnvironment = self::resolveEmissionEnvironment();
         $token = $companyConfig->tokenFor($effectiveEnvironment) ?: config('fiscal.focus_nfe.token');
 
         if (! $token) {
@@ -426,9 +425,8 @@ class FiscalNoteService
     }
 
     /**
-     * Só bate na API de produção da Focus NFe quando o app roda em produção —
-     * qualquer outro APP_ENV sempre usa homologação, mesmo que a empresa esteja
-     * configurada como "produção", para nunca emitir nota fiscal real fora de produção.
+     * Consultas e eventos de notas existentes respeitam o ambiente da emissão,
+     * mantendo a proteção contra acesso à produção fora de APP_ENV=production.
      */
     private function effectiveEnvironment(string $configuredEnvironment): string
     {
@@ -438,6 +436,11 @@ class FiscalNoteService
     private function baseUrlFor(string $effectiveEnvironment): string
     {
         return self::resolveBaseUrl($effectiveEnvironment);
+    }
+
+    public static function resolveEmissionEnvironment(): string
+    {
+        return app()->isProduction() ? 'producao' : 'homologacao';
     }
 
     /**

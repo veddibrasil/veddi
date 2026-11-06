@@ -214,7 +214,8 @@ test('canUseFiscalNotes retorna true somente com fiscal_notes_enabled = true', f
     expect($company->canUseFiscalNotes())->toBeFalse();
 });
 
-test('FiscalNoteService usa token de homologação da empresa mesmo fora de produção (URL continua homologação por segurança)', function () {
+test('FiscalNoteService usa homologação fora de produção mesmo com configuração antiga em produção', function (string $appEnvironment) {
+    app()->instance('env', $appEnvironment);
     ['order' => $order, 'config' => $config] = fiscalTestContext();
 
     $config->update([
@@ -233,7 +234,8 @@ test('FiscalNoteService usa token de homologação da empresa mesmo fora de prod
         '*' => Http::response(['status' => 'autorizado', 'chave_nfe' => str_repeat('1', 44)], 200),
     ]);
 
-    app(FiscalNoteService::class)->issue($order);
+    $note = app(FiscalNoteService::class)->issue($order);
+    expect($note->environment)->toBe('homologacao');
 
     // APP_ENV de teste não é produção — mesmo com a empresa configurada como "produção",
     // a chamada real tem que ir pra homologação (guarda contra emitir nota fiscal real fora de prod),
@@ -243,7 +245,7 @@ test('FiscalNoteService usa token de homologação da empresa mesmo fora de prod
             && $request->hasHeader('Authorization', 'Basic '.base64_encode('token-homologacao-empresa:'))
             && ($request['cnpj_emitente'] ?? null) === '12345678000100';
     });
-});
+})->with(['local', 'testing', 'staging']);
 
 test('FiscalNoteService usa token legado (provider_token) quando dual token não está configurado', function () {
     ['order' => $order, 'config' => $config] = fiscalTestContext();
@@ -262,24 +264,26 @@ test('FiscalNoteService usa token legado (provider_token) quando dual token não
     Http::assertSent(fn (\Illuminate\Http\Client\Request $request) => $request->hasHeader('Authorization', 'Basic '.base64_encode('token-legado:')));
 });
 
-test('FiscalNoteService usa API de produção da Focus NFe quando APP_ENV é production e empresa está em produção', function () {
+test('FiscalNoteService usa produção com APP_ENV production mesmo com configuração antiga em homologação', function () {
     ['order' => $order, 'config' => $config] = fiscalTestContext();
 
     $config->update([
         'token_producao' => 'token-producao-empresa',
         'token_homologacao' => 'token-homologacao-empresa',
-        'environment' => 'producao',
+        'environment' => 'homologacao',
     ]);
 
     config(['fiscal.focus_nfe.base_url_producao' => 'https://api.focusnfe.com.br']);
 
     app()->instance('env', 'production');
+    config(['fiscal.environment' => 'homologacao']);
 
     Http::fake([
         '*' => Http::response(['status' => 'autorizado', 'chave_nfe' => str_repeat('1', 44)], 200),
     ]);
 
-    app(FiscalNoteService::class)->issue($order);
+    $note = app(FiscalNoteService::class)->issue($order);
+    expect($note->environment)->toBe('producao');
 
     Http::assertSent(function (\Illuminate\Http\Client\Request $request) {
         return str_contains($request->url(), 'api.focusnfe.com.br')

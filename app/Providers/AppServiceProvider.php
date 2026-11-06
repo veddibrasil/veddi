@@ -93,11 +93,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(OrderServiceInterface::class, OrderService::class);
         $this->app->bind(CnpjLookupInterface::class, \App\Services\Fiscal\BrasilApiCnpjLookup::class);
         $this->app->bind(FiscalNoteProviderInterface::class, function () {
-            // Só bate na API de produção da Focus NFe quando o app roda em produção —
-            // qualquer outro APP_ENV (local, testing, staging) sempre usa homologação,
-            // mesmo que a empresa esteja configurada como "produção", para nunca emitir
-            // nota fiscal real fora do ambiente de produção.
-            $useProducao = app()->isProduction() && config('fiscal.environment', 'homologacao') === 'producao';
+            // O ambiente de emissão acompanha o ambiente da aplicação.
+            $useProducao = app()->isProduction();
 
             return new FocusNfeService(
                 token: config('fiscal.focus_nfe.token', ''),
