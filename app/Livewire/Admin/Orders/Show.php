@@ -271,11 +271,8 @@ class Show extends Component
     {
         abort_unless($this->canUpdate, 403);
 
-        $allowed = match ($this->userStation) {
-            'cozinha', 'bar' => ['preparing', 'ready'],
-            'entrega' => ['out_for_delivery', 'delivered'],
-            default => ['pending', 'awaiting_payment', 'paid', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled'],
-        };
+        $allowed = Order::stationStatuses($this->userStation)
+            ?? ['pending', 'awaiting_payment', 'paid', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled'];
 
         if (! in_array($status, $allowed)) {
             $this->addError('status', 'Status inválido.');
@@ -286,6 +283,13 @@ class Show extends Component
         // Pedido cancelado/estornado já teve estoque devolvido e estorno disparado: não reabre.
         if ($this->order->isClosed()) {
             $this->addError('status', 'Pedido cancelado não pode mudar de status.');
+
+            return;
+        }
+
+        // Estação só avança: voltar um entregue para "Preparando" reabria a fila e avisava o cliente de novo.
+        if ($this->userStation && $this->order->isStepBackTo($status)) {
+            $this->addError('status', 'Este pedido já passou dessa etapa.');
 
             return;
         }
@@ -1021,21 +1025,21 @@ class Show extends Component
     }
 
     /**
-     * Status exibidos como botões: cozinha/bar só veem preparing/ready, entrega só vê
-     * out_for_delivery/delivered; "A caminho" só aparece pra pedidos de entrega (não faz
-     * sentido em balcão/retirada).
+     * Status exibidos como botões: papel de estação só vê as etapas dele (Order::stationStatuses);
+     * "A caminho" só aparece pra pedidos de entrega (não faz sentido em balcão/retirada).
      */
     #[Computed]
     public function visibleStatusMap(): array
     {
         $map = $this->statusMap;
 
-        if (in_array($this->userStation, ['cozinha', 'bar'])) {
-            return array_intersect_key($map, array_flip(['preparing', 'ready']));
-        }
+        if ($stationStatuses = Order::stationStatuses($this->userStation)) {
+            $map = array_intersect_key($map, array_flip($stationStatuses));
+            if (! $this->order->isDeliveryOrder()) {
+                unset($map['out_for_delivery']);
+            }
 
-        if ($this->userStation === 'entrega') {
-            return array_intersect_key($map, array_flip(['out_for_delivery', 'delivered']));
+            return $map;
         }
 
         if (! $this->order->isDeliveryOrder()) {

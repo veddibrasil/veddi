@@ -13,7 +13,18 @@ class NewOrderPlaced implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    public function __construct(public Order $order) {}
+    /**
+     * Imprimir a via de produção já na chegada: só pedido de fora do PDV que não vai passar
+     * pelo aceite (ex.: marketplace que entrou já confirmado). O resto imprime no aceite
+     * (OrderAcceptedForProduction). Calculado no disparo: o broadcast vai pra fila e, quando
+     * sai, o pedido já pode ter sido aceito, o que imprimiria duas vezes.
+     */
+    public bool $printOnArrival;
+
+    public function __construct(public Order $order)
+    {
+        $this->printOnArrival = $order->order_type !== 'pdv' && ! $order->waitsForAcceptance() && ! $order->isClosed();
+    }
 
     public function broadcastOn(): array
     {
@@ -36,6 +47,7 @@ class NewOrderPlaced implements ShouldBroadcast
             'is_delivery' => $this->order->isDeliveryOrder(),
             'is_kitchen' => $this->order->hasItemsForStation('cozinha'),
             'is_bar' => $this->order->hasItemsForStation('bar'),
+            'print_on_arrival' => $this->printOnArrival,
         ];
     }
 }

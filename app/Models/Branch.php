@@ -209,6 +209,20 @@ class Branch extends Model
         return $this->printers->firstWhere('station', $station);
     }
 
+    /**
+     * Largura (mm) do cupom em PDF da estação. Sem impressora própria, o cupom sai na impressora
+     * geral (ou na que a filial tiver): com 80 mm fixo, o PDF da cozinha ia para um rolo de 58 mm
+     * e o navegador encolhia, ficando menor que os outros cupons.
+     */
+    public function receiptPaperWidth(string $station): int
+    {
+        $printer = $this->printerForStation($station)
+            ?? $this->printerForStation('geral')
+            ?? $this->printers->sortByDesc('active')->first();
+
+        return (int) ($printer?->paper_width ?: 80);
+    }
+
     public function restaurantTables(): HasMany
     {
         return $this->hasMany(RestaurantTable::class);

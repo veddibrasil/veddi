@@ -382,6 +382,31 @@ class Order extends Model
     /** Pedidos com pagamento confirmado (ou a receber já aceito): os únicos que contam como faturamento. */
     public const CONFIRMED_STATUSES = ['paid', 'scheduled', 'preparing', 'ready', 'out_for_delivery', 'delivered'];
 
+    /**
+     * Etapas que cada papel de estação pode marcar; null = papel sem restrição. A cozinha também
+     * solta a entrega ("Saiu para entrega"); "Entregue" fica com o entregador e o balcão.
+     *
+     * @return array<int, string>|null
+     */
+    public static function stationStatuses(?string $station): ?array
+    {
+        return match ($station) {
+            'cozinha' => ['preparing', 'ready', 'out_for_delivery'],
+            'bar' => ['preparing', 'ready'],
+            'entrega' => ['out_for_delivery', 'delivered'],
+            default => null,
+        };
+    }
+
+    /** Etapas de preparo e entrega em ordem; o que vem antes do preparo conta como zero. */
+    private const FLOW_STEPS = ['preparing' => 1, 'ready' => 2, 'out_for_delivery' => 3, 'delivered' => 4];
+
+    /** Mudar para $status volta uma etapa (ex.: "Preparando" num pedido já entregue). */
+    public function isStepBackTo(string $status): bool
+    {
+        return (self::FLOW_STEPS[$status] ?? 0) < (self::FLOW_STEPS[$this->status] ?? 0);
+    }
+
     /** Cancelado/estornado: nenhuma mudança manual de status pode reabrir o pedido. */
     public function isClosed(): bool
     {
@@ -475,6 +500,30 @@ class Order extends Model
                     $q2->where('order_type', 'pdv')->whereNotNull('delivery_address_id');
                 });
         });
+    }
+
+    /**
+     * Entrega ou retirada (marketplace, chat ou PDV), mesmo critério de OrderFulfillment::isHandoff().
+     * COALESCE nas colunas anuláveis: comparação com NULL sumiria com o pedido das duas listas.
+     */
+    public function scopeHandoff(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query->where(fn ($q) => $q
+            ->whereIn('order_type', ['delivery', 'pickup'])
+            ->orWhere(fn ($pdv) => $pdv
+                ->where('order_type', 'pdv')
+                ->whereRaw('COALESCE(is_open_tab, 0) = 0')
+                ->whereRaw("COALESCE(table_label, '') = ''")
+                ->where(fn ($out) => $out->whereNotNull('delivery_address_id')->orWhereRaw("COALESCE(delivery_type, '') = 'retirar'"))));
+    }
+
+    /** Balcão, mesa e comanda do PDV: complemento exato de {@see scopeHandoff()}. */
+    public function scopeOnPremises(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query->where('order_type', 'pdv')->where(fn ($q) => $q
+            ->whereRaw('COALESCE(is_open_tab, 0) <> 0')
+            ->orWhereRaw("COALESCE(table_label, '') <> ''")
+            ->orWhere(fn ($counter) => $counter->whereNull('delivery_address_id')->whereRaw("COALESCE(delivery_type, '') <> 'retirar'")));
     }
 
     /** Pedido tem ao menos um item que pertence à estação, mesmo critério de {@see OrderItem::matchesStation()}. */

@@ -7,6 +7,7 @@ use App\Events\OrderStatusUpdated;
 use App\Exceptions\IfoodApiException;
 use App\Livewire\Admin\Orders\Concerns\HandlesFood99Orders;
 use App\Livewire\Admin\Orders\Concerns\HandlesKeetaOrders;
+use App\Models\BranchPrinter;
 use App\Models\Company;
 use App\Models\IfoodDispute;
 use App\Models\IfoodIntegration;
@@ -17,6 +18,8 @@ use App\Services\Ifood\IfoodOrderActionService;
 use App\Services\Order\OrderAcceptance;
 use App\Services\Order\OrderService;
 use App\Services\Payment\PaymentOrchestrator;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Locked;
@@ -101,6 +104,15 @@ class Index extends Component
 
     const URGENCY_CRITICAL_MINUTES = 20;
 
+    /** Abas da fila da cozinha/bar: '' (agora), entregas, balcão e mesas, agendados e prontos. */
+    const STATION_TABS = ['', 'delivery', 'counter', 'scheduled', 'ready'];
+
+    /** Pedido mais antigo que isso sai da fila da cozinha/bar (continua achável pela busca). */
+    const STATION_LOOKBACK_HOURS = 12;
+
+    /** Agendado entra na fila de "agora" este tanto antes do horário combinado. */
+    const STATION_SCHEDULE_LEAD_MINUTES = 30;
+
     public array $kanbanPages = [
         'scheduled' => 1,
         'pending' => 1,
@@ -168,9 +180,55 @@ class Index extends Component
         // nenhum que essas roles conseguem abrir.
         if (in_array($this->userStation, ['cozinha', 'bar'], true)) {
             $listeners["echo-private:orders.{$this->companyId},TabOrderSentToProduction"] = 'onTabOrderSentToProductionBroadcast';
+            // Chat e marketplace imprimem a via no aceite, não na chegada; a cozinha muitas vezes
+            // nem tem o PDV aberto, então a própria fila também imprime.
+            $listeners["echo-private:orders.{$this->companyId},NewOrderPlaced"] = 'onNewOrderBroadcast';
+            $listeners["echo-private:orders.{$this->companyId},OrderAcceptedForProduction"] = 'onOrderAcceptedBroadcast';
         }
 
         return $listeners;
+    }
+
+    /** Pedido novo: atualiza a fila; imprime só o que chegou já aceito (ver NewOrderPlaced::$printOnArrival). */
+    public function onNewOrderBroadcast(array $event): void
+    {
+        if ($event['print_on_arrival'] ?? false) {
+            $this->printProductionTicket($event);
+        }
+    }
+
+    public function onOrderAcceptedBroadcast(array $event): void
+    {
+        $this->printProductionTicket($event);
+    }
+
+    /**
+     * Via de produção do pedido aceito, na impressora desta estação com impressão automática.
+     * Mesma regra das telas do PDV (HasAutoPrint): sem trava de "só uma tela imprime".
+     */
+    private function printProductionTicket(array $event): void
+    {
+        $branchId = (int) ($event['branch_id'] ?? 0);
+
+        if (($event['order_type'] ?? null) === 'pdv' || ($this->userBranchId !== null && $branchId !== $this->userBranchId)) {
+            return;
+        }
+
+        if (! ($event[$this->userStation === 'cozinha' ? 'is_kitchen' : 'is_bar'] ?? false)) {
+            return;
+        }
+
+        $hasAutoPrinter = BranchPrinter::where('branch_id', $branchId)
+            ->where('station', $this->userStation)
+            ->where('auto_print', true)
+            ->where('active', true)
+            ->exists();
+
+        if (! $hasAutoPrinter) {
+            return;
+        }
+
+        $this->dispatch('production-ticket-ready', orderId: $event['order_id'], stations: [$this->userStation]);
     }
 
     /**
@@ -289,11 +347,7 @@ class Index extends Component
             return;
         }
 
-        $allowedForStation = match ($this->userStation) {
-            'cozinha', 'bar' => ['preparing', 'ready'],
-            'entrega' => ['out_for_delivery', 'delivered'],
-            default => null,
-        };
+        $allowedForStation = Order::stationStatuses($this->userStation);
 
         if ($allowedForStation !== null && ! in_array($newStatus, $allowedForStation)) {
             return;
@@ -303,6 +357,11 @@ class Index extends Component
 
         // Pedido cancelado/estornado não volta para a fila arrastando o card.
         if ($order->isClosed()) {
+            return;
+        }
+
+        // Estação só avança: "Preparando" num pedido entregue reabria a fila e avisava o cliente de novo.
+        if ($this->userStation && $order->isStepBackTo($newStatus)) {
             return;
         }
 
@@ -652,11 +711,7 @@ class Index extends Component
                 ->when($this->userStation === 'entrega', fn ($q) => $q->deliveryOnly())
                 ->when(in_array($this->userStation, ['cozinha', 'bar']), fn ($q) => $q->forStation($this->userStation))
                 ->when($this->userBranchId, fn ($q) => $q->where('branch_id', $this->userBranchId))
-                ->when($this->search, fn ($q) => $q->where(fn ($s) => $s
-                    ->where('order_number', 'like', "%{$this->search}%")
-                    ->orWhere('buyer_data->name', 'like', "%{$this->search}%")
-                    ->orWhereHas('customer', fn ($cq) => $cq->where('name', 'like', "%{$this->search}%"))
-                ))
+                ->tap(fn ($q) => $this->applySearch($q))
                 ->when($this->isSuperAdmin && $this->companyFilter, fn ($q) => $q->where('company_id', $this->companyFilter));
 
             $baseQuery = $this->applyChannelFilter($baseQuery);
@@ -695,10 +750,11 @@ class Index extends Component
                 ->layout('layouts.app', ['title' => 'Pedidos']);
         }
 
-        $with = ['customer', 'branch', 'deliveryAddressRecord'];
-        if (in_array($this->userStation, ['cozinha', 'bar'])) {
-            $with[] = 'items.product.category';
+        if (in_array($this->userStation, ['cozinha', 'bar'], true)) {
+            return $this->renderStationQueue($companies, $closing);
         }
+
+        $with = ['customer', 'branch', 'deliveryAddressRecord'];
 
         $query = $this->isSuperAdmin
             ? Order::withoutGlobalScope(CompanyScope::class)->with([...$with, 'company'])
@@ -706,17 +762,12 @@ class Index extends Component
 
         $orders = $query
             ->when($this->userStation === 'entrega', fn ($q) => $q->deliveryOnly())
-            ->when(in_array($this->userStation, ['cozinha', 'bar']), fn ($q) => $q->forStation($this->userStation))
             ->when($this->userBranchId, fn ($q) => $q->where('branch_id', $this->userBranchId))
             ->when($this->statusFilter === 'new', fn ($q) => $q->whereIn('status', ['pending', 'awaiting_payment', 'paid']))
             ->when($this->statusFilter === self::AWAITING_COLUMN, fn ($q) => $q->whereAwaitingAcceptance())
             ->when($this->statusFilter && ! in_array($this->statusFilter, ['new', self::AWAITING_COLUMN], true), fn ($q) => $q->where('status', $this->statusFilter))
             // Agrupado: o orWhereHas solto ignorava filial, estação, status e canal.
-            ->when($this->search, fn ($q) => $q->where(fn ($s) => $s
-                ->where('order_number', 'like', "%{$this->search}%")
-                ->orWhere('buyer_data->name', 'like', "%{$this->search}%")
-                ->orWhereHas('customer', fn ($cq) => $cq->where('name', 'like', "%{$this->search}%"))
-            ))
+            ->tap(fn ($q) => $this->applySearch($q))
             ->when($this->isSuperAdmin && $this->companyFilter, fn ($q) => $q->where('company_id', $this->companyFilter));
 
         $orders = $this->applyChannelFilter($orders)
@@ -727,6 +778,100 @@ class Index extends Component
 
         return view('livewire.admin.orders.index', compact('orders', 'companies', 'closing', 'ifoodNotImported'))
             ->layout('layouts.app', ['title' => 'Pedidos']);
+    }
+
+    /**
+     * Fila da cozinha/bar. Entrega e retirada ficam numa lista própria, sempre no topo e na ordem
+     * de chegada (ou do horário agendado); balcão e mesa vêm embaixo. Só entra o que está para
+     * fazer nas últimas horas: venda de balcão do PDV nasce e morre "paga" e enterrava o delivery.
+     * Com busca, procura em tudo da estação, sem aba nem janela.
+     */
+    private function renderStationQueue($companies, array $closing)
+    {
+        $base = fn () => Order::with(['customer', 'branch', 'deliveryAddressRecord', 'items.product.category'])
+            ->withExists('payments')
+            ->forStation($this->userStation)
+            ->when($this->userBranchId, fn ($q) => $q->where('branch_id', $this->userBranchId));
+
+        $tab = in_array($this->statusFilter, self::STATION_TABS, true) ? $this->statusFilter : '';
+        $handoffOrders = collect();
+        $emptyPage = new LengthAwarePaginator([], 0, 20);
+
+        if (trim($this->search) !== '') {
+            $orders = $this->applySearch($base())->latest()->paginate(20);
+        } else {
+            if (in_array($tab, ['', 'delivery'], true)) {
+                // Aguardando aceite primeiro (é o mais novo, cairia no fim da ordem de chegada).
+                $handoffOrders = $this->stationHandoff($base())
+                    ->orderByRaw('COALESCE(scheduled_at, created_at)')
+                    ->limit(100)
+                    ->get()
+                    ->sortBy(fn (Order $order) => $order->awaitingAcceptance() ? 0 : 1)
+                    ->values();
+            }
+
+            $orders = match ($tab) {
+                'delivery' => $emptyPage,
+                'scheduled' => $this->stationScheduled($base())->orderBy('scheduled_at')->paginate(20),
+                'ready' => $this->stationRecent($base())->where('status', 'ready')->latest('updated_at')->paginate(20),
+                default => $this->stationTodo($base())->onPremises()->latest()->paginate(20),
+            };
+        }
+
+        $stationCounts = [
+            'delivery' => $this->stationHandoff($base())->count(),
+            'counter' => $this->stationTodo($base())->onPremises()->count(),
+            'scheduled' => $this->stationScheduled($base())->count(),
+            'ready' => $this->stationRecent($base())->where('status', 'ready')->count(),
+        ];
+        $stationTab = $tab;
+        $ifoodNotImported = collect();
+
+        return view('livewire.admin.orders.index', compact('orders', 'handoffOrders', 'stationCounts', 'stationTab', 'companies', 'closing', 'ifoodNotImported'))
+            ->layout('layouts.app', ['title' => 'Pedidos']);
+    }
+
+    /** Pedido criado (ou agendado) nas últimas horas da fila. */
+    private function stationRecent(Builder $query): Builder
+    {
+        $since = now()->subHours(self::STATION_LOOKBACK_HOURS);
+
+        return $query->where(fn ($q) => $q->where('created_at', '>=', $since)->orWhere('scheduled_at', '>=', $since));
+    }
+
+    /**
+     * O que a estação tem para fazer agora: aceitar, começar ou terminar. Agendado só entra perto
+     * da hora; pagamento online do chat ainda não confirmado fica de fora (não dá para preparar).
+     */
+    private function stationTodo(Builder $query): Builder
+    {
+        $soon = now()->addMinutes(self::STATION_SCHEDULE_LEAD_MINUTES);
+
+        return $this->stationRecent($query)->where(fn ($q) => $q
+            ->whereIn('status', ['paid', 'preparing'])
+            ->orWhere(fn ($unpaid) => $unpaid->whereIn('status', ['pending', 'awaiting_payment'])
+                ->where(fn ($collect) => $collect->where('order_type', 'pdv')
+                    ->orWhere('payment_on_delivery', true)
+                    ->orWhereIn('channel', OrderChannel::marketplaceValues())))
+            ->orWhere(fn ($due) => $due->where('status', 'scheduled')->where('scheduled_at', '<=', $soon))
+            ->orWhere(fn ($awaiting) => $awaiting->whereAwaitingAcceptance()));
+    }
+
+    /** Entrega e retirada para fazer; na cozinha, também a entrega pronta esperando sair. */
+    private function stationHandoff(Builder $query): Builder
+    {
+        return $query->handoff()->where(fn ($q) => $q
+            ->where(fn ($todo) => $this->stationTodo($todo))
+            ->when($this->userStation === 'cozinha', fn ($q) => $q->orWhere(fn ($ready) => $this->stationRecent($ready)
+                ->where('status', 'ready')
+                ->deliveryOnly())));
+    }
+
+    /** Agendados que ainda não chegaram perto da hora. */
+    private function stationScheduled(Builder $query): Builder
+    {
+        return $query->where('status', 'scheduled')
+            ->where('scheduled_at', '>', now()->addMinutes(self::STATION_SCHEDULE_LEAD_MINUTES));
     }
 
     /**
@@ -772,13 +917,38 @@ class Index extends Component
 
     /**
      * Pedido em que o usuário pode agir: super admin vê todas as empresas; papel restrito a uma
-     * filial só age nos pedidos dela (o id chega do navegador e pode ser de outra filial).
+     * filial só age nos pedidos dela (o id chega do navegador e pode ser de outra filial);
+     * cozinha e bar, só nos pedidos com item da própria estação.
      */
     private function findActionableOrder(int $orderId): Order
     {
         return ($this->isSuperAdmin ? Order::withoutGlobalScope(CompanyScope::class) : Order::query())
             ->when($this->userBranchId, fn ($q) => $q->where('branch_id', $this->userBranchId))
+            ->when(in_array($this->userStation, ['cozinha', 'bar'], true), fn ($q) => $q->forStation($this->userStation))
             ->findOrFail($orderId);
+    }
+
+    /**
+     * Busca da tela: número do pedido, nome do cliente, telefone (4+ dígitos) e o número curto
+     * que o iFood, a 99Food e a Keeta mostram para a loja.
+     */
+    private function applySearch(Builder $query): Builder
+    {
+        $search = trim($this->search);
+        if ($search === '') {
+            return $query;
+        }
+
+        $digits = preg_replace('/\D/', '', $search);
+
+        return $query->where(fn ($s) => $s
+            ->where('order_number', 'like', "%{$search}%")
+            ->orWhere('buyer_data->name', 'like', "%{$search}%")
+            ->orWhereHas('customer', fn ($cq) => $cq->where('name', 'like', "%{$search}%")
+                ->when(strlen($digits) >= 4, fn ($cq) => $cq->orWhere('phone', 'like', "%{$digits}%")))
+            ->when($digits !== '' && $digits === $search, fn ($s) => $s
+                ->orWhere('external_metadata->display_id', 'like', $digits)
+                ->orWhere('external_metadata->order_index', 'like', $digits)));
     }
 
     /** Some o aviso de um pedido do iFood que não entrou no painel (já resolvido no Gestor de Pedidos). */

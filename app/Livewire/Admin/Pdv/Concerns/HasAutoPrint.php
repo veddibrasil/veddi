@@ -16,16 +16,35 @@ trait HasAutoPrint
         return $companyId
             ? [
                 "echo-private:orders.{$companyId},NewOrderPlaced" => 'onOrderBroadcastReceived',
+                "echo-private:orders.{$companyId},OrderAcceptedForProduction" => 'onOrderAcceptedBroadcast',
                 "echo-private:orders.{$companyId},TabOrderSentToProduction" => 'onTabOrderSentToProductionBroadcast',
             ]
             : [];
     }
 
     /**
-     * Pedido nascido fora do PDV (chat/site) chegou — se a filial aberta nesta tela tem
-     * impressora ativa com auto_print em cozinha/bar, dispara o cupom sozinho, sem
-     * esperar o operador clicar em nada. Pedido com order_type 'pdv' é ignorado aqui:
-     * ele já tem seu próprio gatilho de impressão local (pagamento no balcão ou
+     * Pedido nascido fora do PDV (chat, iFood, 99Food, Keeta) chegou já aceito (sem passar pelo
+     * aceite): imprime agora. Os que esperam aceite imprimem em {@see onOrderAcceptedBroadcast()}.
+     */
+    public function onOrderBroadcastReceived(array $event): void
+    {
+        if (! ($event['print_on_arrival'] ?? false)) {
+            return;
+        }
+
+        $this->autoPrintProductionTicket($event);
+    }
+
+    /** Pedido de fora do PDV foi aceito (em qualquer tela, app da plataforma ou automático): imprime a via. */
+    public function onOrderAcceptedBroadcast(array $event): void
+    {
+        $this->autoPrintProductionTicket($event);
+    }
+
+    /**
+     * Se a filial aberta nesta tela tem impressora ativa com auto_print em cozinha/bar, dispara o
+     * cupom sozinho, sem esperar o operador clicar em nada. Pedido com order_type 'pdv' é
+     * ignorado aqui: ele já tem seu próprio gatilho de impressão local (pagamento no balcão ou
      * "Finalizar Pedido" na comanda) — reagir ao broadcast dele também duplicaria a via.
      *
      * Não há trava de "só a primeira tela imprime": se a empresa tiver mais de uma tela
@@ -34,7 +53,7 @@ trait HasAutoPrint
      * realmente pareadas com a mesma impressora) a uma tela sem impressora nenhuma
      * "ganhar a corrida" e o pedido nunca sair impresso em lugar nenhum.
      */
-    public function onOrderBroadcastReceived(array $event): void
+    private function autoPrintProductionTicket(array $event): void
     {
         if (($event['order_type'] ?? null) === 'pdv') {
             return;

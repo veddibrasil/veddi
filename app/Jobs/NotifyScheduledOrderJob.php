@@ -47,6 +47,10 @@ class NotifyScheduledOrderJob implements ShouldQueue
             'title' => 'Pedido agendado: hora de preparar!',
             'subtitle' => "Pedido {$order->order_number} de {$order->customer->name} estava agendado para {$scheduledLabel}.",
             'link' => route('admin.orders.show', $order),
+            // Sem as flags o sino da cozinha/bar (que filtra por elas) nunca mostrava o aviso.
+            'is_delivery' => $order->isDeliveryOrder(),
+            'is_kitchen' => $order->hasItemsForStation('cozinha'),
+            'is_bar' => $order->hasItemsForStation('bar'),
         ]);
 
         OrderStatusUpdated::dispatch($order);

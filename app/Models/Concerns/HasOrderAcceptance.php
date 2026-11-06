@@ -3,8 +3,10 @@
 namespace App\Models\Concerns;
 
 use App\Enums\OrderChannel;
+use App\Events\OrderAcceptedForProduction;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Aceite do pedido igual para todo canal. Telas, alarme e serviços perguntam aqui, nunca pelo
@@ -17,6 +19,35 @@ trait HasOrderAcceptance
      * nunca teve chat_accepted_at e, sem prazo configurado, ficaria pendente para sempre.
      */
     private const ACCEPTANCE_LOOKBACK_HOURS = 24;
+
+    /**
+     * Saiu de "aguardando aceite" sem ser cancelado: avisa as telas para imprimir a via de
+     * produção. Fica no modelo porque o aceite chega por vários caminhos (painel, alarme,
+     * "Preparando" no kanban, app da plataforma via webhook/polling, aceite automático da Keeta).
+     */
+    protected static function bootHasOrderAcceptance(): void
+    {
+        static::updated(function (self $order) {
+            if (! $order->wasChanged(['status', 'chat_accepted_at', 'external_metadata']) || $order->isClosed()) {
+                return;
+            }
+
+            $before = (new static)->setRawAttributes($order->getRawOriginal(), true);
+            $before->exists = true;
+
+            if (! $before->awaitingAcceptance() || $order->awaitingAcceptance()) {
+                return;
+            }
+
+            DB::afterCommit(fn () => OrderAcceptedForProduction::dispatch($order));
+        });
+    }
+
+    /** Pedido que ainda vai passar pelo aceite (ou pelo pagamento online antes dele): não imprime na chegada. */
+    public function waitsForAcceptance(): bool
+    {
+        return $this->awaitingAcceptance() || $this->requiresChatAcceptance();
+    }
 
     public function awaitingAcceptance(): bool
     {

@@ -16,9 +16,9 @@
         .order-number { font-weight: bold; }
         .item-name { font-weight: bold; font-size: 10px; }
         .item-block { margin: 6px 0; }
-        .address-bar { margin-top: 4px; border-left: 3px solid #15803d; padding-left: 5px; }
-        .total-label { font-weight: bold; font-size: 11px; }
-        .total-value { font-weight: bold; font-size: 11px; text-align: right; }
+        .handoff { margin-top: 4px; }
+        .handoff-big { font-size: 14px; letter-spacing: 1px; padding: 2px 0; }
+        .handoff-tall { font-size: 12px; padding: 2px 0; }
     </style>
 </head>
 <body>
@@ -60,31 +60,6 @@
         @endforeach
     @endif
 
-    @if ($station === 'entrega')
-        <div class="divider"></div>
-
-        @php $isGuestCustomer = $order->customer?->phone === 'pdv-guest'; @endphp
-        @if (! $isGuestCustomer)
-            <div class="bold">{{ $order->customer->name }}</div>
-            @unless ($marketplace)
-                <div class="sm muted">{{ $order->customer->phone }}</div>
-            @endunless
-        @endif
-
-        <div class="address-bar">
-            <div class="bold" style="font-size: 8px; letter-spacing: 1px;">ENDERECO DE ENTREGA</div>
-            <div style="margin-top: 1px;">
-                {{ $order->delivery_address }}{{ $order->delivery_number ? ', '.$order->delivery_number : '' }}
-            </div>
-            @if ($order->delivery_complement)
-                <div>{{ $order->delivery_complement }}</div>
-            @endif
-            <div>
-                {{ $order->delivery_neighborhood }}{{ $order->delivery_city ? ' - '.$order->delivery_city : '' }}
-            </div>
-        </div>
-    @endif
-
     <div class="divider"></div>
 
     @forelse ($items as $item)
@@ -110,33 +85,22 @@
 
     <div class="divider"></div>
 
-    @if ($station === 'entrega' && ! $marketplace)
-        <table style="width: 100%;">
-            <tr>
-                <td>Pagamento</td>
-                <td style="text-align: right;" class="bold">
-                    @if ($order->payment_method === 'pix') PIX
-                    @elseif (in_array($order->payment_method, ['card', 'credit_card'])) Cartao
-                    @elseif ($order->payment_method === 'cash') Dinheiro
-                    @elseif ($order->payment_method === 'split') Dividido
-                    @else {{ $order->payment_method }}
-                    @endif
-                </td>
-            </tr>
-            @if (($order->payment_method === 'cash' || $order->payment_on_delivery) && ! $order->payment)
-                <tr>
-                    <td class="total-label">COBRAR</td>
-                    <td class="total-value">R$ {{ number_format($order->total, 2, ',', '.') }}</td>
-                </tr>
-            @endif
-        </table>
-
-        <div class="divider"></div>
-    @endif
-
     @if ($order->notes)
         <div class="bold"><span>Obs. do pedido: </span>{{ $order->notes }}</div>
         <div class="divider"></div>
+    @endif
+
+    {{-- Rodapé de entrega/retirada: mesmas linhas do térmico (EscPosPrinterService::handoffFooterLines). --}}
+    @if (! empty($handoffFooter))
+        <div class="handoff">
+            @foreach ($handoffFooter as $line)
+                @if ($line['divider'])
+                    <div class="divider"></div>
+                @else
+                    <div class="{{ $line['bold'] ? 'bold' : '' }} {{ $line['center'] ? 'center' : '' }} {{ $line['size'] === 'big' ? 'handoff-big' : ($line['size'] === 'tall' ? 'handoff-tall' : '') }}">{{ $line['text'] }}</div>
+                @endif
+            @endforeach
+        </div>
     @endif
 
 </body>

@@ -2,7 +2,9 @@
 @php
     $food99 = $order->food99Details();
     $allowed = match ($userStation) {
-        'cozinha', 'bar' => ['preparing', 'ready'],
+        // A cozinha também solta a entrega própria; "Entregue" fica com entregador e balcão.
+        'cozinha' => ['preparing', 'ready', 'out_for_delivery'],
+        'bar' => ['preparing', 'ready'],
         'entrega' => ['out_for_delivery', 'delivered'],
         default => ['preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled'],
     };

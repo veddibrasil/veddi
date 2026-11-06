@@ -1,4 +1,4 @@
-import { autoPrintTabOrderTicket, printStationReceipt, printClosingReport, printFiscalNote } from './pdv-printer.js';
+import { autoPrintOrderReceipt, autoPrintTabOrderTicket, printStationReceipt, printClosingReport, printFiscalNote } from './pdv-printer.js';
 
 // Fila de cozinha/bar ("Minha fila", fora do PDV) — versão mínima do binding de
 // impressão que o Terminal/Mesas usa (pdv-app.js). Sem carrinho, código de barras
@@ -16,6 +16,15 @@ function bindKitchenPrintListenerOnce() {
 
         autoPrintTabOrderTicket(e.detail.orderId, e.detail.stations, (station, err) => {
             console.error('[auto-print] (fila cozinha/bar) falha ao imprimir', station, err);
+        });
+    });
+
+    // Pedido do chat/iFood/99Food/Keeta aceito: imprime a via completa da estação.
+    window.addEventListener('production-ticket-ready', (e) => {
+        console.log('[auto-print] (fila cozinha/bar) recebeu production-ticket-ready', e.detail);
+
+        autoPrintOrderReceipt(e.detail.orderId, e.detail.stations, (station, err) => {
+            console.error('[auto-print] (fila cozinha/bar) falha ao imprimir pedido aceito', station, err);
         });
     });
 }

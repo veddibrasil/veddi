@@ -7,7 +7,10 @@ use App\Models\BranchPrinter;
 use App\Models\Company;
 use App\Models\FiscalNote;
 use App\Models\Order;
+use App\Support\Orders\OrderFulfillment;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Mike42\Escpos\PrintConnectors\MemoryPrintConnector;
 use Mike42\Escpos\Printer;
 
@@ -48,7 +51,7 @@ class EscPosPrinterService implements PrinterServiceInterface
 
         $printer->setJustification(Printer::JUSTIFY_CENTER);
         $printer->setEmphasis(true);
-        $printer->text($company?->name ?? config('app.name')."\n");
+        $printer->text(($company?->name ?? config('app.name'))."\n");
         $printer->setEmphasis(false);
         $printer->text($order->branch->name."\n");
 
@@ -90,7 +93,6 @@ class EscPosPrinterService implements PrinterServiceInterface
 
         $printer->text('Data: '.$order->created_at->format('d/m/Y H:i')."\n");
 
-        $isDeliveryTicket = $station === 'entrega';
         $isGeneralReceipt = $station === 'geral';
 
         if ($marketplace) {
@@ -100,11 +102,6 @@ class EscPosPrinterService implements PrinterServiceInterface
                 $printer->text($line['text']."\n");
             }
             $printer->setEmphasis(false);
-        }
-
-        if ($isDeliveryTicket) {
-            $this->divider($printer);
-            $this->printCustomerAndAddress($printer, $order);
         }
 
         $this->divider($printer);
@@ -168,14 +165,6 @@ class EscPosPrinterService implements PrinterServiceInterface
             }
             $this->divider($printer);
             $this->printCustomerAndAddress($printer, $order);
-        } elseif ($isDeliveryTicket && ($order->payment_method === 'cash' || $order->payment_on_delivery) && ! $order->payment) {
-            $this->divider($printer);
-            $printer->setEmphasis(true);
-            $printer->text('COBRAR: R$ '.number_format((float) $order->total, 2, ',', '.')."\n");
-            if ($order->payment_on_delivery) {
-                $printer->text(\Illuminate\Support\Str::ascii($order->paymentOnDeliveryLabel())."\n");
-            }
-            $printer->setEmphasis(false);
         }
 
         if ($order->notes) {
@@ -183,6 +172,12 @@ class EscPosPrinterService implements PrinterServiceInterface
             $printer->setEmphasis(true);
             $printer->text("Obs. do pedido: {$order->notes}\n");
             $printer->setEmphasis(false);
+        }
+
+        $handoffFooter = self::handoffFooterLines($order, $station);
+        if ($handoffFooter !== []) {
+            $this->divider($printer);
+            $this->printFooterLines($printer, $handoffFooter);
         }
 
         if ($isGeneralReceipt) {
@@ -209,7 +204,7 @@ class EscPosPrinterService implements PrinterServiceInterface
 
         $printer->setJustification(Printer::JUSTIFY_CENTER);
         $printer->setEmphasis(true);
-        $printer->text($company?->name ?? config('app.name')."\n");
+        $printer->text(($company?->name ?? config('app.name'))."\n");
         $printer->setEmphasis(false);
 
         if ($company?->owner_cpf_cnpj) {
@@ -303,7 +298,7 @@ class EscPosPrinterService implements PrinterServiceInterface
 
         $printer->setJustification(Printer::JUSTIFY_CENTER);
         $printer->setEmphasis(true);
-        $printer->text($company?->name ?? config('app.name')."\n");
+        $printer->text(($company?->name ?? config('app.name'))."\n");
         $printer->setEmphasis(false);
 
         $printer->feed();
@@ -430,6 +425,156 @@ class EscPosPrinterService implements PrinterServiceInterface
         $printer->setEmphasis(true);
         $printer->text($isPaid ? "Status: PAGO\n" : "Status: NAO PAGO\n");
         $printer->setEmphasis(false);
+    }
+
+    /**
+     * Rodapé de quem solta o pedido: tipo, horário combinado, horas, cliente, endereço e
+     * pagamento. Sai no cupom da cozinha quando o pedido é de entrega/retirada (a cozinha
+     * despacha) e sempre no cupom de entrega. As mesmas linhas alimentam o térmico e o PDF
+     * (receipt-station), pra papel nenhum discordar do outro.
+     *
+     * Marketplace: contato, código de coleta, pagamento e troco vêm do bloco da plataforma
+     * (`receiptLines('entrega')`) sem as linhas que o cupom já imprimiu no topo; o resumo
+     * genérico de pagamento fica de fora pra não repetir.
+     *
+     * @return array<int, array{text: string, bold: bool, center: bool, size: string, divider: bool}>
+     */
+    public static function handoffFooterLines(Order $order, string $station): array
+    {
+        $fulfillment = OrderFulfillment::for($order);
+
+        $applies = match ($station) {
+            'cozinha' => $fulfillment->isHandoff(),
+            'entrega' => true,
+            default => false,
+        };
+
+        if (! $applies) {
+            return [];
+        }
+
+        $line = fn (string $text, bool $bold = false, bool $center = false, string $size = 'normal') => [
+            'text' => $text, 'bold' => $bold, 'center' => $center, 'size' => $size, 'divider' => false,
+        ];
+        $divider = ['text' => '', 'bold' => false, 'center' => false, 'size' => 'normal', 'divider' => true];
+        $money = fn (float $value) => OrderFulfillment::money($value);
+
+        $timezone = config('app.timezone');
+        $now = now()->setTimezone($timezone);
+        $clock = fn (CarbonInterface $at) => $at->isSameDay($now) ? $at->format('H:i') : $at->format('d/m H:i');
+
+        $lines = [$line('*** '.mb_strtoupper($fulfillment->label()).' ***', true, true, 'big')];
+
+        if ($dueAt = $fulfillment->dueAt()) {
+            $lines[] = $line('AGENDADO PARA '.$dueAt->format('d/m H:i'), true, true, 'tall');
+        }
+
+        $createdAt = $order->created_at?->copy()->setTimezone($timezone);
+        $acceptedAt = $order->chat_accepted_at?->copy()->setTimezone($timezone);
+        $times = array_filter([
+            $createdAt ? 'Pedido '.$clock($createdAt) : null,
+            $acceptedAt ? 'Aceito '.$clock($acceptedAt) : null,
+        ]);
+        if ($times !== []) {
+            $lines[] = $line(implode(' | ', $times));
+        }
+        $lines[] = $line('Impresso '.$clock($now));
+
+        $marketplace = $order->marketplaceDetails();
+        $customer = $order->customer;
+        $contact = [];
+
+        if ($customer && $customer->phone !== 'pdv-guest') {
+            $contact[] = $line((string) $customer->name, true);
+
+            // Marketplace guarda um marcador no telefone; o contato sai no bloco da plataforma.
+            if (! $marketplace && $customer->phone) {
+                $contact[] = $line('Tel: '.$customer->phone);
+            }
+        }
+
+        if ($fulfillment->kind() === OrderFulfillment::DELIVERY && $order->delivery_address_id) {
+            $contact[] = $line(trim($order->delivery_address.($order->delivery_number ? ', '.$order->delivery_number : '')), true);
+
+            if ($order->delivery_complement) {
+                $contact[] = $line((string) $order->delivery_complement);
+            }
+
+            $district = trim(($order->delivery_neighborhood ?? '').($order->delivery_city ? ' - '.$order->delivery_city : ''), ' -');
+            if ($district !== '') {
+                $contact[] = $line($district);
+            }
+        }
+
+        if ($contact !== []) {
+            $lines = [...$lines, $divider, ...$contact];
+        }
+
+        if ($marketplace) {
+            $alreadyPrinted = array_column($marketplace->receiptLines($station), 'text');
+            $platformLines = array_values(array_filter(
+                $marketplace->receiptLines('entrega'),
+                fn (array $platformLine) => ! in_array($platformLine['text'], $alreadyPrinted, true),
+            ));
+
+            if ($platformLines !== []) {
+                $lines[] = $divider;
+                foreach ($platformLines as $platformLine) {
+                    $lines[] = $line($platformLine['text'], $platformLine['bold']);
+                }
+            }
+        }
+
+        $lines[] = $divider;
+
+        if (! $marketplace) {
+            $lines[] = $line(mb_strtoupper(str_replace(' · ', ' - ', $fulfillment->paymentHeadline())), true);
+
+            if ($changeLine = $fulfillment->changeLine()) {
+                $lines[] = $line(mb_strtoupper($changeLine), true);
+            }
+        }
+
+        if ((float) $order->delivery_fee > 0) {
+            $lines[] = $line('Taxa de entrega: '.$money((float) $order->delivery_fee));
+        }
+
+        $lines[] = $line('TOTAL: '.$money((float) $order->total), true);
+
+        return $lines;
+    }
+
+    /**
+     * Térmico em ASCII, como os blocos de marketplace: o perfil padrão do escpos-php troca a
+     * página de código sozinho, mas a numeração varia entre fabricantes e acento vira lixo.
+     *
+     * @param  array<int, array{text: string, bold: bool, center: bool, size: string, divider: bool}>  $lines
+     */
+    private function printFooterLines(Printer $printer, array $lines): void
+    {
+        foreach ($lines as $line) {
+            if ($line['divider']) {
+                $this->divider($printer);
+
+                continue;
+            }
+
+            $printer->setJustification($line['center'] ? Printer::JUSTIFY_CENTER : Printer::JUSTIFY_LEFT);
+            match ($line['size']) {
+                'big' => $printer->setTextSize(2, 2),
+                'tall' => $printer->setTextSize(1, 2),
+                default => null,
+            };
+            $printer->setEmphasis($line['bold']);
+            $printer->text(Str::ascii($line['text'])."\n");
+            $printer->setEmphasis(false);
+
+            if ($line['size'] !== 'normal') {
+                $printer->setTextSize(1, 1);
+            }
+        }
+
+        $printer->setJustification(Printer::JUSTIFY_LEFT);
     }
 
     private function printCustomerAndAddress(Printer $printer, Order $order): void

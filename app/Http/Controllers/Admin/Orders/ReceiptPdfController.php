@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin\Orders;
 
 use App\Http\Controllers\Controller;
 use App\Models\Order;
+use App\Services\Printer\EscPosPrinterService;
 use App\Support\Printing\ThermalReceiptPaper;
 
 class ReceiptPdfController extends Controller
@@ -33,7 +34,7 @@ class ReceiptPdfController extends Controller
 
         $company = app()->bound('current.company') ? app('current.company') : null;
 
-        $paperWidth = $order->branch->printerForStation($station ?? 'geral')?->paper_width ?? 80;
+        $paperWidth = $order->branch->receiptPaperWidth($station ?? 'geral');
 
         if ($station !== null) {
             // Cupom entrega não filtra por categoria: o entregador precisa ver todos os itens do pedido.
@@ -41,7 +42,10 @@ class ReceiptPdfController extends Controller
                 ? $order->items
                 : $order->items->filter(fn ($item) => $item->matchesStation($station))->values();
 
-            $pdf = ThermalReceiptPaper::pdf('livewire.admin.orders.receipt-station', compact('order', 'company', 'station', 'items'), $paperWidth);
+            // Mesmo rodapé de entrega/retirada do cupom térmico.
+            $handoffFooter = EscPosPrinterService::handoffFooterLines($order, $station);
+
+            $pdf = ThermalReceiptPaper::pdf('livewire.admin.orders.receipt-station', compact('order', 'company', 'station', 'items', 'handoffFooter'), $paperWidth);
 
             return $pdf->stream('cupom-'.$station.'-'.$order->order_number.'.pdf');
         }

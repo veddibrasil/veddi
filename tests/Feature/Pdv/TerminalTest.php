@@ -1662,9 +1662,9 @@ test('garçom (só pdv.waiter_operate) recebe 403 ao acessar Terminal — venda 
         ->assertForbidden();
 });
 
-// ─── Auto-impressão de pedido chegando de fora (chat/site) via broadcast ──────
+// ─── Auto-impressão de pedido de fora (chat/marketplace): no aceite, não na chegada ──────
 
-test('pedido de fora com item de cozinha dispara order-paid quando a filial tem impressora auto_print ativa', function () {
+test('pedido de fora que ainda espera aceite não imprime na chegada', function () {
     ['admin' => $admin, 'branch' => $branch, 'company' => $company] = pdvContext();
 
     \App\Models\BranchPrinter::create([
@@ -1677,6 +1677,52 @@ test('pedido de fora com item de cozinha dispara order-paid quando a filial tem 
 
     Livewire::test(Terminal::class)
         ->call('onOrderBroadcastReceived', [
+            'order_id' => 990,
+            'branch_id' => $branch->id,
+            'order_type' => 'delivery',
+            'is_kitchen' => true,
+            'is_bar' => false,
+            'print_on_arrival' => false,
+        ])
+        ->assertNotDispatched('order-paid');
+});
+
+test('pedido de fora que chegou já aceito imprime na chegada', function () {
+    ['admin' => $admin, 'branch' => $branch, 'company' => $company] = pdvContext();
+
+    \App\Models\BranchPrinter::create([
+        'company_id' => $company->id, 'branch_id' => $branch->id, 'station' => 'cozinha',
+        'ip_address' => '192.168.0.20', 'port' => 9100, 'paper_width' => 80,
+        'auto_print' => true, 'active' => true,
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('onOrderBroadcastReceived', [
+            'order_id' => 991,
+            'branch_id' => $branch->id,
+            'order_type' => 'delivery',
+            'is_kitchen' => true,
+            'is_bar' => false,
+            'print_on_arrival' => true,
+        ])
+        ->assertDispatched('order-paid', orderId: 991, printFiscalNote: false);
+});
+
+test('pedido de fora aceito com item de cozinha dispara order-paid quando a filial tem impressora auto_print ativa', function () {
+    ['admin' => $admin, 'branch' => $branch, 'company' => $company] = pdvContext();
+
+    \App\Models\BranchPrinter::create([
+        'company_id' => $company->id, 'branch_id' => $branch->id, 'station' => 'cozinha',
+        'ip_address' => '192.168.0.20', 'port' => 9100, 'paper_width' => 80,
+        'auto_print' => true, 'active' => true,
+    ]);
+
+    $this->actingAs($admin);
+
+    Livewire::test(Terminal::class)
+        ->call('onOrderAcceptedBroadcast', [
             'order_id' => 999,
             'branch_id' => $branch->id,
             'order_type' => 'delivery',
@@ -1698,7 +1744,7 @@ test('pedido com order_type pdv não dispara order-paid pelo broadcast — já t
     $this->actingAs($admin);
 
     Livewire::test(Terminal::class)
-        ->call('onOrderBroadcastReceived', [
+        ->call('onOrderAcceptedBroadcast', [
             'order_id' => 998,
             'branch_id' => $branch->id,
             'order_type' => 'pdv',
@@ -1720,7 +1766,7 @@ test('pedido de fora de outra filial não dispara order-paid nesta tela', functi
     $this->actingAs($admin);
 
     Livewire::test(Terminal::class)
-        ->call('onOrderBroadcastReceived', [
+        ->call('onOrderAcceptedBroadcast', [
             'order_id' => 997,
             'branch_id' => $branch->id + 999,
             'order_type' => 'delivery',
@@ -1742,7 +1788,7 @@ test('pedido de fora sem impressora auto_print ativa na estação não dispara o
     $this->actingAs($admin);
 
     Livewire::test(Terminal::class)
-        ->call('onOrderBroadcastReceived', [
+        ->call('onOrderAcceptedBroadcast', [
             'order_id' => 996,
             'branch_id' => $branch->id,
             'order_type' => 'delivery',
@@ -1776,11 +1822,11 @@ test('duas telas de PDV abertas na mesma filial tentam imprimir o mesmo pedido d
     ];
 
     Livewire::test(Terminal::class)
-        ->call('onOrderBroadcastReceived', $payload)
+        ->call('onOrderAcceptedBroadcast', $payload)
         ->assertDispatched('order-paid', orderId: 995);
 
     Livewire::test(Terminal::class)
-        ->call('onOrderBroadcastReceived', $payload)
+        ->call('onOrderAcceptedBroadcast', $payload)
         ->assertDispatched('order-paid', orderId: 995);
 });
 
