@@ -64,6 +64,9 @@ class FiscalDocumentService
     {
         $url = $type === 'xml' ? $note->xml_url : $note->danfe_url;
         $config = app(FiscalConfigResolver::class)->forNote($note);
+        if (! $config) {
+            throw new \RuntimeException('Configuração do emitente original da nota não encontrada.');
+        }
         $environment = FiscalNoteService::resolveEffectiveEnvironment($note->environment ?: ($config?->environment ?: 'homologacao'));
         $baseUrl = FiscalNoteService::resolveBaseUrl($environment);
         if (! $url || parse_url($url, PHP_URL_SCHEME) !== 'https' || parse_url($url, PHP_URL_HOST) !== parse_url($baseUrl, PHP_URL_HOST)) {

@@ -94,6 +94,7 @@ class PrintPayloadController extends Controller
     public function fiscalNote(Request $request, Order $order)
     {
         $this->authorizeAccess();
+        abort_unless(auth()->user()->canAccessBranch($order->company, $order->branch_id), 403);
 
         $order->load('branch.printers', 'items', 'activeFiscalNote');
 
@@ -129,6 +130,7 @@ class PrintPayloadController extends Controller
     public function fiscalNoteStatus(Order $order)
     {
         $this->authorizeAccess();
+        abort_unless(auth()->user()->canAccessBranch($order->company, $order->branch_id), 403);
 
         $note = $order->fiscalNotes()->latest('id')->first();
 

@@ -286,6 +286,9 @@ test('cancelamento registra o operador no histórico de auditoria do pedido', fu
 test('kanban status update persists order status', function () {
     ['admin' => $admin, 'order' => $order] = orderEditContext();
 
+    // Avançar no kanban parte de um pedido já aceito para produção.
+    $order->update(['status' => 'preparing']);
+
     $this->actingAs($admin);
 
     Livewire::test(OrdersIndex::class)

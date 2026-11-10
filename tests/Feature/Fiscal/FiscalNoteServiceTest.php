@@ -226,6 +226,9 @@ test('FiscalNoteService usa homologação fora de produção mesmo com configura
         'nfce_serie' => 2,
         'inscricao_estadual' => '111222333',
     ]);
+    Product::withoutGlobalScopes()->where('company_id', $order->company_id)->first()->update([
+        'fiscal_data' => ['ncm' => '21069090', 'cfop' => '5102', 'icms_situation' => '00'],
+    ]);
 
     config(['fiscal.focus_nfe.base_url_producao' => 'https://api.focusnfe.com.br']);
     config(['fiscal.focus_nfe.base_url_homologacao' => 'https://homologacao.focusnfe.com.br']);

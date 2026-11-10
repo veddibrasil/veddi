@@ -199,21 +199,21 @@ class EscPosPrinterService implements PrinterServiceInterface
     {
         $connector = new MemoryPrintConnector;
         $printer = new Printer($connector);
-        $branch = $order->branch;
+        $issuer = $note->issuerDetails();
         $raw = $note->raw_response;
 
         $printer->setJustification(Printer::JUSTIFY_CENTER);
         $printer->setEmphasis(true);
-        $printer->text(($company?->name ?? config('app.name'))."\n");
+        $printer->text($issuer['name']."\n");
         $printer->setEmphasis(false);
 
-        if ($company?->owner_cpf_cnpj) {
-            $printer->text('CNPJ: '.$company->owner_cpf_cnpj."\n");
+        if ($issuer['cnpj']) {
+            $printer->text('CNPJ: '.$issuer['cnpj']."\n");
         }
 
-        if ($branch) {
-            $printer->text($branch->address.($branch->number ? ', '.$branch->number : '')."\n");
-            $printer->text($branch->neighborhood.($branch->city ? ' - '.$branch->city : '')."\n");
+        if ($issuer['street']) {
+            $printer->text($issuer['street'].($issuer['number'] ? ', '.$issuer['number'] : '')."\n");
+            $printer->text($issuer['neighborhood'].($issuer['city'] ? ' - '.$issuer['city'] : '').($issuer['state'] ? '/'.$issuer['state'] : '')."\n");
         }
 
         $printer->feed();
@@ -221,6 +221,9 @@ class EscPosPrinterService implements PrinterServiceInterface
         $printer->text("DANFE NFC-e\n");
         $printer->setEmphasis(false);
         $printer->text("Documento Auxiliar da Nota Fiscal\nde Consumidor Eletronica\n");
+        if ($note->environment === 'homologacao') {
+            $printer->text("EMITIDA EM AMBIENTE DE HOMOLOGACAO\nSEM VALOR FISCAL\n");
+        }
         $printer->setJustification(Printer::JUSTIFY_LEFT);
 
         $this->divider($printer);

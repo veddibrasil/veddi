@@ -81,6 +81,7 @@ class Notes extends Component
         $this->authorizeFiscalWrite();
         $this->validate(['invalidationConfigId' => 'required|integer']);
         $config = \App\Models\CompanyFiscalConfig::where('company_id', app('current.company')->id)->findOrFail($this->invalidationConfigId);
+        abort_unless(auth()->user()->canAccessBranch(app('current.company'), $config->branch_id), 403);
         try {
             $event = app(\App\Services\Fiscal\FiscalEventService::class)->invalidate($config, $this->invalidation);
             $this->showInvalidationModal = false;
@@ -94,6 +95,8 @@ class Notes extends Component
     {
         $this->authorizeFiscalWrite();
         $event = \App\Models\FiscalNoteEvent::where('company_id', app('current.company')->id)->findOrFail($eventId);
+        $branchId = $event->fiscalConfig?->branch_id ?? $event->note?->branch_id;
+        abort_unless(auth()->user()->canAccessBranch(app('current.company'), $branchId), 403);
         app(\App\Services\Fiscal\FiscalEventService::class)->reconcile($event);
         session()->flash('status', 'Consulta do evento concluída.');
     }
@@ -298,8 +301,11 @@ class Notes extends Component
 
         return view('livewire.admin.fiscal.notes', [
             'notes' => $query->paginate(15),
-            'fiscalEvents' => \App\Models\FiscalNoteEvent::latest()->limit(20)->get(),
-            'emitterConfigs' => \App\Models\CompanyFiscalConfig::where('company_id', app('current.company')->id)->with('branch')->get(),
+            'fiscalEvents' => \App\Models\FiscalNoteEvent::query()->when($this->lockedBranchId, fn ($query, $id) => $query->where(fn ($scope) => $scope
+                ->whereHas('fiscalConfig', fn ($config) => $config->where('branch_id', $id))
+                ->orWhereHas('note', fn ($note) => $note->where('branch_id', $id))))->latest()->limit(20)->get(),
+            'emitterConfigs' => \App\Models\CompanyFiscalConfig::where('company_id', app('current.company')->id)
+                ->when($this->lockedBranchId, fn ($query, $id) => $query->where('branch_id', $id))->with('branch')->get(),
             'errorNote' => $this->errorNoteId ? $this->notes()->find($this->errorNoteId) : null,
             'reissueNote' => $this->showReissueModal && $this->reissueNoteId ? $this->findReissuableNote($this->reissueNoteId) : null,
         ])->layout('layouts.app', ['title' => 'Notas Fiscais']);

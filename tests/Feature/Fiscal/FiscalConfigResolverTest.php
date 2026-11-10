@@ -56,7 +56,7 @@ test('forBranch resolve pela config da própria filial quando existe', function 
     expect($resolver->forBranch($company, $branchB->id)->id)->toBe($configB->id);
 });
 
-test('forBranch cai na config default quando a filial não tem config própria', function () {
+test('forBranch não usa o emitente padrão quando a filial não tem config própria', function () {
     [$company, $branches] = resolverTestCompanyWithBranches(2);
     [$branchA, $branchB] = $branches;
 
@@ -68,7 +68,7 @@ test('forBranch cai na config default quando a filial não tem config própria',
     ]);
 
     // Filial B nunca teve config própria salva.
-    expect(app(FiscalConfigResolver::class)->forBranch($company, $branchB->id)->id)->toBe($default->id);
+    expect(app(FiscalConfigResolver::class)->forBranch($company, $branchB->id))->toBeNull();
 });
 
 test('forBranch retorna null quando não há config alguma pra empresa', function () {
@@ -77,7 +77,7 @@ test('forBranch retorna null quando não há config alguma pra empresa', functio
     expect(app(FiscalConfigResolver::class)->forBranch($company, $branches->first()->id))->toBeNull();
 });
 
-test('forBranch sem branch_id informado cai direto na config default', function () {
+test('forBranch sem branch_id não escolhe um emitente automaticamente', function () {
     [$company, $branches] = resolverTestCompanyWithBranches(1);
 
     $default = CompanyFiscalConfig::create([
@@ -87,7 +87,7 @@ test('forBranch sem branch_id informado cai direto na config default', function 
         'enabled' => true,
     ]);
 
-    expect(app(FiscalConfigResolver::class)->forBranch($company, null)->id)->toBe($default->id);
+    expect(app(FiscalConfigResolver::class)->forBranch($company, null))->toBeNull();
 });
 
 test('forBranch nunca retorna config de outra empresa', function () {

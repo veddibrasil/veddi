@@ -90,7 +90,7 @@ class Product extends Model
 
     public function branches(): BelongsToMany
     {
-        return $this->belongsToMany(Branch::class)->withPivot(['available', 'quantity', 'min_quantity', 'track_stock']);
+        return $this->belongsToMany(Branch::class)->withPivot(['available', 'quantity', 'min_quantity', 'track_stock', 'fiscal_data']);
     }
 
     public function orderItems(): HasMany

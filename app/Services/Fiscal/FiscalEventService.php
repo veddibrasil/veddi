@@ -48,14 +48,18 @@ class FiscalEventService
             throw new \RuntimeException('Configuração fiscal não habilitada para o emitente.');
         }
         $branch = $config->branch;
-        $data['cnpj'] = preg_replace('/\D/', '', $branch?->cnpj ?? '');
+        $branchCnpj = preg_replace('/\D/', '', $branch?->cnpj ?: ($config->company->owner_cpf_cnpj ?? ''));
+        if ($config->issuer_cnpj && $config->issuer_cnpj !== $branchCnpj) {
+            throw new \RuntimeException('O CNPJ da filial diverge do emitente fiscal registrado.');
+        }
+        $data['cnpj'] = $config->issuer_cnpj ?: $branchCnpj;
         if (strlen($data['cnpj']) !== 14) {
             throw new \RuntimeException('CNPJ do emitente não configurado.');
         }
 
         return DB::transaction(function () use ($config, $data) {
             CompanyFiscalConfig::whereKey($config->id)->lockForUpdate()->firstOrFail();
-            $environment = FiscalNoteService::resolveEmissionEnvironment();
+            $environment = FiscalNoteService::resolveEmissionEnvironment($config->emission_environment);
             $events = FiscalNoteEvent::where('company_id', $config->company_id)->where('fiscal_config_id', $config->id)
                 ->where('type', 'invalidation')->whereIn('status', ['pending', 'authorized'])->get();
             foreach ($events as $event) {

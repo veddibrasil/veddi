@@ -26,6 +26,9 @@ class FiscalWebhookController extends Controller
             : null;
 
         $config = $note ? app(FiscalConfigResolver::class)->forNote($note) : null;
+        if ($note && ! $config && ($note->fiscal_config_id || $note->issuer_cnpj)) {
+            return response()->json(['error' => 'Issuer configuration unavailable'], 401);
+        }
 
         $token = $request->header('x-focus-nfe-token', '');
         $expected = $config?->resolveWebhookToken() ?: config('fiscal.focus_nfe.webhook_token');

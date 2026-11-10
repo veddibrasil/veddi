@@ -295,16 +295,20 @@ class FocusNfeService implements FiscalNoteProviderInterface
                 'codigo_produto' => (string) ($i + 1),
                 'descricao' => $item['name'],
                 'cfop' => $item['cfop'] ?? '5102',
-                'unidade_comercial' => 'UN',
+                'unidade_comercial' => $item['unit'] ?? 'UN',
                 'quantidade_comercial' => $item['quantity'],
                 'valor_unitario_comercial' => $item['unit_price'],
                 'valor_bruto' => $item['subtotal'],
                 'codigo_ncm' => $item['ncm'] ?? '21069090',
                 'icms_situacao_tributaria' => $item['icms_situation'] ?? '400',
-                'icms_origem' => 0,
-                'pis_situacao_tributaria' => '07',
-                'cofins_situacao_tributaria' => '07',
+                'icms_origem' => $item['origin'] ?? 0,
+                'pis_situacao_tributaria' => $item['pis_situation'] ?? '07',
+                'cofins_situacao_tributaria' => $item['cofins_situation'] ?? '07',
             ];
+            if (! empty($item['cest'])) {
+                $items[$i]['cest'] = $item['cest'];
+            }
+            $items[$i] = array_replace($items[$i], $item['taxes'] ?? []);
         }
 
         // Focus NFe identifica o emitente pelo CNPJ já cadastrado no painel deles

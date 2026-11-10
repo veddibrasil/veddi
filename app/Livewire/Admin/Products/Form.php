@@ -109,12 +109,15 @@ class Form extends Component
 
     public string $fiscalTaxes = '';
 
+    public array $branchFiscalProfiles = [];
+
     /** Promoção ligada por um atalho das sugestões de venda (só muda o aviso exibido). */
     public bool $promoFromSuggestion = false;
 
     protected function rules(): array
     {
         return [
+            ...$this->branchFiscalRules(),
             'fiscalData' => ['array'],
             'fiscalData.ncm' => ['nullable', 'regex:/^[0-9]{8}$/'],
             'fiscalData.cfop' => ['nullable', 'regex:/^5[0-9]{3}$/'],
@@ -311,9 +314,8 @@ class Form extends Component
             $this->company_id = $this->targetCompanyId();
         }
 
-        if (app()->bound('current.branch')) {
-            $this->branchManagerBranchId = app('current.branch')->id;
-        }
+        $this->branchManagerBranchId = app()->bound('current.company')
+            ? $user->lockedBranchId(app('current.company')) : null;
 
         if ($product?->exists) {
             $this->product = $product;
@@ -333,6 +335,19 @@ class Form extends Component
             $this->promo_price_value = $product->promo_price_value !== null ? (string) $product->promo_price_value : '';
             $this->applySuggestionPromo();
             $this->selectedBranches = $product->branches->pluck('id')->map(fn ($id) => (string) $id)->toArray();
+            foreach ($product->branches as $branch) {
+                if ($this->branchManagerBranchId && (int) $branch->id !== $this->branchManagerBranchId) {
+                    continue;
+                }
+                if ($branch->pivot->fiscal_data !== null) {
+                    $profile = json_decode($branch->pivot->fiscal_data, true, flags: JSON_THROW_ON_ERROR);
+                    $this->branchFiscalProfiles[$branch->id] = [
+                        'enabled' => true,
+                        'data' => array_diff_key($profile, ['taxes' => true]),
+                        'taxes' => empty($profile['taxes']) ? '' : json_encode($profile['taxes'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE),
+                    ];
+                }
+            }
 
             $this->optionGroups = $product->optionGroups->map(function ($group) {
                 return [
@@ -729,11 +744,93 @@ class Form extends Component
         $this->selectedBranches = [];
     }
 
+    private function branchFiscalRules(): array
+    {
+        $rules = [
+            'branchFiscalProfiles' => ['array'],
+            'branchFiscalProfiles.*' => ['array:enabled,data,taxes'],
+            'branchFiscalProfiles.*.enabled' => ['boolean'],
+            'branchFiscalProfiles.*.data' => ['array:ncm,cfop,interstate_cfop,icms_situation,origin,unit,cest,pis_situation,cofins_situation'],
+            'branchFiscalProfiles.*.taxes' => ['nullable', 'json'],
+        ];
+        foreach ([
+            'ncm' => ['nullable', 'regex:/^[0-9]{8}$/'],
+            'cfop' => ['nullable', 'regex:/^5[0-9]{3}$/'],
+            'interstate_cfop' => ['nullable', 'regex:/^6[0-9]{3}$/'],
+            'icms_situation' => ['nullable', 'regex:/^[0-9]{2,3}$/'],
+            'origin' => ['nullable', 'integer', 'between:0,8'],
+            'unit' => ['nullable', 'string', 'max:6'],
+            'cest' => ['nullable', 'regex:/^[0-9]{7}$/'],
+            'pis_situation' => ['nullable', 'regex:/^[0-9]{2}$/'],
+            'cofins_situation' => ['nullable', 'regex:/^[0-9]{2}$/'],
+        ] as $field => $fieldRules) {
+            $rules['branchFiscalProfiles.*.data.'.$field] = $fieldRules;
+        }
+
+        return $rules;
+    }
+
+    public function updatedBranchFiscalProfiles(mixed $value, string $key): void
+    {
+        if ($value && preg_match('/^(\d+)\.enabled$/', $key, $matches)) {
+            $branchId = $matches[1];
+            if (empty($this->branchFiscalProfiles[$branchId]['data'])) {
+                $this->branchFiscalProfiles[$branchId]['data'] = array_diff_key($this->fiscalData, ['taxes' => true]);
+                $this->branchFiscalProfiles[$branchId]['taxes'] = $this->fiscalTaxes;
+            }
+        }
+    }
+
+    private function parseFiscalTaxes(string $json, string $errorKey): ?array
+    {
+        $taxes = $json !== '' ? json_decode($json, true) : [];
+        if (! is_array($taxes) || (array_is_list($taxes) && $taxes !== [])) {
+            $this->addError($errorKey, 'Informe um objeto JSON de campos tributários.');
+
+            return null;
+        }
+        foreach ($taxes as $key => $value) {
+            if (! preg_match('/^(icms_|pis_|cofins_|ipi_|ibs_|cbs_|is_)/', (string) $key) || is_array($value) || is_object($value)
+                || in_array($key, ['icms_situacao_tributaria', 'icms_origem', 'pis_situacao_tributaria', 'cofins_situacao_tributaria'], true)) {
+                $this->addError($errorKey, 'Use campos tributários adicionais válidos. CST, CSOSN e origem devem ser preenchidos nos campos próprios.');
+
+                return null;
+            }
+        }
+
+        return $taxes;
+    }
+
     public function save(): void
     {
         abort_unless($this->canSave, 403);
 
         $validated = $this->validate($this->rules(), $this->messages());
+
+        $branchIds = $this->branchIdsToSync();
+        $branchFiscalData = [];
+        foreach ($this->branchFiscalProfiles as $branchId => $profile) {
+            if (! Branch::withoutGlobalScopes()->where('company_id', $this->targetCompanyId())->whereKey($branchId)->exists()
+                || (! auth()->user()->isSuperAdmin() && app()->bound('current.company')
+                    && ! auth()->user()->canAccessBranch(app('current.company'), (int) $branchId))) {
+                $this->addError('branchFiscalProfiles', 'O perfil fiscal deve pertencer a uma filial vinculada e autorizada.');
+
+                return;
+            }
+            if (! in_array((string) $branchId, array_map('strval', $branchIds), true)) {
+                continue;
+            }
+            if (empty($profile['enabled'])) {
+                $branchFiscalData[$branchId] = null;
+
+                continue;
+            }
+            $taxes = $this->parseFiscalTaxes($profile['taxes'] ?? '', "branchFiscalProfiles.{$branchId}.taxes");
+            if ($taxes === null) {
+                return;
+            }
+            $branchFiscalData[$branchId] = json_encode(array_replace($profile['data'] ?? [], ['taxes' => $taxes]), JSON_THROW_ON_ERROR);
+        }
 
         foreach ($validated['optionGroups'] ?? [] as $gi => $groupData) {
             $totalQty = (int) $groupData['total_qty'];
@@ -779,18 +876,9 @@ class Form extends Component
             $imagePath = $stored;
         }
 
-        $taxes = $this->fiscalTaxes !== '' ? json_decode($this->fiscalTaxes, true) : [];
-        if (! is_array($taxes) || array_is_list($taxes) && $taxes !== []) {
-            $this->addError('fiscalTaxes', 'Informe um objeto JSON de campos tributários.');
-
+        $taxes = $this->parseFiscalTaxes($this->fiscalTaxes, 'fiscalTaxes');
+        if ($taxes === null) {
             return;
-        }
-        foreach ($taxes as $key => $value) {
-            if (! preg_match('/^(icms_|pis_|cofins_|ipi_|ibs_|cbs_|is_)/', $key) || is_array($value) || is_object($value)) {
-                $this->addError('fiscalTaxes', 'Use somente campos tributários válidos da Focus NFe.');
-
-                return;
-            }
         }
         $isVariantProduct = $this->isVariant;
         $branchIds = $this->branchIdsToSync();
@@ -866,6 +954,7 @@ class Form extends Component
                     'track_stock' => $existing?->track_stock ?? false,
                     'min_quantity' => $existing?->min_quantity ?? 0,
                     'quantity' => $existing?->quantity ?? 0,
+                    'fiscal_data' => array_key_exists($branchId, $branchFiscalData) ? $branchFiscalData[$branchId] : ($existing?->fiscal_data ?? null),
                 ];
 
             }
@@ -876,6 +965,7 @@ class Form extends Component
                     'track_stock' => $this->trackStock,
                     'min_quantity' => (int) $this->minQuantity,
                     'quantity' => 0,
+                    'fiscal_data' => $branchFiscalData[$branchId] ?? null,
                 ];
 
             }

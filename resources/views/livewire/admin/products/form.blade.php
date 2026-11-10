@@ -763,6 +763,30 @@
             <flux:textarea wire:model="fiscalTaxes" label="Campos tributários adicionais (JSON Focus NFe)" rows="3" />
             @error('fiscalTaxes') <p class="text-xs text-red-600">{{ $message }}</p> @enderror
         </div>
+        <div class="mt-5 space-y-4">
+            <h3 class="font-semibold">Tributação por filial</h3>
+            <p class="text-xs text-neutral-500">Por padrão, vale o cadastro geral acima. Ative um perfil próprio quando a filial tiver regime ou tributação diferente. O perfil substitui todos os dados fiscais do produto para esta filial.</p>
+            @error('branchFiscalProfiles') <p class="text-xs text-red-600">{{ $message }}</p> @enderror
+            @foreach($branches as $fiscalBranch)
+                @if(in_array((string) $fiscalBranch->id, array_map('strval', $selectedBranches), true))
+                    <div wire:key="fiscal-branch-{{ $fiscalBranch->id }}" class="border rounded-lg p-4 space-y-3 dark:border-zinc-700">
+                        <flux:switch wire:model.live="branchFiscalProfiles.{{ $fiscalBranch->id }}.enabled" label="{{ $fiscalBranch->name }} — usar perfil fiscal próprio" />
+                        @if($branchFiscalProfiles[$fiscalBranch->id]['enabled'] ?? false)
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                @foreach(['ncm' => 'NCM', 'cfop' => 'CFOP interno', 'interstate_cfop' => 'CFOP interestadual', 'icms_situation' => 'CST / CSOSN ICMS', 'origin' => 'Origem (0 a 8)', 'unit' => 'Unidade comercial', 'cest' => 'CEST', 'pis_situation' => 'CST PIS', 'cofins_situation' => 'CST COFINS'] as $field => $label)
+                                    <div>
+                                        <flux:input wire:model="branchFiscalProfiles.{{ $fiscalBranch->id }}.data.{{ $field }}" :label="$label" />
+                                        @error('branchFiscalProfiles.'.$fiscalBranch->id.'.data.'.$field) <p class="text-xs text-red-600">{{ $message }}</p> @enderror
+                                    </div>
+                                @endforeach
+                            </div>
+                            <flux:textarea wire:model="branchFiscalProfiles.{{ $fiscalBranch->id }}.taxes" label="Campos tributários adicionais (JSON Focus NFe)" rows="3" />
+                            @error('branchFiscalProfiles.'.$fiscalBranch->id.'.taxes') <p class="text-xs text-red-600">{{ $message }}</p> @enderror
+                        @endif
+                    </div>
+                @endif
+            @endforeach
+        </div>
     </details>
 
     <div class="flex gap-3 pb-8">

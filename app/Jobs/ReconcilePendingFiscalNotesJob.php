@@ -32,7 +32,13 @@ class ReconcilePendingFiscalNotesJob implements ShouldQueue
             ->eachById(fn ($event) => app(\App\Services\Fiscal\FiscalEventService::class)->reconcile($event));
 
         foreach ($notes as $note) {
-            $service->reconcile($note);
+            try {
+                $service->reconcile($note);
+            } catch (\RuntimeException $e) {
+                \Illuminate\Support\Facades\Log::channel('fiscal')->warning('Não foi possível reconciliar a nota fiscal', [
+                    'fiscal_note_id' => $note->id, 'error' => $e->getMessage(),
+                ]);
+            }
         }
     }
 }

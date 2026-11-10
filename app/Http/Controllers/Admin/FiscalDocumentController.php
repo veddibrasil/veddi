@@ -17,6 +17,7 @@ class FiscalDocumentController extends Controller
         $company = app('current.company');
         abort_unless(auth()->user()->hasPermission('fiscal.view', $company) || auth()->user()->hasPermission('fiscal.issue', $company), 403);
         $note = FiscalNote::where('company_id', $company->id)->findOrFail($note);
+        abort_unless(auth()->user()->canAccessBranch($company, $note->branch_id ?: $note->order?->branch_id), 403);
         abort_unless(in_array($type, ['xml', 'danfe'], true), 404);
 
         try {

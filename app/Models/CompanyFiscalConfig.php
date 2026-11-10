@@ -10,6 +10,9 @@ class CompanyFiscalConfig extends Model
     protected $fillable = [
         'company_id',
         'branch_id',
+        'legal_name',
+        'issuer_cnpj',
+        'emission_environment',
         'is_default',
         'enabled',
         'inscricao_estadual',
@@ -79,6 +82,14 @@ class CompanyFiscalConfig extends Model
     public function isRegisteredWithFocus(): bool
     {
         return filled($this->focus_nfe_company_id);
+    }
+
+    public function isIssuerLocked(): bool
+    {
+        return $this->isRegisteredWithFocus() || ($this->exists && FiscalNote::withoutGlobalScopes()
+            ->where('company_id', $this->company_id)
+            ->where(fn ($query) => $query->where('fiscal_config_id', $this->id)->orWhere('branch_id', $this->branch_id))
+            ->exists());
     }
 
     /**

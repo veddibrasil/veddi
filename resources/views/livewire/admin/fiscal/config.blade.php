@@ -23,7 +23,8 @@
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                    <flux:input value="{{ $companyName }}" label="Nome da empresa" disabled />
+                    <flux:input wire:model="legalName" label="Razão social do emitente" :disabled="!$canManage" />
+                    @error('legalName') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
                 <div>
                     <flux:input value="{{ $companyEmail ?: '—' }}" label="E-mail" disabled />
@@ -56,7 +57,7 @@
             @if(count($branchOptions) > 1)
                 <div class="flex items-center gap-3">
                     <flux:switch wire:model="isDefault" :disabled="!$canManage" />
-                    <span class="text-sm text-neutral-600 dark:text-neutral-300">Usar como configuração padrão da empresa (fallback para filiais sem config própria)</span>
+                    <span class="text-sm text-neutral-600 dark:text-neutral-300">Abrir esta filial por padrão nas configurações. Cada filial precisa de configuração própria para emitir.</span>
                 </div>
                 @error('isDefault') <p class="text-red-500 text-xs">{{ $message }}</p> @enderror
             @endif
@@ -126,13 +127,21 @@
 
         {{-- Habilitação --}}
         <div class="bg-white border rounded-xl shadow-sm p-6 space-y-4 dark:bg-zinc-800 dark:border-zinc-700">
-            <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Emissão de NFC-e</h2>
+            <h2 class="font-semibold text-neutral-700 text-sm uppercase tracking-wide dark:text-neutral-300">Emissão de NF-e e NFC-e</h2>
 
             <div class="flex items-center gap-3">
                 <flux:switch wire:model="enabled" :disabled="!$canManage" />
-                <span class="text-sm text-neutral-600 dark:text-neutral-300">Habilitar emissão de NFC-e para esta filial</span>
+                <span class="text-sm text-neutral-600 dark:text-neutral-300">Habilitar emissão fiscal para esta filial</span>
             </div>
             @error('enabled') <p class="text-red-500 text-xs">{{ $message }}</p> @enderror
+
+            <flux:select wire:model="emissionEnvironment" label="Ambiente fiscal da filial" :disabled="!$canManage">
+                <option value="">Automático ({{ app()->isProduction() ? 'Produção' : 'Homologação' }})</option>
+                <option value="homologacao">Homologação — sem valor fiscal</option>
+                <option value="producao">Produção</option>
+            </flux:select>
+            <p class="text-xs text-neutral-500">Use homologação para validar esta filial antes de emitir notas com valor fiscal. Fora do servidor de produção, as emissões permanecem em homologação.</p>
+            @error('emissionEnvironment') <p class="text-red-500 text-xs">{{ $message }}</p> @enderror
 
             @if($focusNfeCompanyId)
                 <p class="text-xs text-green-600 dark:text-green-400">

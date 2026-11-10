@@ -5,7 +5,8 @@
     <title>DANFE NFC-e {{ $order->order_number }}</title>
     @php
         $raw = $note->raw_response;
-        $issuerCnpj = preg_replace('/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/', '$1.$2.$3/$4-$5', preg_replace('/\D/', '', $note->issuer_cnpj ?: ($order->branch->cnpj ?: ($company?->owner_cpf_cnpj ?? ''))));
+        $issuer = $note->issuerDetails();
+        $issuerCnpj = preg_replace('/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/', '$1.$2.$3/$4-$5', preg_replace('/\D/', '', $issuer['cnpj'] ?? ''));
         $accessKey = preg_replace('/\D/', '', (string) $note->access_key);
         $consumerDocument = $note->data['customer_cpf_cnpj'] ?? null;
         $authorizedAt = filled($raw['data_autorizacao'] ?? null)
@@ -38,14 +39,14 @@
 <body>
 
     {{-- Emitente --}}
-    <div class="center bold" style="font-size: 11px;">{{ $company?->name ?? config('app.name') }}</div>
+    <div class="center bold" style="font-size: 11px;">{{ $issuer['name'] }}</div>
     @if ($issuerCnpj)
         <div class="center sm">CNPJ: {{ $issuerCnpj }}</div>
     @endif
-    @if ($order->branch->address)
+    @if ($issuer['street'])
         <div class="center sm">
-            {{ $order->branch->address }}{{ $order->branch->number ? ', '.$order->branch->number : '' }}
-            {{ $order->branch->neighborhood ? ' - '.$order->branch->neighborhood : '' }}{{ $order->branch->city ? ' - '.$order->branch->city : '' }}{{ $order->branch->state ? '/'.$order->branch->state : '' }}
+            {{ $issuer['street'] }}{{ $issuer['number'] ? ', '.$issuer['number'] : '' }}
+            {{ $issuer['neighborhood'] ? ' - '.$issuer['neighborhood'] : '' }}{{ $issuer['city'] ? ' - '.$issuer['city'] : '' }}{{ $issuer['state'] ? '/'.$issuer['state'] : '' }}
         </div>
     @endif
 

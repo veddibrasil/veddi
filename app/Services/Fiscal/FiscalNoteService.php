@@ -42,8 +42,8 @@ class FiscalNoteService
         $reference = 'order_'.$order->id.'_'.Str::uuid();
 
         $dto = new FiscalNoteDTO(
-            emitenteCnpj: $branch?->cnpj ?: $company->owner_cpf_cnpj ?? '',
-            emitenteNome: $company->name,
+            emitenteCnpj: $companyConfig->issuer_cnpj ?: ($branch?->cnpj ?: $company->owner_cpf_cnpj ?? ''),
+            emitenteNome: $companyConfig->legal_name ?: $company->name,
             emitenteLogradouro: $branch?->address ?? '',
             emitenteNumero: $branch?->number ?? 'S/N',
             emitenteBairro: $branch?->neighborhood ?? '',
@@ -83,7 +83,20 @@ class FiscalNoteService
             'issuer_cnpj' => preg_replace('/\D/', '', $dto->emitenteCnpj),
             'series' => (int) $dto->nfceSerie,
             'provider_reference' => $reference,
-            'data' => ['recipient' => $recipient, 'requested_by' => $requestedBy ?? auth()->id()],
+            'data' => [
+                'recipient' => $recipient,
+                'requested_by' => $requestedBy ?? auth()->id(),
+                'issuer' => [
+                    'name' => $dto->emitenteNome,
+                    'cnpj' => preg_replace('/\D/', '', $dto->emitenteCnpj),
+                    'street' => $dto->emitenteLogradouro,
+                    'number' => $dto->emitenteNumero,
+                    'neighborhood' => $dto->emitenteBairro,
+                    'city' => $dto->emitenteMunicipio,
+                    'state' => $dto->emitenteUf,
+                    'zip' => $dto->emitenteCep,
+                ],
+            ],
         ]);
 
         try {
@@ -212,14 +225,14 @@ class FiscalNoteService
         $companyConfig = $this->resolver->forBranch($company, $order->branch_id);
 
         if (! $companyConfig) {
-            throw new \RuntimeException('Nenhuma configuração fiscal encontrada para esta filial. Configure a filial ou marque uma configuração padrão.');
+            throw new \RuntimeException('Nenhuma configuração fiscal encontrada para esta filial. Configure o emitente desta filial antes de emitir.');
         }
 
         if (! $companyConfig->enabled) {
             throw new \RuntimeException('Configuração fiscal não habilitada para esta filial.');
         }
 
-        $effectiveEnvironment = self::resolveEmissionEnvironment();
+        $effectiveEnvironment = self::resolveEmissionEnvironment($companyConfig->emission_environment);
         $token = $companyConfig->tokenFor($effectiveEnvironment) ?: config('fiscal.focus_nfe.token');
 
         if (! $token) {
@@ -227,6 +240,13 @@ class FiscalNoteService
         }
 
         $branch = Branch::withoutGlobalScopes()->where('company_id', $company->id)->find($companyConfig->branch_id ?? $order->branch_id);
+        $branchCnpj = preg_replace('/\D/', '', $branch?->cnpj ?: ($company->owner_cpf_cnpj ?? ''));
+        if ($companyConfig->issuer_cnpj && $companyConfig->issuer_cnpj !== $branchCnpj) {
+            throw new \RuntimeException('O CNPJ da filial diverge do emitente fiscal registrado. Revise a configuração fiscal.');
+        }
+        if (strlen($companyConfig->issuer_cnpj ?: $branchCnpj) !== 14) {
+            throw new \RuntimeException('Complete o CNPJ do emitente desta filial antes de emitir.');
+        }
         $recipient = $order->fiscal_recipient ?? FiscalRecipient::fromCustomer($order->customer);
         if ($customerDocument !== null) {
             $recipient['document'] = $customerDocument;
@@ -312,6 +332,9 @@ class FiscalNoteService
         }
 
         $companyConfig = $this->resolver->forNote($note);
+        if (! $companyConfig) {
+            throw new \RuntimeException('Configuração do emitente original da nota não encontrada.');
+        }
         $environment = $note->environment ?: ($companyConfig?->environment ?: config('fiscal.environment'));
         $effectiveEnvironment = $this->effectiveEnvironment($environment);
         $token = $companyConfig?->tokenFor($effectiveEnvironment) ?: config('fiscal.focus_nfe.token');
@@ -368,12 +391,13 @@ class FiscalNoteService
         }
 
         $companyConfig = $this->resolver->forNote($note);
+        if (! $companyConfig) {
+            throw new \RuntimeException('Configuração do emitente original da nota não encontrada.');
+        }
         $environment = $note->environment ?: ($companyConfig?->environment ?: config('fiscal.environment'));
         $effectiveEnvironment = $this->effectiveEnvironment($environment);
 
-        $provider = $companyConfig
-            ? $this->resolveProvider($companyConfig, $effectiveEnvironment)
-            : $this->provider;
+        $provider = $this->resolveProvider($companyConfig, $effectiveEnvironment);
         if ($provider instanceof FocusNfeService) {
             $provider = $provider->forModel($note->model ?? '65');
         }
@@ -438,9 +462,9 @@ class FiscalNoteService
         return self::resolveBaseUrl($effectiveEnvironment);
     }
 
-    public static function resolveEmissionEnvironment(): string
+    public static function resolveEmissionEnvironment(?string $branchEnvironment = null): string
     {
-        return app()->isProduction() ? 'producao' : 'homologacao';
+        return self::resolveEffectiveEnvironment($branchEnvironment ?: (app()->isProduction() ? 'producao' : 'homologacao'));
     }
 
     /**
@@ -464,8 +488,36 @@ class FiscalNoteService
     {
         $order->loadMissing('items.product');
 
-        return $order->items->map(function ($item) use ($model, $issuerState, $recipientState, $crt) {
-            $fiscal = $item->product?->fiscal_data ?? [];
+        $profiles = DB::table('branch_product')
+            ->join('branches', 'branches.id', '=', 'branch_product.branch_id')
+            ->where('branches.company_id', $order->company_id)
+            ->where('branch_product.branch_id', $order->branch_id)
+            ->whereIn('branch_product.product_id', $order->items->pluck('product_id')->filter())
+            ->whereNotNull('branch_product.fiscal_data')
+            ->pluck('branch_product.fiscal_data', 'branch_product.product_id');
+
+        return $order->items->map(function ($item) use ($order, $model, $issuerState, $recipientState, $crt, $profiles) {
+            if ($item->product && (int) $item->product->company_id !== (int) $order->company_id) {
+                throw new \RuntimeException('Produto não pertence à empresa do pedido.');
+            }
+            // Um perfil de filial substitui o perfil inteiro: nunca mistura alíquotas
+            // de um regime com CST/CSOSN de outro. Null mantém o cadastro geral legado.
+            $fiscal = $profiles->has($item->product_id)
+                ? json_decode($profiles->get($item->product_id), true, flags: JSON_THROW_ON_ERROR)
+                : ($item->product?->fiscal_data ?? []);
+            if (! is_array($fiscal) || ! is_array($fiscal['taxes'] ?? [])) {
+                throw new \RuntimeException('Perfil fiscal inválido no produto '.$item->product_name.'.');
+            }
+            foreach ($fiscal['taxes'] ?? [] as $key => $value) {
+                if (! preg_match('/^(icms_|pis_|cofins_|ipi_|ibs_|cbs_|is_)/', (string) $key) || is_array($value) || is_object($value)
+                    || in_array($key, ['icms_situacao_tributaria', 'icms_origem', 'pis_situacao_tributaria', 'cofins_situacao_tributaria'], true)) {
+                    throw new \RuntimeException('Campos tributários adicionais inválidos no produto '.$item->product_name.'. Use os campos próprios para CST/CSOSN e origem.');
+                }
+            }
+            $situation = (string) ($fiscal['icms_situation'] ?? ($crt === 1 ? '400' : ''));
+            if (! preg_match($crt === 1 ? '/^[0-9]{3}$/' : '/^[0-9]{2}$/', $situation)) {
+                throw new \RuntimeException('CST/CSOSN incompatível com o regime do emitente no produto '.$item->product_name.'. Configure o perfil fiscal desta filial.');
+            }
             if ($model === '55') {
                 foreach (['ncm', 'cfop', 'icms_situation', 'origin', 'pis_situation', 'cofins_situation'] as $field) {
                     if (! isset($fiscal[$field]) || $fiscal[$field] === '') {
@@ -479,9 +531,6 @@ class FiscalNoteService
                 $fiscal['cfop'] = $cfop;
                 if (! preg_match('/^[0-9]{8}$/', $fiscal['ncm']) || ! in_array((string) $fiscal['origin'], array_map('strval', range(0, 8)), true)) {
                     throw new \RuntimeException('NCM ou origem inválidos no produto '.$item->product_name.'.');
-                }
-                if (($crt === 1 && strlen($fiscal['icms_situation']) !== 3) || ($crt !== 1 && strlen($fiscal['icms_situation']) !== 2)) {
-                    throw new \RuntimeException('CST/CSOSN incompatível com o regime do emitente no produto '.$item->product_name.'.');
                 }
                 if ($item->quantity <= 0 || (float) $item->subtotal <= 0) {
                     throw new \RuntimeException('Quantidade ou valor fiscal inválido no produto '.$item->product_name.'.');

@@ -51,6 +51,28 @@ class FiscalNote extends Model
         return $this->belongsTo(Branch::class);
     }
 
+    /** A reimpressão preserva o cadastro do emitente no momento da emissão. */
+    public function issuerDetails(): array
+    {
+        if (isset($this->data['issuer'])) {
+            return $this->data['issuer'];
+        }
+
+        $config = app(\App\Services\Fiscal\FiscalConfigResolver::class)->forNote($this);
+        $branch = $config?->branch ?? $this->branch ?? $this->order?->branch;
+
+        return [
+            'name' => $config?->legal_name ?: ($this->company?->name ?? config('app.name')),
+            'cnpj' => $this->issuer_cnpj ?: ($config?->issuer_cnpj ?: ($branch?->cnpj ?: $this->company?->owner_cpf_cnpj)),
+            'street' => $branch?->address,
+            'number' => $branch?->number,
+            'neighborhood' => $branch?->neighborhood,
+            'city' => $branch?->city,
+            'state' => $branch?->state,
+            'zip' => $branch?->cep,
+        ];
+    }
+
     public function getDanfeUrlAttribute(): ?string
     {
         return $this->data['danfe_url'] ?? null;
