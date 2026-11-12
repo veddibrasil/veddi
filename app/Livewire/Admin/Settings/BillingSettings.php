@@ -355,9 +355,9 @@ class BillingSettings extends Component
         $this->activateModule('pdv', $billing);
     }
 
-    public function cancelPdvModule(AsaasServiceInterface $asaasService): void
+    public function cancelPdvModule(SubscriptionBillingService $billing): void
     {
-        $this->cancelModule('pdv', $asaasService);
+        $this->cancelModule('pdv', $billing);
     }
 
     public function confirmFiscalActivation(): void
@@ -391,9 +391,9 @@ class BillingSettings extends Component
         $this->activateModule('fiscal', $billing);
     }
 
-    public function cancelFiscalModule(AsaasServiceInterface $asaasService): void
+    public function cancelFiscalModule(SubscriptionBillingService $billing): void
     {
-        $this->cancelModule('fiscal', $asaasService);
+        $this->cancelModule('fiscal', $billing);
     }
 
     public function confirmWaiterActivation(): void
@@ -433,9 +433,9 @@ class BillingSettings extends Component
         $this->activateModule('waiter', $billing);
     }
 
-    public function cancelWaiterModule(AsaasServiceInterface $asaasService): void
+    public function cancelWaiterModule(SubscriptionBillingService $billing): void
     {
-        $this->cancelModule('waiter', $asaasService);
+        $this->cancelModule('waiter', $billing);
     }
 
     public function render(): View
@@ -690,70 +690,40 @@ class BillingSettings extends Component
         }
     }
 
-    private function cancelModule(string $module, AsaasServiceInterface $asaasService): void
+    private function cancelModule(string $module, SubscriptionBillingService $billing): void
     {
         $company = app('current.company');
-        $plan = $company->plan;
-
-        // Garçom depende do PDV — se o PDV sai, o garçom vai junto (senão fica um addon
-        // cobrado sem função, já que ele só existe pra operar dentro do PDV).
-        $disabled = $module === 'pdv' ? ['pdv' => false, 'waiter' => false] : [$module => false];
-        $extra = AddonModulePricing::extraFor($company, $disabled);
-        $planAmount = $plan->monthlyPrice() + $extra['amount'];
 
         try {
-            if ($company->asaas_subscription_id) {
-                if ($planAmount > 0) {
-                    // Debita o valor do módulo diretamente na assinatura existente — não cancela
-                    // nem recria nada, então não depende de dados de cartão. A partir do próximo
-                    // vencimento a cobrança volta a ser só o plano (+ outros módulos ativos).
-                    $description = $extra['description'] !== ''
-                        ? "{$plan->asaasDescription()} + {$extra['description']}"
-                        : $plan->asaasDescription();
+            $result = $billing->cancelModule($company, $module);
+        } catch (SubscriptionBillingException $e) {
+            $this->{"{$module}Error"} = $e->getMessage();
 
-                    $result = $asaasService->updateSubscriptionValue(
-                        $company->asaas_subscription_id,
-                        $planAmount,
-                        $description,
-                    );
-
-                    Subscription::where('company_id', $company->id)
-                        ->where('asaas_subscription_id', $company->asaas_subscription_id)
-                        ->whereIn('status', ['active', 'pending'])
-                        ->update(['amount' => $result['value'] ?? $planAmount]);
-
-                    $this->amount = $result['value'] ?? $planAmount;
-                } else {
-                    // Plano atual não tem mensalidade (ex.: Free) e nenhum outro módulo ativo — o
-                    // módulo era o único valor cobrado nessa assinatura: cancela de fato.
-                    $this->cancelCurrentSubscription($asaasService, $company);
-
-                    $company->update(['asaas_subscription_id' => null]);
-                    $this->asaasSubscriptionId = null;
-                    $this->amount = null;
-                }
-            } else {
-                $this->amount = null;
-            }
+            return;
         } catch (\Throwable $e) {
+            $this->logBillingFailure("cancelamento do módulo {$module}", $company, $e);
             $this->{"{$module}Error"} = 'Erro ao cancelar o módulo no Asaas. Tente novamente em alguns instantes.';
 
             return;
         }
 
-        $updates = [];
-        foreach (array_keys($disabled) as $disabledModule) {
-            $updates[AddonModulePricing::MODULES[$disabledModule]['column']] = false;
-            $this->{"{$disabledModule}ModuleEnabled"} = false;
+        $previousSubscriptionId = $this->asaasSubscriptionId;
+        $this->asaasSubscriptionId = $result['subscription_id'];
+        $this->amount = $result['subscription_id'] ? $result['monthly_total'] : null;
+
+        if ($previousSubscriptionId) {
+            Cache::forget("asaas_payments_{$previousSubscriptionId}");
         }
 
-        $company->update($updates);
+        foreach ($module === 'pdv' ? ['pdv', 'waiter'] : [$module] as $disabledModule) {
+            $this->{"{$disabledModule}ModuleEnabled"} = false;
+        }
 
         if ($module === 'pdv') {
             UserPermissionService::revokePdvPermissions($company->fresh());
         }
 
-        $this->combinedMonthlyAmount = $planAmount;
+        $this->combinedMonthlyAmount = $result['monthly_total'];
         $this->{'confirming'.ucfirst($module).'Cancellation'} = false;
 
         session()->flash('status', self::CANCELLATION_MESSAGES[$module]);

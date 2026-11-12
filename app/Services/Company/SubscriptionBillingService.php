@@ -113,6 +113,111 @@ class SubscriptionBillingService
     }
 
     /**
+     * Desativa um módulo. A assinatura passa a cobrar só o plano e os módulos que sobram; sem
+     * nada a cobrar, é cancelada. Cartão com fatura paga: o Asaas não muda o valor, então a
+     * assinatura é recriada sem o módulo com o cartão salvo. Desativar o PDV desativa o Garçom.
+     *
+     * @return array{monthly_total: float, subscription_id: ?string}
+     *
+     * @throws SubscriptionBillingException
+     */
+    public function cancelModule(Company $company, string $module): array
+    {
+        return $this->withCompanyLock($company, function () use ($company, $module) {
+            $company->refresh();
+
+            if (! $company->{AddonModulePricing::MODULES[$module]['column']}) {
+                throw new SubscriptionBillingException('Este módulo não está ativo.');
+            }
+
+            $disabled = $module === 'pdv' ? ['pdv' => false, 'waiter' => false] : [$module => false];
+            $columns = [];
+            foreach (array_keys($disabled) as $disabledModule) {
+                $columns[AddonModulePricing::MODULES[$disabledModule]['column']] = false;
+            }
+
+            $extra = AddonModulePricing::extraFor($company, $disabled);
+            $monthly = $this->monthlyTotal($company, $extra);
+            $subscriptionId = $company->asaas_subscription_id;
+
+            if (! $subscriptionId) {
+                $company->update($columns);
+
+                return ['monthly_total' => $monthly, 'subscription_id' => null];
+            }
+
+            if ($monthly <= 0) {
+                // O módulo era o único valor cobrado: cancela a assinatura de fato.
+                $this->asaas->cancelSubscription($subscriptionId);
+
+                DB::transaction(function () use ($company, $columns, $subscriptionId) {
+                    $company->update($columns + ['asaas_subscription_id' => null]);
+
+                    Subscription::where('company_id', $company->id)
+                        ->where('asaas_subscription_id', $subscriptionId)
+                        ->whereIn('status', ['active', 'pending'])
+                        ->update(['status' => 'cancelled']);
+                });
+
+                return ['monthly_total' => 0.0, 'subscription_id' => null];
+            }
+
+            $billingType = $this->asaas->getSubscription($subscriptionId)['billingType'] ?? null;
+
+            if ($billingType === 'CREDIT_CARD' && $this->hasPaidInvoices($subscriptionId)) {
+                if (! $company->asaas_credit_card_token) {
+                    throw new SubscriptionBillingException('Não há cartão salvo para atualizar a assinatura. Cadastre um cartão em Faturamento e tente de novo.');
+                }
+
+                try {
+                    $replaced = $this->replaceSubscription(
+                        company: $company,
+                        oldSubscriptionId: $subscriptionId,
+                        extra: $extra,
+                        monthlyAmount: $monthly,
+                        nextChargeDate: $this->nextChargeDate($subscriptionId),
+                        creditCard: null,
+                        holderInfo: null,
+                        creditCardToken: $company->asaas_credit_card_token,
+                        chargeNow: 0.0,
+                        chargeDescription: '',
+                        externalReference: '',
+                        persist: fn (string $newId) => $company->update($columns + ['asaas_subscription_id' => $newId]),
+                    );
+                } catch (CardPaymentDeclinedException) {
+                    throw new SubscriptionBillingException('Não foi possível atualizar a assinatura com o cartão salvo. Atualize o cartão e tente de novo.');
+                }
+
+                Log::channel('payments')->info('Módulo desativado: assinatura recriada', [
+                    'company_id' => $company->id,
+                    'module' => $module,
+                    'subscription_id' => $replaced['subscription_id'],
+                ]);
+
+                return ['monthly_total' => $monthly, 'subscription_id' => $replaced['subscription_id']];
+            }
+
+            $result = $this->asaas->updateSubscriptionValue(
+                $subscriptionId,
+                $monthly,
+                $this->subscriptionDescription($company->plan, $extra),
+            );
+            $monthlyAfter = (float) ($result['value'] ?? $monthly);
+
+            DB::transaction(function () use ($company, $columns, $subscriptionId, $monthlyAfter) {
+                $company->update($columns);
+
+                Subscription::where('company_id', $company->id)
+                    ->where('asaas_subscription_id', $subscriptionId)
+                    ->whereIn('status', ['active', 'pending'])
+                    ->update(['amount' => $monthlyAfter]);
+            });
+
+            return ['monthly_total' => $monthlyAfter, 'subscription_id' => $subscriptionId];
+        });
+    }
+
+    /**
      * Troca de plano no cartão: cria a assinatura nova, cobra o 1º mês (+ taxa de ativação
      * quando vem do gratuito) e só então cancela a assinatura antiga.
      *
@@ -269,8 +374,38 @@ class SubscriptionBillingService
         $monthlyBefore = $this->monthlyTotal($company, $before);
         $monthlyAfter = $this->monthlyTotal($company, $after);
 
-        $nextChargeDate = $this->nextChargeDate($subscriptionId);
+        $current = $this->activeSubscription($subscriptionId);
+        $nextChargeDate = $current['next_charge_date'];
         $chargeNow = $this->proratedCharge(AddonModulePricing::price($module), $nextChargeDate);
+
+        // O Asaas não muda o valor de assinatura no cartão que já tem fatura paga: nesse caso
+        // a assinatura é recriada já com o módulo (mesmo caminho da troca de plano).
+        if ($current['billing_type'] === 'CREDIT_CARD' && $this->hasPaidInvoices($subscriptionId)) {
+            $replaced = $this->replaceSubscription(
+                company: $company,
+                oldSubscriptionId: $subscriptionId,
+                extra: $after,
+                monthlyAmount: $monthlyAfter,
+                nextChargeDate: $nextChargeDate,
+                creditCard: $creditCard,
+                holderInfo: $holderInfo,
+                creditCardToken: $creditCardToken,
+                chargeNow: $chargeNow,
+                chargeDescription: AddonModulePricing::MODULES[$module]['label']." — proporcional até {$nextChargeDate->format('d/m/Y')} — {$company->name}",
+                externalReference: "{$module}_module_activation_{$company->id}",
+                persist: fn (string $newId) => $company->update([
+                    AddonModulePricing::MODULES[$module]['column'] => true,
+                    'asaas_subscription_id' => $newId,
+                ]),
+            );
+
+            return [
+                'charged' => $chargeNow,
+                'monthly_total' => $monthlyAfter,
+                'next_due_date' => $nextChargeDate,
+                'subscription_id' => $replaced['subscription_id'],
+            ];
+        }
 
         $this->asaas->updateSubscriptionValue($subscriptionId, $monthlyAfter, $this->subscriptionDescription($company->plan, $after));
 
@@ -397,6 +532,16 @@ class SubscriptionBillingService
      */
     private function nextChargeDate(string $subscriptionId): CarbonImmutable
     {
+        return $this->activeSubscription($subscriptionId)['next_charge_date'];
+    }
+
+    /**
+     * @return array{billing_type: ?string, next_charge_date: CarbonImmutable}
+     *
+     * @throws SubscriptionBillingException quando a assinatura não está ativa no Asaas
+     */
+    private function activeSubscription(string $subscriptionId): array
+    {
         $subscription = $this->asaas->getSubscription($subscriptionId);
 
         if ($subscription['deleted'] || $subscription['status'] !== 'ACTIVE' || ! $subscription['nextDueDate']) {
@@ -412,7 +557,124 @@ class SubscriptionBillingService
             ->sort()
             ->first();
 
-        return $pendingDueDate ?? CarbonImmutable::parse($subscription['nextDueDate'])->startOfDay();
+        return [
+            'billing_type' => $subscription['billingType'] ?? null,
+            'next_charge_date' => $pendingDueDate ?? CarbonImmutable::parse($subscription['nextDueDate'])->startOfDay(),
+        ];
+    }
+
+    /** Cobranças já recebidas: com alguma, o Asaas bloqueia a troca de valor no cartão. */
+    private function hasPaidInvoices(string $subscriptionId): bool
+    {
+        return collect($this->asaas->getSubscriptionPayments($subscriptionId))
+            ->contains(fn (array $payment) => in_array($payment['status'] ?? null, ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'], true));
+    }
+
+    /**
+     * Troca a assinatura no cartão por outra com `$monthlyAmount`, com 1º vencimento em
+     * `$nextChargeDate` (a próxima cobrança da antiga). Cobra `$chargeNow` (0 = sem cobrança),
+     * grava o novo estado e só então cancela a antiga. Falha antes de gravar: apaga a nova e
+     * estorna a cobrança; a antiga segue como estava.
+     *
+     * @param  array{amount: float, description: string}  $extra
+     * @param  callable(string): void  $persist  grava na empresa o id da assinatura nova (dentro da transação)
+     * @return array{subscription_id: string}
+     *
+     * @throws CardPaymentDeclinedException|SubscriptionBillingException
+     */
+    private function replaceSubscription(
+        Company $company,
+        string $oldSubscriptionId,
+        array $extra,
+        float $monthlyAmount,
+        CarbonImmutable $nextChargeDate,
+        ?CreditCardDTO $creditCard,
+        ?CreditCardHolderDTO $holderInfo,
+        ?string $creditCardToken,
+        float $chargeNow,
+        string $chargeDescription,
+        string $externalReference,
+        callable $persist,
+    ): array {
+        try {
+            $subscription = $this->asaas->createSubscription(
+                customerId: $company->asaas_customer_id,
+                plan: $company->plan,
+                billingType: 'CREDIT_CARD',
+                creditCard: $creditCardToken ? null : $creditCard,
+                holderInfo: $creditCardToken ? null : $holderInfo,
+                nextDueDate: $nextChargeDate->toDateString(),
+                extraAmount: $extra['amount'],
+                extraDescription: $extra['description'],
+                creditCardToken: $creditCardToken,
+            );
+        } catch (RuntimeException $e) {
+            if ($e->getCode() >= 400 && $e->getCode() < 500) {
+                throw new CardPaymentDeclinedException(previous: $e);
+            }
+
+            throw $e;
+        }
+
+        $newSubscriptionId = $subscription['id'];
+        $cancelNew = fn () => $this->undo($company, 'assinatura nova', fn () => $this->asaas->cancelSubscription($newSubscriptionId));
+
+        $charge = null;
+
+        if ($chargeNow > 0) {
+            try {
+                $charge = $this->asaas->createCreditCardCharge(
+                    customerId: $company->asaas_customer_id,
+                    amount: $chargeNow,
+                    description: $chargeDescription,
+                    externalReference: $externalReference,
+                    creditCard: $creditCardToken ? null : $creditCard,
+                    holderInfo: $creditCardToken ? null : $holderInfo,
+                    creditCardToken: $creditCardToken,
+                );
+            } catch (\Throwable $e) {
+                $cancelNew();
+
+                throw $e;
+            }
+
+            if (($charge['status'] ?? '') !== 'CONFIRMED') {
+                $cancelNew();
+
+                throw CardPaymentDeclinedException::fromCharge($charge);
+            }
+        }
+
+        try {
+            DB::transaction(function () use ($company, $persist, $newSubscriptionId, $monthlyAmount, $nextChargeDate) {
+                $persist($newSubscriptionId);
+
+                Subscription::create([
+                    'company_id' => $company->id,
+                    'asaas_subscription_id' => $newSubscriptionId,
+                    'plan' => $company->plan->value,
+                    'status' => 'active',
+                    'amount' => $monthlyAmount,
+                    'billing_cycle' => 'MONTHLY',
+                    'next_due_date' => $nextChargeDate->toDateString(),
+                ]);
+            });
+        } catch (\Throwable $e) {
+            if ($charge) {
+                $this->undo($company, 'cobrança (estorno)', fn () => $this->asaas->refundPayment($charge['id']));
+            }
+            $cancelNew();
+
+            throw $e;
+        }
+
+        if ($charge) {
+            $company->saveAsaasCreditCardFromCharge($charge);
+        }
+
+        $this->retireSubscription($company, $oldSubscriptionId);
+
+        return ['subscription_id' => $newSubscriptionId];
     }
 
     private function proratedCharge(float $monthlyAmount, CarbonImmutable $nextChargeDate): float
