@@ -50,8 +50,9 @@ function sbsCompany(array $attributes = []): Company
     return $company;
 }
 
-function sbsActiveSubscription($mock, string $nextDueDate = '2026-11-24', string $id = 'sub_atual'): void
+function sbsActiveSubscription($mock, string $nextDueDate = '2026-11-24', string $id = 'sub_atual', array $payments = []): void
 {
+    $mock->shouldReceive('getSubscriptionPayments')->with($id)->andReturn($payments);
     $mock->shouldReceive('getSubscription')->with($id)->andReturn([
         'id' => $id, 'status' => 'ACTIVE', 'deleted' => false, 'value' => 59.0,
         'nextDueDate' => now()->parse($nextDueDate)->addMonth()->toDateString(), 'billingType' => 'CREDIT_CARD',
@@ -208,6 +209,120 @@ test('falha ao gravar depois da cobrança aprovada estorna a cobrança e devolve
 
     expect(fn () => sbsActivate($company, 'pdv'))->toThrow(RuntimeException::class, 'falha ao gravar');
     expect($company->fresh()->pdv_module_enabled)->toBeFalse();
+});
+
+test('cartão com fatura paga: recria a assinatura com o módulo, cobra o proporcional e cancela a antiga', function () {
+    $this->travelTo(now()->setDate(2026, 11, 9)->setTime(9, 0));
+    $company = sbsCompany();
+    $paid = [['id' => 'pay_out', 'status' => 'RECEIVED', 'value' => 59.0, 'dueDate' => '2026-10-24']];
+
+    $this->mock(AsaasServiceInterface::class, function ($mock) use ($paid) {
+        sbsActiveSubscription($mock, payments: $paid);
+        $mock->shouldNotReceive('updateSubscriptionValue');
+        $mock->shouldReceive('createSubscription')->once()->ordered()
+            ->withArgs(fn ($customerId, $plan, $billingType, $card, $holder, $nextDueDate, $extraAmount, $extraDescription) => $billingType === 'CREDIT_CARD'
+                && $nextDueDate === '2026-11-24'
+                && $extraAmount === 99.0)
+            ->andReturn(['id' => 'sub_nova', 'status' => 'ACTIVE', 'nextDueDate' => '2026-11-24', 'value' => 158.0]);
+        $mock->shouldReceive('createCreditCardCharge')->once()->ordered()
+            ->withArgs(fn ($customerId, $amount) => $amount === 47.90)
+            ->andReturn(['id' => 'pay_pdv', 'status' => 'CONFIRMED']);
+        $mock->shouldReceive('cancelSubscription')->once()->ordered()->with('sub_atual');
+    });
+
+    $result = sbsActivate($company, 'pdv');
+    $company->refresh();
+
+    expect($result['subscription_id'])->toBe('sub_nova')
+        ->and($result['charged'])->toBe(47.90)
+        ->and($company->asaas_subscription_id)->toBe('sub_nova')
+        ->and($company->pdv_module_enabled)->toBeTrue()
+        ->and(Subscription::where('asaas_subscription_id', 'sub_atual')->value('status'))->toBe('cancelled')
+        ->and((float) Subscription::where('asaas_subscription_id', 'sub_nova')->value('amount'))->toBe(158.0);
+});
+
+test('cartão com fatura paga: cartão recusado na cobrança apaga a assinatura nova e mantém a antiga', function () {
+    $this->travelTo(now()->setDate(2026, 11, 9)->setTime(9, 0));
+    $company = sbsCompany();
+    $paid = [['id' => 'pay_out', 'status' => 'CONFIRMED', 'value' => 59.0, 'dueDate' => '2026-10-24']];
+
+    $this->mock(AsaasServiceInterface::class, function ($mock) use ($paid) {
+        sbsActiveSubscription($mock, payments: $paid);
+        $mock->shouldReceive('createSubscription')->once()
+            ->andReturn(['id' => 'sub_nova', 'status' => 'ACTIVE', 'nextDueDate' => '2026-11-24', 'value' => 158.0]);
+        $mock->shouldReceive('createCreditCardCharge')->once()->andReturn(['status' => 'DECLINED']);
+        $mock->shouldReceive('cancelSubscription')->once()->with('sub_nova');
+    });
+
+    expect(fn () => sbsActivate($company, 'pdv'))->toThrow(CardPaymentDeclinedException::class);
+    expect($company->fresh()->asaas_subscription_id)->toBe('sub_atual')
+        ->and($company->fresh()->pdv_module_enabled)->toBeFalse();
+});
+
+test('cancelar módulo com cartão e fatura paga recria a assinatura com o cartão salvo e cancela a antiga', function () {
+    $this->travelTo(now()->setDate(2026, 11, 9)->setTime(9, 0));
+    $company = sbsCompany([
+        'pdv_module_enabled' => true,
+        'waiter_module_enabled' => true,
+        'asaas_credit_card_token' => 'tok_salvo',
+    ]);
+    $paid = [['id' => 'pay_out', 'status' => 'RECEIVED', 'value' => 158.0, 'dueDate' => '2026-10-24']];
+
+    $this->mock(AsaasServiceInterface::class, function ($mock) use ($paid) {
+        sbsActiveSubscription($mock, payments: $paid);
+        $mock->shouldNotReceive('updateSubscriptionValue');
+        $mock->shouldNotReceive('createCreditCardCharge');
+        $mock->shouldReceive('createSubscription')->once()
+            ->withArgs(fn ($customerId, $plan, $billingType, $card, $holder, $nextDueDate, $extraAmount, $extraDescription, $token) => $billingType === 'CREDIT_CARD'
+                && $nextDueDate === '2026-11-24'
+                && $extraAmount === 0.0
+                && $token === 'tok_salvo'
+                && $card === null)
+            ->andReturn(['id' => 'sub_nova', 'status' => 'ACTIVE', 'nextDueDate' => '2026-11-24', 'value' => 59.0]);
+        $mock->shouldReceive('cancelSubscription')->once()->with('sub_atual');
+    });
+
+    $result = app(SubscriptionBillingService::class)->cancelModule($company, 'pdv');
+    $company->refresh();
+
+    expect($result)->toBe(['monthly_total' => 59.0, 'subscription_id' => 'sub_nova'])
+        ->and($company->asaas_subscription_id)->toBe('sub_nova')
+        ->and($company->pdv_module_enabled)->toBeFalse()
+        ->and($company->waiter_module_enabled)->toBeFalse()
+        ->and(Subscription::where('asaas_subscription_id', 'sub_atual')->value('status'))->toBe('cancelled')
+        ->and((float) Subscription::where('asaas_subscription_id', 'sub_nova')->value('amount'))->toBe(59.0);
+});
+
+test('cancelar módulo com fatura paga e sem cartão salvo não mexe na assinatura', function () {
+    $this->travelTo(now()->setDate(2026, 11, 9)->setTime(9, 0));
+    $company = sbsCompany(['pdv_module_enabled' => true]);
+    $paid = [['id' => 'pay_out', 'status' => 'RECEIVED', 'value' => 158.0, 'dueDate' => '2026-10-24']];
+
+    $this->mock(AsaasServiceInterface::class, function ($mock) use ($paid) {
+        sbsActiveSubscription($mock, payments: $paid);
+        $mock->shouldNotReceive('updateSubscriptionValue', 'createSubscription', 'cancelSubscription');
+    });
+
+    expect(fn () => app(SubscriptionBillingService::class)->cancelModule($company, 'pdv'))
+        ->toThrow(SubscriptionBillingException::class, 'cartão salvo');
+    expect($company->fresh()->pdv_module_enabled)->toBeTrue();
+});
+
+test('cancelar módulo sem fatura paga no cartão altera o valor da própria assinatura', function () {
+    $company = sbsCompany(['pdv_module_enabled' => true]);
+
+    $this->mock(AsaasServiceInterface::class, function ($mock) {
+        sbsActiveSubscription($mock);
+        $mock->shouldReceive('updateSubscriptionValue')->once()
+            ->with('sub_atual', 59.0, Mockery::any())
+            ->andReturn(['id' => 'sub_atual', 'status' => 'ACTIVE', 'value' => 59.0]);
+        $mock->shouldNotReceive('createSubscription');
+    });
+
+    $result = app(SubscriptionBillingService::class)->cancelModule($company, 'pdv');
+
+    expect($result['subscription_id'])->toBe('sub_atual')
+        ->and($company->fresh()->pdv_module_enabled)->toBeFalse();
 });
 
 test('assinatura apagada no Asaas (estado atual da empresa 5) bloqueia a ativação antes de cobrar', function () {

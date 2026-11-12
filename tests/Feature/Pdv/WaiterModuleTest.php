@@ -162,6 +162,7 @@ test('cancelamento do módulo PDV cancela o módulo Garçom em cascata', functio
 
     $this->mock(AsaasServiceInterface::class, function ($mock) {
         $mock->shouldReceive('getSubscriptionPayments')->andReturn([]);
+        $mock->shouldReceive('getSubscription')->andReturn(['status' => 'ACTIVE', 'deleted' => false, 'billingType' => 'CREDIT_CARD', 'value' => 158.0, 'nextDueDate' => '2026-11-24']);
         $mock->shouldReceive('updateSubscriptionValue')
             ->once()
             ->withArgs(fn ($subscriptionId, $value, $description) => $value === 59.0)
@@ -188,6 +189,7 @@ test('cancelamento do módulo Garçom mantém o módulo PDV ativo', function () 
 
     $this->mock(AsaasServiceInterface::class, function ($mock) {
         $mock->shouldReceive('getSubscriptionPayments')->andReturn([]);
+        $mock->shouldReceive('getSubscription')->andReturn(['status' => 'ACTIVE', 'deleted' => false, 'billingType' => 'CREDIT_CARD', 'value' => 158.0, 'nextDueDate' => '2026-11-24']);
         $mock->shouldReceive('updateSubscriptionValue')
             ->once()
             ->withArgs(fn ($subscriptionId, $value, $description) => $value === 59.0 + 99.0)
