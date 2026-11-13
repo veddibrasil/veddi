@@ -175,7 +175,10 @@ trait HasCashSession
             $available = $this->cashSessionExpected($session);
 
             if ($amount > $available + 0.001) {
-                $this->addError('cash_movement_amount', 'Sangria maior que o dinheiro disponível no caixa (R$ '.number_format($available, 2, ',', '.').').');
+                // Caixa fecha às cegas: a mensagem não revela quanto há na gaveta.
+                $this->addError('cash_movement_amount', $this->hidesCashFigures()
+                    ? 'Sangria maior que o dinheiro disponível no caixa.'
+                    : 'Sangria maior que o dinheiro disponível no caixa (R$ '.number_format($available, 2, ',', '.').').');
 
                 return;
             }
@@ -210,7 +213,7 @@ trait HasCashSession
             return;
         }
 
-        $this->resetValidation(['closingAmountInput', 'reconciliation_notes']);
+        $this->resetValidation('closingAmountInput');
 
         if (blank($this->closingAmountInput)) {
             $this->addError('closingAmountInput', 'Informe o valor contado no caixa.');
@@ -226,15 +229,11 @@ trait HasCashSession
             return;
         }
 
+        // Fechamento cego: o operador não vê o esperado, então a diferença não bloqueia o
+        // fechamento (exigir justificativa acima de R$ 5 revelaria que há sobra/falta). O
+        // administrador confere esperado x contado nos relatórios de fechamento.
         $expected = $this->cashSessionExpected($session);
         $diff = round($closing - $expected, 2);
-
-        // Require reconciliation notes if discrepancy > R$5
-        if (abs($diff) > 5.0 && blank($this->reconciliationNotes)) {
-            $this->addError('reconciliation_notes', 'Diferença acima de R$5,00 — informe o motivo.');
-
-            return;
-        }
 
         $session->update([
             'closing_amount' => $closing,
@@ -278,6 +277,15 @@ trait HasCashSession
             ->where('branch_id', $this->selectedBranchId)
             ->whereNull('closed_at')
             ->first();
+    }
+
+    /**
+     * Papel caixa não vê faturamento nem dinheiro esperado na gaveta (fechamento cego). Só o
+     * Terminal tem `isCaixa`; o TabTerminal compartilha este trait sem a propriedade.
+     */
+    private function hidesCashFigures(): bool
+    {
+        return property_exists($this, 'isCaixa') && $this->isCaixa;
     }
 
     public function cancelCloseCash(): void

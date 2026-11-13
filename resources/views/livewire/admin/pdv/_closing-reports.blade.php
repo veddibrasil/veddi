@@ -2,8 +2,12 @@
 <div class="fixed inset-0 z-30 flex flex-col bg-white dark:bg-zinc-900">
     <div class="shrink-0 px-4 py-3 flex items-center gap-3 border-b dark:border-zinc-700 bg-white dark:bg-zinc-900">
         @if ($viewingClosedSessionId)
+            @php $viewedIsOpen = $this->viewingClosedSession && ! $this->viewingClosedSession->closed_at; @endphp
             <flux:button wire:click="backToClosingReportsList" variant="ghost" icon="arrow-left" size="sm" aria-label="Voltar para a lista de fechamentos" />
-            <h2 class="text-base font-bold text-neutral-800 dark:text-neutral-100">Relatório de fechamento</h2>
+            <h2 class="text-base font-bold text-neutral-800 dark:text-neutral-100">{{ $viewedIsOpen ? 'Caixa em andamento' : ($isCaixa ? 'Caixa fechado' : 'Relatório de fechamento') }}</h2>
+            @if ($viewedIsOpen)
+                <flux:button wire:click="$refresh" variant="ghost" icon="arrow-path" size="sm" class="ml-auto" aria-label="Atualizar andamento do caixa" title="Atualizar" />
+            @endif
         @else
             <flux:button wire:click="backFromClosingReports" variant="ghost" icon="arrow-left" size="sm" aria-label="Voltar" />
             <h2 class="text-base font-bold text-neutral-800 dark:text-neutral-100">Fechamentos de caixa</h2>
@@ -14,6 +18,38 @@
             @php $closedSession = $this->viewingClosedSession; @endphp
             @if (! $closedSession)
                 <p class="text-sm text-neutral-500 dark:text-neutral-400 text-center py-12">Fechamento não encontrado.</p>
+            @elseif (! $closedSession->closed_at)
+                <div class="max-w-sm mx-auto">
+                    @include('livewire.admin.pdv._cash-session-live', ['liveReport' => $this->liveSessionReport($closedSession)])
+                </div>
+            @elseif ($isCaixa)
+                {{-- Caixa vê só o próprio comprovante, sem faturamento, esperado ou diferença (fechamento cego). --}}
+                <div class="max-w-sm mx-auto space-y-5">
+                    <div class="text-center">
+                        <div class="mx-auto size-14 rounded-full bg-green-100 flex items-center justify-center dark:bg-green-900/40 mb-3">
+                            <flux:icon.check class="size-7 text-green-600 dark:text-green-400" />
+                        </div>
+                        <p class="text-sm font-bold text-neutral-800 dark:text-neutral-100">{{ $closedSession->terminal_name ?: 'Terminal' }}</p>
+                        <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ $closedSession->user?->name }}</p>
+                    </div>
+
+                    <div class="bg-neutral-50 rounded-xl p-4 border dark:bg-zinc-800 dark:border-zinc-700 space-y-2 text-sm">
+                        <div class="flex justify-between gap-3">
+                            <span class="text-neutral-600 dark:text-neutral-400">Turno</span>
+                            <span class="font-medium text-right">{{ $closedSession->created_at->format('d/m H:i') }} → {{ $closedSession->closed_at->format('H:i') }}</span>
+                        </div>
+                        <div class="flex justify-between gap-3">
+                            <span class="text-neutral-600 dark:text-neutral-400">Abertura</span>
+                            <span class="font-medium">R$ {{ number_format((float) $closedSession->opening_amount, 2, ',', '.') }}</span>
+                        </div>
+                        <div class="flex justify-between gap-3">
+                            <span class="text-neutral-600 dark:text-neutral-400">Contado no caixa</span>
+                            <span class="font-medium">R$ {{ number_format((float) $closedSession->closing_amount, 2, ',', '.') }}</span>
+                        </div>
+                    </div>
+
+                    <p class="text-xs text-center text-neutral-500 dark:text-neutral-400">A conferência do fechamento fica com o administrador.</p>
+                </div>
             @else
                 @php
                     $closedBreakdown = $this->cashSessionBreakdown($closedSession);
@@ -101,6 +137,50 @@
                 </div>
             @endif
         @else
+            @if ($this->openSessions->isNotEmpty())
+                <div class="max-w-2xl mx-auto mb-6 space-y-2">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Caixas abertos</p>
+                    @foreach ($this->openSessions as $openItem)
+                        @php $openStats = $this->closedSessionStats($openItem); @endphp
+                        <button
+                            wire:click="viewClosedSession({{ $openItem->id }})"
+                            class="w-full text-left bg-white border border-green-200 rounded-xl px-4 py-3 dark:bg-zinc-800 dark:border-green-900/50 hover:border-green-400 dark:hover:border-green-600 transition-colors"
+                        >
+                            <div class="flex items-center justify-between gap-3">
+                                <div>
+                                    <p class="text-sm font-semibold text-neutral-800 dark:text-neutral-100">
+                                        <span class="inline-block size-1.5 rounded-full bg-green-500 align-middle mr-1"></span>
+                                        {{-- Turno esquecido aberto há dias precisa da data, não só da hora. --}}
+                                        @if ($openItem->created_at->isToday())
+                                            Aberto às {{ $openItem->created_at->format('H:i') }}
+                                        @else
+                                            Aberto em {{ $openItem->created_at->format('d/m/Y H:i') }}
+                                        @endif
+                                        @if ($openItem->terminal_name)
+                                            · {{ $openItem->terminal_name }}
+                                        @endif
+                                    </p>
+                                    <p class="text-xs text-neutral-500 dark:text-neutral-400">
+                                        @if ($this->branches->count() > 1)
+                                            {{ $openItem->branch?->name }} ·
+                                        @endif
+                                        {{ $openStats['operator'] ?: '—' }} · há {{ $openStats['duration'] }}
+                                    </p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-sm font-bold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($openStats['revenue'], 2, ',', '.') }}</p>
+                                    <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ $openStats['orders'] }} pedido{{ $openStats['orders'] !== 1 ? 's' : '' }}</p>
+                                </div>
+                            </div>
+                        </button>
+                    @endforeach
+                </div>
+            @endif
+
+            @if ($this->openSessions->isNotEmpty())
+                <p class="max-w-2xl mx-auto mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Fechados</p>
+            @endif
+
             @if ($this->closedSessions->isEmpty())
                 <div class="text-center py-12 text-neutral-500 dark:text-neutral-400">
                     <flux:icon.document-text class="size-10 mx-auto mb-2 opacity-40" />

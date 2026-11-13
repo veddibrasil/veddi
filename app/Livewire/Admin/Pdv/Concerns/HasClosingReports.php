@@ -6,6 +6,7 @@ use App\Events\OrderStatusUpdated;
 use App\Models\Order;
 use App\Models\PdvCashSession;
 use App\Services\Payment\PaymentOrchestrator;
+use App\Services\Pdv\CashClosingReportService;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 
@@ -92,7 +93,7 @@ trait HasClosingReports
         $orderStats = $this->sessionOrderStats($session->id);
 
         return [
-            'duration' => $session->closed_at ? $session->created_at->diffForHumans($session->closed_at, true) : '',
+            'duration' => $session->created_at->diffForHumans($session->closed_at ?? now(), true),
             'orders' => $orderStats['orders'],
             'revenue' => $orderStats['revenue'],
             'terminal' => $session->terminal_name ?? '',
@@ -116,6 +117,32 @@ trait HasClosingReports
             ->get();
     }
 
+    /**
+     * Caixas ainda abertos em todas as filiais que o usuário opera (de qualquer operador,
+     * inclusive o próprio), sem limite de data: um turno esquecido aberto há semanas é
+     * justamente o que o administrador precisa ver. Caixa nunca vê: o fechamento dele é cego
+     * (ver _cash-close).
+     */
+    #[Computed]
+    public function openSessions(): Collection
+    {
+        if ($this->isCaixa) {
+            return collect();
+        }
+
+        $branchIds = $this->branches->pluck('id');
+
+        if ($branchIds->isEmpty()) {
+            return collect();
+        }
+
+        return PdvCashSession::with(['user', 'branch'])
+            ->whereIn('branch_id', $branchIds)
+            ->whereNull('closed_at')
+            ->latest()
+            ->get();
+    }
+
     #[Computed]
     public function viewingClosedSession(): ?PdvCashSession
     {
@@ -123,10 +150,30 @@ trait HasClosingReports
             return null;
         }
 
-        // Mesmo escopo da listagem (filial selecionada); caixa só a própria sessão.
-        return PdvCashSession::with('user')
-            ->where('branch_id', $this->selectedBranchId)
-            ->when($this->isCaixa, fn ($q) => $q->where('user_id', auth()->id()))
+        // Caixa: só a própria sessão da filial e só depois de fechada — o andamento de caixa
+        // aberto é só do administrador. Administrador: fechamento da filial selecionada (mesmo
+        // escopo da listagem) ou caixa aberto de qualquer filial que ele opera (openSessions).
+        if ($this->isCaixa) {
+            return PdvCashSession::with(['user', 'branch'])
+                ->where('branch_id', $this->selectedBranchId)
+                ->where('user_id', auth()->id())
+                ->whereNotNull('closed_at')
+                ->find($this->viewingClosedSessionId);
+        }
+
+        $branchIds = $this->branches->pluck('id');
+
+        return PdvCashSession::with(['user', 'branch'])
+            ->where(fn ($q) => $q->where('branch_id', $this->selectedBranchId)
+                ->orWhere(fn ($open) => $open->whereNull('closed_at')->whereIn('branch_id', $branchIds)))
             ->find($this->viewingClosedSessionId);
+    }
+
+    /** Andamento de um caixa aberto (mesmos números do relatório de fechamento, até agora). */
+    public function liveSessionReport(PdvCashSession $session): array
+    {
+        abort_if($this->isCaixa || $session->closed_at, 403);
+
+        return app(CashClosingReportService::class)->build($session);
     }
 }
