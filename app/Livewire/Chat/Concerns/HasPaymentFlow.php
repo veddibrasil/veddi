@@ -18,6 +18,7 @@ use App\Services\Order\OrderService;
 use App\Services\Payment\PaymentCalculatorService;
 use App\Services\Payment\PaymentOrchestrator;
 use App\Services\Payment\PaymentService;
+use App\Support\BranchPaymentMethods;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
@@ -25,9 +26,27 @@ use RuntimeException;
 
 trait HasPaymentFlow
 {
+    public function getAvailableChatPaymentMethodsProperty(): array
+    {
+        return Branch::withoutGlobalScopes()
+            ->where('company_id', $this->companyId)
+            ->find($this->selectedBranchId)
+            ?->paymentMethodsFor('chat', $this->orderType) ?? [];
+    }
+
+    private function chatPaymentAllowed(string $method, bool $onReceipt): bool
+    {
+        return in_array(BranchPaymentMethods::chatChoice($method, $onReceipt), $this->getAvailableChatPaymentMethodsProperty(), true);
+    }
+
     public function selectPaymentMethod(string $method, bool $onDelivery = false): void
     {
         abort_unless(in_array($method, ['PIX', 'CARD', 'CASH'], true), 422);
+        if (! $this->chatPaymentAllowed($method, $onDelivery)) {
+            $this->addMessage('bot', 'Esta forma de pagamento não está disponível para este pedido. Escolha outra opção.');
+
+            return;
+        }
         $restrictedMethod = $this->appliedCoupon['payment_method'] ?? null;
         if ($restrictedMethod !== null && $method !== $restrictedMethod) {
             return;
@@ -369,6 +388,12 @@ trait HasPaymentFlow
     private function placeOrder(string $initialStatus): void
     {
         if ($this->submitting || $this->orderId || ! $this->checkoutReady) {
+            return;
+        }
+        if (! $this->chatPaymentAllowed($this->paymentMethod, $this->paysOnDelivery())) {
+            $this->backToPaymentMethod();
+            $this->addMessage('bot', 'As formas de pagamento da filial foram atualizadas. Escolha uma das opções disponíveis.');
+
             return;
         }
         $this->validate([

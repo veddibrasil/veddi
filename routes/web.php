@@ -171,6 +171,7 @@ Route::middleware(['auth', 'verified', 'company.active'])
 
         // Fiscal — company_admin + branch_manager (com permissão)
         Route::middleware('company.role:company_admin,branch_manager')->group(function () {
+            Route::get('/fiscal/lotes/{export}', \App\Http\Controllers\Admin\FiscalExportController::class)->whereNumber('export')->name('fiscal.export');
             Route::get('/fiscal/documentos/{note}/{type}', \App\Http\Controllers\Admin\FiscalDocumentController::class)->name('fiscal.document');
             Route::get('/fiscal/controle', \App\Livewire\Admin\Fiscal\IssueControl::class)->name('fiscal.control');
             Route::get('/fiscal/notas', \App\Livewire\Admin\Fiscal\Notes::class)->name('fiscal.notes');
@@ -201,6 +202,7 @@ Route::middleware(['auth', 'verified', 'company.active'])
             Route::get('/branches/create', \App\Livewire\Admin\Branches\Form::class)->name('branches.create');
             Route::get('/branches/{branch}/edit', \App\Livewire\Admin\Branches\Form::class)->name('branches.edit');
             Route::get('/branches/{branch}/delivery', \App\Livewire\Admin\Branches\DeliverySettings::class)->name('branches.delivery');
+            Route::get('/branches/{branch}/payments', \App\Livewire\Admin\Branches\PaymentSettings::class)->name('branches.payments');
             Route::get('/branches/{branch}/printer', \App\Livewire\Admin\Branches\PrinterSettings::class)->name('branches.printer');
             Route::get('/branches/{branch}/service-charges', \App\Livewire\Admin\Branches\ServiceCharges::class)->name('branches.service-charges');
             Route::get('/branches/{branch}/tables', \App\Livewire\Admin\Branches\RestaurantTables::class)->name('branches.tables');

@@ -13,6 +13,8 @@ use Livewire\Attributes\Computed;
  */
 trait HasSplitPayment
 {
+    use HasPaymentAvailability;
+
     public bool $isSplitPayment = false;
 
     /** @var array<int, array{method: string, amount: string, cash_received: string, paid: bool}> */
@@ -21,10 +23,13 @@ trait HasSplitPayment
     /** Livewire chama automaticamente ao mudar $isSplitPayment (bound via wire:model.live no switch). */
     public function updatedIsSplitPayment(): void
     {
+        $methods = $this->availablePaymentMethods;
+        $first = in_array('cash', $methods, true) ? 'cash' : ($methods[0] ?? '');
+        $second = in_array('credit_card', $methods, true) ? 'credit_card' : (array_values(array_diff($methods, ['cash']))[0] ?? '');
         $this->splitPayments = $this->isSplitPayment
             ? [
-                ['method' => 'cash', 'amount' => '', 'cash_received' => '', 'paid' => false],
-                ['method' => 'credit_card', 'amount' => '', 'cash_received' => '', 'paid' => false],
+                ['method' => $first, 'amount' => '', 'cash_received' => '', 'paid' => false],
+                ['method' => $second, 'amount' => '', 'cash_received' => '', 'paid' => false],
             ]
             : [];
     }
@@ -87,7 +92,9 @@ trait HasSplitPayment
 
     public function addSplitPart(): void
     {
-        $this->splitPayments[] = ['method' => 'credit_card', 'amount' => '', 'cash_received' => '', 'paid' => false];
+        $methods = $this->availablePaymentMethods;
+        $method = in_array('credit_card', $methods, true) ? 'credit_card' : (array_values(array_diff($methods, ['cash']))[0] ?? 'cash');
+        $this->splitPayments[] = ['method' => $method, 'amount' => '', 'cash_received' => '', 'paid' => false];
     }
 
     public function removeSplitPart(int $index): void

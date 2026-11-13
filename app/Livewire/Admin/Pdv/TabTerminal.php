@@ -228,6 +228,7 @@ class TabTerminal extends Component
     public function updatedSelectedBranchId(): void
     {
         $this->assertSelectedBranchBelongsToCurrentCompany();
+        $this->syncAvailablePaymentMethod();
 
         $this->activeCategoryId = null;
         $this->search = '';

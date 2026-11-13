@@ -51,6 +51,13 @@ it('returns the configured scheduling slots for the day', function () {
     ]);
 });
 
+it('generates quarter-hour options using the opening hours when no scheduling windows are configured', function () {
+    $branch = makeSchedulingBranch(['opens_at' => '09:00', 'closes_at' => '10:00']);
+
+    expect($branch->scheduleTimeSlotsForDate(Carbon::parse('2026-08-10'), 60, Carbon::parse('2026-08-01')))
+        ->toBe(['09:00', '09:15', '09:30', '09:45', '10:00']);
+});
+
 it('accepts a time inside any configured slot', function () {
     $branch = makeSchedulingBranch([
         'scheduling_slots' => [
@@ -93,7 +100,10 @@ it('generates deduplicated and sorted time slots across overlapping windows', fu
 
     $slots = $branch->scheduleTimeSlotsForDate($monday, 60, $now);
 
-    expect($slots)->toBe(['09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30']);
+    expect($slots)->toBe([
+        '09:30', '09:45', '10:00', '10:15', '10:30', '10:45', '11:00', '11:15', '11:30',
+        '11:45', '12:00', '12:15', '12:30', '12:45', '13:00', '13:15', '13:30',
+    ]);
 });
 
 it('excludes time slots before the minimum advance window', function () {
@@ -108,7 +118,34 @@ it('excludes time slots before the minimum advance window', function () {
 
     $slots = $branch->scheduleTimeSlotsForDate($monday, 60, $now);
 
-    expect($slots)->toBe(['11:00']);
+    expect($slots)->toBe(['10:45', '11:00']);
+});
+
+it('keeps quarter-hour options inside each window without crossing gaps or the closing time', function () {
+    $branch = makeSchedulingBranch([
+        'scheduling_slots' => [
+            1 => [
+                ['opens_at' => '09:15', 'closes_at' => '10:10'],
+                ['opens_at' => '11:00', 'closes_at' => '11:45'],
+            ],
+        ],
+    ]);
+
+    expect($branch->scheduleTimeSlotsForDate(Carbon::parse('2026-08-10'), 60, Carbon::parse('2026-08-01')))
+        ->toBe(['09:15', '09:30', '09:45', '10:00', '11:00', '11:15', '11:30', '11:45']);
+});
+
+it('excludes quarter-hour options during branch pauses', function () {
+    $branch = makeSchedulingBranch(['opens_at' => '09:00', 'closes_at' => '11:00']);
+    $branch->pauses()->create([
+        'company_id' => $branch->company_id,
+        'starts_at' => '2026-08-10 09:30:00',
+        'ends_at' => '2026-08-10 10:00:00',
+        'recurring_annual' => false,
+    ]);
+
+    expect($branch->scheduleTimeSlotsForDate(Carbon::parse('2026-08-10'), 60, Carbon::parse('2026-08-01')))
+        ->toBe(['09:00', '09:15', '10:15', '10:30', '10:45', '11:00']);
 });
 
 it('returns no slots when the branch does not operate on that day of week', function () {

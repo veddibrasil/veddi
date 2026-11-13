@@ -63,6 +63,7 @@ environments:
 
     storage:
       - path: storage/app/public
+      - path: storage/app/private
 
     variables:
       APP_ENV: production

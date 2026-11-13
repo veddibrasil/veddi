@@ -22,5 +22,6 @@ trait HasPaymentState
         $this->resetCheckoutFiscalState();
         $this->isSplitPayment = false;
         $this->splitPayments = [];
+        $this->syncAvailablePaymentMethod();
     }
 }

@@ -357,14 +357,22 @@ trait HasOpenTabs
 
         $tableFees = $this->serviceFeeAmount + $this->couvertFeeAmount;
 
+        if (! $this->canSplitPayment) {
+            return;
+        }
+
+        $methods = $this->availablePaymentMethods;
+        $nonCash = in_array('credit_card', $methods, true) ? 'credit_card' : 'pix';
+
         $this->isSplitPayment = true;
-        $this->splitPayments = $this->closingTableOrders->values()->map(function (Order $order, int $index) use ($tableFees) {
+        $this->splitPayments = $this->closingTableOrders->values()->map(function (Order $order, int $index) use ($tableFees, $methods, $nonCash) {
             $amount = number_format((float) $order->subtotal + ($index === 0 ? $tableFees : 0.0), 2, '.', '');
+            $method = $index === 0 && in_array('cash', $methods, true) ? 'cash' : $nonCash;
 
             return [
-                'method' => $index === 0 ? 'cash' : 'credit_card',
+                'method' => $method,
                 'amount' => $amount,
-                'cash_received' => $index === 0 ? $amount : '',
+                'cash_received' => $method === 'cash' ? $amount : '',
                 'paid' => false,
             ];
         })->all();
@@ -373,6 +381,12 @@ trait HasOpenTabs
     private function closeTab(): void
     {
         abort_unless(! $this->isWaiter, 403);
+
+        if ($error = $this->paymentAvailabilityError()) {
+            $this->addError('order', $error);
+
+            return;
+        }
 
         $order = $this->findOpenTab($this->closingTabOrderId);
 
@@ -484,6 +498,12 @@ trait HasOpenTabs
     private function closeTableTabs(): void
     {
         abort_unless(! $this->isWaiter, 403);
+
+        if ($error = $this->paymentAvailabilityError()) {
+            $this->addError('order', $error);
+
+            return;
+        }
 
         $orders = $this->closingTableOrders;
 
