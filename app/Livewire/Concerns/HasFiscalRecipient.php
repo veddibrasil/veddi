@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Concerns;
 
+use App\Contracts\CnpjLookupInterface;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Services\Fiscal\FiscalRecipient;
@@ -16,6 +17,8 @@ trait HasFiscalRecipient
     public array $fiscalRecipientDraft = [];
 
     public bool $rememberFiscalRecipient = false;
+
+    public ?string $fiscalRecipientNotice = null;
 
     #[Locked]
     public ?array $savedFiscalRecipient = null;
@@ -73,8 +76,40 @@ trait HasFiscalRecipient
         abort_unless($this->fiscalCustomer(), 422, 'Selecione um cliente para informar os dados fiscais.');
         $this->resetValidation();
         $this->fiscalRecipientDraft = $this->effectiveFiscalRecipient();
+        $this->fiscalRecipientNotice = null;
         $this->rememberFiscalRecipient = false;
         $this->showFiscalRecipient = true;
+    }
+
+    /** Ao digitar um CNPJ válido no formulário, preenche razão social e endereço pela consulta pública. */
+    public function updatedFiscalRecipientDraft(mixed $value, string $key): void
+    {
+        if ($key !== 'document') {
+            return;
+        }
+        $digits = preg_replace('/\D/', '', (string) $value);
+        if (strlen($digits) !== 14 || ! FiscalRecipient::isValidDocument($digits)) {
+            $this->fiscalRecipientNotice = null;
+
+            return;
+        }
+        $found = app(CnpjLookupInterface::class)->find($digits);
+        $this->fiscalRecipientNotice = match (true) {
+            $found === null => 'Não foi possível consultar o CNPJ. Preencha os dados da empresa.',
+            filled($found['status'] ?? null) && mb_strtoupper($found['status']) !== 'ATIVA' => "Situação do CNPJ na Receita: {$found['status']}. Confira antes de salvar.",
+            default => null,
+        };
+        if ($found === null) {
+            return;
+        }
+        $draft = $this->fiscalRecipientDraft;
+        foreach (['name', 'email', 'street', 'number', 'complement', 'neighborhood', 'city', 'state', 'zip'] as $field) {
+            $draft[$field] = $found[$field] ?? '';
+        }
+        // Venda pra empresa é quase sempre consumo final sem ICMS a recolher; o caixa ajusta se for contribuinte.
+        $draft['ie_indicator'] = '9';
+        $draft['ie'] = '';
+        $this->fiscalRecipientDraft = $draft;
     }
 
     public function saveFiscalRecipient(): void

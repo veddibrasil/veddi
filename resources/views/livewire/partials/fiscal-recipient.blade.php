@@ -10,6 +10,9 @@
         <div class="space-y-3 border-t pt-3 dark:border-zinc-700">
             <flux:input wire:model.live.debounce.300ms="fiscalRecipientDraft.document" label="CPF ou CNPJ na nota" maxlength="18" />
             @error('fiscalRecipientDraft.document') <p class="text-xs text-red-600">{{ $message }}</p> @enderror
+            @if($fiscalRecipientNotice)
+                <p class="text-xs text-amber-600 dark:text-amber-400">{{ $fiscalRecipientNotice }}</p>
+            @endif
             @if(\App\Services\Fiscal\FiscalRecipient::model($fiscalRecipientDraft) === '55')
                 <p class="text-xs text-neutral-500">Informe os dados fiscais da empresa. O endereço pode ser diferente do endereço de entrega.</p>
                 @foreach(['name' => 'Razão social', 'email' => 'E-mail fiscal', 'street' => 'Logradouro', 'number' => 'Número', 'complement' => 'Complemento', 'neighborhood' => 'Bairro', 'city' => 'Município', 'state' => 'UF', 'zip' => 'CEP'] as $field => $label)
