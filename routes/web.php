@@ -169,8 +169,8 @@ Route::middleware(['auth', 'verified', 'company.active'])
             Route::get('/products/{product}/edit', \App\Livewire\Admin\Products\Form::class)->name('products.edit');
         });
 
-        // Fiscal — company_admin + branch_manager (com permissão)
-        Route::middleware('company.role:company_admin,branch_manager')->group(function () {
+        // Fiscal — company_admin + branch_manager + caixa (com permissão)
+        Route::middleware('company.role:company_admin,branch_manager,caixa')->group(function () {
             Route::get('/fiscal/lotes/{export}', \App\Http\Controllers\Admin\FiscalExportController::class)->whereNumber('export')->name('fiscal.export');
             Route::get('/fiscal/documentos/{note}/{type}', \App\Http\Controllers\Admin\FiscalDocumentController::class)->name('fiscal.document');
             Route::get('/fiscal/controle', \App\Livewire\Admin\Fiscal\IssueControl::class)->name('fiscal.control');
