@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToCompany;
+use App\Support\BranchPaymentMethods;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -35,6 +36,7 @@ class Branch extends Model
         'available_days',
         'business_hours',
         'scheduling_slots',
+        'payment_methods',
     ];
 
     protected $casts = [
@@ -42,6 +44,7 @@ class Branch extends Model
         'available_days' => 'array',
         'business_hours' => 'array',
         'scheduling_slots' => 'array',
+        'payment_methods' => 'array',
     ];
 
     /**
@@ -194,6 +197,18 @@ class Branch extends Model
         return $this->hasOne(DeliverySetting::class);
     }
 
+    public function paymentMethodsFor(string $channel, string $orderType): array
+    {
+        if (! isset(BranchPaymentMethods::ORDER_TYPES[$channel][$orderType])) {
+            return [];
+        }
+
+        $allowed = array_keys(BranchPaymentMethods::LABELS[$channel]);
+        $configured = $this->payment_methods[$channel][$orderType] ?? $allowed;
+
+        return array_values(array_intersect($allowed, $configured));
+    }
+
     public function fiscalConfig(): HasOne
     {
         return $this->hasOne(CompanyFiscalConfig::class);
@@ -304,7 +319,7 @@ class Branch extends Model
     }
 
     /**
-     * Horários de agendamento disponíveis (intervalos de 30min) para a data informada,
+     * Horários de agendamento disponíveis (intervalos de 15min) para a data informada,
      * unindo e deduplicando todas as janelas configuradas para o dia da semana.
      */
     public function scheduleTimeSlotsForDate(CarbonInterface $date, int $minAdvanceMinutes, ?CarbonInterface $now = null): array
@@ -335,7 +350,7 @@ class Branch extends Model
                 if ($cursor->gt($minTime) && ! $this->isPaused($cursor)) {
                     $slots[$cursor->format('H:i')] = true;
                 }
-                $cursor->addMinutes(30);
+                $cursor->addMinutes(15);
             }
         }
 

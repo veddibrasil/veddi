@@ -15,6 +15,8 @@ trait HasCustomerManagement
 
     public function updatedDeliveryType(): void
     {
+        $this->syncAvailablePaymentMethod();
+
         // A taxa calculada pro endereço não pode sobreviver à troca Entrega → Balcão/Retirar:
         // ela continuava somada ao total e gravada no pedido.
         if ($this->deliveryType !== 'entrega') {

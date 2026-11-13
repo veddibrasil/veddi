@@ -244,6 +244,7 @@ class Terminal extends Component
     public function updatedSelectedBranchId(): void
     {
         $this->assertSelectedBranchBelongsToCurrentCompany();
+        $this->syncAvailablePaymentMethod();
 
         $this->cart = [];
         $this->activeCategoryId = null;

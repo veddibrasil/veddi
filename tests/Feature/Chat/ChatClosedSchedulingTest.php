@@ -34,6 +34,29 @@ test('loja fechada permite montar pedido apenas agendado, sem opção agora', fu
     expect($chat->orderId)->not->toBeNull()->and(Order::find($chat->orderId)->scheduled_at->format('H:i'))->toBe('19:00');
 });
 
+test('chat oferece horários a cada 15 minutos e confirma o pedido no horário selecionado', function (string $time) {
+    $ctx = flowAuditContext(['schedule_min_advance_minutes' => 60], stock: null);
+    $ctx['branch']->update(['opens_at' => '18:00:00', 'closes_at' => '20:00:00']);
+    $chat = endingsChat($ctx);
+    $chat->step = 'CHECKOUT_SCHEDULE';
+    $chat->scheduleDate = now()->format('Y-m-d');
+
+    expect($chat->availableTimeSlots())->toBe([
+        '18:00', '18:15', '18:30', '18:45', '19:00', '19:15', '19:30', '19:45', '20:00',
+    ]);
+
+    $chat->scheduleTime = $time;
+    $chat->submitScheduleTime();
+
+    expect($chat->getErrorBag()->has('scheduledAt'))->toBeFalse()
+        ->and($chat->step)->toBe('CHECKOUT_NOTES');
+
+    $chat->confirmOrder();
+
+    expect($chat->orderId)->not->toBeNull()
+        ->and(Order::findOrFail($chat->orderId)->scheduled_at->format('H:i'))->toBe($time);
+})->with(['19:15', '19:45']);
+
 test('confirmação revalida agendamento após alteração de horário, pausa, antecedência ou configuração', function (string $cause) {
     $ctx = flowAuditContext(['schedule_min_advance_minutes' => 60], stock: null);
     $chat = endingsChat($ctx);

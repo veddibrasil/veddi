@@ -14,6 +14,22 @@ A seleção é feita no servidor pelo documento fiscal do pedido: CNPJ seleciona
 
 Dados do cadastro não alteram pedidos já criados. No pedido administrativo é possível corrigir o destinatário antes de existir nota ativa. Pedidos antigos, sem cópia fiscal, usam os dados disponíveis do cliente na primeira tentativa. Notas existentes são migradas como NFC-e.
 
+## Lote mensal de XML para o escritório
+
+Em **Fiscal › Notas Fiscais › Lote mensal para o escritório**, selecione competência, filial e ambiente e clique em **Gerar lote mensal**. O mês anterior e o ambiente de produção são os padrões. O ZIP reúne os XMLs de NF-e e NFC-e autorizadas ou canceladas, organizados por CNPJ, modelo e situação, com `relatorio.csv` (UTF-8, separado por ponto e vírgula) e `LEIA-ME.txt`. Não há envio automático de e-mail.
+
+A competência usa `data_emissao` do payload enviado ao provedor; para registros antigos, usa a resposta do provedor ou a criação da nota. A data do XML é conferida antes de incluí-lo. A venda pode pertencer a outro mês. O relatório traz número, série, chave, emitente, situação, data, valor do XML e eventuais pendências. O valor de uma nota cancelada continua no relatório identificado como cancelado; a coluna não representa faturamento líquido.
+
+A exportação exige `fiscal.view` e o módulo habilitado. Gerentes só geram e baixam lotes da própria filial. Homologação e produção ficam separadas. Notas antigas sem ambiente registrado aparecem como pendência, sem presumir que sejam produção. Falha de download, XML malformado ou divergência de chave, emitente, modelo, ambiente, protocolo ou mês resulta em **Lote incompleto**, com a pendência no CSV. O conteúdo e a correspondência do documento são conferidos; não há validação criptográfica da assinatura nem validação integral pelo XSD da SEFAZ.
+
+Este lote inclui XMLs das notas. XMLs de eventos de cancelamento, carta de correção e inutilização devem ser obtidos separadamente no provedor; essa limitação aparece na tela e no arquivo `LEIA-ME.txt`.
+
+Aplicar a migration `2026_11_13_000002_create_fiscal_exports_table.php` e manter o worker da fila `low` ativo. Cada XML é preparado em um job separado e o ZIP é montado após o lote, inclusive quando um job falha. A tela atualiza os últimos cinco lotes enquanto estiverem em processamento. Os arquivos ficam no disco privado `local`, com download autenticado; o diretório `storage/app/private` deve ser persistente, compartilhado entre aplicação e workers e incluído nos backups. O `cloud.yaml` declara esse diretório junto ao armazenamento público. PHP precisa das extensões SimpleXML e ZIP.
+
+Se o lote permanecer em **Preparando**, confira os logs e a conexão do worker ao banco. Depois de alterar `.env` ou a conexão do banco, reinicie os processos de fila: `php artisan queue:restart` e `php artisan horizon:terminate`. Se não houver supervisor que reinicie o Horizon, inicie `php artisan horizon` novamente. Um worker antigo pode continuar usando outra conexão, consumir o job e falhar antes de registrar seu resultado ou atualizar o batch.
+
+Para recuperar um lote interrompido após corrigir a conexão, execute `php artisan fiscal:resume-export ID`. O comando cancela batches antigos ainda abertos, reaproveita resultados existentes, prepara os XMLs restantes e conclui o ZIP no próprio processo, sem depender da fila. Não emite notas. A recuperação tem trava contra execuções simultâneas e respeita a empresa, a filial e o ambiente gravados no lote. Jobs de batches cancelados são ignorados e os novos batches cancelados não disparam a finalização.
+
 ## Segurança e recuperação
 
 - Referência UUID persistida antes da requisição à Focus.

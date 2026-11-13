@@ -967,6 +967,7 @@
         @elseif ($step === 'CHECKOUT_PAYMENT_METHOD')
             @php
                 $restrictedPaymentMethod = $appliedCoupon['payment_method'] ?? null;
+                $availableMethods = $this->availableChatPaymentMethods;
             @endphp
             <div wire:key="step-payment-method" class="space-y-3">
                 <p class="text-xs font-semibold text-gray-500 text-center uppercase tracking-wider">Forma de pagamento</p>
@@ -977,11 +978,14 @@
                     </p>
                 @endif
 
+                @if (array_intersect($availableMethods, ['cash', 'card_on_receipt', 'pix_on_receipt']))
                 <div>
                     <p class="text-sm font-bold text-gray-800">{{ $orderType === 'pickup' ? 'Pagar na retirada' : 'Pagar na entrega' }}</p>
                     <p class="text-xs text-gray-600">Escolha como você vai pagar ao receber</p>
                 </div>
+                @endif
 
+                @if (in_array('cash', $availableMethods, true))
                 {{-- Dinheiro --}}
                 <button
                     wire:click="selectPaymentMethod('CASH')"
@@ -1003,7 +1007,9 @@
                         <span class="text-xs font-bold text-yellow-800 bg-yellow-100 px-2 py-0.5 rounded-full">{{ $orderType === 'pickup' ? 'Na retirada' : 'Na entrega' }}</span>
                     </div>
                 </button>
+                @endif
 
+                @if (in_array('card_on_receipt', $availableMethods, true))
                 {{-- Cartão na maquininha, ao receber --}}
                 <button
                     wire:click="selectPaymentMethod('CARD', true)"
@@ -1025,7 +1031,9 @@
                         <span class="text-xs font-bold text-yellow-800 bg-yellow-100 px-2 py-0.5 rounded-full whitespace-nowrap">{{ $orderType === 'pickup' ? 'Na retirada' : 'Na entrega' }}</span>
                     </div>
                 </button>
+                @endif
 
+                @if (in_array('pix_on_receipt', $availableMethods, true))
                 {{-- PIX ao receber --}}
                 <button
                     wire:click="selectPaymentMethod('PIX', true)"
@@ -1047,12 +1055,16 @@
                         <span class="text-xs font-bold text-yellow-800 bg-yellow-100 px-2 py-0.5 rounded-full whitespace-nowrap">{{ $orderType === 'pickup' ? 'Na retirada' : 'Na entrega' }}</span>
                     </div>
                 </button>
+                @endif
 
+                @if (array_intersect($availableMethods, ['pix_online', 'card_online']))
                 <div class="pt-1">
                     <p class="text-sm font-bold text-gray-800">Pagar agora, pelo chat</p>
                     <p class="text-xs text-gray-600">O pagamento é feito aqui, antes do preparo</p>
                 </div>
+                @endif
 
+                @if (in_array('pix_online', $availableMethods, true))
                 {{-- PIX --}}
                 <button
                     wire:click="selectPaymentMethod('PIX')"
@@ -1077,7 +1089,9 @@
                         <span class="text-xs font-bold text-green-800 bg-green-100 px-2 py-0.5 rounded-full">Instantâneo</span>
                     </div>
                 </button>
+                @endif
 
+                @if (in_array('card_online', $availableMethods, true))
                 {{-- Cartão de Crédito --}}
                 <button
                     wire:click="selectPaymentMethod('CARD')"
@@ -1096,6 +1110,22 @@
                         <p class="text-xs text-gray-500">Digite os dados do cartão aqui no chat</p>
                     </div>
                 </button>
+                @endif
+
+                @php
+                    $couponChoices = match ($restrictedPaymentMethod) {
+                        'CASH' => ['cash'],
+                        'PIX' => ['pix_on_receipt', 'pix_online'],
+                        'CARD' => ['card_on_receipt', 'card_online'],
+                        default => $availableMethods,
+                    };
+                @endphp
+                @if ($restrictedPaymentMethod && ! array_intersect($availableMethods, $couponChoices))
+                    <p class="text-sm text-amber-700 text-center" role="alert">O pagamento exigido pelo cupom não está disponível nesta modalidade.</p>
+                    <button wire:click="removeCoupon" class="w-full min-h-11 text-sm font-semibold text-gray-700 underline">Remover cupom para continuar</button>
+                @elseif (empty($availableMethods))
+                    <p class="text-sm text-gray-600 text-center" role="alert">Nenhuma forma de pagamento disponível para esta modalidade. Volte e escolha outra opção.</p>
+                @endif
 
                 <div wire:loading class="flex justify-center pt-1">
                     <svg class="animate-spin w-5 h-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

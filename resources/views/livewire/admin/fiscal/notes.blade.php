@@ -23,6 +23,8 @@
         <a href="{{ route('admin.fiscal.control') }}" class="text-blue-600 underline dark:text-blue-400" wire:navigate>Controle de notas</a>.
     </p>
     {{-- Filters --}}
+    <livewire:admin.fiscal.monthly-export />
+
     <div class="flex flex-col sm:flex-row gap-3">
         <flux:input wire:model.live.debounce.300ms="search" placeholder="Buscar por chave, ref ou pedido..." class="sm:max-w-xs" />
         <flux:select wire:model.live="modelFilter" class="sm:max-w-xs">

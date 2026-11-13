@@ -1863,7 +1863,7 @@ test('agendamento fica indisponível quando empresa não habilita', function () 
         ->assertSet('schedulingEnabled', false);
 });
 
-test('pedido PDV agendado grava scheduled_at e status scheduled', function () {
+test('pedido PDV agendado grava scheduled_at e status scheduled', function (string $time) {
     ['admin' => $admin, 'company' => $company, 'product' => $product] = pdvContext();
 
     $company->update(['schedule_min_advance_minutes' => 30]);
@@ -1884,7 +1884,8 @@ test('pedido PDV agendado grava scheduled_at e status scheduled', function () {
         ->call('selectCustomer', $customer->id)
         ->set('isScheduled', true)
         ->set('scheduleDate', $scheduleDate)
-        ->set('scheduleTime', '12:00')
+        ->assertSet('availableScheduleTimeSlots', fn (array $slots) => in_array($time, $slots, true))
+        ->set('scheduleTime', $time)
         ->set('paymentMethod', 'cash')
         ->call('processOrder')
         ->assertHasNoErrors()
@@ -1894,9 +1895,9 @@ test('pedido PDV agendado grava scheduled_at e status scheduled', function () {
     expect($order)->not->toBeNull();
     expect($order->status)->toBe('scheduled');
     expect($order->scheduled_at)->not->toBeNull();
-    expect($order->scheduled_at->format('Y-m-d H:i'))->toBe($scheduleDate.' 12:00');
+    expect($order->scheduled_at->format('Y-m-d H:i'))->toBe($scheduleDate.' '.$time);
     expect($order->customer_id)->toBe($customer->id);
-});
+})->with(['12:00', '12:15', '12:45']);
 
 test('pedido agendado exige cliente selecionado', function () {
     ['admin' => $admin, 'company' => $company, 'product' => $product] = pdvContext();

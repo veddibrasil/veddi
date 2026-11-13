@@ -7,6 +7,7 @@
     $items = [
         'edit' => ['Dados e horários', route('admin.branches.edit', $branch), 'pencil-square'],
         'delivery' => ['Entrega', route('admin.branches.delivery', $branch), 'truck'],
+        'payments' => ['Pagamentos', route('admin.branches.payments', $branch), 'credit-card'],
         'pauses' => ['Pausas e feriados', route('admin.branches.pauses', $branch), 'calendar-days'],
     ];
 

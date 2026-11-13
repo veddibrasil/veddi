@@ -79,6 +79,12 @@ trait HasPaymentFlow
 
     private function doProcessOrder(): void
     {
+        if ($error = $this->paymentAvailabilityError()) {
+            $this->addError('order', $error);
+
+            return;
+        }
+
         if (in_array($this->deliveryType, ['entrega', 'retirar']) && ! $this->customerId) {
             $this->addError('order', $this->deliveryType === 'entrega'
                 ? 'Selecione ou cadastre um cliente para entrega.'

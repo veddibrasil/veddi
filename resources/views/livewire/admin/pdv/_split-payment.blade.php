@@ -1,8 +1,12 @@
 <div class="space-y-1.5">
+    @php
+        $availableMethods = $this->availablePaymentMethods;
+        $methodLabels = \App\Support\BranchPaymentMethods::LABELS['pdv'];
+    @endphp
     <div class="flex items-center justify-between gap-3">
         <flux:label class="text-xs font-semibold">Método de pagamento</flux:label>
 
-        @if (! (isset($deliveryType, $deliveryPaymentStatus) && $deliveryType === 'entrega' && $deliveryPaymentStatus === 'on_delivery'))
+        @if ($this->canSplitPayment)
             <label class="flex items-center gap-2 text-xs font-medium text-neutral-500 dark:text-neutral-400 cursor-pointer">
                 Dividir pagamento
                 <flux:switch wire:model.live="isSplitPayment" aria-label="Dividir pagamento" />
@@ -12,9 +16,11 @@
 
     @if (! $isSplitPayment)
         <flux:radio.group wire:model.live="paymentMethod" variant="segmented" class="w-full">
-            <flux:radio value="cash" label="Dinheiro" />
-            <flux:radio value="pix" label="PIX" />
-            <flux:radio value="credit_card" label="Cartão" />
+            @foreach (['cash', 'pix', 'credit_card'] as $method)
+                @if (in_array($method, $availableMethods, true))
+                    <flux:radio :value="$method" :label="$methodLabels[$method]" />
+                @endif
+            @endforeach
         </flux:radio.group>
 
         @if ($paymentMethod === 'cash')
@@ -49,9 +55,11 @@
             @foreach ($splitPayments as $index => $part)
                 <div wire:key="split-part-{{ $index }}" class="flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 p-2 dark:border-zinc-700">
                     <flux:select wire:model.live="splitPayments.{{ $index }}.method" size="sm" class="w-32 shrink-0">
-                        <flux:select.option value="cash">Dinheiro</flux:select.option>
-                        <flux:select.option value="pix">PIX</flux:select.option>
-                        <flux:select.option value="credit_card">Cartão</flux:select.option>
+                        @foreach (['cash', 'pix', 'credit_card'] as $method)
+                            @if (in_array($method, $availableMethods, true))
+                                <flux:select.option :value="$method">{{ $methodLabels[$method] }}</flux:select.option>
+                            @endif
+                        @endforeach
                     </flux:select>
 
                     <flux:input

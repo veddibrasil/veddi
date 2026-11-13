@@ -14,6 +14,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderStatusHistory;
 use App\Models\Product;
+use App\Support\BranchPaymentMethods;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -81,6 +82,14 @@ class OrderService implements OrderServiceInterface
         }
 
         $order = $this->transactionRetryingOnOrderNumberCollision(function () use ($customerId, $branchId, $cart, $notes, $paymentMethod, $orderType, $status, $deliveryFee, $products, $coupon, $currentCompany, $scheduledAt, $customer, $extraDiscount, $serviceFee, $couvertFee, $channel, $externalOrderId, $externalMetadata, $buyerData, $checkoutKey, $fiscalRecipient, $paymentOnDelivery, $expectedTotal, $checkoutSessionHash) {
+            if ($channel === OrderChannel::Chat->value && $orderType !== 'pdv') {
+                $branch = \App\Models\Branch::withoutGlobalScopes()->findOrFail($branchId);
+                $choice = BranchPaymentMethods::chatChoice($paymentMethod, $paymentOnDelivery);
+                if (! in_array($choice, $branch->paymentMethodsFor('chat', $orderType), true)) {
+                    throw new RuntimeException('Esta forma de pagamento não está disponível para esta modalidade na filial.');
+                }
+            }
+
             $subtotal = 0.0;
             $quotedCart = $cart;
             $optionPricing = app(CartOptionPricing::class);

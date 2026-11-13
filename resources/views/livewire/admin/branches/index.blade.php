@@ -84,6 +84,7 @@
 
                             <flux:menu>
                                 <flux:menu.item icon="truck" :href="route('admin.branches.delivery', $branch)">Entrega</flux:menu.item>
+                                <flux:menu.item icon="credit-card" :href="route('admin.branches.payments', $branch)">Pagamentos</flux:menu.item>
                                 <flux:menu.item icon="calendar-days" :href="route('admin.branches.pauses', $branch)">Pausas e feriados</flux:menu.item>
                                 @if($showPdv)
                                     <flux:menu.separator />
