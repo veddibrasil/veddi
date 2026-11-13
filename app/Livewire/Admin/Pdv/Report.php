@@ -5,7 +5,9 @@ namespace App\Livewire\Admin\Pdv;
 use App\Models\Branch;
 use App\Models\Order;
 use App\Models\PdvCashSession;
+use App\Services\Pdv\CashClosingReportService;
 use Illuminate\Support\Facades\DB;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -26,6 +28,12 @@ class Report extends Component
 
     #[Locked]
     public ?int $ownBranchId = null;
+
+    /** Caixa aberto cujo andamento o administrador está vendo (modal). Nunca para o caixa. */
+    #[Locked]
+    public ?int $liveSessionId = null;
+
+    public bool $showLiveSession = false;
 
     public function mount(): void
     {
@@ -49,6 +57,40 @@ class Report extends Component
         if ($this->isCaixa) {
             $this->branchFilter = (string) $this->ownBranchId;
         }
+    }
+
+    public function viewLiveSession(int $sessionId): void
+    {
+        abort_if($this->isCaixa, 403);
+
+        $this->liveSessionId = $sessionId;
+        $this->showLiveSession = true;
+        unset($this->liveSessionReport);
+    }
+
+    public function closeLiveSession(): void
+    {
+        $this->showLiveSession = false;
+        $this->liveSessionId = null;
+    }
+
+    /**
+     * O que um caixa ainda aberto já gerou (mesmos números do relatório de fechamento, até
+     * agora). Só para quem não é caixa: o fechamento do caixa é cego. A sessão passa pelo
+     * escopo global da empresa (BelongsToCompany).
+     */
+    #[Computed]
+    public function liveSessionReport(): ?array
+    {
+        if ($this->isCaixa || ! $this->liveSessionId) {
+            return null;
+        }
+
+        $session = PdvCashSession::with(['branch', 'user'])
+            ->whereNull('closed_at')
+            ->find($this->liveSessionId);
+
+        return $session ? app(CashClosingReportService::class)->build($session) : null;
     }
 
     private function effectiveBranchFilter(): string
@@ -128,11 +170,26 @@ class Report extends Component
         $sessionsQuery = PdvCashSession::with(['branch', 'user'])
             ->when($this->effectiveBranchFilter(), fn ($q) => $q->where('branch_id', $this->effectiveBranchFilter()))
             ->when($this->isCaixa, fn ($q) => $q->where('user_id', auth()->id()))
-            ->when($this->dateStart, fn ($q) => $q->whereDate('created_at', '>=', $this->dateStart))
-            ->when($this->dateEnd, fn ($q) => $q->whereDate('created_at', '<=', $this->dateEnd))
+            // Caixa aberto aparece sempre, qualquer que seja o período: o filtro é pela data de
+            // abertura e um turno aberto há semanas sumia da tabela (era justamente o que o
+            // administrador precisava ver). Abertos primeiro.
+            ->when($this->dateStart || $this->dateEnd, fn ($q) => $q->where(fn ($w) => $w
+                ->whereNull('closed_at')
+                ->orWhere(fn ($period) => $period
+                    ->when($this->dateStart, fn ($p) => $p->whereDate('created_at', '>=', $this->dateStart))
+                    ->when($this->dateEnd, fn ($p) => $p->whereDate('created_at', '<=', $this->dateEnd)))))
+            ->orderByRaw('CASE WHEN closed_at IS NULL THEN 0 ELSE 1 END')
             ->orderBy('created_at', 'desc');
 
         $sessions = $sessionsQuery->get();
+
+        // Esperado parcial dos caixas ainda abertos (só administrador; o caixa fecha às cegas).
+        $liveExpected = $this->isCaixa
+            ? collect()
+            : $sessions->filter(fn (PdvCashSession $session) => $session->isOpen())
+                ->mapWithKeys(fn (PdvCashSession $session) => [
+                    $session->id => app(CashClosingReportService::class)->breakdown($session)['expected'],
+                ]);
 
         $company = app('current.company');
         $branches = Branch::where('company_id', $company->id)
@@ -142,7 +199,7 @@ class Report extends Component
             ->get(['id', 'name']);
 
         return view('livewire.admin.pdv.report', compact(
-            'orders', 'branches', 'sessions',
+            'orders', 'branches', 'sessions', 'liveExpected',
             'totalRevenue', 'cashTotal', 'pixTotal', 'cardTotal',
             'cancelledCount', 'totalDiscounts',
         ))->layout('layouts.app', ['title' => 'Relatório PDV']);
