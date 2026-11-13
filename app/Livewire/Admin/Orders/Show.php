@@ -1569,6 +1569,16 @@ class Show extends Component
             'fiscalCustomerDocument' => ['nullable', 'string', 'max:20'],
         ]);
 
+        // CNPJ diferente do destinatário salvo no pedido não tem razão social nem endereço da empresa:
+        // exige passar pelo formulário de dados fiscais (consulta do CNPJ) antes de enfileirar.
+        $typed = preg_replace('/\D/', '', (string) $this->fiscalCustomerDocument);
+        $stored = preg_replace('/\D/', '', (string) ($this->effectiveFiscalRecipient()['document'] ?? ''));
+        if (strlen($typed) === 14 && $typed !== $stored) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'fiscalCustomerDocument' => 'Para emitir NF-e com este CNPJ, use "Alterar dados fiscais" no pedido para preencher a empresa e salvar antes de emitir.',
+            ]);
+        }
+
         IssueFiscalNote::dispatch($this->order->id, $this->fiscalCustomerDocument, auth()->id());
 
         $this->showFiscalModal = false;

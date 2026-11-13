@@ -324,3 +324,41 @@ test('NF-e representa pagamentos divididos pelos valores efetivamente registrado
     app(FiscalNoteService::class)->issue($order);
     Http::assertSent(fn ($r) => count($r['formas_pagamento']) === 2 && $r['formas_pagamento'][0]['forma_pagamento'] === '01' && $r['formas_pagamento'][1]['forma_pagamento'] === '17' && (float) $r['formas_pagamento'][1]['valor_pagamento'] === 20.0);
 });
+
+test('CNPJ digitado no pedido preenche razão social e endereço pela consulta', function () {
+    ['company' => $company, 'order' => $order] = nfeContext();
+    app()->instance(\App\Contracts\CnpjLookupInterface::class, new class implements \App\Contracts\CnpjLookupInterface
+    {
+        public function find(string $cnpj): ?array
+        {
+            return ['name' => 'Empresa Consultada Ltda', 'email' => null, 'street' => 'Rua Consulta', 'number' => '99', 'complement' => null, 'neighborhood' => 'Bela Vista', 'city' => 'São Paulo', 'state' => 'SP', 'zip' => '01310100', 'status' => 'ATIVA'];
+        }
+    });
+    $user = User::factory()->create();
+    $user->companies()->attach($company->id, ['role' => 'company_admin']);
+    $permission = \App\Models\Permission::firstOrCreate(['name' => 'fiscal.issue'], ['group' => 'fiscal', 'label' => 'Emitir notas']);
+    \App\Models\UserPermission::create(['user_id' => $user->id, 'company_id' => $company->id, 'permission_id' => $permission->id, 'granted' => true]);
+    Livewire::actingAs($user)->test(Show::class, ['order' => $order])
+        ->call('openFiscalRecipient')
+        ->set('fiscalRecipientDraft.document', '11.222.333/0001-81')
+        ->assertSet('fiscalRecipientDraft.name', 'Empresa Consultada Ltda')
+        ->assertSet('fiscalRecipientDraft.street', 'Rua Consulta')
+        ->call('saveFiscalRecipient')->assertHasNoErrors();
+    expect($order->fresh()->fiscal_recipient['name'])->toBe('Empresa Consultada Ltda');
+    expect($order->fresh()->fiscal_recipient['document'])->toBe('11222333000181');
+});
+
+test('emissão com CNPJ diferente do destinatário salvo exige cadastro fiscal antes', function () {
+    ['company' => $company, 'order' => $order] = nfeContext();
+    $order->update(['status' => 'paid', 'fiscal_recipient' => ['document' => '52998224725', 'name' => 'Pessoa Fisica', 'street' => 'Rua X', 'number' => '1', 'neighborhood' => 'Centro', 'city' => 'São Paulo', 'state' => 'SP', 'zip' => '01001000', 'ie_indicator' => '9', 'ie' => '']]);
+    $user = User::factory()->create();
+    $user->companies()->attach($company->id, ['role' => 'company_admin']);
+    $permission = \App\Models\Permission::firstOrCreate(['name' => 'fiscal.issue'], ['group' => 'fiscal', 'label' => 'Emitir notas']);
+    \App\Models\UserPermission::create(['user_id' => $user->id, 'company_id' => $company->id, 'permission_id' => $permission->id, 'granted' => true]);
+    Queue::fake();
+    Livewire::actingAs($user)->test(Show::class, ['order' => $order])
+        ->call('openFiscalModal')
+        ->set('fiscalCustomerDocument', '11.222.333/0001-81')
+        ->call('issueFiscalNote')->assertHasErrors('fiscalCustomerDocument');
+    Queue::assertNotPushed(IssueFiscalNote::class);
+});
