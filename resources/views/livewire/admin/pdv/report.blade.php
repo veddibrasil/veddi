@@ -87,9 +87,13 @@
                             <th class="px-4 py-2 text-left">Terminal</th>
                             <th class="px-4 py-2 text-left">Operador</th>
                             <th class="px-4 py-2 text-left">Abertura</th>
-                            <th class="px-4 py-2 text-right">Esperado</th>
+                            @unless ($isCaixa)
+                                <th class="px-4 py-2 text-right">Esperado</th>
+                            @endunless
                             <th class="px-4 py-2 text-right">Contado</th>
-                            <th class="px-4 py-2 text-right">Diferença</th>
+                            @unless ($isCaixa)
+                                <th class="px-4 py-2 text-right">Diferença</th>
+                            @endunless
                             <th class="px-4 py-2 text-center">Status</th>
                             @unless ($isCaixa)
                                 <th class="px-4 py-2 text-center">Ações</th>
@@ -117,13 +121,18 @@
                                         {{ $session->closed_at->format('H:i') }}
                                     @endif
                                 </td>
-                                <td class="px-4 py-3 text-right font-medium text-neutral-700 dark:text-neutral-200">
-                                    @if ($session->closed_at)
-                                        R$ {{ number_format($session->expected_amount, 2, ',', '.') }}
-                                    @else
-                                        —
-                                    @endif
-                                </td>
+                                @unless ($isCaixa)
+                                    <td class="px-4 py-3 text-right font-medium text-neutral-700 dark:text-neutral-200">
+                                        @if ($session->closed_at)
+                                            R$ {{ number_format($session->expected_amount, 2, ',', '.') }}
+                                        @elseif ($liveExpected->has($session->id))
+                                            R$ {{ number_format($liveExpected[$session->id], 2, ',', '.') }}
+                                            <p class="text-xs font-normal text-neutral-400 dark:text-neutral-500">até agora</p>
+                                        @else
+                                            —
+                                        @endif
+                                    </td>
+                                @endunless
                                 <td class="px-4 py-3 text-right font-medium text-neutral-700 dark:text-neutral-200">
                                     @if ($session->closed_at)
                                         R$ {{ number_format($session->closing_amount, 2, ',', '.') }}
@@ -131,28 +140,30 @@
                                         —
                                     @endif
                                 </td>
-                                <td class="px-4 py-3 text-right font-medium">
-                                    @if ($diff !== null)
-                                        @if ($diffSeverity === 'ok')
-                                            <span class="text-green-600 dark:text-green-400">OK</span>
-                                        @elseif ($diffSeverity === 'warn')
-                                            <span class="text-amber-600 dark:text-amber-400">
-                                                {{ $diff >= 0 ? '+' : '' }}R$ {{ number_format(abs($diff), 2, ',', '.') }}
-                                            </span>
+                                @unless ($isCaixa)
+                                    <td class="px-4 py-3 text-right font-medium">
+                                        @if ($diff !== null)
+                                            @if ($diffSeverity === 'ok')
+                                                <span class="text-green-600 dark:text-green-400">OK</span>
+                                            @elseif ($diffSeverity === 'warn')
+                                                <span class="text-amber-600 dark:text-amber-400">
+                                                    {{ $diff >= 0 ? '+' : '' }}R$ {{ number_format(abs($diff), 2, ',', '.') }}
+                                                </span>
+                                            @else
+                                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                                                    {{ $diff >= 0 ? '+' : '−' }}R$ {{ number_format(abs($diff), 2, ',', '.') }}
+                                                </span>
+                                            @endif
+                                            @if ($session->reconciliation_notes)
+                                                <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 max-w-xs truncate" title="{{ $session->reconciliation_notes }}">
+                                                    {{ $session->reconciliation_notes }}
+                                                </p>
+                                            @endif
                                         @else
-                                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
-                                                {{ $diff >= 0 ? '+' : '−' }}R$ {{ number_format(abs($diff), 2, ',', '.') }}
-                                            </span>
+                                            —
                                         @endif
-                                        @if ($session->reconciliation_notes)
-                                            <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 max-w-xs truncate" title="{{ $session->reconciliation_notes }}">
-                                                {{ $session->reconciliation_notes }}
-                                            </p>
-                                        @endif
-                                    @else
-                                        —
-                                    @endif
-                                </td>
+                                    </td>
+                                @endunless
                                 <td class="px-4 py-3 text-center">
                                     @if ($session->closed_at)
                                         <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-neutral-100 text-neutral-600 dark:bg-zinc-700 dark:text-neutral-300">
@@ -175,6 +186,15 @@
                                                 size="sm"
                                                 icon="printer"
                                                 title="Imprimir fechamento"
+                                            />
+                                        @else
+                                            <flux:button
+                                                wire:click="viewLiveSession({{ $session->id }})"
+                                                variant="ghost"
+                                                size="sm"
+                                                icon="eye"
+                                                title="Ver andamento do caixa"
+                                                aria-label="Ver andamento do caixa"
                                             />
                                         @endif
                                     </td>
@@ -261,5 +281,21 @@
             </div>
         @endif
     </div>
+
+    @unless ($isCaixa)
+        <flux:modal wire:model.self="showLiveSession" wire:close="closeLiveSession" class="w-full max-w-md">
+            <div class="space-y-4">
+                <div class="flex items-center gap-2 pr-8">
+                    <flux:heading size="lg">Caixa em andamento</flux:heading>
+                    <flux:button wire:click="$refresh" variant="ghost" size="sm" icon="arrow-path" aria-label="Atualizar andamento do caixa" title="Atualizar" />
+                </div>
+                @if ($this->liveSessionReport)
+                    @include('livewire.admin.pdv._cash-session-live', ['liveReport' => $this->liveSessionReport])
+                @elseif ($liveSessionId)
+                    <p class="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">Este caixa já foi fechado. Veja o fechamento na tabela de sessões.</p>
+                @endif
+            </div>
+        </flux:modal>
+    @endunless
 
 </div>

@@ -213,7 +213,8 @@
                 <flux:icon.shopping-bag class="size-3.5" />
                 {{ $stats['orders'] }} pedido{{ $stats['orders'] !== 1 ? 's' : '' }}
             </span>
-            @if ($stats['revenue'] > 0)
+            {{-- Caixa não vê o faturamento do turno (fechamento cego, ver _cash-close). --}}
+            @if (! $isCaixa && $stats['revenue'] > 0)
                 <span class="text-white/30">|</span>
                     <span class="flex items-center gap-1 font-bold text-amber-100">
                     R$ {{ number_format($stats['revenue'], 2, ',', '.') }}
