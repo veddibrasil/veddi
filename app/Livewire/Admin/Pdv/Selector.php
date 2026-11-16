@@ -19,7 +19,16 @@ class Selector extends Component
         $canWaiterOperate = (bool) $user?->hasPermission('pdv.waiter_operate', $company)
             && $company->waiter_module_enabled;
 
-        abort_unless($canFullyOperate || $canWaiterOperate, 403, 'Módulo Garçom não está habilitado para esta empresa.');
+        $canSell = (bool) $user?->hasPermission('pdv.sell', $company);
+
+        abort_unless($canFullyOperate || $canWaiterOperate || $canSell, 403, 'Módulo Garçom não está habilitado para esta empresa.');
+
+        // Só venda direta (ex.: cozinha): a única opção é o Terminal, então vai direto pra ele.
+        if (! $canFullyOperate && ! $canWaiterOperate && $canSell) {
+            $this->redirect(route('admin.pdv.checkout'));
+
+            return;
+        }
 
         // Garçom só tem uma opção válida — não faz sentido mostrar o seletor pra ele.
         if (! $canFullyOperate && $canWaiterOperate) {

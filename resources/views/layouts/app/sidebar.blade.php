@@ -74,6 +74,13 @@
                                 Pedidos
                             </flux:sidebar.item>
                         </flux:sidebar.group>
+                        @if($can('pdv.sell') && $company?->pdv_module_enabled)
+                            <flux:sidebar.group heading="PDV" class="grid">
+                                <flux:sidebar.item icon="computer-desktop" :href="route('admin.pdv.checkout')" :current="request()->routeIs('admin.pdv.checkout')" wire:navigate>
+                                    Venda direta
+                                </flux:sidebar.item>
+                            </flux:sidebar.group>
+                        @endif
                     @else
 
                     <flux:sidebar.group :heading="__('Plataforma')" class="grid">
@@ -106,14 +113,16 @@
                         </flux:sidebar.item>
                     @endif
 
-                    @if($can('pdv.operate') && $company?->pdv_module_enabled)
+                    @if(($can('pdv.operate') || $can('pdv.sell')) && $company?->pdv_module_enabled)
                         <flux:sidebar.group heading="PDV" class="grid">
                                 <flux:sidebar.item icon="computer-desktop" :href="route('admin.pdv')" :current="request()->routeIs('admin.pdv') || request()->routeIs('admin.pdv.checkout') || request()->routeIs('admin.pdv.tabs')" wire:navigate>
                                     Terminal PDV
                                 </flux:sidebar.item>
-                                <flux:sidebar.item icon="chart-bar" :href="route('admin.pdv.report')" :current="request()->routeIs('admin.pdv.report')" wire:navigate>
-                                    Relatório PDV
-                                </flux:sidebar.item>
+                                @if($can('pdv.operate'))
+                                    <flux:sidebar.item icon="chart-bar" :href="route('admin.pdv.report')" :current="request()->routeIs('admin.pdv.report')" wire:navigate>
+                                        Relatório PDV
+                                    </flux:sidebar.item>
+                                @endif
                         </flux:sidebar.group>
                     @endif
 

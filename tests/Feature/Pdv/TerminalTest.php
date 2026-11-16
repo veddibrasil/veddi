@@ -1643,10 +1643,10 @@ test('operador remove taxa de serviço e couvert na hora de finalizar o pedido d
 test('usuário com papel sem permissão de PDV recebe 403 ao acessar o terminal', function () {
     ['company' => $company, 'branch' => $branch] = pdvContext();
 
-    // Papel "cozinha" (seedado por migration) só tem orders.view/orders.update — sem pdv.operate
-    // nem pdv.waiter_operate.
+    // Papel "bar" (seedado por migration) só tem orders.view/orders.update — sem pdv.operate,
+    // pdv.waiter_operate nem pdv.sell (cozinha ganhou pdv.sell: venda direta, ver SellOnlyAccessTest).
     $userSemPermissao = User::factory()->create();
-    $userSemPermissao->companies()->attach($company->id, ['role' => 'cozinha', 'branch_id' => $branch->id]);
+    $userSemPermissao->companies()->attach($company->id, ['role' => 'bar', 'branch_id' => $branch->id]);
 
     Livewire::actingAs($userSemPermissao)
         ->test(Terminal::class)

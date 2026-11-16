@@ -58,6 +58,7 @@ class PermissionSeeder extends Seeder
             // PDV
             ['name' => 'pdv.operate', 'group' => 'pdv', 'label' => 'Operar terminal PDV'],
             ['name' => 'pdv.waiter_operate', 'group' => 'pdv', 'label' => 'Operar PDV (garçom — mesas e comandas)'],
+            ['name' => 'pdv.sell', 'group' => 'pdv', 'label' => 'Venda direta no PDV (sem relatórios nem fechamento)'],
 
             // Fiscal
             ['name' => 'fiscal.view',     'group' => 'fiscal', 'label' => 'Visualizar notas fiscais'],
@@ -112,7 +113,7 @@ class PermissionSeeder extends Seeder
                 'slug' => 'cozinha',
                 'company_id' => null,
                 'is_system' => true,
-                'permissions' => ['orders.view', 'orders.update'],
+                'permissions' => ['orders.view', 'orders.update', 'pdv.sell'],
             ],
             [
                 'name' => 'Caixa',

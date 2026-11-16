@@ -210,6 +210,10 @@ class Terminal extends Component
     #[Locked]
     public bool $isCaixa = false;
 
+    /** Só venda direta (pdv.sell sem pdv.operate) não abre Mesas/Comandas: o botão levaria a 403. */
+    #[Locked]
+    public bool $canOpenTabs = false;
+
     // Sempre false no Terminal: garçom (pdv.waiter_operate sem pdv.operate) é redirecionado pro
     // TabTerminal (mesa/comanda) já no Selector, antes de chegar aqui. Propriedade continua
     // existindo porque traits compartilhadas com TabTerminal (HasCashSession, HasManualDiscount,
@@ -226,11 +230,15 @@ class Terminal extends Component
         abort_unless($company->pdv_module_enabled, 403, 'Módulo PDV não está habilitado para esta empresa.');
 
         $canFullyOperate = (bool) $user?->hasPermission('pdv.operate', $company);
+        // pdv.sell: só a venda direta (ex.: cozinha anotando pedido por telefone/WhatsApp). Sem
+        // pdv.operate, cai no mesmo recorte do caixa: sem relatórios nem valores de caixa.
+        $canSell = (bool) $user?->hasPermission('pdv.sell', $company);
 
-        abort_unless($canFullyOperate, 403);
+        abort_unless($canFullyOperate || $canSell, 403);
 
         $this->canOperate = true;
-        $this->isCaixa = $user->roleForCompany($company) === 'caixa';
+        $this->isCaixa = ! $canFullyOperate || $user->roleForCompany($company) === 'caixa';
+        $this->canOpenTabs = $canFullyOperate;
         $this->manualDiscountAllowed = (bool) $company->pdv_manual_discount_enabled;
         $this->canUseFiscalNotes = $company->canUseFiscalNotes();
 

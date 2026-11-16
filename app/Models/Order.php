@@ -62,7 +62,7 @@ class Order extends Model
     protected static function booted(): void
     {
         static::creating(function (Order $order) {
-            $order->order_number = static::generateOrderNumber();
+            $order->order_number = static::generateOrderNumber($order->branch_id);
             if ($order->fiscal_recipient === null) {
                 $customer = Customer::withoutGlobalScopes()->where('company_id', $order->company_id)->find($order->customer_id);
                 $order->fiscal_recipient = \App\Services\Fiscal\FiscalRecipient::fromCustomer($customer);
@@ -125,7 +125,11 @@ class Order extends Model
      */
     protected array $pendingDeliveryAddressData = [];
 
-    private static function generateOrderNumber(): string
+    /**
+     * Número do pedido: PREFIXO-ANO-sequência. O prefixo é o da filial (order_prefix) quando ela
+     * tem um; senão, o da empresa. A sequência é única por empresa, então o número nunca repete.
+     */
+    private static function generateOrderNumber(?int $branchId = null): string
     {
         $year = now()->year;
 
@@ -136,7 +140,12 @@ class Order extends Model
         $company = Company::lockForUpdate()->find(app('current.company')->id);
         $company->increment('order_sequence');
 
-        return sprintf('%s-%d-%s', $company->order_prefix, $year, str_pad((string) $company->order_sequence, 4, '0', STR_PAD_LEFT));
+        // withoutGlobalScopes com company_id explícito: a filial pode vir de fora do tenant atual (ex.: webhook).
+        $branchPrefix = $branchId
+            ? Branch::withoutGlobalScopes()->where('company_id', $company->id)->whereKey($branchId)->value('order_prefix')
+            : null;
+
+        return sprintf('%s-%d-%s', $branchPrefix ?: $company->order_prefix, $year, str_pad((string) $company->order_sequence, 4, '0', STR_PAD_LEFT));
     }
 
     public function customer(): BelongsTo

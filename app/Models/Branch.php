@@ -18,6 +18,7 @@ class Branch extends Model
     protected $fillable = [
         'company_id',
         'name',
+        'order_prefix',
         'cnpj',
         'address_id',
         // virtual address fields (persisted on addresses table)
