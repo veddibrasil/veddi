@@ -24,8 +24,9 @@ class FiscalConfigResolver
     public function forNote(FiscalNote $note): ?CompanyFiscalConfig
     {
         $issuerCnpj = $note->issuer_cnpj;
-        if (! $issuerCnpj && preg_match('/^(?:NFe)?([0-9]{44})$/', (string) $note->access_key, $matches)) {
-            $keyCnpj = substr($matches[1], 6, 14);
+        $accessKey = \App\Support\Fiscal\AccessKey::normalize($note->access_key);
+        if (! $issuerCnpj && \App\Support\Fiscal\AccessKey::isValid($accessKey)) {
+            $keyCnpj = \App\Support\Fiscal\AccessKey::issuerCnpj($accessKey);
             if (FiscalRecipient::isValidDocument($keyCnpj)) {
                 $issuerCnpj = $keyCnpj;
             }
@@ -44,7 +45,7 @@ class FiscalConfigResolver
         }
 
         if ($config && $issuerCnpj) {
-            $cnpj = $config->issuer_cnpj ?: preg_replace('/\D/', '', $config->branch?->cnpj ?: ($note->company->owner_cpf_cnpj ?? ''));
+            $cnpj = $config->issuer_cnpj ?: FiscalRecipient::normalizeDocument($config->branch?->cnpj ?: ($note->company->owner_cpf_cnpj ?? ''));
             if ($cnpj !== $issuerCnpj) {
                 return null;
             }

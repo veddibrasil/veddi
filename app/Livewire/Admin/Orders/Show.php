@@ -3,6 +3,7 @@
 namespace App\Livewire\Admin\Orders;
 
 use App\Contracts\RefundServiceInterface;
+use App\DTOs\FiscalEmissionDecision;
 use App\Enums\OrderChannel;
 use App\Events\OrderItemsUpdated;
 use App\Events\OrderStatusUpdated;
@@ -17,6 +18,9 @@ use App\Models\IfoodDispute;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Services\Fiscal\FiscalEmissionPolicy;
+use App\Services\Fiscal\FiscalNoteService;
+use App\Services\Fiscal\FiscalRecipient;
 use App\Services\Ifood\IfoodOrderActionService;
 use App\Services\Order\OrderAcceptance;
 use App\Services\Order\OrderService;
@@ -166,8 +170,15 @@ class Show extends Component
 
     public string $fiscalCustomerDocument = '';
 
+    /** '' = automático pela política; 'nfce' | 'nfe' = escolha explícita do operador. */
+    public string $fiscalDocumentChoice = '';
+
     #[Locked]
     public bool $canIssueFiscal = false;
+
+    /** Link "Corrigir dados" das pendências de produto (products.update + papel do cardápio). */
+    #[Locked]
+    public bool $canFixFiscalProducts = false;
 
     /** Estação do usuário logado ('cozinha'|'bar'|'entrega') quando o papel é restrito a uma estação, senão null. */
     #[Locked]
@@ -216,6 +227,7 @@ class Show extends Component
             // sem essa segunda checagem o botão aparecia e a emissão só falhava depois,
             // dentro do job (RuntimeException não tratada em IssueFiscalNote::handle()).
             $this->canIssueFiscal = $user->hasPermission('fiscal.issue', $company) && $company->canUseFiscalNotes();
+            $this->canFixFiscalProducts = $this->canIssueFiscal && \App\Support\Fiscal\FiscalCorrectionLinks::canEditProducts($user, $company);
             $this->canViewHistory = $user->isCompanyAdmin($company);
 
             $roleSlug = $user->roleForCompany($company);
@@ -1547,17 +1559,97 @@ class Show extends Component
 
     // ── Fiscal note ──────────────────────────────────────────────────────────
 
-    public function openFiscalModal(): void
+    public function openFiscalModal(bool $editRecipient = false): void
     {
         abort_unless($this->canIssueFiscal, 403);
 
-        $this->fiscalCustomerDocument = $this->effectiveFiscalRecipient()['document'] ?? '';
+        $this->resetValidation();
+        $this->showFiscalRecipient = false;
+        $this->fiscalCustomerDocument = FiscalRecipient::formatDocument($this->effectiveFiscalRecipient()['document'] ?? '');
+        $this->fiscalDocumentChoice = $this->order->fresh()->fiscal_document_preference ?? '';
         $this->showFiscalModal = true;
+
+        if ($editRecipient) {
+            $this->openFiscalRecipient();
+        }
     }
 
     public function closeFiscalModal(): void
     {
         $this->showFiscalModal = false;
+        $this->showFiscalRecipient = false;
+    }
+
+    /**
+     * CNPJ novo digitado no modal abre a conferência da empresa já preenchida pela consulta
+     * pública; voltar ao documento salvo fecha o formulário. Trocar o documento volta a escolha
+     * do modelo para automático (a escolha anterior era para outro comprador).
+     */
+    public function updatedFiscalCustomerDocument(): void
+    {
+        $this->resetValidation(['fiscalCustomerDocument', 'fiscalEmission']);
+        $this->fiscalDocumentChoice = '';
+        $typed = FiscalRecipient::normalizeDocument($this->fiscalCustomerDocument);
+        $stored = FiscalRecipient::normalizeDocument($this->effectiveFiscalRecipient()['document'] ?? '');
+
+        if ($typed === $stored) {
+            $this->showFiscalRecipient = false;
+
+            return;
+        }
+
+        if (FiscalRecipient::documentType($typed) === FiscalRecipient::TYPE_CNPJ && FiscalRecipient::isValidDocument($typed)) {
+            $this->resetValidation();
+            $this->rememberFiscalRecipient = false;
+            $this->fiscalRecipientDraft = ['document' => FiscalRecipient::formatDocument($typed)];
+            $this->updatedFiscalRecipientDraft($typed, 'document');
+            $this->showFiscalRecipient = true;
+        } else {
+            $this->showFiscalRecipient = false;
+        }
+    }
+
+    /** Depois de salvar a empresa no modal, o documento da emissão passa a ser o salvo. */
+    public function saveFiscalRecipientAndContinue(): void
+    {
+        $this->saveFiscalRecipient();
+        $this->fiscalCustomerDocument = FiscalRecipient::formatDocument($this->effectiveFiscalRecipient()['document'] ?? '');
+        $this->resetValidation(['fiscalCustomerDocument', 'fiscalEmission']);
+    }
+
+    /**
+     * Situação da emissão no modal: emitente, decisão da política (modelo e alternativas) e
+     * pendências agrupadas. Recalculada a cada interação, só com o modal aberto.
+     */
+    #[Computed]
+    public function fiscalReadiness(): ?array
+    {
+        if (! $this->showFiscalModal || ! $this->canIssueFiscal) {
+            return null;
+        }
+
+        $order = $this->order->fresh();
+        $check = app(FiscalNoteService::class)->check($order, $this->fiscalCustomerDocument, null, $this->fiscalDocumentChoice ?: null, usePreference: false);
+        $config = app(\App\Services\Fiscal\FiscalConfigResolver::class)->forBranch(app('current.company'), $order->branch_id);
+        $issuerBranch = $config ? \App\Models\Branch::find($config->branch_id ?? $order->branch_id) : null;
+
+        return [
+            ...$check,
+            'issuer' => $config ? [
+                'branch' => $issuerBranch?->name,
+                'cnpj' => FiscalRecipient::formatDocument($config->issuer_cnpj ?: $issuerBranch?->cnpj),
+                'environment' => FiscalNoteService::resolveEmissionEnvironment($config->emission_environment),
+            ] : null,
+            'recipient' => FiscalEmissionPolicy::recipientFor($order, $this->fiscalCustomerDocument),
+        ];
+    }
+
+    /** Documento previsto para o cartão "Nota fiscal" do pedido (sem modal aberto). */
+    #[Computed]
+    public function fiscalDocumentPreview(): ?\App\DTOs\FiscalEmissionDecision
+    {
+        // $this->order já reflete o destinatário salvo (saveFiscalRecipient troca a instância).
+        return $this->canIssueFiscal && ! $this->order->activeFiscalNote ? app(FiscalEmissionPolicy::class)->forOrder($this->order) : null;
     }
 
     public function issueFiscalNote(): void
@@ -1565,30 +1657,52 @@ class Show extends Component
         abort_unless($this->canIssueFiscal, 403);
         abort_unless(in_array($this->order->status, Order::FISCAL_ISSUABLE_STATUSES, true), 422);
 
+        $this->resetValidation(['fiscalCustomerDocument', 'fiscalEmission']);
         $this->validate([
             'fiscalCustomerDocument' => ['nullable', 'string', 'max:20'],
+            'fiscalDocumentChoice' => ['nullable', 'in:nfce,nfe'],
         ]);
 
-        // CNPJ diferente do destinatário salvo no pedido não tem razão social nem endereço da empresa:
-        // exige passar pelo formulário de dados fiscais (consulta do CNPJ) antes de enfileirar.
-        $typed = preg_replace('/\D/', '', (string) $this->fiscalCustomerDocument);
-        $stored = preg_replace('/\D/', '', (string) ($this->effectiveFiscalRecipient()['document'] ?? ''));
-        if (strlen($typed) === 14 && $typed !== $stored) {
+        if ($this->showFiscalRecipient) {
             throw \Illuminate\Validation\ValidationException::withMessages([
-                'fiscalCustomerDocument' => 'Para emitir NF-e com este CNPJ, use "Alterar dados fiscais" no pedido para preencher a empresa e salvar antes de emitir.',
+                'fiscalCustomerDocument' => 'Confira e salve os dados da empresa antes de emitir.',
             ]);
         }
 
-        // Mesma pré-checagem do Controle de notas: pendência de produto, destinatário ou emitente
-        // aparece aqui no modal, inteira, em vez de virar "enfileirada" e falhar depois no sino.
-        if ($reason = app(\App\Services\Fiscal\FiscalNoteService::class)->preflight($this->order->fresh(), $this->fiscalCustomerDocument)) {
-            throw \Illuminate\Validation\ValidationException::withMessages(['fiscalCustomerDocument' => $reason]);
+        // CNPJ diferente do destinatário salvo no pedido não tem razão social nem endereço da empresa:
+        // exige conferir a empresa (consulta do CNPJ) e salvar antes de enfileirar.
+        $typed = FiscalRecipient::normalizeDocument($this->fiscalCustomerDocument);
+        $stored = FiscalRecipient::normalizeDocument($this->effectiveFiscalRecipient()['document'] ?? '');
+        if (FiscalRecipient::documentType($typed) === FiscalRecipient::TYPE_CNPJ && $typed !== $stored) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'fiscalCustomerDocument' => 'Confira e salve os dados da empresa deste CNPJ antes de emitir.',
+            ]);
         }
 
-        IssueFiscalNote::dispatch($this->order->id, $this->fiscalCustomerDocument, auth()->id());
+        // Mesma pré-checagem do Controle de notas e do job: política, destinatário, produtos e
+        // emitente aparecem aqui, juntos, em vez de virar "enfileirada" e falhar depois no sino.
+        $preference = $this->fiscalDocumentChoice ?: null;
+        ['decision' => $decision, 'issues' => $issues] = app(FiscalNoteService::class)
+            ->check($this->order->fresh(), $this->fiscalCustomerDocument, null, $preference, usePreference: false);
+        if ($issues !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'fiscalEmission' => (new \App\Exceptions\FiscalPreflightException($issues))->getMessage(),
+            ]);
+        }
+
+        // Preferência gravada no pedido (o job relê) e modelo confirmado no job: se algo mudar até
+        // a execução, a emissão para em vez de sair em outro modelo.
+        $updated = Order::whereKey($this->order->id)
+            ->whereDoesntHave('fiscalNotes', fn ($q) => $q->whereIn('status', ['pending', 'authorized']))
+            ->update(['fiscal_document_preference' => $preference]);
+        if ($updated === 0) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['fiscalEmission' => 'Este pedido já tem uma nota ativa.']);
+        }
+
+        IssueFiscalNote::dispatch($this->order->id, $this->fiscalCustomerDocument, auth()->id(), $decision->model);
 
         $this->showFiscalModal = false;
-        session()->flash('status', 'Emissão de nota fiscal enfileirada.');
+        session()->flash('status', 'Emissão da '.FiscalEmissionDecision::label($decision->model).' enfileirada.');
     }
 
     public function render()

@@ -13,8 +13,15 @@ class NfePayloadBuilder
             'tipo_documento' => 1,
             'finalidade_emissao' => 1,
             'consumidor_final' => 1,
-            'local_destino' => $dto->emitenteUf === $recipient['state'] ? '1' : '2',
-            'presenca_comprador' => $dto->orderType === 'delivery' ? '2' : '1',
+            // Venda presencial é operação interna mesmo com a sede do comprador em outra UF.
+            'local_destino' => ($dto->interstate ?? ($dto->emitenteUf !== $recipient['state'])) ? '2' : '1',
+            // 1 presencial (balcão/comanda), 2 internet (chat e marketplaces), 3 teleatendimento
+            // (entrega ou retirada lançada no PDV). Sem a decisão da política, regra antiga.
+            'presenca_comprador' => match ($dto->presential) {
+                true => '1',
+                false => $dto->orderType === 'pdv' ? '3' : '2',
+                null => $dto->orderType === 'delivery' ? '2' : '1',
+            },
             'cnpj_destinatario' => $recipient['document'],
             'nome_destinatario' => $dto->environment === 'homologacao'
                 ? 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL' : $recipient['name'],

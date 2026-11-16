@@ -164,14 +164,14 @@
                             </p>
                             {{-- Em tela estreita Canal/Cliente/Total viram sublinha do pedido --}}
                             <p class="text-xs text-neutral-500 lg:hidden dark:text-neutral-400">
-                                {{ $channels[$order->id] }}<span class="md:hidden"> · {{ $order->customer?->name ?? 'Consumidor' }} · {{ $models[$order->id] === '55' ? 'NF-e' : 'NFC-e' }}</span><span class="sm:hidden"> · R$ {{ number_format((float) $order->total, 2, ',', '.') }}</span>
+                                {{ $channels[$order->id] }}<span class="md:hidden"> · {{ $order->customer?->name ?? 'Consumidor' }} · {{ \App\DTOs\FiscalEmissionDecision::label($models[$order->id]) }}</span><span class="sm:hidden"> · R$ {{ number_format((float) $order->total, 2, ',', '.') }}</span>
                             </p>
                         </td>
                         <td class="hidden px-2 py-3 sm:px-4 text-sm text-neutral-600 lg:table-cell dark:text-neutral-300">{{ $channels[$order->id] }}</td>
                         <td class="hidden px-2 py-3 sm:px-4 text-sm text-neutral-600 md:table-cell dark:text-neutral-300">
                             {{ $order->customer?->name ?? 'Consumidor' }}
                             <p class="text-xs text-neutral-400">
-                                {{ $models[$order->id] === '55' ? 'NF-e' : 'NFC-e' }}@if($document) · {{ $document }}@endif
+                                {{ $models[$order->id] ? \App\DTOs\FiscalEmissionDecision::label($models[$order->id]) : 'A definir' }}@if($document) · {{ \App\Services\Fiscal\FiscalRecipient::formatDocument($document) }}@endif
                             </p>
                         </td>
                         <td class="hidden whitespace-nowrap px-2 py-3 sm:px-4 text-right text-sm font-medium text-neutral-700 sm:table-cell dark:text-neutral-200">
@@ -261,7 +261,7 @@
         @php
             $lastNote = $issueOneOrder->latestFiscalNote;
             $isRetry = $lastNote !== null || filled($issueOneOrder->fiscal_error);
-            $recipientDocument = preg_replace('/\D/', '', $issueOneOrder->fiscal_recipient['document'] ?? '');
+            $recipientDocument = \App\Services\Fiscal\FiscalRecipient::normalizeDocument($issueOneOrder->fiscal_recipient['document'] ?? '');
         @endphp
         <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
             <div class="max-h-[85vh] w-full max-w-lg space-y-4 overflow-y-auto rounded-xl bg-white p-6 shadow-xl dark:bg-zinc-800">
@@ -271,7 +271,7 @@
                     <dt class="text-neutral-500 dark:text-neutral-400">Pedido</dt>
                     <dd class="font-medium text-neutral-800 dark:text-neutral-100">{{ $issueOneOrder->order_number }} · {{ $issueOneChannel }}</dd>
                     <dt class="text-neutral-500 dark:text-neutral-400">Nota</dt>
-                    <dd class="text-neutral-700 dark:text-neutral-200">{{ $issueOneModel === '55' ? 'NF-e' : 'NFC-e' }} · R$ {{ number_format((float) $issueOneOrder->total, 2, ',', '.') }}</dd>
+                    <dd class="text-neutral-700 dark:text-neutral-200">{{ $issueOneModel ? \App\DTOs\FiscalEmissionDecision::label($issueOneModel) : 'A definir' }} · R$ {{ number_format((float) $issueOneOrder->total, 2, ',', '.') }}</dd>
                     <dt class="text-neutral-500 dark:text-neutral-400">CPF/CNPJ na nota</dt>
                     <dd class="text-neutral-700 dark:text-neutral-200">{{ $recipientDocument !== '' ? \App\Services\Fiscal\FiscalRecipient::formatDocument($recipientDocument) : 'Não informado' }}</dd>
                     @if($lastNote)
@@ -287,9 +287,18 @@
                 ])
 
                 @if($issueOneBlockedReason)
-                    <div class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-700 dark:bg-red-900/30 dark:text-red-400">
-                        <strong>Pendência:</strong> {{ $issueOneBlockedReason }}
-                    </div>
+                    @if($issueOneIssues !== [])
+                        @include('livewire.admin.fiscal._readiness', [
+                            'issues' => $issueOneIssues,
+                            'canFix' => $canFixProducts,
+                            'returnTo' => '/'.ltrim(parse_url(route('admin.fiscal.control'), PHP_URL_PATH), '/'),
+                        ])
+                        <p class="text-xs text-neutral-500 dark:text-neutral-400">Para trocar o comprador ou o modelo, abra o pedido.</p>
+                    @else
+                        <div class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-700 dark:bg-red-900/30 dark:text-red-400">
+                            <strong>Pendência:</strong> {{ $issueOneBlockedReason }}
+                        </div>
+                    @endif
                 @else
                     <p class="text-sm text-neutral-600 dark:text-neutral-300">A nota será enviada à SEFAZ agora.</p>
                 @endif

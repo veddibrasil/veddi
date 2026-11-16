@@ -19,9 +19,10 @@ class BrasilApiCnpjLookup implements CnpjLookupInterface
 
     public function find(string $cnpj): ?array
     {
-        $cnpj = preg_replace('/\D/', '', $cnpj);
+        // CNPJ alfanumérico: letras fazem parte do número (a BrasilAPI aceita o formato).
+        $cnpj = FiscalRecipient::normalizeDocument($cnpj);
 
-        if (strlen($cnpj) !== 14) {
+        if (FiscalRecipient::documentType($cnpj) !== FiscalRecipient::TYPE_CNPJ) {
             return null;
         }
 

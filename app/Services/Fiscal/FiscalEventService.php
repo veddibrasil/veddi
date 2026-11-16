@@ -48,7 +48,7 @@ class FiscalEventService
             throw new \RuntimeException('Configuração fiscal não habilitada para o emitente.');
         }
         $branch = $config->branch;
-        $branchCnpj = preg_replace('/\D/', '', $branch?->cnpj ?: ($config->company->owner_cpf_cnpj ?? ''));
+        $branchCnpj = FiscalRecipient::normalizeDocument($branch?->cnpj ?: ($config->company->owner_cpf_cnpj ?? ''));
         if ($config->issuer_cnpj && $config->issuer_cnpj !== $branchCnpj) {
             throw new \RuntimeException('O CNPJ da filial diverge do emitente fiscal registrado.');
         }

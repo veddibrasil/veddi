@@ -56,8 +56,9 @@ class FiscalMonthlyExportService
             $key = (string) $protocol->chNFe;
             $cnpj = (string) $info->emit->CNPJ;
             $id = (string) (($xml->xpath('/n:nfeProc/n:NFe/n:infNFe/@Id') ?: [])[0] ?? '');
-            if (! preg_match('/^\d{44}$/', $key) || $id !== 'NFe'.$key
-                || ! preg_match('/^\d{14}$/', $cnpj) || substr($key, 6, 14) !== $cnpj
+            // Chave e CNPJ podem ter letras (CNPJ alfanumérico do emitente).
+            if (! \App\Support\Fiscal\AccessKey::isValid($key) || $id !== 'NFe'.$key
+                || FiscalRecipient::documentType($cnpj) !== FiscalRecipient::TYPE_CNPJ || \App\Support\Fiscal\AccessKey::issuerCnpj($key) !== $cnpj
                 || substr($key, 20, 2) !== $note->model
                 || ($note->access_key && preg_replace('/^NFe/', '', $note->access_key) !== $key)
                 || ! in_array((string) $protocol->cStat, ['100', '150'], true)

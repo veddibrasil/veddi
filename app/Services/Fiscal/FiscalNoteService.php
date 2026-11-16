@@ -3,8 +3,10 @@
 namespace App\Services\Fiscal;
 
 use App\Contracts\FiscalNoteProviderInterface;
+use App\DTOs\FiscalEmissionDecision;
 use App\DTOs\FiscalNoteDTO;
 use App\Exceptions\FiscalNoteAlreadyIssuedException;
+use App\Exceptions\FiscalPreflightException;
 use App\Models\Branch;
 use App\Models\CompanyFiscalConfig;
 use App\Models\FiscalNote;
@@ -25,12 +27,31 @@ class FiscalNoteService
         'cofins_situation' => 'CST COFINS',
     ];
 
+    /**
+     * Valores usados na NFC-e ao consumidor (CPF ou sem documento) quando o produto não tem
+     * dados fiscais. A Tributação em lote oferece este conjunto como sugestão a conferir.
+     */
+    public const NFCE_CONSUMER_FALLBACK = [
+        'ncm' => '21069090',
+        'cfop' => '5102',
+        'icms_situation' => '400',
+        'origin' => '0',
+        'unit' => 'UN',
+        'pis_situation' => '07',
+        'cofins_situation' => '07',
+    ];
+
     public function __construct(
         private readonly FiscalNoteProviderInterface $provider,
         private readonly FiscalConfigResolver $resolver,
+        private readonly FiscalEmissionPolicy $policy,
     ) {}
 
-    public function issue(Order $order, ?string $customerDocument = null, ?int $requestedBy = null): FiscalNote
+    /**
+     * @param  string|null  $confirmedModel  modelo que o operador viu e confirmou na tela; se a
+     *                                       política agora decidir outro, a emissão para e pede nova conferência
+     */
+    public function issue(Order $order, ?string $customerDocument = null, ?int $requestedBy = null, ?string $confirmedModel = null): FiscalNote
     {
         $company = $order->company;
 
@@ -46,7 +67,8 @@ class FiscalNoteService
             'recipient' => $recipient,
             'model' => $model,
             'items' => $items,
-        ] = $this->prepare($order, $customerDocument);
+            'decision' => $decision,
+        ] = $this->prepare($order, $customerDocument, $confirmedModel);
 
         $provider = $this->resolveProvider($companyConfig, $effectiveEnvironment);
         $reference = 'order_'.$order->id.'_'.Str::uuid();
@@ -83,22 +105,25 @@ class FiscalNoteService
                 },
                 'amount' => (float) ($payment->original_amount ?? $payment->amount),
             ])->all() : [],
-
+            interstate: $decision->interstate,
+            presential: $decision->presential,
         );
 
         $fiscalNote = $this->createPendingNoteExclusively($order, $company->id, $order->branch_id, [
             'model' => $model,
             'fiscal_config_id' => $companyConfig->id,
             'environment' => $effectiveEnvironment,
-            'issuer_cnpj' => preg_replace('/\D/', '', $dto->emitenteCnpj),
+            'issuer_cnpj' => FiscalRecipient::normalizeDocument($dto->emitenteCnpj),
             'series' => (int) $dto->nfceSerie,
             'provider_reference' => $reference,
             'data' => [
                 'recipient' => $recipient,
                 'requested_by' => $requestedBy ?? auth()->id(),
+                // Decisão da política gravada antes do envio: qual versão escolheu o modelo e por quê.
+                'policy' => $decision->toArray(),
                 'issuer' => [
                     'name' => $dto->emitenteNome,
-                    'cnpj' => preg_replace('/\D/', '', $dto->emitenteCnpj),
+                    'cnpj' => FiscalRecipient::normalizeDocument($dto->emitenteCnpj),
                     'street' => $dto->emitenteLogradouro,
                     'number' => $dto->emitenteNumero,
                     'neighborhood' => $dto->emitenteBairro,
@@ -162,16 +187,35 @@ class FiscalNoteService
      * Mesmas validações de issue() sem criar nota nem chamar a Focus NFe — o Controle de notas
      * fiscais usa antes de emitir em lote, pra separar o que está pronto do que tem pendência.
      *
-     * @return string|null mensagem da primeira pendência, ou null se o pedido pode ser emitido
+     * @return string|null todas as pendências num texto, ou null se o pedido pode ser emitido
      */
-    public function preflight(Order $order, ?string $customerDocument = null): ?string
+    public function preflight(Order $order, ?string $customerDocument = null, ?string $confirmedModel = null): ?string
     {
-        try {
-            $this->prepare($order, $customerDocument);
+        $issues = $this->check($order, $customerDocument, $confirmedModel)['issues'];
 
-            return null;
+        return $issues === [] ? null : (new FiscalPreflightException($issues))->getMessage();
+    }
+
+    /**
+     * Pré-checagem para a tela: decisão da política (modelo e alternativas) e pendências
+     * agrupadas (emitente, documento, destinatário, produtos), sem efeito colateral.
+     *
+     * @param  string|null  $preference  escolha que o operador está fazendo agora ('nfce'|'nfe'|null = automático);
+     *                                   sem informar, usa a gravada no pedido
+     * @return array{decision: FiscalEmissionDecision, issues: array<int, array<string, mixed>>}
+     */
+    public function check(Order $order, ?string $customerDocument = null, ?string $confirmedModel = null, ?string $preference = null, bool $usePreference = true): array
+    {
+        $decision = $this->policy->forOrder($order, $customerDocument, $preference, $usePreference);
+
+        try {
+            $this->prepare($order, $customerDocument, $confirmedModel, $decision);
+
+            return ['decision' => $decision, 'issues' => []];
+        } catch (FiscalPreflightException $e) {
+            return ['decision' => $decision, 'issues' => $e->issues];
         } catch (\RuntimeException $e) {
-            return $e->getMessage();
+            return ['decision' => $decision, 'issues' => [['group' => 'order', 'message' => $e->getMessage()]]];
         }
     }
 
@@ -219,64 +263,93 @@ class FiscalNoteService
     }
 
     /**
-     * Valida módulo, configuração fiscal da filial, destinatário e itens e monta o que a emissão
-     * precisa. Lança RuntimeException com mensagem pro lojista na primeira pendência.
+     * Valida módulo, configuração fiscal da filial, política de emissão, destinatário e itens e
+     * monta o que a emissão precisa. Problema de emitente interrompe na hora (não há o que
+     * conferir sem ele); documento, destinatário e produtos são reunidos numa só
+     * FiscalPreflightException, para o lojista corrigir tudo de uma vez.
      *
-     * @return array{config: CompanyFiscalConfig, environment: string, branch: ?Branch, recipient: array, model: string, items: array}
+     * @return array{config: CompanyFiscalConfig, environment: string, branch: ?Branch, recipient: array, model: string, items: array, decision: FiscalEmissionDecision}
      */
-    private function prepare(Order $order, ?string $customerDocument = null): array
+    private function prepare(Order $order, ?string $customerDocument = null, ?string $confirmedModel = null, ?FiscalEmissionDecision $decision = null): array
     {
         $company = $order->company;
 
         if (! $company->canUseFiscalNotes()) {
-            throw new \RuntimeException('Módulo de nota fiscal não habilitado para esta empresa.');
+            throw FiscalPreflightException::single('issuer', 'Módulo de nota fiscal não habilitado para esta empresa.');
         }
 
         $companyConfig = $this->resolver->forBranch($company, $order->branch_id);
 
         if (! $companyConfig) {
-            throw new \RuntimeException('Nenhuma configuração fiscal encontrada para esta filial. Configure o emitente desta filial antes de emitir.');
+            throw FiscalPreflightException::single('issuer', 'Nenhuma configuração fiscal encontrada para esta filial. Configure o emitente desta filial antes de emitir.');
         }
 
         if (! $companyConfig->enabled) {
-            throw new \RuntimeException('Configuração fiscal não habilitada para esta filial.');
+            throw FiscalPreflightException::single('issuer', 'Configuração fiscal não habilitada para esta filial.');
         }
 
         $effectiveEnvironment = self::resolveEmissionEnvironment($companyConfig->emission_environment);
         $token = $companyConfig->tokenFor($effectiveEnvironment) ?: config('fiscal.focus_nfe.token');
 
         if (! $token) {
-            throw new \RuntimeException('Token do provedor fiscal não configurado. Contate o suporte.');
+            throw FiscalPreflightException::single('issuer', 'Token do provedor fiscal não configurado. Contate o suporte.');
         }
 
         $branch = Branch::withoutGlobalScopes()->where('company_id', $company->id)->find($companyConfig->branch_id ?? $order->branch_id);
-        $branchCnpj = preg_replace('/\D/', '', $branch?->cnpj ?: ($company->owner_cpf_cnpj ?? ''));
+        $branchCnpj = FiscalRecipient::normalizeDocument($branch?->cnpj ?: ($company->owner_cpf_cnpj ?? ''));
         if ($companyConfig->issuer_cnpj && $companyConfig->issuer_cnpj !== $branchCnpj) {
-            throw new \RuntimeException('O CNPJ da filial diverge do emitente fiscal registrado. Revise a configuração fiscal.');
+            throw FiscalPreflightException::single('issuer', 'O CNPJ da filial diverge do emitente fiscal registrado. Revise a configuração fiscal.');
         }
         if (strlen($companyConfig->issuer_cnpj ?: $branchCnpj) !== 14) {
-            throw new \RuntimeException('Complete o CNPJ do emitente desta filial antes de emitir.');
+            throw FiscalPreflightException::single('issuer', 'Complete o CNPJ do emitente desta filial antes de emitir.');
         }
-        $recipient = $order->fiscal_recipient ?? FiscalRecipient::fromCustomer($order->customer);
-        if ($customerDocument !== null) {
-            $recipient['document'] = $customerDocument;
+
+        $decision ??= $this->policy->forOrder($order, $customerDocument);
+        $model = $decision->model;
+        $issues = [];
+
+        if ($decision->blocked()) {
+            foreach ($decision->reasons as $reason) {
+                $issues[] = ['group' => 'policy', 'message' => $reason];
+            }
+        } elseif ($confirmedModel !== null && $confirmedModel !== $model) {
+            // Algo mudou entre a conferência e a execução (configuração da filial, destinatário,
+            // valor): nunca trocar o modelo em silêncio.
+            $issues[] = ['group' => 'policy', 'message' => 'A emissão foi conferida como '.FiscalEmissionDecision::label($confirmedModel)
+                .', mas agora o documento indicado é '.FiscalEmissionDecision::label($model).'. Confira o pedido e emita novamente.'];
         }
-        $model = FiscalRecipient::model($recipient);
+
+        $recipient = FiscalEmissionPolicy::recipientFor($order, $customerDocument);
         try {
             $recipient = FiscalRecipient::validate($recipient);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            throw new \RuntimeException('Dados fiscais pendentes: '.implode(' ', $e->validator->errors()->all()));
+            if (! in_array('document', $decision->needs, true)) {
+                $issues[] = ['group' => 'recipient', 'message' => 'Dados fiscais pendentes: '.implode(' ', $e->validator->errors()->all()), 'fields' => array_keys($e->errors())];
+            }
         }
         if ($model === '55' && (blank($branch?->state) || blank($branch?->cnpj ?: $company->owner_cpf_cnpj))) {
-            throw new \RuntimeException('Complete o CNPJ e a UF do emitente antes de emitir NF-e.');
+            throw FiscalPreflightException::single('issuer', 'Complete o CNPJ e a UF do emitente antes de emitir NF-e.');
         }
-        $items = $this->buildItems($order, $model, $branch?->state, $recipient['state'] ?? null, (int) ($companyConfig->crt ?: config('fiscal.crt')));
+
+        $items = [];
+        if ($model !== null) {
+            try {
+                $items = $this->buildItems($order, $model, $decision->interstate, (int) ($companyConfig->crt ?: config('fiscal.crt')), $decision->documentType === FiscalRecipient::TYPE_CNPJ);
+            } catch (FiscalPreflightException $e) {
+                $issues = [...$issues, ...$e->issues];
+            }
+        }
+
+        if ($issues !== []) {
+            throw new FiscalPreflightException($issues);
+        }
+
         if ($model === '55') {
             $calculated = array_sum(array_column($items, 'subtotal')) + (float) $order->delivery_fee
                 + (float) $order->service_fee + (float) $order->couvert_fee
                 - (float) $order->discount - (float) $order->manual_discount;
             if (round($calculated * 100) !== round((float) $order->total * 100) || $calculated <= 0) {
-                throw new \RuntimeException('Totais fiscais divergentes. Confira itens, descontos e taxas do pedido.');
+                throw FiscalPreflightException::single('order', 'Totais fiscais divergentes. Confira itens, descontos e taxas do pedido.');
             }
         }
 
@@ -287,6 +360,7 @@ class FiscalNoteService
             'recipient' => $recipient,
             'model' => $model,
             'items' => $items,
+            'decision' => $decision,
         ];
     }
 
@@ -494,9 +568,18 @@ class FiscalNoteService
             : config('fiscal.focus_nfe.base_url_homologacao');
     }
 
-    private function buildItems(Order $order, string $model = '65', ?string $issuerState = null, ?string $recipientState = null, int $crt = 1): array
+    /**
+     * Itens da nota com o perfil fiscal efetivo de cada produto: o perfil próprio da filial,
+     * quando existe, substitui o cadastro geral inteiro.
+     *
+     * NF-e e NFC-e com CNPJ exigem os campos do produto preenchidos; só a NFC-e de consumidor
+     * (CPF ou sem documento) mantém os padrões históricos. Pendências de todos os itens saem
+     * juntas, com o produto e o cadastro a corrigir.
+     */
+    private function buildItems(Order $order, string $model, bool $interstate, int $crt = 1, bool $strict = false): array
     {
-        $order->loadMissing('items.product');
+        $order->loadMissing(['items.product', 'branch']);
+        $strict = $strict || $model === '55';
 
         $profiles = DB::table('branch_product')
             ->join('branches', 'branches.id', '=', 'branch_product.branch_id')
@@ -506,63 +589,87 @@ class FiscalNoteService
             ->whereNotNull('branch_product.fiscal_data')
             ->pluck('branch_product.fiscal_data', 'branch_product.product_id');
 
-        // NF-e: junta as pendências de todos os itens numa mensagem só. Falhar no primeiro campo
-        // do primeiro produto fazia o lojista corrigir um campo por tentativa.
-        $missing = [];
+        $problems = [];
+        $required = self::NFE_PRODUCT_FIELDS + ($interstate ? ['interstate_cfop' => 'CFOP interestadual'] : []);
 
-        $items = $order->items->map(function ($item) use ($order, $model, $issuerState, $recipientState, $crt, $profiles, &$missing) {
+        $items = $order->items->map(function ($item) use ($order, $model, $interstate, $crt, $strict, $profiles, $required, &$problems) {
             if ($item->product && (int) $item->product->company_id !== (int) $order->company_id) {
-                throw new \RuntimeException('Produto não pertence à empresa do pedido.');
+                throw FiscalPreflightException::single('order', 'Produto não pertence à empresa do pedido.');
             }
+            $branchProfile = $profiles->has($item->product_id);
+            $problem = function (array $fields = [], ?string $text = null) use ($item, $order, $branchProfile, &$problems) {
+                $problems[$item->product_id ? 'product_'.$item->product_id : 'item_'.$item->id] = [
+                    'product_id' => $item->product_id,
+                    'product_name' => trim((string) $item->product_name),
+                    'fields' => $fields,
+                    'problem' => $text,
+                    'source' => $branchProfile ? 'branch' : 'general',
+                    'branch_id' => $branchProfile ? $order->branch_id : null,
+                    'branch_name' => $branchProfile ? trim((string) $order->branch?->name) : null,
+                ];
+            };
             // Um perfil de filial substitui o perfil inteiro: nunca mistura alíquotas
             // de um regime com CST/CSOSN de outro. Null mantém o cadastro geral legado.
-            $fiscal = $profiles->has($item->product_id)
-                ? json_decode($profiles->get($item->product_id), true, flags: JSON_THROW_ON_ERROR)
+            $fiscal = $branchProfile
+                ? json_decode($profiles->get($item->product_id), true)
                 : ($item->product?->fiscal_data ?? []);
             if (! is_array($fiscal) || ! is_array($fiscal['taxes'] ?? [])) {
-                throw new \RuntimeException('Perfil fiscal inválido no produto '.$item->product_name.'.');
+                $problem(text: 'perfil fiscal inválido');
+
+                return [];
             }
             foreach ($fiscal['taxes'] ?? [] as $key => $value) {
                 if (! preg_match('/^(icms_|pis_|cofins_|ipi_|ibs_|cbs_|is_)/', (string) $key) || is_array($value) || is_object($value)
                     || in_array($key, ['icms_situacao_tributaria', 'icms_origem', 'pis_situacao_tributaria', 'cofins_situacao_tributaria'], true)) {
-                    throw new \RuntimeException('Campos tributários adicionais inválidos no produto '.$item->product_name.'. Use os campos próprios para CST/CSOSN e origem.');
+                    $problem(text: 'campos tributários adicionais inválidos; use os campos próprios para CST/CSOSN e origem');
+
+                    return [];
+                }
+            }
+            if ($strict) {
+                $absent = array_values(array_filter($required, fn ($label, $field) => ! isset($fiscal[$field]) || $fiscal[$field] === '', ARRAY_FILTER_USE_BOTH));
+                if ($absent !== []) {
+                    $problem($absent);
+
+                    return [];
                 }
             }
             $situation = (string) ($fiscal['icms_situation'] ?? ($crt === 1 ? '400' : ''));
             if (! preg_match($crt === 1 ? '/^[0-9]{3}$/' : '/^[0-9]{2}$/', $situation)) {
-                throw new \RuntimeException('CST/CSOSN incompatível com o regime do emitente no produto '.$item->product_name.'. Configure o perfil fiscal desta filial.');
+                $problem(text: 'CST/CSOSN incompatível com o regime do emitente');
+
+                return [];
             }
-            if ($model === '55') {
-                $required = self::NFE_PRODUCT_FIELDS + ($issuerState !== $recipientState ? ['interstate_cfop' => 'CFOP interestadual'] : []);
-                $absent = array_values(array_filter($required, fn ($label, $field) => ! isset($fiscal[$field]) || $fiscal[$field] === '', ARRAY_FILTER_USE_BOTH));
-                if ($absent !== []) {
-                    $missing[trim((string) $item->product_name)] = $absent;
+            if ($strict) {
+                $cfop = (string) ($interstate ? ($fiscal['interstate_cfop'] ?? '') : $fiscal['cfop']);
+                if (! preg_match($interstate ? '/^6[0-9]{3}$/' : '/^5[0-9]{3}$/', $cfop)) {
+                    $problem(text: 'CFOP incompatível com a operação ('.($interstate ? 'interestadual, 6xxx' : 'interna, 5xxx').')');
 
                     return [];
                 }
-                $cfop = (string) ($issuerState !== $recipientState ? ($fiscal['interstate_cfop'] ?? '') : $fiscal['cfop']);
-                if (! preg_match($issuerState !== $recipientState ? '/^6[0-9]{3}$/' : '/^5[0-9]{3}$/', $cfop)) {
-                    throw new \RuntimeException('Configure o CFOP da operação no produto '.$item->product_name.'.');
-                }
                 $fiscal['cfop'] = $cfop;
-                if (! preg_match('/^[0-9]{8}$/', $fiscal['ncm']) || ! in_array((string) $fiscal['origin'], array_map('strval', range(0, 8)), true)) {
-                    throw new \RuntimeException('NCM ou origem inválidos no produto '.$item->product_name.'.');
+                if (! preg_match('/^[0-9]{8}$/', (string) $fiscal['ncm']) || ! in_array((string) $fiscal['origin'], array_map('strval', range(0, 8)), true)) {
+                    $problem(text: 'NCM ou origem inválidos');
+
+                    return [];
                 }
                 if ($item->quantity <= 0 || (float) $item->subtotal <= 0) {
-                    throw new \RuntimeException('Quantidade ou valor fiscal inválido no produto '.$item->product_name.'.');
+                    $problem(text: 'quantidade ou valor fiscal inválido');
+
+                    return [];
                 }
             }
 
             return [
                 'name' => $item->product_name,
-                'unit' => $fiscal['unit'] ?? 'UN',
-                'origin' => $fiscal['origin'] ?? 0,
-                'pis_situation' => $fiscal['pis_situation'] ?? '07',
-                'cofins_situation' => $fiscal['cofins_situation'] ?? '07',
+                'unit' => $fiscal['unit'] ?? self::NFCE_CONSUMER_FALLBACK['unit'],
+                'origin' => $fiscal['origin'] ?? (int) self::NFCE_CONSUMER_FALLBACK['origin'],
+                'pis_situation' => $fiscal['pis_situation'] ?? self::NFCE_CONSUMER_FALLBACK['pis_situation'],
+                'cofins_situation' => $fiscal['cofins_situation'] ?? self::NFCE_CONSUMER_FALLBACK['cofins_situation'],
                 'taxes' => $fiscal['taxes'] ?? [],
-                'ncm' => $fiscal['ncm'] ?? '21069090',
-                'cfop' => $fiscal['cfop'] ?? '5102',
-                'icms_situation' => $fiscal['icms_situation'] ?? '400',
+                'ncm' => $fiscal['ncm'] ?? self::NFCE_CONSUMER_FALLBACK['ncm'],
+                'cfop' => $fiscal['cfop'] ?? self::NFCE_CONSUMER_FALLBACK['cfop'],
+                'icms_situation' => $fiscal['icms_situation'] ?? self::NFCE_CONSUMER_FALLBACK['icms_situation'],
                 'cest' => $fiscal['cest'] ?? null,
                 'quantity' => (float) $item->quantity,
                 'unit_price' => $model === '55' && $item->quantity > 0 ? round((float) $item->subtotal / $item->quantity, 10) : (float) $item->unit_price,
@@ -570,10 +677,21 @@ class FiscalNoteService
             ];
         })->toArray();
 
-        if ($missing !== []) {
-            $products = collect($missing)->map(fn ($labels, $name) => $name.' ('.implode(', ', $labels).')')->implode('; ');
+        if ($problems !== []) {
+            $products = collect($problems)->map(function ($entry) {
+                $source = $entry['source'] === 'branch' ? 'perfil fiscal da filial '.$entry['branch_name'] : 'cadastro geral';
+                $product = $entry['product_id'] ? 'produto #'.$entry['product_id'].', ' : '';
+                $detail = $entry['fields'] !== [] ? implode(', ', $entry['fields']) : $entry['problem'];
 
-            throw new \RuntimeException('Dados fiscais pendentes para NF-e. Complete em Produtos > Dados fiscais do produto (ou no perfil fiscal da filial, se ativo): '.$products.'.');
+                return $entry['product_name'].' ('.$detail.') ['.$product.$source.']';
+            })->implode('; ');
+            $document = $model === '55' ? 'NF-e' : ($strict ? 'NFC-e com CNPJ' : 'NFC-e');
+
+            throw new FiscalPreflightException([[
+                'group' => 'products',
+                'message' => 'Dados fiscais pendentes para '.$document.'. Complete em Produtos > Dados fiscais do produto, no cadastro indicado: '.$products.'.',
+                'products' => array_values($problems),
+            ]]);
         }
 
         return $items;

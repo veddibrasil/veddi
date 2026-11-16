@@ -167,6 +167,8 @@ Route::middleware(['auth', 'verified', 'company.active'])
             Route::get('/products', \App\Livewire\Admin\Products\Index::class)->name('products.index');
             Route::get('/products/create', \App\Livewire\Admin\Products\Form::class)->name('products.create');
             Route::get('/products/{product}/edit', \App\Livewire\Admin\Products\Form::class)->name('products.edit');
+            // Tributação em lote mexe no cadastro fiscal do produto: mesmo papel do cardápio.
+            Route::get('/fiscal/tributacao', \App\Livewire\Admin\Fiscal\Templates::class)->name('fiscal.templates');
         });
 
         // Fiscal — company_admin + branch_manager + caixa (com permissão)

@@ -316,7 +316,7 @@ class FocusNfeService implements FiscalNoteProviderInterface
         $payload = [
             'natureza_operacao' => 'Venda de mercadoria',
             'data_emissao' => now()->toIso8601String(),
-            'cnpj_emitente' => preg_replace('/\D/', '', $dto->emitenteCnpj),
+            'cnpj_emitente' => FiscalRecipient::normalizeDocument($dto->emitenteCnpj),
             'serie' => (int) $dto->nfceSerie,
             'modalidade_frete' => '9',
             'local_destino' => '1',
@@ -347,10 +347,23 @@ class FocusNfeService implements FiscalNoteProviderInterface
             return NfePayloadBuilder::build($dto, $payload);
         }
 
-        if ($dto->customerDocument) {
-            $doc = preg_replace('/\D/', '', $dto->customerDocument);
-            $payload['CPF'] = strlen($doc) === 11 ? $doc : null;
-            $payload['CNPJ'] = strlen($doc) === 14 ? $doc : null;
+        // Campos documentados da NFC-e na Focus (cpf_destinatario / cnpj_destinatario): só um
+        // identificador por nota. CNPJ (numérico ou alfanumérico) vai com a razão social e o
+        // indicador 9, único aceito na NFC-e. Antes iam "CPF"/"CNPJ" no nível superior, nomes que
+        // não constam da documentação da NFC-e.
+        $doc = FiscalRecipient::normalizeDocument($dto->customerDocument);
+        $type = FiscalRecipient::documentType($doc);
+        if ($type === FiscalRecipient::TYPE_CPF) {
+            $payload['cpf_destinatario'] = $doc;
+        } elseif ($type === FiscalRecipient::TYPE_CNPJ) {
+            $payload['cnpj_destinatario'] = $doc;
+            $payload['indicador_inscricao_estadual_destinatario'] = 9;
+            $name = $dto->environment === 'homologacao'
+                ? 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
+                : ($dto->recipient['name'] ?? null);
+            if (filled($name)) {
+                $payload['nome_destinatario'] = $name;
+            }
         }
 
         return $payload;

@@ -107,6 +107,31 @@ test('perfil incompatível com CRT bloqueia os dois modelos antes de qualquer en
     Http::assertNothingSent();
 })->with(['11222333000181', '']);
 
+test('pendência identifica o perfil da filial e só desaparece quando esse perfil é corrigido', function () {
+    ['admin' => $admin, 'product' => $product, 'branches' => $branches, 'orders' => $orders, 'normal' => $normal] = multiBranchFiscalContext();
+    $incomplete = array_diff_key($normal, ['pis_situation' => true, 'cofins_situation' => true]);
+    $product->branches()->updateExistingPivot($branches[1]->id, ['fiscal_data' => json_encode($incomplete)]);
+    $service = app(FiscalNoteService::class);
+
+    $reason = $service->preflight($orders[1]->fresh());
+    expect($reason)->toContain('Produto compartilhado (CST PIS, CST COFINS)')
+        ->toContain('produto #'.$product->id.', perfil fiscal da filial Filial 2');
+
+    Livewire::actingAs($admin)->test(Form::class, ['product' => $product])
+        ->set('fiscalData.pis_situation', '08')
+        ->call('save')->assertHasNoErrors();
+    expect($service->preflight($orders[1]->fresh()))->toBe($reason);
+
+    Livewire::actingAs($admin)->test(Form::class, ['product' => $product->fresh()])
+        ->set('branchFiscalProfiles.'.$branches[1]->id.'.data.pis_situation', $normal['pis_situation'])
+        ->set('branchFiscalProfiles.'.$branches[1]->id.'.data.cofins_situation', $normal['cofins_situation'])
+        ->call('save')->assertHasNoErrors();
+
+    expect($service->preflight($orders[1]->fresh()))->toBeNull()
+        ->and($product->fresh()->fiscal_data['pis_situation'])->toBe('08');
+    Http::assertNothingSent();
+});
+
 test('produção permite homologar uma filial enquanto outra emite em produção', function () {
     ['configs' => $configs, 'orders' => $orders] = multiBranchFiscalContext();
     app()->instance('env', 'production');
@@ -384,7 +409,7 @@ test('emissão bloqueia JSON tributário legado que tenta contornar o CST valida
     if ($document === '') {
         $orders[1]->update(['fiscal_recipient' => ['document' => '']]);
     }
-    expect(app(FiscalNoteService::class)->preflight($orders[1]))->toContain('Campos tributários adicionais inválidos');
+    expect(app(FiscalNoteService::class)->preflight($orders[1]))->toContain('campos tributários adicionais inválidos');
     Http::assertNothingSent();
 })->with(['11222333000181', '']);
 

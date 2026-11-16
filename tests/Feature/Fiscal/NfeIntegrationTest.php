@@ -356,9 +356,17 @@ test('emissão com CNPJ diferente do destinatário salvo exige cadastro fiscal a
     $permission = \App\Models\Permission::firstOrCreate(['name' => 'fiscal.issue'], ['group' => 'fiscal', 'label' => 'Emitir notas']);
     \App\Models\UserPermission::create(['user_id' => $user->id, 'company_id' => $company->id, 'permission_id' => $permission->id, 'granted' => true]);
     Queue::fake();
+    app()->instance(\App\Contracts\CnpjLookupInterface::class, new class implements \App\Contracts\CnpjLookupInterface
+    {
+        public function find(string $cnpj): ?array
+        {
+            return null;
+        }
+    });
     Livewire::actingAs($user)->test(Show::class, ['order' => $order])
         ->call('openFiscalModal')
         ->set('fiscalCustomerDocument', '11.222.333/0001-81')
+        ->assertSet('showFiscalRecipient', true)
         ->call('issueFiscalNote')->assertHasErrors('fiscalCustomerDocument');
     Queue::assertNotPushed(IssueFiscalNote::class);
 });
@@ -396,14 +404,21 @@ test('emitir pelo pedido mostra a pendência no modal e não enfileira', functio
     \App\Models\UserPermission::create(['user_id' => $user->id, 'company_id' => $company->id, 'permission_id' => $permission->id, 'granted' => true]);
     Queue::fake();
 
-    Livewire::actingAs($user)->test(Show::class, ['order' => $order])
+    $component = Livewire::actingAs($user)->test(Show::class, ['order' => $order])
         ->call('openFiscalModal')
-        ->assertSet('fiscalCustomerDocument', '11222333000181')
+        ->assertSet('fiscalCustomerDocument', '11.222.333/0001-81')
         ->call('issueFiscalNote')
-        ->assertHasErrors('fiscalCustomerDocument')
-        ->assertSee('CST PIS, CST COFINS');
+        ->assertHasErrors('fiscalEmission')
+        ->assertHasNoErrors('fiscalCustomerDocument')
+        ->assertSee('CST PIS, CST COFINS')
+        ->assertSee('produto #'.$product->id.', cadastro geral');
 
+    expect(substr_count($component->html(), 'Dados fiscais pendentes para NF-e.'))->toBe(1);
     Queue::assertNotPushed(IssueFiscalNote::class);
+
+    $product->update(['fiscal_data' => ['ncm' => '19059090', 'cfop' => '5102', 'icms_situation' => '500', 'origin' => '0', 'pis_situation' => '07', 'cofins_situation' => '07']]);
+    $component->call('issueFiscalNote')->assertHasNoErrors()->assertSet('showFiscalModal', false);
+    Queue::assertPushed(IssueFiscalNote::class, fn ($job) => $job->orderId === $order->id);
 });
 
 test('emitir pelo pedido com dados completos enfileira a NF-e', function () {

@@ -172,12 +172,17 @@
                 <div>
                     <flux:input wire:model="nfeSerie" label="Série NF-e" type="number" min="1" max="999" :disabled="!$canManage" />
                     @error('nfeSerie') <p class="text-red-500 text-xs">{{ $message }}</p> @enderror
-                    <p class="text-xs text-neutral-500">CNPJ seleciona NF-e automaticamente. CPF ou sem documento seleciona NFC-e.</p>
+                    <p class="text-xs text-neutral-500">CPF ou sem documento: NFC-e. CNPJ: NF-e, salvo quando a opção abaixo estiver ligada.</p>
                 </div>
                 <div>
                     <flux:input wire:model="nfceSerie" label="Série NFC-e" type="number" min="1" :disabled="!$canManage" />
                     @error('nfceSerie') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
+            </div>
+
+            <div class="rounded-lg border border-neutral-200 p-3 space-y-1 dark:border-zinc-700">
+                <flux:switch wire:model="nfceCnpjEnabled" label="Permitir NFC-e com CNPJ nesta filial" :disabled="!$canManage" />
+                <p class="text-xs text-neutral-500">Vale só para venda presencial (balcão ou comanda), operação interna, abaixo de R$ 200 mil e comprador não contribuinte com a IE conferida. Fora disso, e sempre que o comprador pedir, sai NF-e. Ligue somente depois de a contabilidade aprovar e de testar em homologação.</p>
             </div>
         </div>
 

@@ -440,7 +440,7 @@ trait HasOpenTabs
                     // o cliente só agora no fechamento, precisa gravar — senão a busca/seleção feita
                     // na tela de pagamento é descartada e o pedido fica com "Cliente Balcão".
                     ...($customerId ? ['customer_id' => $customerId] : []),
-                    ...($fiscalRecipient !== null ? ['fiscal_recipient' => $fiscalRecipient] : []),
+                    ...($fiscalRecipient !== null ? ['fiscal_recipient' => $fiscalRecipient, 'fiscal_document_preference' => $this->checkoutFiscalPreference()] : []),
                 ]);
 
                 if ($isPaidOnCreate) {
@@ -627,7 +627,7 @@ trait HasOpenTabs
                         'is_open_tab' => false,
                         'pdv_cash_session_id' => $this->cashSessionId,
                         ...($customerId ? ['customer_id' => $customerId] : []),
-                        ...($fiscalRecipient !== null ? ['fiscal_recipient' => $fiscalRecipient] : []),
+                        ...($fiscalRecipient !== null ? ['fiscal_recipient' => $fiscalRecipient, 'fiscal_document_preference' => $this->checkoutFiscalPreference()] : []),
                     ]);
 
                     app(PaymentOrchestrator::class)->processSplit($order, $orderParts);

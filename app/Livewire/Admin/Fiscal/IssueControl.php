@@ -7,8 +7,8 @@ use App\Jobs\IssueFiscalNote;
 use App\Models\Branch;
 use App\Models\CompanyNotification;
 use App\Models\Order;
+use App\Services\Fiscal\FiscalEmissionPolicy;
 use App\Services\Fiscal\FiscalNoteService;
-use App\Services\Fiscal\FiscalRecipient;
 use Illuminate\Bus\Batch;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
@@ -68,6 +68,10 @@ class IssueControl extends Component
     #[Locked]
     public array $readyOrderIds = [];
 
+    /** Modelo decidido na pré-checagem de cada pedido pronto: vai pro job como modelo confirmado. */
+    #[Locked]
+    public array $readyModels = [];
+
     #[Locked]
     public ?string $batchId = null;
 
@@ -80,6 +84,16 @@ class IssueControl extends Component
     /** Pendência da pré-checagem do pedido do modal; null = pronto pra emitir. */
     #[Locked]
     public ?string $issueOneBlockedReason = null;
+
+    /** Mesmas pendências, agrupadas por cadastro a corrigir (FiscalNoteService::check). */
+    #[Locked]
+    public array $issueOneIssues = [];
+
+    #[Locked]
+    public ?string $issueOneConfirmedModel = null;
+
+    #[Locked]
+    public bool $canFixProducts = false;
 
     #[Locked]
     public bool $canIssue = false;
@@ -97,6 +111,7 @@ class IssueControl extends Component
         abort_unless($user->hasPermission('fiscal.view', $company), 403);
 
         $this->canIssue = $user->hasPermission('fiscal.issue', $company);
+        $this->canFixProducts = $this->canIssue && \App\Support\Fiscal\FiscalCorrectionLinks::canEditProducts($user, $company);
 
         if (app()->bound('current.branch')) {
             $this->lockedBranchId = app('current.branch')->id;
@@ -161,23 +176,26 @@ class IssueControl extends Component
         $service = app(FiscalNoteService::class);
         $ready = collect();
         $blocked = [];
+        $models = [];
 
         foreach ($orders as $order) {
-            $reason = $service->preflight($order);
+            ['decision' => $decision, 'issues' => $issues] = $service->check($order);
 
-            if ($reason === null) {
+            if ($issues === []) {
                 $ready->push($order);
+                $models[$order->id] = $decision->model;
             } else {
-                $blocked[] = ['order_number' => $order->order_number, 'reason' => $reason];
+                $blocked[] = ['order_number' => $order->order_number, 'reason' => (new \App\Exceptions\FiscalPreflightException($issues))->getMessage()];
             }
         }
 
         $this->readyOrderIds = $ready->pluck('id')->all();
+        $this->readyModels = $models;
         $this->confirmSummary = [
             'ready' => $ready->count(),
             'total' => (float) $ready->sum('total'),
-            'nfe' => $ready->filter(fn (Order $o) => $this->predictedModel($o) === '55')->count(),
-            'nfce' => $ready->filter(fn (Order $o) => $this->predictedModel($o) === '65')->count(),
+            'nfe' => count(array_filter($models, fn ($model) => $model === '55')),
+            'nfce' => count(array_filter($models, fn ($model) => $model === '65')),
             'older' => $ready->filter(fn (Order $o) => $o->created_at->lt(today()))->count(),
             'blocked' => $blocked,
         ];
@@ -188,6 +206,7 @@ class IssueControl extends Component
     {
         $this->showConfirmModal = false;
         $this->readyOrderIds = [];
+        $this->readyModels = [];
         $this->confirmSummary = [];
     }
 
@@ -210,8 +229,9 @@ class IssueControl extends Component
         $userId = auth()->id();
         $orderIds = $ids->all();
         $link = route('admin.fiscal.control', ['situationFilter' => 'failed']);
+        $models = $this->readyModels;
 
-        $batch = Bus::batch($ids->map(fn (int $id) => new IssueFiscalNote($id, null, $userId))->all())
+        $batch = Bus::batch($ids->map(fn (int $id) => new IssueFiscalNote($id, null, $userId, $models[$id] ?? null))->all())
             ->name('fiscal-issue:company-'.$companyId)
             ->onQueue('low')
             ->allowFailures()
@@ -254,8 +274,11 @@ class IssueControl extends Component
             return;
         }
 
+        ['decision' => $decision, 'issues' => $issues] = app(FiscalNoteService::class)->check($order);
         $this->issueOneOrderId = $order->id;
-        $this->issueOneBlockedReason = app(FiscalNoteService::class)->preflight($order);
+        $this->issueOneIssues = $issues;
+        $this->issueOneBlockedReason = $issues === [] ? null : (new \App\Exceptions\FiscalPreflightException($issues))->getMessage();
+        $this->issueOneConfirmedModel = $issues === [] ? $decision->model : null;
         $this->showIssueOneModal = true;
     }
 
@@ -264,6 +287,8 @@ class IssueControl extends Component
         $this->showIssueOneModal = false;
         $this->issueOneOrderId = null;
         $this->issueOneBlockedReason = null;
+        $this->issueOneIssues = [];
+        $this->issueOneConfirmedModel = null;
     }
 
     /** Emissão do pedido confirmado no modal — fila 'default', igual ao botão do pedido. */
@@ -274,6 +299,7 @@ class IssueControl extends Component
         // Refaz elegibilidade e pré-checagem: entre abrir o modal e confirmar o pedido pode ter
         // sido emitido pelo PDV ou a config fiscal pode ter mudado.
         $order = $this->issueOneOrderId ? $this->eligibleOrders([$this->issueOneOrderId])->first() : null;
+        $confirmedModel = $this->issueOneConfirmedModel;
         $this->closeIssueOneModal();
 
         if (! $order) {
@@ -282,13 +308,13 @@ class IssueControl extends Component
             return;
         }
 
-        if ($reason = app(FiscalNoteService::class)->preflight($order)) {
+        if ($reason = app(FiscalNoteService::class)->preflight($order, null, $confirmedModel)) {
             session()->flash('error', "Pedido {$order->order_number}: {$reason}");
 
             return;
         }
 
-        IssueFiscalNote::dispatch($order->id, null, auth()->id());
+        IssueFiscalNote::dispatch($order->id, null, auth()->id(), $confirmedModel);
         session()->flash('status', "Emissão da nota do pedido {$order->order_number} enfileirada.");
     }
 
@@ -301,7 +327,7 @@ class IssueControl extends Component
     public function render()
     {
         $orders = $this->filteredQuery()
-            ->with(['customer', 'branch', 'latestFiscalNote'])
+            ->with(['company', 'customer', 'branch', 'latestFiscalNote', 'deliveryAddressRecord'])
             ->latest('id')
             ->paginate(25);
 
@@ -320,16 +346,18 @@ class IssueControl extends Component
             ? $this->eligibleOrders([$this->issueOneOrderId])->first()?->loadMissing('latestFiscalNote')
             : null;
 
+        $policy = app(FiscalEmissionPolicy::class);
+
         return view('livewire.admin.fiscal.issue-control', [
             'orders' => $orders,
             'batchOutcome' => $batchOutcome,
             'selectable' => $orders->getCollection()->mapWithKeys(fn (Order $o) => [$o->id => $this->isSelectable($o)]),
-            'models' => $orders->getCollection()->mapWithKeys(fn (Order $o) => [$o->id => $this->predictedModel($o)]),
+            'models' => $orders->getCollection()->mapWithKeys(fn (Order $o) => [$o->id => $this->predictedModel($o, $policy)]),
             'channels' => $orders->getCollection()->mapWithKeys(fn (Order $o) => [$o->id => $this->channelLabel($o)]),
             'branches' => $this->lockedBranchId ? collect() : Branch::orderBy('name')->get(['id', 'name']),
             'batch' => $batch,
             'issueOneOrder' => $issueOneOrder,
-            'issueOneModel' => $issueOneOrder ? $this->predictedModel($issueOneOrder) : null,
+            'issueOneModel' => $issueOneOrder ? ($this->issueOneConfirmedModel ?? $this->predictedModel($issueOneOrder, $policy)) : null,
             'issueOneChannel' => $issueOneOrder ? $this->channelLabel($issueOneOrder) : null,
         ])->layout('layouts.app', ['title' => 'Controle de notas fiscais']);
     }
@@ -339,10 +367,11 @@ class IssueControl extends Component
         return ! in_array($order->latestFiscalNote?->status, ['pending', 'authorized'], true);
     }
 
-    private function predictedModel(Order $order): string
+    /** Modelo da última tentativa, ou o que a política escolheria agora (null = a definir). */
+    private function predictedModel(Order $order, ?FiscalEmissionPolicy $policy = null): ?string
     {
         return $order->latestFiscalNote?->model
-            ?? FiscalRecipient::model($order->fiscal_recipient ?? ['document' => '']);
+            ?? ($policy ?? app(FiscalEmissionPolicy::class))->forOrder($order)->model;
     }
 
     private function channelLabel(Order $order): string
@@ -405,7 +434,8 @@ class IssueControl extends Component
             ->when($this->paymentFilter !== '', fn (Builder $q) => $this->applyPaymentFilter($q))
             ->when($this->situationFilter !== '' && $this->situationFilter !== 'all', fn (Builder $q) => $this->applySituationFilter($q))
             ->when($search !== '', function (Builder $q) use ($search) {
-                $digits = preg_replace('/\D/', '', $search);
+                // Documento pode ter letras (CNPJ alfanumérico): busca pelo valor normalizado.
+                $digits = \App\Services\Fiscal\FiscalRecipient::normalizeDocument($search);
 
                 $q->where(function (Builder $q) use ($search, $digits) {
                     $q->where('order_number', 'like', '%'.$search.'%')

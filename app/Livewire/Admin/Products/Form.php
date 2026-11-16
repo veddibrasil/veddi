@@ -40,6 +40,14 @@ class Form extends Component
     #[Locked]
     public bool $canSave = false;
 
+    /**
+     * Tela de onde a correção fiscal foi aberta (pedido, Controle de notas). Depois de salvar,
+     * volta para lá sem emitir nada: quem emite confere a nota de novo. Só caminho interno
+     * do painel, nunca URL externa.
+     */
+    #[Locked]
+    public ?string $returnTo = null;
+
     // Sem #[Locked]: o select de empresa do super admin grava aqui. Para os demais papéis o
     // valor é ignorado; o escopo vem de targetCompanyId().
     public ?int $company_id = null;
@@ -316,6 +324,8 @@ class Form extends Component
 
         $this->branchManagerBranchId = app()->bound('current.company')
             ? $user->lockedBranchId(app('current.company')) : null;
+
+        $this->returnTo = \App\Support\Fiscal\FiscalCorrectionLinks::safeReturnPath(request()->query('voltar'));
 
         if ($product?->exists) {
             $this->product = $product;
@@ -1108,6 +1118,13 @@ class Form extends Component
                 ->whereIn('branch_id', DB::table('branch_product')->where('product_id', $product->id)->select('branch_id'))
                 ->pluck('branch_id')
                 ->each(fn (int $branchId) => SyncFood99CatalogJob::debounce($branchId));
+        }
+
+        if ($this->returnTo) {
+            session()->flash('status', 'Dados do produto salvos. Confira a nota novamente antes de emitir.');
+            $this->redirect($this->returnTo);
+
+            return;
         }
 
         $this->redirect(route('admin.products.index'));

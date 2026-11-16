@@ -26,6 +26,7 @@ class Order extends Model
     protected $fillable = [
         'checkout_session_hash',
         'fiscal_recipient',
+        'fiscal_document_preference',
         'fiscal_error',
         'checkout_key', 'buyer_data', 'company_id', 'order_number', 'customer_id', 'branch_id', 'subtotal', 'delivery_fee', 'total',
         'status', 'notes', 'scheduled_at', 'payment_method', 'payment_on_delivery', 'order_type', 'delivery_type', 'coupon_id', 'discount', 'fee', 'net_value',
