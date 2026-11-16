@@ -52,6 +52,21 @@
             </div>
 
             <div>
+                <flux:input
+                    wire:model="order_prefix"
+                    label="Iniciais dos pedidos (opcional)"
+                    placeholder="{{ $companyOrderPrefix ?: 'Ex: MGA' }}"
+                    maxlength="10"
+                    class="max-w-xs"
+                />
+                <p class="text-xs text-neutral-500 mt-1">
+                    Ex.: pedido <strong>{{ $order_prefix ?: ($companyOrderPrefix ?: 'ORD') }}-{{ now()->year }}-0001</strong>.
+                    Vazio usa o prefixo da empresa{{ $companyOrderPrefix ? " ({$companyOrderPrefix})" : '' }}.
+                </p>
+                @error('order_prefix') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
+            </div>
+
+            <div>
                 <flux:checkbox wire:model="active" label="Filial ativa" />
             </div>
         </x-admin.form-card>

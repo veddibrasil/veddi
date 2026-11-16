@@ -157,16 +157,18 @@
                 </span>
             @endif
 
-            <flux:button
-                href="{{ route('admin.pdv.tabs') }}"
-                wire:navigate
-                variant="outline"
-                size="sm"
-                icon="table-cells"
-                class="max-sm:hidden"
-            >
-                Mesas/Comandas
-            </flux:button>
+            @if ($canOpenTabs)
+                <flux:button
+                    href="{{ route('admin.pdv.tabs') }}"
+                    wire:navigate
+                    variant="outline"
+                    size="sm"
+                    icon="table-cells"
+                    class="max-sm:hidden"
+                >
+                    Mesas/Comandas
+                </flux:button>
+            @endif
 
             @unless ($isWaiter || $isCaixa)
                 <flux:button wire:click="openClosingReports" variant="outline" size="sm" icon="document-text" class="max-sm:hidden" title="Relatórios de fechamento" aria-label="Relatórios de fechamento" />

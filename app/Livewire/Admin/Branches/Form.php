@@ -32,6 +32,9 @@ class Form extends Component
 
     public string $name = '';
 
+    /** Iniciais dos pedidos desta filial (ex.: MGA). Vazio = usa o prefixo da empresa. */
+    public string $order_prefix = '';
+
     public string $address = '';
 
     public string $number = '';
@@ -91,6 +94,12 @@ class Form extends Component
         return [
             'company_id' => $companyRule,
             'name' => ['required', 'string', 'max:100'],
+            'order_prefix' => [
+                'nullable', 'string', 'max:10', 'regex:/^[A-Z0-9]+$/',
+                Rule::unique('branches', 'order_prefix')
+                    ->where('company_id', $this->company_id)
+                    ->ignore($this->branch?->id),
+            ],
             'address' => ['required', 'string', 'max:255'],
             'number' => ['nullable', 'string', 'max:20'],
             'complement' => ['nullable', 'string', 'max:100'],
@@ -126,6 +135,9 @@ class Form extends Component
             'company_id.required' => 'Selecione uma empresa.',
             'company_id.exists' => 'Empresa inválida.',
             'name.required' => 'Informe o nome da filial.',
+            'order_prefix.regex' => 'Use só letras e números (ex: MGA).',
+            'order_prefix.max' => 'O prefixo pode ter no máximo 10 caracteres.',
+            'order_prefix.unique' => 'Outra filial desta empresa já usa esse prefixo.',
             'address.required' => 'Informe o endereço.',
             'city.required' => 'Informe a cidade.',
             'state.required' => 'Selecione a UF.',
@@ -157,6 +169,7 @@ class Form extends Component
 
         $validated = $this->validate($this->rules(), $this->messages());
         $validated['available_days'] = array_map('intval', $validated['available_days']);
+        $validated['order_prefix'] = $validated['order_prefix'] !== '' ? $validated['order_prefix'] : null;
 
         $businessHours = $this->buildBusinessHours($validated['available_days']);
         $validated['business_hours'] = $businessHours;
@@ -204,6 +217,12 @@ class Form extends Component
         $this->redirect(route('admin.branches.edit', $branch));
     }
 
+    /** Prefixo é gravado em maiúsculas, como o da empresa. */
+    public function updatedOrderPrefix(): void
+    {
+        $this->order_prefix = strtoupper(trim($this->order_prefix));
+    }
+
     /** Lista de origem do cardápio é por empresa: trocar a empresa (super admin) desfaz a escolha. */
     public function updatedCompanyId(): void
     {
@@ -225,7 +244,12 @@ class Form extends Component
         $copySources = $this->copySourceBranches();
         $copySourceProductCounts = $this->productCountsByBranch($copySources);
 
-        return view('livewire.admin.branches.form', compact('companies', 'schedulingEnabled', 'canCompanySettings', 'copySources', 'copySourceProductCounts'))
+        // Prefixo da empresa, mostrado como fallback no campo da filial.
+        $companyOrderPrefix = $this->company_id
+            ? Company::withoutGlobalScope(CompanyScope::class)->whereKey($this->company_id)->value('order_prefix')
+            : null;
+
+        return view('livewire.admin.branches.form', compact('companies', 'schedulingEnabled', 'canCompanySettings', 'copySources', 'copySourceProductCounts', 'companyOrderPrefix'))
             ->layout('layouts.app', ['title' => $this->isEditing ? 'Editar Filial' : 'Nova Filial']);
     }
 
@@ -365,6 +389,7 @@ class Form extends Component
         $branch->loadMissing('addressRecord');
 
         $this->name = (string) ($branch->name ?? '');
+        $this->order_prefix = (string) ($branch->order_prefix ?? '');
         $this->address = (string) ($branch->address ?? '');
         $this->number = (string) ($branch->number ?? '');
         $this->complement = (string) ($branch->complement ?? '');
