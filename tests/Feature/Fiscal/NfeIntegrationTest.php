@@ -362,3 +362,70 @@ test('emissão com CNPJ diferente do destinatário salvo exige cadastro fiscal a
         ->call('issueFiscalNote')->assertHasErrors('fiscalCustomerDocument');
     Queue::assertNotPushed(IssueFiscalNote::class);
 });
+
+test('NF-e lista de uma vez todos os campos fiscais pendentes de todos os produtos', function () {
+    ['company' => $company, 'order' => $order, 'product' => $product] = nfeContext();
+    $product->update(['fiscal_data' => ['ncm' => '19059090', 'cfop' => '5102', 'icms_situation' => '500', 'origin' => 0]]);
+    $other = Product::create(['company_id' => $company->id, 'product_category_id' => $product->product_category_id, 'name' => 'Refrigerante', 'price' => 10, 'active' => true]);
+    $order->items()->first()->update(['quantity' => 2, 'subtotal' => 20]);
+    OrderItem::create(['order_id' => $order->id, 'product_id' => $other->id, 'product_name' => 'Refrigerante', 'unit_price' => 10, 'quantity' => 1, 'subtotal' => 10]);
+    Http::fake();
+
+    $reason = app(FiscalNoteService::class)->preflight($order->fresh());
+
+    expect($reason)->toContain('Produto (CST PIS, CST COFINS)')
+        ->toContain('Refrigerante (NCM, CFOP interno, CST / CSOSN ICMS, Origem, CST PIS, CST COFINS)');
+    Http::assertNothingSent();
+});
+
+test('NF-e interestadual sem CFOP interestadual aparece na lista de pendências', function () {
+    ['order' => $order, 'product' => $product, 'recipient' => $recipient] = nfeContext();
+    $product->update(['fiscal_data' => array_diff_key($product->fiscal_data, ['interstate_cfop' => true])]);
+    $order->update(['fiscal_recipient' => [...$recipient, 'state' => 'PR', 'city' => 'Maringá', 'zip' => '87010000']]);
+
+    expect(app(FiscalNoteService::class)->preflight($order->fresh()))->toContain('Produto (CFOP interestadual)');
+});
+
+test('emitir pelo pedido mostra a pendência no modal e não enfileira', function () {
+    ['company' => $company, 'order' => $order, 'product' => $product, 'recipient' => $recipient] = nfeContext();
+    $order->update(['fiscal_recipient' => $recipient]);
+    $product->update(['fiscal_data' => ['ncm' => '19059090', 'cfop' => '5102']]);
+    $user = User::factory()->create();
+    $user->companies()->attach($company->id, ['role' => 'company_admin']);
+    $permission = \App\Models\Permission::firstOrCreate(['name' => 'fiscal.issue'], ['group' => 'fiscal', 'label' => 'Emitir notas']);
+    \App\Models\UserPermission::create(['user_id' => $user->id, 'company_id' => $company->id, 'permission_id' => $permission->id, 'granted' => true]);
+    Queue::fake();
+
+    Livewire::actingAs($user)->test(Show::class, ['order' => $order])
+        ->call('openFiscalModal')
+        ->assertSet('fiscalCustomerDocument', '11222333000181')
+        ->call('issueFiscalNote')
+        ->assertHasErrors('fiscalCustomerDocument')
+        ->assertSee('CST PIS, CST COFINS');
+
+    Queue::assertNotPushed(IssueFiscalNote::class);
+});
+
+test('emitir pelo pedido com dados completos enfileira a NF-e', function () {
+    ['company' => $company, 'order' => $order, 'recipient' => $recipient] = nfeContext();
+    $order->update(['fiscal_recipient' => $recipient]);
+    $user = User::factory()->create();
+    $user->companies()->attach($company->id, ['role' => 'company_admin']);
+    $permission = \App\Models\Permission::firstOrCreate(['name' => 'fiscal.issue'], ['group' => 'fiscal', 'label' => 'Emitir notas']);
+    \App\Models\UserPermission::create(['user_id' => $user->id, 'company_id' => $company->id, 'permission_id' => $permission->id, 'granted' => true]);
+    Queue::fake();
+
+    Livewire::actingAs($user)->test(Show::class, ['order' => $order])
+        ->call('openFiscalModal')
+        ->call('issueFiscalNote')
+        ->assertHasNoErrors();
+
+    Queue::assertPushed(IssueFiscalNote::class, fn ($job) => $job->orderId === $order->id);
+});
+
+test('falha com mensagem longa não quebra a notificação do sino', function () {
+    ['order' => $order] = nfeContext();
+    (new IssueFiscalNote($order->id))->failed(new RuntimeException(str_repeat('Pendência longa ', 40)));
+    expect($order->fresh()->fiscal_error)->toBe(str_repeat('Pendência longa ', 40))
+        ->and(mb_strlen(\App\Models\CompanyNotification::where('type', 'fiscal_note_failed')->firstOrFail()->subtitle))->toBeLessThanOrEqual(255);
+});
