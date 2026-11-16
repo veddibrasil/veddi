@@ -94,7 +94,8 @@ class IssueFiscalNote implements ShouldQueue
                 'company_id' => $companyId,
                 'type' => 'fiscal_note_failed',
                 'title' => 'Falha ao emitir nota fiscal',
-                'subtitle' => $exception->getMessage(),
+                // subtitle é varchar(255); a mensagem completa fica em orders.fiscal_error.
+                'subtitle' => \Illuminate\Support\Str::limit($exception->getMessage(), 250),
                 'link' => route('admin.orders.show', $this->orderId),
             ]);
         }

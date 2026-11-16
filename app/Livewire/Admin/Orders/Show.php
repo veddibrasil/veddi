@@ -1579,6 +1579,12 @@ class Show extends Component
             ]);
         }
 
+        // Mesma pré-checagem do Controle de notas: pendência de produto, destinatário ou emitente
+        // aparece aqui no modal, inteira, em vez de virar "enfileirada" e falhar depois no sino.
+        if ($reason = app(\App\Services\Fiscal\FiscalNoteService::class)->preflight($this->order->fresh(), $this->fiscalCustomerDocument)) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['fiscalCustomerDocument' => $reason]);
+        }
+
         IssueFiscalNote::dispatch($this->order->id, $this->fiscalCustomerDocument, auth()->id());
 
         $this->showFiscalModal = false;

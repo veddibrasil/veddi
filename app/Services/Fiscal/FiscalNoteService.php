@@ -15,6 +15,16 @@ use Illuminate\Support\Str;
 
 class FiscalNoteService
 {
+    /** Campos do produto exigidos pela NF-e, com o rótulo usado no cadastro de produtos. */
+    private const NFE_PRODUCT_FIELDS = [
+        'ncm' => 'NCM',
+        'cfop' => 'CFOP interno',
+        'icms_situation' => 'CST / CSOSN ICMS',
+        'origin' => 'Origem',
+        'pis_situation' => 'CST PIS',
+        'cofins_situation' => 'CST COFINS',
+    ];
+
     public function __construct(
         private readonly FiscalNoteProviderInterface $provider,
         private readonly FiscalConfigResolver $resolver,
@@ -154,10 +164,10 @@ class FiscalNoteService
      *
      * @return string|null mensagem da primeira pendência, ou null se o pedido pode ser emitido
      */
-    public function preflight(Order $order): ?string
+    public function preflight(Order $order, ?string $customerDocument = null): ?string
     {
         try {
-            $this->prepare($order);
+            $this->prepare($order, $customerDocument);
 
             return null;
         } catch (\RuntimeException $e) {
@@ -496,7 +506,11 @@ class FiscalNoteService
             ->whereNotNull('branch_product.fiscal_data')
             ->pluck('branch_product.fiscal_data', 'branch_product.product_id');
 
-        return $order->items->map(function ($item) use ($order, $model, $issuerState, $recipientState, $crt, $profiles) {
+        // NF-e: junta as pendências de todos os itens numa mensagem só. Falhar no primeiro campo
+        // do primeiro produto fazia o lojista corrigir um campo por tentativa.
+        $missing = [];
+
+        $items = $order->items->map(function ($item) use ($order, $model, $issuerState, $recipientState, $crt, $profiles, &$missing) {
             if ($item->product && (int) $item->product->company_id !== (int) $order->company_id) {
                 throw new \RuntimeException('Produto não pertence à empresa do pedido.');
             }
@@ -519,10 +533,12 @@ class FiscalNoteService
                 throw new \RuntimeException('CST/CSOSN incompatível com o regime do emitente no produto '.$item->product_name.'. Configure o perfil fiscal desta filial.');
             }
             if ($model === '55') {
-                foreach (['ncm', 'cfop', 'icms_situation', 'origin', 'pis_situation', 'cofins_situation'] as $field) {
-                    if (! isset($fiscal[$field]) || $fiscal[$field] === '') {
-                        throw new \RuntimeException('Dados fiscais pendentes no produto '.$item->product_name.': '.$field.'.');
-                    }
+                $required = self::NFE_PRODUCT_FIELDS + ($issuerState !== $recipientState ? ['interstate_cfop' => 'CFOP interestadual'] : []);
+                $absent = array_values(array_filter($required, fn ($label, $field) => ! isset($fiscal[$field]) || $fiscal[$field] === '', ARRAY_FILTER_USE_BOTH));
+                if ($absent !== []) {
+                    $missing[trim((string) $item->product_name)] = $absent;
+
+                    return [];
                 }
                 $cfop = (string) ($issuerState !== $recipientState ? ($fiscal['interstate_cfop'] ?? '') : $fiscal['cfop']);
                 if (! preg_match($issuerState !== $recipientState ? '/^6[0-9]{3}$/' : '/^5[0-9]{3}$/', $cfop)) {
@@ -553,5 +569,13 @@ class FiscalNoteService
                 'subtotal' => (float) $item->subtotal,
             ];
         })->toArray();
+
+        if ($missing !== []) {
+            $products = collect($missing)->map(fn ($labels, $name) => $name.' ('.implode(', ', $labels).')')->implode('; ');
+
+            throw new \RuntimeException('Dados fiscais pendentes para NF-e. Complete em Produtos > Dados fiscais do produto (ou no perfil fiscal da filial, se ativo): '.$products.'.');
+        }
+
+        return $items;
     }
 }
