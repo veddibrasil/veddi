@@ -73,7 +73,8 @@ trait HasFiscalRecipient
         if (isset($this->order)) {
             abort_unless(app('current.company')->canUseFiscalNotes() && auth()->user()->hasPermission('fiscal.issue', app('current.company')), 403);
         }
-        abort_unless($this->fiscalCustomer(), 422, 'Selecione um cliente para informar os dados fiscais.');
+        // No pedido o destinatário é do pedido: balcão sem cliente cadastrado também pode ter nota com CNPJ.
+        abort_unless($this->fiscalCustomer() || isset($this->order), 422, 'Selecione um cliente para informar os dados fiscais.');
         $this->resetValidation();
         $this->fiscalRecipientDraft = $this->effectiveFiscalRecipient();
         $this->fiscalRecipientNotice = null;
@@ -82,13 +83,13 @@ trait HasFiscalRecipient
     }
 
     /** Ao digitar um CNPJ válido no formulário, preenche razão social e endereço pela consulta pública. */
-    public function updatedFiscalRecipientDraft(mixed $value, string $key): void
+    public function updatedFiscalRecipientDraft(mixed $value, ?string $key = null): void
     {
         if ($key !== 'document') {
             return;
         }
-        $digits = preg_replace('/\D/', '', (string) $value);
-        if (strlen($digits) !== 14 || ! FiscalRecipient::isValidDocument($digits)) {
+        $digits = FiscalRecipient::normalizeDocument((string) $value);
+        if (FiscalRecipient::documentType($digits) !== FiscalRecipient::TYPE_CNPJ || ! FiscalRecipient::isValidDocument($digits)) {
             $this->fiscalRecipientNotice = null;
 
             return;
@@ -106,39 +107,44 @@ trait HasFiscalRecipient
         foreach (['name', 'email', 'street', 'number', 'complement', 'neighborhood', 'city', 'state', 'zip'] as $field) {
             $draft[$field] = $found[$field] ?? '';
         }
-        // Venda pra empresa é quase sempre consumo final sem ICMS a recolher; o caixa ajusta se for contribuinte.
+        // Sugestão: venda pra empresa costuma ser consumo final sem ICMS a recolher. Fica "a conferir"
+        // (ie_confirmed = false) até alguém salvar o formulário — a consulta pública não informa a IE.
         $draft['ie_indicator'] = '9';
         $draft['ie'] = '';
+        $draft['ie_confirmed'] = false;
         $this->fiscalRecipientDraft = $draft;
     }
 
     public function saveFiscalRecipient(): void
     {
         $customer = $this->fiscalCustomer();
-        abort_unless($customer, 422);
+        abort_unless($customer || isset($this->order), 422);
         if (isset($this->order)) {
             abort_unless(app('current.company')->canUseFiscalNotes() && auth()->user()->hasPermission('fiscal.issue', app('current.company')), 403);
         }
         try {
-            $recipient = FiscalRecipient::validate($this->fiscalRecipientDraft);
+            // Salvar o formulário é a conferência da situação da IE (reaproveitada nas próximas compras).
+            $recipient = FiscalRecipient::validate([...$this->fiscalRecipientDraft, 'ie_confirmed' => true]);
         } catch (ValidationException $e) {
             throw ValidationException::withMessages(collect($e->errors())->mapWithKeys(fn ($messages, $field) => ['fiscalRecipientDraft.'.$field => $messages])->all());
         }
         DB::transaction(function () use ($customer, $recipient) {
             if (isset($this->order)) {
-                $order = Order::withoutGlobalScopes()->where('company_id', $customer->company_id)->lockForUpdate()->findOrFail($this->order->id);
+                $order = Order::withoutGlobalScopes()->where('company_id', $this->order->company_id)->lockForUpdate()->findOrFail($this->order->id);
                 if ($order->fiscalNotes()->whereIn('status', ['pending', 'authorized'])->exists()) {
                     throw ValidationException::withMessages(['fiscalRecipientDraft.document' => 'Já existe uma nota ativa. Os dados fiscais deste pedido não podem ser alterados.']);
                 }
-                $order->update(['fiscal_recipient' => $recipient]);
+                // Escolha de modelo feita para outro comprador não vale para o novo documento.
+                $sameDocument = FiscalRecipient::normalizeDocument($order->fiscal_recipient['document'] ?? '') === $recipient['document'];
+                $order->update(['fiscal_recipient' => $recipient] + ($sameDocument ? [] : ['fiscal_document_preference' => null]));
                 $this->order = $order;
             }
-            if ($this->rememberFiscalRecipient) {
+            if ($this->rememberFiscalRecipient && $customer) {
                 $customer->update(['fiscal_recipient' => $recipient]);
             }
         });
         $this->savedFiscalRecipient = $recipient;
-        $this->fiscalRecipientCustomerId = $customer->id;
+        $this->fiscalRecipientCustomerId = $customer?->id;
         $this->showFiscalRecipient = false;
         if (method_exists($this, 'saveToSession')) {
             $this->saveToSession();

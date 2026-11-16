@@ -42,7 +42,7 @@ class FiscalNoteReceiptController extends Controller
         $company = app()->bound('current.company') ? app('current.company') : null;
 
         // QR oficial da SEFAZ (qrcode_url); sem ele, a chave de acesso.
-        $qrData = $note->raw_response['qrcode_url'] ?? preg_replace('/\D/', '', (string) $note->access_key);
+        $qrData = $note->raw_response['qrcode_url'] ?? \App\Support\Fiscal\AccessKey::normalize($note->access_key);
         $qrCode = $qrData
             ? 'data:image/svg+xml;base64,'.base64_encode((new Writer(new ImageRenderer(new RendererStyle(240, 0), new SvgImageBackEnd)))->writeString($qrData))
             : null;

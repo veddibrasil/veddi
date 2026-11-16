@@ -37,6 +37,9 @@ class Config extends Component
 
     public string $nfeSerie = '1';
 
+    /** Liberação da NFC-e com CNPJ nesta filial (FiscalEmissionPolicy). Só depois da contabilidade e da homologação. */
+    public bool $nfceCnpjEnabled = false;
+
     public $certificateFile = null;
 
     public bool $hasCertificate = false;
@@ -189,6 +192,7 @@ class Config extends Component
         $this->provider = $config?->provider ?? 'focus_nfe';
         $this->nfceSerie = (string) ($config?->nfce_serie ?? '1');
         $this->nfeSerie = (string) ($config?->nfe_serie ?? '1');
+        $this->nfceCnpjEnabled = (bool) ($config?->nfce_cnpj_enabled ?? false);
         $this->hasProviderToken = filled($config?->provider_token);
         $this->hasCertificate = filled($config?->certificate_path);
         $this->focusNfeCompanyId = $config?->focus_nfe_company_id;
@@ -226,6 +230,7 @@ class Config extends Component
             'providerToken' => ['nullable', 'string', 'max:255'],
             'nfceSerie' => ['required', 'integer', 'min:1', 'max:999'],
             'nfeSerie' => ['required', 'integer', 'min:1', 'max:999'],
+            'nfceCnpjEnabled' => ['boolean'],
             'inscricaoEstadual' => ['nullable', 'string', 'max:50'],
             'inscricaoMunicipal' => ['nullable', 'string', 'max:50'],
             'branchCnpj' => ['nullable', 'string'],
@@ -275,15 +280,23 @@ class Config extends Component
         // como emissor. Antes disso, digitar errado e corrigir não deve depender de suporte.
         // A trava vem do banco, nunca do indicador público enviado pelo navegador.
         if ($config->isIssuerLocked()) {
-            $registeredCnpj = $config->issuer_cnpj ?: preg_replace('/\D/', '', $branch->cnpj ?: ($company->owner_cpf_cnpj ?? ''));
-            if (preg_replace('/\D/', '', $this->branchCnpj) !== $registeredCnpj
-                || ($branch->cnpj && preg_replace('/\D/', '', $branch->cnpj) !== $registeredCnpj)) {
+            $registeredCnpj = $config->issuer_cnpj ?: \App\Services\Fiscal\FiscalRecipient::normalizeDocument($branch->cnpj ?: ($company->owner_cpf_cnpj ?? ''));
+            if (\App\Services\Fiscal\FiscalRecipient::normalizeDocument($this->branchCnpj) !== $registeredCnpj
+                || ($branch->cnpj && \App\Services\Fiscal\FiscalRecipient::normalizeDocument($branch->cnpj) !== $registeredCnpj)) {
                 $this->addError('branchCnpj', 'O CNPJ registrado não pode ser alterado. Contate o suporte para revisar o emitente.');
 
                 return;
             }
         } elseif ($this->branchCnpj !== '') {
-            $digits = preg_replace('/\D/', '', $this->branchCnpj);
+            $digits = \App\Services\Fiscal\FiscalRecipient::normalizeDocument($this->branchCnpj);
+
+            // Emitente com CNPJ alfanumérico depende de homologação com o provedor (chave de
+            // acesso, cadastro na Focus, DANFE): recusado com aviso em vez de ser gravado truncado.
+            if (preg_match('/[A-Z]/', $digits)) {
+                $this->addError('branchCnpj', 'CNPJ alfanumérico de emitente ainda não é suportado na emissão. Fale com o suporte.');
+
+                return;
+            }
 
             if (strlen($digits) !== 14) {
                 $this->addError('branchCnpj', 'CNPJ deve ter 14 dígitos.');
@@ -344,11 +357,12 @@ class Config extends Component
         $config->environment = $environment;
         $config->emission_environment = $this->emissionEnvironment ?: null;
         $config->legal_name = trim($this->legalName);
-        $config->issuer_cnpj = preg_replace('/\D/', '', $branch->cnpj ?: ($company->owner_cpf_cnpj ?? '')) ?: null;
+        $config->issuer_cnpj = \App\Services\Fiscal\FiscalRecipient::normalizeDocument($branch->cnpj ?: ($company->owner_cpf_cnpj ?? '')) ?: null;
         $config->nfce_serie = (int) $this->nfceSerie;
         // NF-e sempre habilitada: CNPJ no destinatário sempre emite NF-e.
         $config->nfe_enabled = true;
         $config->nfe_serie = (int) $this->nfeSerie;
+        $config->nfce_cnpj_enabled = $this->nfceCnpjEnabled;
         $config->id_token_nfce_producao = $this->idTokenNfceProducao ?: null;
 
         // Token/senha/CSC só são sobrescritos quando o usuário digita um novo valor —

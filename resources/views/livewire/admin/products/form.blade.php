@@ -748,8 +748,11 @@
         </div>
     </div>
 
-    <details class="bg-white border rounded-xl p-4 dark:bg-zinc-800 dark:border-zinc-700">
+    <details id="dados-fiscais" class="bg-white border rounded-xl p-4 dark:bg-zinc-800 dark:border-zinc-700" @if($returnTo) open @endif>
         <summary class="cursor-pointer font-semibold">Dados fiscais do produto</summary>
+        @if($returnTo)
+            <p class="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">Corrigindo pendência de nota fiscal. Ao salvar, você volta para a tela anterior; a nota não é emitida automaticamente.</p>
+        @endif
         <p class="text-xs text-neutral-500 my-3">Preencha conforme a classificação definida pela contabilidade. A NF-e exige os campos fiscais completos.</p>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             @foreach(['ncm' => 'NCM', 'cfop' => 'CFOP interno', 'interstate_cfop' => 'CFOP interestadual', 'icms_situation' => 'CST / CSOSN ICMS', 'origin' => 'Origem (0 a 8)', 'unit' => 'Unidade comercial', 'cest' => 'CEST', 'pis_situation' => 'CST PIS', 'cofins_situation' => 'CST COFINS'] as $field => $label)
@@ -769,7 +772,7 @@
             @error('branchFiscalProfiles') <p class="text-xs text-red-600">{{ $message }}</p> @enderror
             @foreach($branches as $fiscalBranch)
                 @if(in_array((string) $fiscalBranch->id, array_map('strval', $selectedBranches), true))
-                    <div wire:key="fiscal-branch-{{ $fiscalBranch->id }}" class="border rounded-lg p-4 space-y-3 dark:border-zinc-700">
+                    <div wire:key="fiscal-branch-{{ $fiscalBranch->id }}" id="fiscal-filial-{{ $fiscalBranch->id }}" class="border rounded-lg p-4 space-y-3 dark:border-zinc-700">
                         <flux:switch wire:model.live="branchFiscalProfiles.{{ $fiscalBranch->id }}.enabled" label="{{ $fiscalBranch->name }} — usar perfil fiscal próprio" />
                         @if($branchFiscalProfiles[$fiscalBranch->id]['enabled'] ?? false)
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -797,9 +800,9 @@
             </span>
             <span wire:loading wire:target="save">Salvando...</span>
         </flux:button>
-        <a href="{{ route('admin.products.index') }}"
+        <a href="{{ $returnTo ?: route('admin.products.index') }}"
             class="inline-flex items-center px-4 py-2 text-sm text-neutral-600 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200">
-            Cancelar
+            {{ $returnTo ? 'Voltar sem salvar' : 'Cancelar' }}
         </a>
     </div>
 </div>

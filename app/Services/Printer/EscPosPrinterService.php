@@ -273,7 +273,7 @@ class EscPosPrinterService implements PrinterServiceInterface
         if ($note->access_key) {
             // Focus devolve a chave com prefixo "NFe"; o QR oficial (qrcode_url) e o portal
             // de consulta (url_consulta_nf) são da SEFAZ da UF — só a chave não abre a nota.
-            $accessKey = preg_replace('/\D/', '', $note->access_key);
+            $accessKey = \App\Support\Fiscal\AccessKey::normalize($note->access_key);
 
             $printer->feed();
             $printer->setJustification(Printer::JUSTIFY_CENTER);

@@ -185,6 +185,11 @@
                                     Notas Fiscais
                                 </flux:sidebar.item>
                             @endif
+                            @if(\App\Support\Fiscal\FiscalCorrectionLinks::canEditProducts($user, $company))
+                                <flux:sidebar.item icon="squares-plus" :href="route('admin.fiscal.templates')" :current="request()->routeIs('admin.fiscal.templates')" wire:navigate>
+                                    Tributação em lote
+                                </flux:sidebar.item>
+                            @endif
                             @if($can('fiscal.settings'))
                                 <flux:sidebar.item icon="cog-6-tooth" :href="route('admin.fiscal.config')" :current="request()->routeIs('admin.fiscal.config')" wire:navigate>
                                     Dados fiscais

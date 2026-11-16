@@ -22,8 +22,9 @@ use Livewire\Attributes\Locked;
  * depois — individualmente ou em lote.
  *
  * Marcando a emissão aparece o "CPF/CNPJ na nota", que não depende de cliente cadastrado
- * (venda de balcão é a mais comum). CPF ou vazio = NFC-e; CNPJ = NF-e, com os dados da
- * empresa vindos do cadastro do cliente ou da consulta pública do CNPJ, pro caixa conferir.
+ * (venda de balcão é a mais comum). O modelo vem da FiscalEmissionPolicy: CPF ou vazio = NFC-e;
+ * CNPJ = NF-e, ou NFC-e com CNPJ quando a filial está liberada (o caixa pode escolher NF-e).
+ * Os dados da empresa vêm do cadastro do cliente ou da consulta pública do CNPJ, pro caixa conferir.
  */
 trait HasCheckoutFiscalNote
 {
@@ -34,6 +35,9 @@ trait HasCheckoutFiscalNote
     public array $fiscalCompany = [];
 
     public bool $showFiscalCompanyForm = false;
+
+    /** '' = automático pela política; 'nfce' | 'nfe' = escolha do caixa. Vai para o pedido. */
+    public string $fiscalDocumentChoice = '';
 
     /** Grava o destinatário no cadastro do cliente selecionado pra próximas compras. */
     public bool $rememberFiscalData = false;
@@ -52,9 +56,10 @@ trait HasCheckoutFiscalNote
     public function updatedFiscalDocument(): void
     {
         $this->resetValidation('fiscalDocument');
-        $digits = preg_replace('/\D/', '', $this->fiscalDocument);
+        $this->fiscalDocumentChoice = '';
+        $digits = FiscalRecipient::normalizeDocument($this->fiscalDocument);
 
-        if (strlen($digits) !== 14) {
+        if (FiscalRecipient::documentType($digits) !== FiscalRecipient::TYPE_CNPJ) {
             $this->fiscalCompany = [];
             $this->fiscalCompanyNotice = null;
 
@@ -73,6 +78,7 @@ trait HasCheckoutFiscalNote
         $this->fiscalDocument = '';
         $this->fiscalCompany = [];
         $this->fiscalCompanyNotice = null;
+        $this->fiscalDocumentChoice = '';
         $this->resetValidation(['fiscalDocument', 'fiscalCompany.*']);
     }
 
@@ -84,21 +90,46 @@ trait HasCheckoutFiscalNote
     /** "Usar estes dados" do painel da empresa: só fecha se o destinatário já for válido pra NF-e. */
     public function confirmFiscalCompany(): void
     {
+        // "Usar estes dados" é a conferência do caixa, inclusive da situação da IE.
+        $this->fiscalCompany['ie_confirmed'] = true;
         $this->validatedFiscalRecipient();
+        $this->resetValidation('fiscalDocument');
         $this->showFiscalCompanyForm = false;
+    }
+
+    /** Documento que sai com esta venda (NFC-e/NF-e), pela mesma política do pedido e do job. */
+    #[Computed]
+    public function fiscalDecision(): ?\App\DTOs\FiscalEmissionDecision
+    {
+        if (! $this->issueFiscalNote || ! $this->canUseFiscalNotes) {
+            return null;
+        }
+        $digits = FiscalRecipient::normalizeDocument($this->fiscalDocument);
+        $recipient = FiscalRecipient::documentType($digits) === FiscalRecipient::TYPE_CNPJ ? [...$this->fiscalCompany, 'document' => $digits] : ['document' => $digits];
+
+        return app(\App\Services\Fiscal\FiscalEmissionPolicy::class)->forCheckout(
+            app('current.company')->id,
+            $this->selectedBranchId,
+            $recipient,
+            // Total final (taxas, entrega e desconto), o mesmo que vira orders.total.
+            method_exists($this, 'cartTotalAfterDiscount') ? (float) $this->cartTotalAfterDiscount() : 0.0,
+            $this->deliveryType ?? 'balcao',
+            $this->fiscalDocumentChoice ?: null,
+        );
     }
 
     /** Situação do documento digitado, pro texto embaixo do campo. */
     #[Computed]
     public function fiscalDocumentState(): string
     {
-        $digits = preg_replace('/\D/', '', $this->fiscalDocument);
+        $digits = FiscalRecipient::normalizeDocument($this->fiscalDocument);
+        $type = FiscalRecipient::documentType($digits);
 
         return match (true) {
             $digits === '' => 'empty',
-            ! in_array(strlen($digits), [11, 14], true) => 'typing',
+            $type === null => 'typing',
             ! FiscalRecipient::isValidDocument($digits) => 'invalid',
-            strlen($digits) === 11 => 'cpf',
+            $type === FiscalRecipient::TYPE_CPF => 'cpf',
             $this->fiscalCompanyComplete() => 'cnpj',
             default => 'cnpj_incomplete',
         };
@@ -120,7 +151,20 @@ trait HasCheckoutFiscalNote
             return $customer ? FiscalRecipient::fromCustomer($customer) : null;
         }
 
+        // Erro de uma tentativa anterior (já corrigido) não pode continuar na tela.
+        $this->resetValidation('fiscalDocument');
         $recipient = $this->validatedFiscalRecipient();
+
+        // Documento permitido para esta venda: bloqueio da política vira erro no campo, antes de
+        // gravar o pedido (ex.: NFC-e de valor alto sem identificação, IE a conferir).
+        $decision = $this->fiscalDecision;
+        if ($decision?->blocked()) {
+            if (in_array('ie_confirmation', $decision->needs, true)) {
+                $this->showFiscalCompanyForm = true;
+            }
+
+            throw ValidationException::withMessages(['fiscalDocument' => implode(' ', $decision->reasons)]);
+        }
 
         if ($this->rememberFiscalData && $customer && $recipient['document'] !== '') {
             $customer->update(['fiscal_recipient' => $recipient]);
@@ -129,10 +173,18 @@ trait HasCheckoutFiscalNote
         return $recipient;
     }
 
+    /** Escolha explícita do caixa gravada no pedido (null = automático ou sem emissão agora). */
+    private function checkoutFiscalPreference(): ?string
+    {
+        return $this->issueFiscalNote && $this->canUseFiscalNotes && in_array($this->fiscalDocumentChoice, ['nfce', 'nfe'], true)
+            ? $this->fiscalDocumentChoice
+            : null;
+    }
+
     private function validatedFiscalRecipient(): array
     {
-        $digits = preg_replace('/\D/', '', $this->fiscalDocument);
-        $isCompany = strlen($digits) === 14;
+        $digits = FiscalRecipient::normalizeDocument($this->fiscalDocument);
+        $isCompany = FiscalRecipient::documentType($digits) === FiscalRecipient::TYPE_CNPJ;
         $recipient = $isCompany ? [...$this->fiscalCompany, 'document' => $digits] : ['document' => $digits];
 
         try {
@@ -153,7 +205,7 @@ trait HasCheckoutFiscalNote
     private function fiscalCompanyComplete(): bool
     {
         try {
-            FiscalRecipient::validate([...$this->fiscalCompany, 'document' => preg_replace('/\D/', '', $this->fiscalDocument)]);
+            FiscalRecipient::validate([...$this->fiscalCompany, 'document' => FiscalRecipient::normalizeDocument($this->fiscalDocument)]);
 
             return true;
         } catch (ValidationException) {
@@ -171,7 +223,7 @@ trait HasCheckoutFiscalNote
             return;
         }
 
-        $digits = preg_replace('/\D/', '', FiscalRecipient::fromCustomer($customer)['document'] ?? '');
+        $digits = FiscalRecipient::normalizeDocument(FiscalRecipient::fromCustomer($customer)['document'] ?? '');
 
         if (! FiscalRecipient::isValidDocument($digits)) {
             return;
@@ -179,7 +231,7 @@ trait HasCheckoutFiscalNote
 
         $this->fiscalDocument = FiscalRecipient::formatDocument($digits);
 
-        if (strlen($digits) === 14) {
+        if (FiscalRecipient::documentType($digits) === FiscalRecipient::TYPE_CNPJ) {
             $this->loadFiscalCompany($digits);
         }
     }
@@ -190,7 +242,7 @@ trait HasCheckoutFiscalNote
         $this->resetValidation('fiscalCompany.*');
         $saved = FiscalRecipient::fromCustomer($this->checkoutCustomer());
 
-        if (preg_replace('/\D/', '', $saved['document'] ?? '') === $cnpj && filled($saved['name'] ?? null)) {
+        if (FiscalRecipient::normalizeDocument($saved['document'] ?? '') === $cnpj && filled($saved['name'] ?? null)) {
             $this->fiscalCompany = [...$saved, 'document' => $cnpj];
             $this->fiscalCompanyNotice = null;
 
@@ -210,9 +262,11 @@ trait HasCheckoutFiscalNote
             'city' => $found['city'] ?? '',
             'state' => $found['state'] ?? '',
             'zip' => $found['zip'] ?? '',
-            // Venda de restaurante pra empresa é quase sempre consumo final sem ICMS a recolher.
+            // Sugestão (consumo final sem ICMS a recolher); a consulta pública não informa a IE,
+            // então fica "a conferir" até o caixa usar os dados.
             'ie_indicator' => '9',
             'ie' => '',
+            'ie_confirmed' => false,
         ];
 
         $this->fiscalCompanyNotice = match (true) {
@@ -241,6 +295,7 @@ trait HasCheckoutFiscalNote
         $this->fiscalCompanyNotice = null;
         $this->showFiscalCompanyForm = false;
         $this->rememberFiscalData = false;
+        $this->fiscalDocumentChoice = '';
     }
 
     /**
@@ -270,7 +325,23 @@ trait HasCheckoutFiscalNote
                 return false;
             }
 
-            IssueFiscalNote::dispatch($order->id, null, auth()->id());
+            // Mesma política no pedido gravado, comparada com o que o caixa viu na tela: bloqueio
+            // ou modelo diferente (valor, entrega, filial) não emite outro documento em silêncio.
+            $seen = $this->fiscalDecision?->model;
+            $decision = app(\App\Services\Fiscal\FiscalEmissionPolicy::class)->forOrder($order->fresh());
+            if ($decision->blocked() || ($seen !== null && $seen !== $decision->model)) {
+                $this->dispatch('pdv-toast',
+                    message: 'Nota fiscal não emitida: '.($decision->blocked()
+                        ? ($decision->reasons[0] ?? 'confira o documento')
+                        : 'o documento da venda mudou para '.\App\DTOs\FiscalEmissionDecision::label($decision->model).'.')
+                        .' O pedido ficou no Controle de notas para conferência.',
+                    duration: 6000,
+                );
+
+                return false;
+            }
+
+            IssueFiscalNote::dispatch($order->id, null, auth()->id(), $seen ?? $decision->model);
 
             return true;
         } catch (\Throwable $e) {

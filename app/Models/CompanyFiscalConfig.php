@@ -32,13 +32,18 @@ class CompanyFiscalConfig extends Model
         'nfce_serie',
         'nfe_enabled',
         'nfe_serie',
+        'nfce_cnpj_enabled',
         'certificate_path',
         'certificate_password',
     ];
 
-    /** NF-e sempre habilitada: CNPJ no destinatário sempre emite NF-e. */
+    /**
+     * NF-e sempre habilitada. NFC-e com CNPJ só quando a filial for liberada
+     * (FiscalEmissionPolicy); desligada, CNPJ no destinatário emite NF-e.
+     */
     protected $attributes = [
         'nfe_enabled' => true,
+        'nfce_cnpj_enabled' => false,
     ];
 
     protected $casts = [
@@ -48,6 +53,7 @@ class CompanyFiscalConfig extends Model
         'nfce_serie' => 'integer',
         'nfe_enabled' => 'boolean',
         'nfe_serie' => 'integer',
+        'nfce_cnpj_enabled' => 'boolean',
         'provider_token' => 'encrypted',
         'token_producao' => 'encrypted',
         'token_homologacao' => 'encrypted',

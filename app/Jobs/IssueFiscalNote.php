@@ -29,6 +29,9 @@ class IssueFiscalNote implements ShouldQueue
         public readonly int $orderId,
         public readonly ?string $customerDocument = null,
         public readonly ?int $requestedBy = null,
+        // Modelo conferido na tela ('65'|'55'). Se a política decidir outro na execução, a
+        // emissão falha pedindo nova conferência em vez de trocar o documento em silêncio.
+        public readonly ?string $confirmedModel = null,
     ) {
         $this->onQueue('default');
     }
@@ -55,7 +58,7 @@ class IssueFiscalNote implements ShouldQueue
         }
 
         try {
-            $service->issue($order, $this->customerDocument, $this->requestedBy);
+            $service->issue($order, $this->customerDocument, $this->requestedBy, $this->confirmedModel);
         } catch (FiscalNoteAlreadyIssuedException $e) {
             Log::channel('fiscal')->info('IssueFiscalNote: emissão ignorada, nota já ativa', [
                 'order_id' => $this->orderId,

@@ -31,5 +31,8 @@ readonly class FiscalNoteDTO
         public float $discount = 0,
         public float $otherExpenses = 0,
         public array $payments = [],
+        /** Decidido pela FiscalEmissionPolicy; null = regra antiga (UF do destinatário x emitente). */
+        public ?bool $interstate = null,
+        public ?bool $presential = null,
     ) {}
 }

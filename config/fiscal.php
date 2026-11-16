@@ -18,4 +18,13 @@ return [
 
     'addon_monthly_price' => (float) env('FISCAL_ADDON_PRICE', 149.00),
 
+    // Política de emissão (App\Services\Fiscal\FiscalEmissionPolicy). Limites do Ajuste SINIEF
+    // 19/16, cláusula quarta: VII, "a" (identificação a partir de R$ 10 mil) e § 4º (NFC-e
+    // vedada a partir de R$ 200 mil). O § 5º permite à UF reduzir os dois valores: conferir a
+    // legislação do estado da filial antes de liberar a NFC-e com CNPJ.
+    'policy' => [
+        'nfce_identification_threshold' => (float) env('FISCAL_NFCE_IDENTIFICATION_THRESHOLD', 10000),
+        'nfce_max_total' => (float) env('FISCAL_NFCE_MAX_TOTAL', 200000),
+    ],
+
 ];
