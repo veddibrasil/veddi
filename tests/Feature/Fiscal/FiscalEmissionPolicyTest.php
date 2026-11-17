@@ -371,7 +371,8 @@ test('CNPJ novo digitado no modal consulta a empresa e só emite depois de salva
 
 test('pendência de produto tem link de correção só para quem edita produtos', function () {
     ['order' => $order, 'company' => $company, 'product' => $product, 'branch' => $branch] = policyContext();
-    $product->branches()->attach($branch->id, ['available' => true, 'fiscal_data' => json_encode(['icms_situation' => '102'])]);
+    // Exceção da filial com CST do regime normal numa filial do Simples: só a filial corrige.
+    $product->branches()->attach($branch->id, ['available' => true, 'fiscal_data' => json_encode(['icms_situation' => '00'])]);
     $editor = policyIssuer($company);
     $editorRole = \App\Models\Permission::firstOrCreate(['name' => 'products.update'], ['group' => 'products', 'label' => 'Editar produto']);
     \App\Models\UserPermission::create(['user_id' => $editor->id, 'company_id' => $company->id, 'permission_id' => $editorRole->id, 'granted' => true]);
@@ -379,7 +380,7 @@ test('pendência de produto tem link de correção só para quem edita produtos'
     $expected = '/admin/products/'.$product->id.'/edit?voltar=%2Fadmin%2Forders%2F'.$order->id.'#fiscal-filial-'.$branch->id;
     Livewire::actingAs($editor)->test(Show::class, ['order' => $order])
         ->call('openFiscalModal')
-        ->assertSee('perfil fiscal da filial Arapongas')
+        ->assertSee('perfil próprio da filial Arapongas')
         ->assertSeeHtml(e($expected));
 
     $cashier = User::factory()->create();

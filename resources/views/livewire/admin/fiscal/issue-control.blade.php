@@ -52,7 +52,7 @@
         <flux:select wire:model.live="situationFilter" label="Situação fiscal">
             <option value="to_issue">A emitir (sem nota ou com erro)</option>
             <option value="none">Sem nota</option>
-            <option value="failed">Com erro / rejeitada</option>
+            <option value="failed">Com erro, rejeitada ou não enviada</option>
             <option value="pending">Em processamento</option>
             <option value="authorized">Autorizada</option>
             <option value="cancelled">Cancelada</option>
@@ -126,13 +126,15 @@
                 @forelse($orders as $order)
                     @php
                         $note = $order->latestFiscalNote;
-                        $situation = $note?->status ?? ($order->fiscal_error ? 'error' : 'none');
+                        // Sem nota e com fiscal_error: a tentativa parou antes do envio (pendência de cadastro ou configuração).
+                        $situation = $note?->status ?? ($order->fiscal_error ? 'not_sent' : 'none');
                         $situationColors = [
                             'none' => 'bg-neutral-100 text-neutral-700 dark:bg-zinc-700 dark:text-neutral-300',
                             'pending' => 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300',
                             'authorized' => 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
                             'rejected' => 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
                             'error' => 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+                            'not_sent' => 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
                             'cancelled' => 'bg-neutral-100 text-neutral-600 dark:bg-zinc-700 dark:text-neutral-400',
                         ];
                         $situationLabels = [
@@ -141,9 +143,10 @@
                             'authorized' => 'Autorizada',
                             'rejected' => 'Rejeitada',
                             'error' => 'Erro',
+                            'not_sent' => 'Não enviada',
                             'cancelled' => 'Cancelada',
                         ];
-                        $errorMessage = in_array($situation, ['error', 'rejected'], true) ? ($note?->error_message ?? $order->fiscal_error) : null;
+                        $errorMessage = in_array($situation, ['error', 'rejected', 'not_sent'], true) ? ($note?->error_message ?? $order->fiscal_error) : null;
                         $document = $order->fiscal_recipient['document'] ?? null;
                     @endphp
                     <tr wire:key="order-{{ $order->id }}" class="transition-colors hover:bg-neutral-50 dark:hover:bg-zinc-750">
@@ -182,7 +185,7 @@
                                 {{ $situationLabels[$situation] ?? $situation }}
                             </span>
                             @if($errorMessage)
-                                <p class="mt-1 max-w-[9rem] truncate text-xs text-red-600 md:max-w-[12rem] xl:max-w-xs dark:text-red-400" title="{{ $errorMessage }}">{{ $errorMessage }}</p>
+                                <p class="mt-1 max-w-[9rem] truncate text-xs {{ $situation === 'not_sent' ? 'text-amber-800 dark:text-amber-300' : 'text-red-600 dark:text-red-400' }} md:max-w-[12rem] xl:max-w-xs" title="{{ $situation === 'not_sent' ? 'Na última tentativa: '.$errorMessage : $errorMessage }}">{{ $situation === 'not_sent' ? 'Na última tentativa: ' : '' }}{{ $errorMessage }}</p>
                             @endif
                             <div class="mt-1 flex flex-wrap gap-2 sm:hidden">
                                 @include('livewire.admin.fiscal._issue-control-actions')
@@ -260,7 +263,8 @@
     @if($showIssueOneModal && $issueOneOrder)
         @php
             $lastNote = $issueOneOrder->latestFiscalNote;
-            $isRetry = $lastNote !== null || filled($issueOneOrder->fiscal_error);
+            // Só é reemissão se uma nota chegou a ser enviada; pendência antes do envio não conta.
+            $isRetry = $lastNote !== null;
             $recipientDocument = \App\Services\Fiscal\FiscalRecipient::normalizeDocument($issueOneOrder->fiscal_recipient['document'] ?? '');
         @endphp
         <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -280,8 +284,10 @@
                     @endif
                 </dl>
 
+                {{-- Falha antes do envio (fiscal_error sem nota) não se repete aqui: a conferência abaixo
+                     mostra as pendências de agora, já com o que foi corrigido depois. --}}
                 @include('livewire.admin.fiscal._issue-warnings', [
-                    'errorMessage' => $lastNote?->error_message ?? $issueOneOrder->fiscal_error,
+                    'errorMessage' => $lastNote?->error_message,
                     'sefazStatus' => $lastNote?->raw_response['status_sefaz'] ?? null,
                     'orderDate' => $issueOneOrder->created_at,
                 ])

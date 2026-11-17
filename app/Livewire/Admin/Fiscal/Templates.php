@@ -307,7 +307,12 @@ class Templates extends Component
             'applyTemplate' => $this->applyTemplateId !== '' ? $templates->firstWhere('id', (int) $this->applyTemplateId) : null,
             'branches' => $this->lockedBranchId ? Branch::whereKey($this->lockedBranchId)->get(['id', 'name']) : Branch::orderBy('name')->get(['id', 'name']),
             'categories' => ProductCategory::orderBy('name')->get(['id', 'name']),
-            'products' => $this->productsQuery()->with('category:id,name')->limit(FiscalTemplateService::MAX_PRODUCTS)->get(['id', 'name', 'product_category_id', 'fiscal_data']),
+            'products' => $products = $this->productsQuery()->with('category:id,name')->limit(FiscalTemplateService::MAX_PRODUCTS)->get(['id', 'name', 'product_category_id', 'fiscal_data']),
+            'productStatus' => app(FiscalTemplateService::class)->listStatus(
+                app('current.company')->id,
+                $products->pluck('id')->all(),
+                $this->lockedBranchId ?: ($this->target !== 'general' ? (int) $this->target : null),
+            ),
             'applications' => FiscalTemplateApplication::with(['user:id,name', 'branch:id,name'])
                 ->when($this->lockedBranchId, fn ($q) => $q->where('branch_id', $this->lockedBranchId))
                 ->latest('id')->limit(20)->get(),

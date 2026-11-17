@@ -10,7 +10,9 @@
     </div>
 
     @if($returnTo)
-        @php($backLabel = str_starts_with($returnTo, '/admin/fiscal/controle') ? 'Voltar ao Controle de notas' : (str_starts_with($returnTo, '/admin/orders/') ? 'Voltar ao pedido' : 'Voltar'))
+        @php
+            $backLabel = str_starts_with($returnTo, '/admin/fiscal/controle') ? 'Voltar ao Controle de notas' : (str_starts_with($returnTo, '/admin/orders/') ? 'Voltar ao pedido' : 'Voltar');
+        @endphp
         <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:border-blue-800/60 dark:bg-blue-900/20 dark:text-blue-200">
             <p>Os produtos com pendência já vêm selecionados. Escolha o modelo, gere a prévia e aplique; depois volte para emitir.</p>
             <flux:button size="sm" icon="arrow-left" :href="$returnTo" wire:navigate>{{ $backLabel }}</flux:button>
@@ -154,10 +156,10 @@
             </flux:select>
             <flux:select wire:model.live="target" label="Onde gravar">
                 @unless($lockedBranchId)
-                    <option value="general">Cadastro geral do produto</option>
+                    <option value="general">Cadastro geral (vale para todas as filiais)</option>
                 @endunless
                 @foreach($branches as $branch)
-                    <option value="{{ $branch->id }}">Perfil próprio da filial {{ $branch->name }}</option>
+                    <option value="{{ $branch->id }}">Só exceções da filial {{ $branch->name }}</option>
                 @endforeach
             </flux:select>
             <flux:select wire:model.live="mode" label="Como aplicar">
@@ -183,7 +185,8 @@
             <p class="text-xs text-amber-700 dark:text-amber-400">Escolha o modelo acima ou clique em "Aplicar" na lista de modelos.</p>
         @endif
         <p class="text-xs text-neutral-500 dark:text-neutral-400">
-            Perfil da filial: só produtos que já têm perfil próprio nessa filial são alterados (o perfil substitui o cadastro geral inteiro e nunca é completado com ele).
+            O cadastro geral vale para todas as filiais. A exceção de uma filial guarda só o que muda nela; o resto vem do cadastro geral.
+            Gravando na filial, só produtos que já têm exceção nela são alterados (para criar uma exceção, abra o produto).
         </p>
         @if($mode === 'replace')
             <flux:checkbox wire:model.live="confirmReplace" label="Entendo que valores já preenchidos serão substituídos pelos do modelo" />
@@ -200,7 +203,7 @@
             </flux:select>
             <div class="md:col-span-2"><flux:input wire:model.live.debounce.300ms="search" label="Buscar produto" icon="magnifying-glass" /></div>
         </div>
-        <flux:checkbox wire:model.live="onlyPending" label="Só produtos com campo da NF-e vazio no destino escolhido" />
+        <flux:checkbox wire:model.live="onlyPending" label="Só produtos com campo da NF-e vazio (no que a nota usa no destino escolhido)" />
 
         <div class="flex flex-wrap items-center gap-3 text-sm">
             <span>{{ count($selected) }} selecionado(s)</span>
@@ -212,7 +215,10 @@
         <div class="max-h-80 overflow-y-auto rounded-lg border dark:border-zinc-700">
             <ul class="divide-y dark:divide-zinc-700">
                 @forelse($products as $product)
-                    @php($missing = collect(\App\Services\Fiscal\FiscalTemplateService::REQUIRED_FIELDS)->keys()->filter(fn ($field) => blank($product->fiscal_data[$field] ?? null))->count())
+                    @php
+                        $status = $productStatus[$product->id] ?? ['missing' => [], 'editable' => true, 'exceptions' => []];
+                        $missing = count($status['missing']);
+                    @endphp
                     <li wire:key="tpl-product-{{ $product->id }}">
                         <label class="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm">
                             <input type="checkbox" value="{{ $product->id }}" wire:model.live="selected" class="rounded">
@@ -220,8 +226,21 @@
                                 <span class="font-medium text-neutral-800 dark:text-neutral-100">{{ $product->name }}</span>
                                 <span class="text-xs text-neutral-500 dark:text-neutral-400"> · #{{ $product->id }} · {{ $product->category?->name ?? 'Sem categoria' }}</span>
                             </span>
-                            <span class="text-xs {{ $missing ? 'text-amber-700 dark:text-amber-400' : 'text-green-700 dark:text-green-400' }}">
-                                {{ $missing ? $missing.' campo(s) NF-e vazio(s) no cadastro geral' : 'cadastro geral completo' }}
+                            <span class="text-right text-xs">
+                                @if($target !== 'general' && ! $status['editable'])
+                                    <span class="text-neutral-500 dark:text-neutral-400">sem exceção nesta filial (usa o cadastro geral)</span>
+                                @else
+                                    <span class="{{ $missing ? 'text-amber-700 dark:text-amber-400' : 'text-green-700 dark:text-green-400' }}">
+                                        @if($target === 'general')
+                                            {{ $missing ? $missing.' campo(s) NF-e vazio(s) no cadastro geral' : 'cadastro geral completo' }}
+                                        @else
+                                            {{ $missing ? $missing.' campo(s) NF-e vazio(s) nesta filial' : 'completo nesta filial' }}
+                                        @endif
+                                    </span>
+                                @endif
+                                @if($target === 'general' && $status['exceptions'] !== [])
+                                    <span class="block text-neutral-500 dark:text-neutral-400">exceção em {{ implode(', ', $status['exceptions']) }}</span>
+                                @endif
                             </span>
                         </label>
                     </li>
@@ -277,7 +296,7 @@
                                                     <li>
                                                         <span class="font-medium">{{ $fieldLabels[$field] ?? ($field === 'taxes' ? 'Campos adicionais' : $field) }}:</span>
                                                         <span class="text-neutral-500 line-through">{{ is_array($row['before'][$field] ?? null) ? json_encode($row['before'][$field]) : (($row['before'][$field] ?? '') === '' ? 'vazio' : $row['before'][$field]) }}</span>
-                                                        → <span class="text-green-700 dark:text-green-400">{{ is_array($row['after'][$field] ?? null) ? json_encode($row['after'][$field]) : $row['after'][$field] }}</span>
+                                                        → @if(array_key_exists($field, $row['after']))<span class="text-green-700 dark:text-green-400">{{ is_array($row['after'][$field]) ? json_encode($row['after'][$field]) : $row['after'][$field] }}</span>@else<span class="text-green-700 dark:text-green-400">usa o cadastro geral</span>@endif
                                                     </li>
                                                 @endforeach
                                             </ul>
@@ -324,7 +343,7 @@
                             <p class="font-medium text-neutral-800 dark:text-neutral-100">{{ $application->template_name }} · {{ $application->products_count }} produto(s)</p>
                             <p class="text-xs text-neutral-500 dark:text-neutral-400">
                                 {{ $application->created_at->format('d/m/Y H:i') }} · {{ $application->user?->name ?? 'usuário removido' }}
-                                · {{ $application->target === 'branch' ? 'perfil da filial '.($application->branch?->name ?? '#'.$application->branch_id) : 'cadastro geral' }}
+                                · {{ $application->target === 'branch' ? 'exceções da filial '.($application->branch?->name ?? '#'.$application->branch_id) : 'cadastro geral (todas as filiais)' }}
                                 · {{ $application->mode === 'replace' ? 'substituição' : 'preenchimento de vazios' }}
                                 @if($application->reverted_at) · <span class="font-medium">desfeita em {{ $application->reverted_at->format('d/m/Y H:i') }}</span> @endif
                             </p>

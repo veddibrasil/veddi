@@ -8,6 +8,7 @@ use App\Models\FiscalTemplate;
 use App\Models\FiscalTemplateApplication;
 use App\Models\Product;
 use App\Models\User;
+use App\Support\Fiscal\ProductFiscalProfile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -16,12 +17,14 @@ use Illuminate\Validation\ValidationException;
 
 /**
  * Tributação em lote: aplica um FiscalTemplate como cópia explícita dos valores aprovados no
- * cadastro geral (products.fiscal_data) ou no perfil próprio de uma filial
- * (branch_product.fiscal_data). Regras:
+ * cadastro geral (products.fiscal_data, vale para todas as filiais) ou na exceção de uma filial
+ * (branch_product.fiscal_data, só o que muda nela; ver ProductFiscalProfile). Regras:
  * - prévia fiel ao que será gravado; a gravação confere que nada mudou desde a prévia;
  * - "preencher vazios" é o padrão; substituir valores existentes é escolha explícita;
- * - perfil de filial é respeitado inteiro: nunca é completado com o cadastro geral e só é
- *   alterado onde já existe (criar perfil novo continua sendo decisão no produto);
+ * - na filial, "vazio" e pendências olham o perfil efetivo (exceção + cadastro geral), valor
+ *   igual ao do cadastro geral não vira exceção, e só produtos que já têm exceção nela são
+ *   alterados (criar exceção continua sendo decisão no produto);
+ * - no cadastro geral, a prévia avisa onde uma exceção de filial continua valendo por cima;
  * - cada aplicação guarda valores anteriores e novos, com usuário e data, para desfazer.
  */
 class FiscalTemplateService
@@ -319,7 +322,11 @@ class FiscalTemplateService
             $current = $this->currentProfiles($application->company_id, $ids, $application->branch_id, lock: true);
             foreach ($application->changes as $change) {
                 $now = $current[$change['product_id']] ?? null;
-                if ($now === null || $this->canonical($now['data']) !== $this->canonical($change['after'])) {
+                // Exceção que a aplicação esvaziou foi gravada como null (sem linha em $current).
+                $unchanged = $now === null
+                    ? $application->branch_id && $this->isEmptyProfile($change['after']) && $this->branchLinked($application->company_id, (int) $change['product_id'], $application->branch_id)
+                    : $this->canonical($now['data']) === $this->canonical($change['after']);
+                if (! $unchanged) {
                     $skipped[] = $change['name'];
 
                     continue;
@@ -374,7 +381,7 @@ class FiscalTemplateService
                 return $result;
             }
         } elseif ($template->crt && $configs->contains(fn ($config) => $config->crt && (int) $config->crt !== (int) $template->crt)) {
-            $result['warnings'][] = "Há filial com regime diferente do CRT {$template->crt} do modelo: nela, produtos sem perfil próprio vão falhar na emissão. Use o perfil da filial para regimes diferentes.";
+            $result['warnings'][] = "Há filial com regime diferente do CRT {$template->crt} do modelo: nela, produtos sem exceção própria vão falhar na emissão. Para regimes diferentes, aplique o modelo do regime certo na exceção daquela filial.";
         }
 
         // Escopo explícito pela empresa do modelo (a tela, o lote e os testes podem rodar sem
@@ -382,18 +389,33 @@ class FiscalTemplateService
         $products = Product::withoutGlobalScope(\App\Models\Scopes\CompanyScope::class)->where('company_id', $template->company_id)->whereIn('id', $productIds)->orderBy('name')->get(['id', 'name', 'fiscal_data']);
         $current = $this->currentProfiles($template->company_id, $products->pluck('id')->all(), $branchId, $lock);
 
+        // Destino cadastro geral: exceções das filiais que continuam valendo por cima dele.
+        $exceptions = $branchId ? collect() : $this->branchExceptions($template->company_id, $products->pluck('id')->all());
+        $touched = array_intersect(array_keys($values), array_keys(ProductFiscalProfile::FIELDS));
+
         foreach ($products as $product) {
             $profile = $current[$product->id] ?? null;
             $row = ['product_id' => $product->id, 'name' => $product->name, 'skipped' => null, 'changed' => [], 'before' => [], 'after' => [], 'fingerprint' => null, 'missing_before' => [], 'missing_after' => [], 'warnings' => []];
             if ($profile === null) {
-                $row['skipped'] = $branchId ? 'Sem perfil fiscal próprio nesta filial (usa o cadastro geral).' : 'Produto não encontrado.';
+                $row['skipped'] = $branchId ? 'Sem exceção nesta filial: usa o cadastro geral. Para mudar todas as filiais, escolha o cadastro geral; para criar uma exceção, abra o produto.' : 'Produto não encontrado.';
                 $result['rows'][] = $row;
                 $result['summary']['skipped']++;
 
                 continue;
             }
+            $general = is_array($product->fiscal_data) ? $product->fiscal_data : [];
             $before = is_array($profile['data']) ? $profile['data'] : [];
-            $after = $this->merge($before, $values, $mode);
+            // Pendência e "campo vazio" olham o que a nota usa: na filial, exceção + cadastro geral.
+            $effective = fn (array $data) => $branchId ? ProductFiscalProfile::resolve($general, $data)['data'] : $data;
+            $after = $this->merge($before, $values, $mode, $effective($before));
+            if ($branchId && ! ProductFiscalProfile::isStandalone($general, $after)) {
+                // Valor do modelo igual ao do cadastro geral não vira exceção: a filial segue o geral.
+                foreach ($touched as $field) {
+                    if (ProductFiscalProfile::same($after[$field] ?? null, $general[$field] ?? null)) {
+                        unset($after[$field]);
+                    }
+                }
+            }
             $row['before'] = $before;
             $row['after'] = $after;
             $row['fingerprint'] = sha1($this->canonical($before));
@@ -401,9 +423,22 @@ class FiscalTemplateService
                 array_unique([...array_keys($before), ...array_keys($after)]),
                 fn ($key) => $this->canonical($before[$key] ?? null) !== $this->canonical($after[$key] ?? null),
             ));
-            $row['missing_before'] = $this->missing($before);
-            $row['missing_after'] = $this->missing($after);
-            $row['warnings'] = $this->conditionalWarnings($after);
+            $row['missing_before'] = $this->missing($effective($before));
+            $row['missing_after'] = $this->missing($effective($after));
+            $row['warnings'] = $this->conditionalWarnings($effective($after));
+            foreach ($exceptions->get($product->id, []) as $exception) {
+                if (ProductFiscalProfile::isStandalone($after, $exception['data'])) {
+                    $row['warnings'][] = "A filial {$exception['branch']} tem perfil de outro regime para este produto: o cadastro geral não vale lá.";
+
+                    continue;
+                }
+                $kept = array_intersect_key(ProductFiscalProfile::overrides($after, $exception['data']), array_flip($touched));
+                if ($kept !== []) {
+                    $row['warnings'][] = "Na filial {$exception['branch']} continua valendo a exceção própria: "
+                        .collect($kept)->map(fn ($value, $field) => ProductFiscalProfile::FIELDS[$field].' '.$value)->implode(', ')
+                        .'. Para usar o cadastro geral lá também, abra o produto e apague a exceção.';
+                }
+            }
             $result['summary'][$row['changed'] === [] ? 'unchanged' : 'changed']++;
             $result['summary']['resolved'] += count($row['missing_before']) - count(array_intersect($row['missing_before'], $row['missing_after']));
             $result['summary']['remaining'] += count($row['missing_after']);
@@ -426,12 +461,63 @@ class FiscalTemplateService
      */
     public function incompleteProductIds(int $companyId, array $productIds, ?int $branchId): array
     {
-        return collect($this->currentProfiles($companyId, $productIds, $branchId, lock: false))
-            ->filter(fn (array $profile) => $this->missing(is_array($profile['data']) ? $profile['data'] : []) !== [])
+        return collect($this->listStatus($companyId, $productIds, $branchId))
+            ->filter(fn (array $status) => $status['editable'] && $status['missing'] !== [])
             ->keys()
             ->map(fn ($id) => (int) $id)
             ->values()
             ->all();
+    }
+
+    /**
+     * Situação de cada produto na lista da tela, olhando o que a nota usa no destino escolhido.
+     * Cadastro geral: campos vazios nele e filiais com exceção. Filial: campos vazios no perfil
+     * efetivo (exceção + cadastro geral) e se há exceção para alterar.
+     *
+     * @param  array<int, int>  $productIds
+     * @return array<int, array{missing: array<int, string>, editable: bool, exceptions: array<int, string>}>
+     */
+    public function listStatus(int $companyId, array $productIds, ?int $branchId): array
+    {
+        if ($productIds === []) {
+            return [];
+        }
+        $general = Product::withoutGlobalScope(\App\Models\Scopes\CompanyScope::class)->where('company_id', $companyId)->whereIn('id', $productIds)
+            ->pluck('fiscal_data', 'id')->map(fn ($data) => is_array($data) ? $data : (json_decode((string) $data, true) ?: []));
+        $exceptions = $this->branchExceptions($companyId, $general->keys()->all());
+
+        return $general->mapWithKeys(function (array $data, int $id) use ($exceptions, $branchId) {
+            $productExceptions = collect($exceptions->get($id, []));
+            if (! $branchId) {
+                return [$id => ['missing' => $this->missing($data), 'editable' => true, 'exceptions' => $productExceptions->pluck('branch')->all()]];
+            }
+            $own = $productExceptions->firstWhere('branch_id', $branchId);
+
+            return [$id => [
+                'missing' => $this->missing(ProductFiscalProfile::resolve($data, $own['data'] ?? null)['data']),
+                'editable' => $own !== null,
+                'exceptions' => $productExceptions->pluck('branch')->all(),
+            ]];
+        })->all();
+    }
+
+    /** @return \Illuminate\Support\Collection<int, array<int, array{branch_id: int, branch: string, data: array}>> exceções por produto */
+    private function branchExceptions(int $companyId, array $productIds): \Illuminate\Support\Collection
+    {
+        if ($productIds === []) {
+            return collect();
+        }
+
+        return DB::table('branch_product')
+            ->join('branches', 'branches.id', '=', 'branch_product.branch_id')
+            ->where('branches.company_id', $companyId)
+            ->whereIn('branch_product.product_id', $productIds)
+            ->whereNotNull('branch_product.fiscal_data')
+            ->orderBy('branches.name')
+            ->get(['branch_product.product_id', 'branch_product.branch_id', 'branches.name', 'branch_product.fiscal_data'])
+            ->map(fn ($row) => ['product_id' => (int) $row->product_id, 'branch_id' => (int) $row->branch_id, 'branch' => $row->name, 'data' => is_array($decoded = json_decode($row->fiscal_data, true)) ? $decoded : []])
+            ->groupBy('product_id')
+            ->map(fn ($rows) => $rows->values()->all());
     }
 
     private function currentProfiles(int $companyId, array $productIds, ?int $branchId, bool $lock): array
@@ -462,17 +548,33 @@ class FiscalTemplateService
     private function write(int $companyId, int $productId, ?int $branchId, array $data): void
     {
         if ($branchId) {
+            // Exceção sem nenhum campo próprio deixa de existir: a filial volta a usar só o cadastro geral.
             DB::table('branch_product')->where('branch_id', $branchId)->where('product_id', $productId)
                 ->whereExists(fn ($q) => $q->select(DB::raw(1))->from('branches')->whereColumn('branches.id', 'branch_product.branch_id')->where('branches.company_id', $companyId))
-                ->update(['fiscal_data' => json_encode($data, JSON_THROW_ON_ERROR)]);
+                ->update(['fiscal_data' => $this->isEmptyProfile($data) ? null : json_encode($data, JSON_THROW_ON_ERROR)]);
 
             return;
         }
         Product::withoutGlobalScope(\App\Models\Scopes\CompanyScope::class)->where('company_id', $companyId)->whereKey($productId)->update(['fiscal_data' => json_encode($data, JSON_THROW_ON_ERROR)]);
     }
 
-    private function merge(array $current, array $values, string $mode): array
+    /** $basis: o que a nota usa hoje (na filial, exceção + cadastro geral); "vazio" é vazio nele. */
+    private function isEmptyProfile(array $data): bool
     {
+        return array_filter(array_intersect_key($data, ProductFiscalProfile::FIELDS), [ProductFiscalProfile::class, 'filled']) === []
+            && empty($data['taxes']);
+    }
+
+    private function branchLinked(int $companyId, int $productId, int $branchId): bool
+    {
+        return DB::table('branch_product')->join('branches', 'branches.id', '=', 'branch_product.branch_id')
+            ->where('branches.company_id', $companyId)->where('branch_product.branch_id', $branchId)
+            ->where('branch_product.product_id', $productId)->whereNull('branch_product.fiscal_data')->exists();
+    }
+
+    private function merge(array $current, array $values, string $mode, ?array $basis = null): array
+    {
+        $basis ??= $current;
         $result = $current;
         foreach ($values as $field => $value) {
             if ($field === 'taxes') {
@@ -481,7 +583,7 @@ class FiscalTemplateService
 
                 continue;
             }
-            $empty = ! isset($current[$field]) || $current[$field] === '' || $current[$field] === null;
+            $empty = ! isset($basis[$field]) || $basis[$field] === '' || $basis[$field] === null;
             if ($mode === 'replace' || $empty) {
                 $result[$field] = $value;
             }

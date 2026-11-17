@@ -1644,6 +1644,21 @@ class Show extends Component
         ];
     }
 
+    /**
+     * Pendências de agora para o cartão "Nota fiscal" (sem modal aberto). Substitui a mensagem
+     * da última tentativa (orders.fiscal_error), que fica velha depois que o cadastro é corrigido.
+     * Null quando o cartão não oferece emissão.
+     */
+    #[Computed]
+    public function fiscalCardIssues(): ?array
+    {
+        if (! $this->canIssueFiscal || $this->order->activeFiscalNote || ! in_array($this->order->status, Order::FISCAL_ISSUABLE_STATUSES, true)) {
+            return null;
+        }
+
+        return app(FiscalNoteService::class)->check($this->order)['issues'];
+    }
+
     /** Documento previsto para o cartão "Nota fiscal" do pedido (sem modal aberto). */
     #[Computed]
     public function fiscalDocumentPreview(): ?\App\DTOs\FiscalEmissionDecision

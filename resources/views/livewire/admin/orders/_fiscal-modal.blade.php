@@ -119,6 +119,9 @@
                 @endif
             </section>
 
+            @unless($ready)
+                <p class="text-xs text-neutral-500 dark:text-neutral-400">O botão de emitir libera quando não houver pendência. Depois de corrigir um cadastro, clique em "Verificar novamente".</p>
+            @endunless
             <div class="flex flex-wrap items-center justify-between gap-3 border-t pt-4 dark:border-zinc-700">
                 <flux:button type="button" wire:click="$refresh" size="sm" variant="ghost" icon="arrow-path">Verificar novamente</flux:button>
                 <div class="flex gap-2">

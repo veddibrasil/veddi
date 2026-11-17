@@ -748,14 +748,26 @@
         </div>
     </div>
 
+    @php
+        $fiscalFieldLabels = \App\Support\Fiscal\ProductFiscalProfile::FIELDS;
+        $fiscalFieldLabels['origin'] = 'Origem (0 a 8)';
+        $fiscalBranches = collect($branches)->filter(fn ($b) => in_array((string) $b->id, array_map('strval', $selectedBranches), true));
+        $fiscalExceptions = $fiscalBranches->filter(fn ($b) => $branchFiscalProfiles[$b->id]['enabled'] ?? false);
+    @endphp
     <details id="dados-fiscais" class="bg-white border rounded-xl p-4 dark:bg-zinc-800 dark:border-zinc-700" @if($returnTo) open @endif>
         <summary class="cursor-pointer font-semibold">Dados fiscais do produto</summary>
         @if($returnTo)
             <p class="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">Corrigindo pendência de nota fiscal. Ao salvar, você volta para a tela anterior; a nota não é emitida automaticamente.</p>
         @endif
-        <p class="text-xs text-neutral-500 my-3">Preencha conforme a classificação definida pela contabilidade. A NF-e exige os campos fiscais completos.</p>
+        <h3 class="mt-3 font-semibold">Cadastro geral <span class="text-sm font-normal text-neutral-500 dark:text-neutral-400">· vale para todas as filiais</span></h3>
+        <p class="text-xs text-neutral-500 dark:text-neutral-400 mb-3">
+            Preencha conforme a classificação definida pela contabilidade. A NF-e e a NFC-e com CNPJ exigem NCM, CFOP interno, CST/CSOSN, origem, CST PIS e CST COFINS.
+            @if($fiscalExceptions->isNotEmpty())
+                <span class="font-medium text-neutral-700 dark:text-neutral-200">Com exceção própria: {{ $fiscalExceptions->pluck('name')->implode(', ') }}</span> (veja abaixo o que muda em cada uma).
+            @endif
+        </p>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            @foreach(['ncm' => 'NCM', 'cfop' => 'CFOP interno', 'interstate_cfop' => 'CFOP interestadual', 'icms_situation' => 'CST / CSOSN ICMS', 'origin' => 'Origem (0 a 8)', 'unit' => 'Unidade comercial', 'cest' => 'CEST', 'pis_situation' => 'CST PIS', 'cofins_situation' => 'CST COFINS'] as $field => $label)
+            @foreach($fiscalFieldLabels as $field => $label)
                 <div>
                     <flux:input wire:model="fiscalData.{{ $field }}" :label="$label" />
                     @error('fiscalData.'.$field) <p class="text-xs text-red-600">{{ $message }}</p> @enderror
@@ -767,27 +779,47 @@
             @error('fiscalTaxes') <p class="text-xs text-red-600">{{ $message }}</p> @enderror
         </div>
         <div class="mt-5 space-y-4">
-            <h3 class="font-semibold">Tributação por filial</h3>
-            <p class="text-xs text-neutral-500">Por padrão, vale o cadastro geral acima. Ative um perfil próprio quando a filial tiver regime ou tributação diferente. O perfil substitui todos os dados fiscais do produto para esta filial.</p>
+            <h3 class="font-semibold">Exceções por filial</h3>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400">
+                Use só quando uma filial tributa este produto de forma diferente. Preencha apenas o que muda nela: campo vazio usa o cadastro geral (o valor aparece em cinza).
+                Se a filial for de outro regime (CST no lugar de CSOSN, ou o contrário), o perfil dela não usa o cadastro geral e precisa de todos os campos.
+            </p>
             @error('branchFiscalProfiles') <p class="text-xs text-red-600">{{ $message }}</p> @enderror
-            @foreach($branches as $fiscalBranch)
-                @if(in_array((string) $fiscalBranch->id, array_map('strval', $selectedBranches), true))
-                    <div wire:key="fiscal-branch-{{ $fiscalBranch->id }}" id="fiscal-filial-{{ $fiscalBranch->id }}" class="border rounded-lg p-4 space-y-3 dark:border-zinc-700">
-                        <flux:switch wire:model.live="branchFiscalProfiles.{{ $fiscalBranch->id }}.enabled" label="{{ $fiscalBranch->name }} — usar perfil fiscal próprio" />
-                        @if($branchFiscalProfiles[$fiscalBranch->id]['enabled'] ?? false)
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                @foreach(['ncm' => 'NCM', 'cfop' => 'CFOP interno', 'interstate_cfop' => 'CFOP interestadual', 'icms_situation' => 'CST / CSOSN ICMS', 'origin' => 'Origem (0 a 8)', 'unit' => 'Unidade comercial', 'cest' => 'CEST', 'pis_situation' => 'CST PIS', 'cofins_situation' => 'CST COFINS'] as $field => $label)
-                                    <div>
-                                        <flux:input wire:model="branchFiscalProfiles.{{ $fiscalBranch->id }}.data.{{ $field }}" :label="$label" />
-                                        @error('branchFiscalProfiles.'.$fiscalBranch->id.'.data.'.$field) <p class="text-xs text-red-600">{{ $message }}</p> @enderror
-                                    </div>
-                                @endforeach
-                            </div>
-                            <flux:textarea wire:model="branchFiscalProfiles.{{ $fiscalBranch->id }}.taxes" label="Campos tributários adicionais (JSON Focus NFe)" rows="3" />
-                            @error('branchFiscalProfiles.'.$fiscalBranch->id.'.taxes') <p class="text-xs text-red-600">{{ $message }}</p> @enderror
-                        @endif
-                    </div>
-                @endif
+            @foreach($fiscalBranches as $fiscalBranch)
+                @php
+                    $branchProfileData = $branchFiscalProfiles[$fiscalBranch->id]['data'] ?? [];
+                    $branchStandalone = \App\Support\Fiscal\ProductFiscalProfile::isStandalone($fiscalData, $branchProfileData);
+                    $branchOverrides = \App\Support\Fiscal\ProductFiscalProfile::overrides($fiscalData, $branchProfileData);
+                @endphp
+                <div wire:key="fiscal-branch-{{ $fiscalBranch->id }}" id="fiscal-filial-{{ $fiscalBranch->id }}" class="border rounded-lg p-4 space-y-3 dark:border-zinc-700">
+                    <flux:switch wire:model.live="branchFiscalProfiles.{{ $fiscalBranch->id }}.enabled" label="{{ $fiscalBranch->name }} — tem tributação diferente do cadastro geral" />
+                    @if($branchFiscalProfiles[$fiscalBranch->id]['enabled'] ?? false)
+                        <p class="text-xs {{ $branchStandalone ? 'text-amber-700 dark:text-amber-300' : 'text-neutral-600 dark:text-neutral-300' }}">
+                            @if($branchStandalone)
+                                Regime diferente do cadastro geral: esta filial não usa o cadastro geral. Preencha todos os campos.
+                            @elseif($branchOverrides === [])
+                                Sem diferença do cadastro geral. Ao salvar, a filial passa a usar só o cadastro geral.
+                            @else
+                                Muda nesta filial: {{ implode(', ', \App\Support\Fiscal\ProductFiscalProfile::labels(array_keys($branchOverrides))) }}. O resto vem do cadastro geral.
+                            @endif
+                        </p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            @foreach($fiscalFieldLabels as $field => $label)
+                                @php
+                                    $inherited = ! $branchStandalone && \App\Support\Fiscal\ProductFiscalProfile::filled($fiscalData[$field] ?? null) ? 'Geral: '.$fiscalData[$field] : null;
+                                @endphp
+                                <div>
+                                    <flux:input wire:model="branchFiscalProfiles.{{ $fiscalBranch->id }}.data.{{ $field }}" :label="$label" :placeholder="$inherited" />
+                                    @error('branchFiscalProfiles.'.$fiscalBranch->id.'.data.'.$field) <p class="text-xs text-red-600">{{ $message }}</p> @enderror
+                                </div>
+                            @endforeach
+                        </div>
+                        <flux:textarea wire:model="branchFiscalProfiles.{{ $fiscalBranch->id }}.taxes" label="Campos tributários adicionais desta filial (JSON Focus NFe)" rows="3" />
+                        @error('branchFiscalProfiles.'.$fiscalBranch->id.'.taxes') <p class="text-xs text-red-600">{{ $message }}</p> @enderror
+                    @else
+                        <p class="text-xs text-neutral-500 dark:text-neutral-400">Usa o cadastro geral.</p>
+                    @endif
+                </div>
             @endforeach
         </div>
     </details>
