@@ -11,6 +11,7 @@ use App\Models\Branch;
 use App\Models\CompanyFiscalConfig;
 use App\Models\FiscalNote;
 use App\Models\Order;
+use App\Support\Fiscal\ProductFiscalProfile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -569,12 +570,13 @@ class FiscalNoteService
     }
 
     /**
-     * Itens da nota com o perfil fiscal efetivo de cada produto: o perfil próprio da filial,
-     * quando existe, substitui o cadastro geral inteiro.
+     * Itens da nota com o perfil fiscal efetivo de cada produto (ProductFiscalProfile): o
+     * cadastro geral vale para todas as filiais e o perfil da filial só troca o que ela tem de
+     * diferente. Perfil de regime diferente do cadastro geral vale sozinho.
      *
      * NF-e e NFC-e com CNPJ exigem os campos do produto preenchidos; só a NFC-e de consumidor
      * (CPF ou sem documento) mantém os padrões históricos. Pendências de todos os itens saem
-     * juntas, com o produto e o cadastro a corrigir.
+     * juntas, cada uma com o cadastro onde corrigir.
      */
     private function buildItems(Order $order, string $model, bool $interstate, int $crt = 1, bool $strict = false): array
     {
@@ -591,70 +593,96 @@ class FiscalNoteService
 
         $problems = [];
         $required = self::NFE_PRODUCT_FIELDS + ($interstate ? ['interstate_cfop' => 'CFOP interestadual'] : []);
+        $branchName = trim((string) $order->branch?->name);
 
-        $items = $order->items->map(function ($item) use ($order, $model, $interstate, $crt, $strict, $profiles, $required, &$problems) {
+        $items = $order->items->map(function ($item) use ($order, $model, $interstate, $crt, $strict, $profiles, $required, $branchName, &$problems) {
             if ($item->product && (int) $item->product->company_id !== (int) $order->company_id) {
                 throw FiscalPreflightException::single('order', 'Produto não pertence à empresa do pedido.');
             }
-            $branchProfile = $profiles->has($item->product_id);
-            $problem = function (array $fields = [], ?string $text = null) use ($item, $order, $branchProfile, &$problems) {
+            $branchRaw = $profiles->get($item->product_id);
+            $branchProfile = $branchRaw !== null ? json_decode($branchRaw, true) : null;
+            $general = $item->product?->fiscal_data;
+            $resolved = is_array($branchProfile) || $branchRaw === null
+                ? ProductFiscalProfile::resolve(is_array($general) ? $general : [], $branchProfile)
+                : null;
+            // $fix: onde o lojista corrige. Campo que falta em todo lugar vai para o cadastro geral
+            // (vale para todas as filiais); perfil de regime diferente se corrige na própria filial.
+            $problem = function (string $fix, array $fields = [], ?string $text = null) use ($item, $order, $branchRaw, $resolved, $branchName, &$problems) {
                 $problems[$item->product_id ? 'product_'.$item->product_id : 'item_'.$item->id] = [
                     'product_id' => $item->product_id,
                     'product_name' => trim((string) $item->product_name),
                     'fields' => $fields,
                     'problem' => $text,
-                    'source' => $branchProfile ? 'branch' : 'general',
-                    'branch_id' => $branchProfile ? $order->branch_id : null,
-                    'branch_name' => $branchProfile ? trim((string) $order->branch?->name) : null,
+                    'source' => $fix,
+                    'branch_id' => $fix === 'branch' ? $order->branch_id : null,
+                    'branch_name' => $fix === 'branch' ? $branchName : null,
+                    'has_branch_profile' => $branchRaw !== null,
+                    'standalone' => (bool) ($resolved['standalone'] ?? false),
                 ];
             };
-            // Um perfil de filial substitui o perfil inteiro: nunca mistura alíquotas
-            // de um regime com CST/CSOSN de outro. Null mantém o cadastro geral legado.
-            $fiscal = $branchProfile
-                ? json_decode($profiles->get($item->product_id), true)
-                : ($item->product?->fiscal_data ?? []);
-            if (! is_array($fiscal) || ! is_array($fiscal['taxes'] ?? [])) {
-                $problem(text: 'perfil fiscal inválido');
+            if ($resolved === null) {
+                $problem('branch', text: 'perfil fiscal da filial inválido; abra o produto e salve o perfil da filial novamente');
 
                 return [];
             }
-            foreach ($fiscal['taxes'] ?? [] as $key => $value) {
-                if (! preg_match('/^(icms_|pis_|cofins_|ipi_|ibs_|cbs_|is_)/', (string) $key) || is_array($value) || is_object($value)
-                    || in_array($key, ['icms_situacao_tributaria', 'icms_origem', 'pis_situacao_tributaria', 'cofins_situacao_tributaria'], true)) {
-                    $problem(text: 'campos tributários adicionais inválidos; use os campos próprios para CST/CSOSN e origem');
+            $fiscal = $resolved['data'];
+            $sourceOf = fn (string $field) => $resolved['standalone'] ? 'branch' : ($resolved['sources'][$field] ?? 'general');
+            if (! is_array($fiscal['taxes'] ?? [])) {
+                $problem('general', text: 'campos tributários adicionais inválidos');
 
-                    return [];
+                return [];
+            }
+            $invalidTaxes = function (mixed $taxes): bool {
+                foreach (is_array($taxes) ? $taxes : [] as $key => $value) {
+                    if (! preg_match('/^(icms_|pis_|cofins_|ipi_|ibs_|cbs_|is_)/', (string) $key) || is_array($value) || is_object($value)
+                        || in_array($key, ['icms_situacao_tributaria', 'icms_origem', 'pis_situacao_tributaria', 'cofins_situacao_tributaria'], true)) {
+                        return true;
+                    }
                 }
+
+                return false;
+            };
+            if ($invalidTaxes($fiscal['taxes'] ?? [])) {
+                $problem($invalidTaxes($branchProfile['taxes'] ?? []) ? 'branch' : 'general', text: 'campos tributários adicionais inválidos; use os campos próprios para CST/CSOSN e origem');
+
+                return [];
             }
             if ($strict) {
-                $absent = array_values(array_filter($required, fn ($label, $field) => ! isset($fiscal[$field]) || $fiscal[$field] === '', ARRAY_FILTER_USE_BOTH));
+                $absent = array_filter($required, fn ($label, $field) => ! ProductFiscalProfile::filled($fiscal[$field] ?? null), ARRAY_FILTER_USE_BOTH);
                 if ($absent !== []) {
-                    $problem($absent);
+                    // Falta no perfil efetivo = falta também no cadastro geral (ou o perfil não herda).
+                    $problem($resolved['standalone'] ? 'branch' : 'general', array_values($absent));
 
                     return [];
                 }
             }
             $situation = (string) ($fiscal['icms_situation'] ?? ($crt === 1 ? '400' : ''));
             if (! preg_match($crt === 1 ? '/^[0-9]{3}$/' : '/^[0-9]{2}$/', $situation)) {
-                $problem(text: 'CST/CSOSN incompatível com o regime do emitente');
+                $problem(...$this->regimeProblem($order, $crt, $situation, $sourceOf('icms_situation'), $branchName));
 
                 return [];
             }
             if ($strict) {
-                $cfop = (string) ($interstate ? ($fiscal['interstate_cfop'] ?? '') : $fiscal['cfop']);
+                $cfopField = $interstate ? 'interstate_cfop' : 'cfop';
+                $cfop = (string) ($fiscal[$cfopField] ?? '');
                 if (! preg_match($interstate ? '/^6[0-9]{3}$/' : '/^5[0-9]{3}$/', $cfop)) {
-                    $problem(text: 'CFOP incompatível com a operação ('.($interstate ? 'interestadual, 6xxx' : 'interna, 5xxx').')');
+                    $problem($sourceOf($cfopField), text: ($interstate ? 'CFOP interestadual' : 'CFOP interno').' '.$cfop.' não serve para esta venda (use '.($interstate ? '6xxx, venda para outro estado' : '5xxx, venda dentro do estado').')');
 
                     return [];
                 }
                 $fiscal['cfop'] = $cfop;
-                if (! preg_match('/^[0-9]{8}$/', (string) $fiscal['ncm']) || ! in_array((string) $fiscal['origin'], array_map('strval', range(0, 8)), true)) {
-                    $problem(text: 'NCM ou origem inválidos');
+                if (! preg_match('/^[0-9]{8}$/', (string) $fiscal['ncm'])) {
+                    $problem($sourceOf('ncm'), text: 'NCM '.$fiscal['ncm'].' inválido (precisa ter 8 dígitos)');
+
+                    return [];
+                }
+                if (! in_array((string) $fiscal['origin'], array_map('strval', range(0, 8)), true)) {
+                    $problem($sourceOf('origin'), text: 'origem '.$fiscal['origin'].' inválida (use 0 a 8)');
 
                     return [];
                 }
                 if ($item->quantity <= 0 || (float) $item->subtotal <= 0) {
-                    $problem(text: 'quantidade ou valor fiscal inválido');
+                    $problem('general', text: 'quantidade ou valor do item zerado no pedido');
 
                     return [];
                 }
@@ -678,22 +706,63 @@ class FiscalNoteService
         })->toArray();
 
         if ($problems !== []) {
-            $products = collect($problems)->map(function ($entry) {
-                $source = $entry['source'] === 'branch' ? 'perfil fiscal da filial '.$entry['branch_name'] : 'cadastro geral';
-                $product = $entry['product_id'] ? 'produto #'.$entry['product_id'].', ' : '';
-                $detail = $entry['fields'] !== [] ? implode(', ', $entry['fields']) : $entry['problem'];
-
-                return $entry['product_name'].' ('.$detail.') ['.$product.$source.']';
-            })->implode('; ');
             $document = $model === '55' ? 'NF-e' : ($strict ? 'NFC-e com CNPJ' : 'NFC-e');
 
             throw new FiscalPreflightException([[
                 'group' => 'products',
-                'message' => 'Dados fiscais pendentes para '.$document.'. Complete em Produtos > Dados fiscais do produto, no cadastro indicado: '.$products.'.',
+                'title' => 'Dados fiscais pendentes para '.$document.'.',
+                'message' => 'Dados fiscais pendentes para '.$document.'. '
+                    .collect($problems)->map(fn ($entry) => self::describeProductProblem($entry))->implode('; ').'.',
                 'products' => array_values($problems),
             ]]);
         }
 
         return $items;
+    }
+
+    /** "Coxinha: faltam NCM, CST PIS (cadastro geral do produto #12, vale para todas as filiais)". */
+    public static function describeProductProblem(array $entry): string
+    {
+        $detail = ($entry['fields'] ?? []) !== [] ? 'faltam '.implode(', ', $entry['fields']) : (string) ($entry['problem'] ?? '');
+
+        return trim((string) ($entry['product_name'] ?? 'Item')).': '.$detail.' ('.self::describeFixTarget($entry).')';
+    }
+
+    /** Onde corrigir a pendência de produto, como aparece para o lojista. */
+    public static function describeFixTarget(array $entry): string
+    {
+        $product = ! empty($entry['product_id']) ? ' do produto #'.$entry['product_id'] : '';
+
+        return ($entry['source'] ?? 'general') === 'branch'
+            ? 'perfil próprio da filial '.($entry['branch_name'] ?: '#'.$entry['branch_id']).$product
+            : 'cadastro geral'.$product.', vale para todas as filiais';
+    }
+
+    /**
+     * CST/CSOSN que não combina com o regime do emitente. Se o valor vem do cadastro geral e
+     * outra filial da empresa usa o regime dele, quem precisa de valor próprio é esta filial;
+     * senão, o cadastro geral está errado para a empresa toda.
+     *
+     * @return array{0: string, 1: array, 2: string}
+     */
+    private function regimeProblem(Order $order, int $crt, string $situation, string $source, string $branchName): array
+    {
+        $expected = $crt === 1 ? 'CSOSN de 3 dígitos (Simples Nacional)' : 'CST de 2 dígitos (regime normal)';
+        if ($situation === '') {
+            return [$source, [], 'falta o CST ICMS: a filial '.$branchName.' emite com '.$expected];
+        }
+        if ($source === 'general') {
+            $family = ProductFiscalProfile::regimeFamily($situation);
+            $otherBranchUsesGeneral = CompanyFiscalConfig::where('company_id', $order->company_id)
+                ->whereNotNull('branch_id')->where('branch_id', '!=', $order->branch_id)->whereNotNull('crt')->pluck('crt')
+                ->contains(fn ($otherCrt) => ((int) $otherCrt === 1 ? 'simples' : 'normal') === $family);
+            if ($otherBranchUsesGeneral) {
+                return ['branch', [], 'CST/CSOSN '.$situation.' do cadastro geral incompatível com o regime da filial '.$branchName.': informe nesta filial o '.$expected];
+            }
+
+            return ['general', [], 'CST/CSOSN '.$situation.' incompatível com o regime do emitente: use '.$expected];
+        }
+
+        return ['branch', [], 'CST/CSOSN '.$situation.' do perfil da filial incompatível com o regime do emitente: use '.$expected];
     }
 }

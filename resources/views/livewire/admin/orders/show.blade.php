@@ -1020,8 +1020,27 @@
             <x-admin.form-card padding="p-4">
                 <p class="font-semibold text-neutral-700 mb-3 dark:text-neutral-200">Nota Fiscal{{ $activeFiscalNote ? ' ('.$activeFiscalNote->model_label.')' : ($this->fiscalDocumentPreview?->model ? ' ('.\App\DTOs\FiscalEmissionDecision::label($this->fiscalDocumentPreview->model).')' : '') }}</p>
 
-                @if($order->fiscal_error)
-                    <p class="text-sm text-amber-700 mb-3">Pendência fiscal: {{ $order->fiscal_error }}</p>
+                @php
+                    $cardIssues = $activeFiscalNote ? null : $this->fiscalCardIssues;
+                @endphp
+                @if($cardIssues)
+                    {{-- Pendências de agora; a mensagem da última tentativa (fiscal_error) pode estar velha. --}}
+                    <div class="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-200">
+                        <p class="font-medium">Antes de emitir, resolva:</p>
+                        <ul class="mt-1 list-disc space-y-0.5 pl-5 text-xs">
+                            @foreach($cardIssues as $cardIssue)
+                                @if($cardIssue['group'] === 'products' && ! empty($cardIssue['products']))
+                                    <li>Dados fiscais incompletos em {{ count($cardIssue['products']) }} produto(s): {{ collect($cardIssue['products'])->pluck('product_name')->implode(', ') }}.</li>
+                                @else
+                                    <li>{{ $cardIssue['message'] }}</li>
+                                @endif
+                            @endforeach
+                        </ul>
+                    </div>
+                @elseif(! $activeFiscalNote && $order->fiscal_error)
+                    <p class="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-800/60 dark:bg-red-900/20 dark:text-red-200">
+                        Última tentativa de emissão falhou: {{ $order->fiscal_error }}
+                    </p>
                 @endif
                 @if($activeFiscalNote)
                     @php

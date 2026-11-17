@@ -2,7 +2,7 @@
 @if($canIssue && $selectable[$order->id])
     <button wire:click="openIssueOne({{ $order->id }})" wire:loading.attr="disabled"
         class="text-xs font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400">
-        {{ $situation === 'none' ? 'Emitir' : 'Reemitir' }}
+        {{ in_array($situation, ['none', 'not_sent'], true) ? 'Emitir' : 'Reemitir' }}
     </button>
 @endif
 @include('livewire.admin.fiscal._print-button', [

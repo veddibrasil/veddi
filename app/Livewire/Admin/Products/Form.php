@@ -17,6 +17,7 @@ use App\Models\ProductOptionGroup;
 use App\Models\Scopes\CompanyScope;
 use App\Services\Order\MenuCache;
 use App\Services\Order\StockService;
+use App\Support\Fiscal\ProductFiscalProfile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -350,7 +351,10 @@ class Form extends Component
                     continue;
                 }
                 if ($branch->pivot->fiscal_data !== null) {
+                    // Mostra só o que a filial tem de diferente (perfis antigos eram cópia inteira
+                    // do cadastro geral); é isso que fica gravado ao salvar.
                     $profile = json_decode($branch->pivot->fiscal_data, true, flags: JSON_THROW_ON_ERROR);
+                    $profile = is_array($profile) ? (ProductFiscalProfile::compact($this->fiscalData, $profile) ?? []) : [];
                     $this->branchFiscalProfiles[$branch->id] = [
                         'enabled' => true,
                         'data' => array_diff_key($profile, ['taxes' => true]),
@@ -780,14 +784,16 @@ class Form extends Component
         return $rules;
     }
 
+    /**
+     * Perfil da filial novo começa vazio: campo vazio usa o cadastro geral (placeholder na
+     * tela). Copiar o cadastro geral prenderia os valores e a filial deixaria de acompanhar as
+     * mudanças feitas nele.
+     */
     public function updatedBranchFiscalProfiles(mixed $value, string $key): void
     {
         if ($value && preg_match('/^(\d+)\.enabled$/', $key, $matches)) {
-            $branchId = $matches[1];
-            if (empty($this->branchFiscalProfiles[$branchId]['data'])) {
-                $this->branchFiscalProfiles[$branchId]['data'] = array_diff_key($this->fiscalData, ['taxes' => true]);
-                $this->branchFiscalProfiles[$branchId]['taxes'] = $this->fiscalTaxes;
-            }
+            $this->branchFiscalProfiles[$matches[1]]['data'] ??= [];
+            $this->branchFiscalProfiles[$matches[1]]['taxes'] ??= '';
         }
     }
 
@@ -818,7 +824,13 @@ class Form extends Component
         $validated = $this->validate($this->rules(), $this->messages());
 
         $branchIds = $this->branchIdsToSync();
+        $taxes = $this->parseFiscalTaxes($this->fiscalTaxes, 'fiscalTaxes');
+        if ($taxes === null) {
+            return;
+        }
+        $generalFiscalData = array_replace($this->fiscalData, ['taxes' => $taxes]);
         $branchFiscalData = [];
+        $mergedIntoGeneral = [];
         foreach ($this->branchFiscalProfiles as $branchId => $profile) {
             if (! Branch::withoutGlobalScopes()->where('company_id', $this->targetCompanyId())->whereKey($branchId)->exists()
                 || (! auth()->user()->isSuperAdmin() && app()->bound('current.company')
@@ -835,11 +847,16 @@ class Form extends Component
 
                 continue;
             }
-            $taxes = $this->parseFiscalTaxes($profile['taxes'] ?? '', "branchFiscalProfiles.{$branchId}.taxes");
-            if ($taxes === null) {
+            $branchTaxes = $this->parseFiscalTaxes($profile['taxes'] ?? '', "branchFiscalProfiles.{$branchId}.taxes");
+            if ($branchTaxes === null) {
                 return;
             }
-            $branchFiscalData[$branchId] = json_encode(array_replace($profile['data'] ?? [], ['taxes' => $taxes]), JSON_THROW_ON_ERROR);
+            // Só o que difere do cadastro geral fica na filial; o resto acompanha o geral.
+            $compact = ProductFiscalProfile::compact($generalFiscalData, array_replace($profile['data'] ?? [], ['taxes' => $branchTaxes]));
+            if ($compact === null) {
+                $mergedIntoGeneral[] = (int) $branchId;
+            }
+            $branchFiscalData[$branchId] = $compact === null ? null : json_encode($compact, JSON_THROW_ON_ERROR);
         }
 
         foreach ($validated['optionGroups'] ?? [] as $gi => $groupData) {
@@ -886,10 +903,6 @@ class Form extends Component
             $imagePath = $stored;
         }
 
-        $taxes = $this->parseFiscalTaxes($this->fiscalTaxes, 'fiscalTaxes');
-        if ($taxes === null) {
-            return;
-        }
         $isVariantProduct = $this->isVariant;
         $branchIds = $this->branchIdsToSync();
 
@@ -910,7 +923,7 @@ class Form extends Component
             'available_in_keeta' => $validated['available_in_keeta'],
             'sort_order' => $validated['sort_order'],
             'image_path' => $imagePath,
-            'fiscal_data' => array_replace($this->fiscalData, ['taxes' => $taxes]),
+            'fiscal_data' => $generalFiscalData,
         ];
 
         if (! $isVariantProduct && ! empty($data['promo_price_enabled'])) {
@@ -1120,8 +1133,17 @@ class Form extends Component
                 ->each(fn (int $branchId) => SyncFood99CatalogJob::debounce($branchId));
         }
 
+        // Perfil de filial que ficou igual ao cadastro geral deixa de existir: avisa para não
+        // parecer que a exceção sumiu sem motivo.
+        $mergedNames = $mergedIntoGeneral === [] ? [] : Branch::withoutGlobalScopes()->where('company_id', $product->company_id)
+            ->whereIn('id', array_intersect($mergedIntoGeneral, array_map('intval', array_keys($branchSync))))->orderBy('name')->pluck('name')->all();
+        $mergedNotice = $mergedNames === [] ? '' : ' Sem diferença do cadastro geral, '.implode(', ', $mergedNames).' ficou sem perfil fiscal próprio e usa o cadastro geral.';
+        if ($mergedNotice !== '') {
+            session()->flash('status', session('status').$mergedNotice);
+        }
+
         if ($this->returnTo) {
-            session()->flash('status', 'Dados do produto salvos. Confira a nota novamente antes de emitir.');
+            session()->flash('status', 'Dados do produto salvos. Confira a nota novamente antes de emitir.'.$mergedNotice);
             $this->redirect($this->returnTo);
 
             return;

@@ -381,8 +381,8 @@ test('NF-e lista de uma vez todos os campos fiscais pendentes de todos os produt
 
     $reason = app(FiscalNoteService::class)->preflight($order->fresh());
 
-    expect($reason)->toContain('Produto (CST PIS, CST COFINS)')
-        ->toContain('Refrigerante (NCM, CFOP interno, CST / CSOSN ICMS, Origem, CST PIS, CST COFINS)');
+    expect($reason)->toContain('Produto: faltam CST PIS, CST COFINS (cadastro geral do produto #'.$product->id.', vale para todas as filiais)')
+        ->toContain('Refrigerante: faltam NCM, CFOP interno, CST / CSOSN ICMS, Origem, CST PIS, CST COFINS (cadastro geral do produto #'.$other->id);
     Http::assertNothingSent();
 });
 
@@ -391,7 +391,7 @@ test('NF-e interestadual sem CFOP interestadual aparece na lista de pendências'
     $product->update(['fiscal_data' => array_diff_key($product->fiscal_data, ['interstate_cfop' => true])]);
     $order->update(['fiscal_recipient' => [...$recipient, 'state' => 'PR', 'city' => 'Maringá', 'zip' => '87010000']]);
 
-    expect(app(FiscalNoteService::class)->preflight($order->fresh()))->toContain('Produto (CFOP interestadual)');
+    expect(app(FiscalNoteService::class)->preflight($order->fresh()))->toContain('Produto: faltam CFOP interestadual');
 });
 
 test('emitir pelo pedido mostra a pendência no modal e não enfileira', function () {
@@ -411,7 +411,7 @@ test('emitir pelo pedido mostra a pendência no modal e não enfileira', functio
         ->assertHasErrors('fiscalEmission')
         ->assertHasNoErrors('fiscalCustomerDocument')
         ->assertSee('CST PIS, CST COFINS')
-        ->assertSee('produto #'.$product->id.', cadastro geral');
+        ->assertSee('cadastro geral do produto #'.$product->id.', vale para todas as filiais');
 
     expect(substr_count($component->html(), 'Dados fiscais pendentes para NF-e.'))->toBe(1);
     Queue::assertNotPushed(IssueFiscalNote::class);

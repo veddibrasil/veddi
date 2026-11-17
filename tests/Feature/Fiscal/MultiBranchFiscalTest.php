@@ -114,8 +114,9 @@ test('pendência identifica o perfil da filial e só desaparece quando esse perf
     $service = app(FiscalNoteService::class);
 
     $reason = $service->preflight($orders[1]->fresh());
-    expect($reason)->toContain('Produto compartilhado (CST PIS, CST COFINS)')
-        ->toContain('produto #'.$product->id.', perfil fiscal da filial Filial 2');
+    // Filial 2 é do regime normal e o cadastro geral é do Simples: o perfil dela não herda nada.
+    expect($reason)->toContain('Produto compartilhado: faltam CST PIS, CST COFINS')
+        ->toContain('perfil próprio da filial Filial 2 do produto #'.$product->id);
 
     Livewire::actingAs($admin)->test(Form::class, ['product' => $product])
         ->set('fiscalData.pis_situation', '08')

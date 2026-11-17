@@ -85,7 +85,7 @@ test('perfil da filial: só altera perfil existente e nunca completa com o cadas
 
     $preview = app(FiscalTemplateService::class)->preview($pisOnly, [$empty->id, $partial->id], $branches[1]->id, 'fill');
     $rows = collect($preview['rows'])->keyBy('product_id');
-    expect($rows[$partial->id]['skipped'])->toContain('Sem perfil fiscal próprio')
+    expect($rows[$partial->id]['skipped'])->toContain('Sem exceção nesta filial')
         ->and($rows[$empty->id]['after'])->toBe(['icms_situation' => '500', 'cfop' => '5405', 'pis_situation' => '04', 'cofins_situation' => '04'])
         ->and($rows[$empty->id]['missing_after'])->toBe(['NCM', 'Origem'])
         ->and($rows[$empty->id]['warnings'])->toContain('CST/CSOSN 500 indica substituição tributária: confira o CEST.');
