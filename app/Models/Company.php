@@ -114,6 +114,18 @@ class Company extends Model
         return (int) ($value ?? 60);
     }
 
+    /**
+     * E-mail sempre em minúsculas e sem espaços: é o `account_email` do afiliado no split da
+     * Vindi. Com maiúsculas a Vindi não achava a conta, criava a transação sem afiliado e sem
+     * PIX, e o cliente ficava sem QR no chat.
+     */
+    public function setEmailAttribute(?string $value): void
+    {
+        $email = mb_strtolower(trim((string) $value));
+
+        $this->attributes['email'] = $email === '' ? null : $email;
+    }
+
     public function getLogoUrlAttribute(): ?string
     {
         if (! $this->logo_path) {
