@@ -191,6 +191,28 @@
                                 description="Entra no cardápio publicado da Keeta. Foto só com endereço HTTPS público." />
                         @endif
                     </div>
+                    @if ($this->keetaEnabled)
+                        <div class="space-y-3 rounded-lg border border-neutral-200 p-3 dark:border-neutral-700">
+                            <flux:checkbox wire:model.live="keeta_schedule_enabled" label="Definir horário deste produto na Keeta"
+                                description="Use o horário local da loja. Sem restrição, o produto segue o funcionamento da filial." />
+                            @if ($keeta_schedule_enabled)
+                                <fieldset class="space-y-2">
+                                    <legend class="text-sm font-medium">Dias disponíveis na Keeta</legend>
+                                    <div class="flex flex-wrap gap-3">
+                                        @foreach (['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'] as $day => $label)
+                                            <flux:checkbox wire:model="keeta_available_days" value="{{ $day }}" label="{{ $label }}" />
+                                        @endforeach
+                                    </div>
+                                    <flux:error name="keeta_available_days" />
+                                </fieldset>
+                                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                    <flux:input type="time" wire:model="keeta_available_start" label="Disponível a partir de" />
+                                    <flux:input type="time" wire:model="keeta_available_end" label="Disponível até" />
+                                </div>
+                                <p class="text-xs text-neutral-500">Se o horário final for anterior ao inicial, a disponibilidade termina no dia seguinte.</p>
+                            @endif
+                        </div>
+                    @endif
                     @foreach ($this->food99SyncStatus as $sync)
                         @if ($sync['error'] || in_array($sync['status'], ['failed', 'invalid'], true))
                             <x-admin.alert variant="warning" icon="exclamation-triangle">

@@ -144,7 +144,8 @@ class KeetaAuthService
         }
 
         try {
-            $this->gateway->onboardMerchant($integration, route('webhook.keeta.orders'), $integration->menuUrl(), $integration->menu_api_key);
+            $webhookUrl = rtrim((string) config('app.url'), '/').route('webhook.keeta.orders', absolute: false);
+            $this->gateway->onboardMerchant($integration, $webhookUrl, $integration->menuUrl(), $integration->menu_api_key);
         } catch (Throwable $e) {
             $integration->forceFill(['status' => KeetaIntegration::STATUS_ERROR])->save();
 

@@ -54,6 +54,12 @@ it('canonicaliza JSON recebido preservando objeto vazio', function () {
         ->and($signer->canonicalizeRaw('não é json'))->toBeNull();
 });
 
+it('serializa os limites de notação numérica como ECMAScript na RFC 8785', function () {
+    expect(app(KeetaSigner::class)->canonicalize([
+        1.0e-6, 1.0e-7, 1.2e-6, -1.2e-6, 1.0e20, 1.0e21, 1.0000000000000001e18, -0.0,
+    ]))->toBe('[0.000001,1e-7,0.0000012,-0.0000012,100000000000000000000,1e+21,1000000000000000100,0]');
+});
+
 it('valida a assinatura do webhook só do corpo ou com a URL, cru ou canônico', function () {
     $signer = app(KeetaSigner::class);
     $url = 'https://veddi.test/webhooks/keeta/orders';

@@ -1,0 +1,28 @@
+2026-11-18 21:05:26 INFO Keeta: atualizar loja {"operation":"atualizar loja","keeta_integration_id":1,"company_id":15,"duration_ms":343,"http_status":204} 
+2026-11-18 21:05:26 INFO Keeta: atualizar loja {"operation":"atualizar loja","keeta_integration_id":1,"company_id":15,"duration_ms":327,"http_status":204} 
+2026-11-18 21:05:28 INFO Keeta: status da loja {"operation":"status da loja","keeta_integration_id":1,"company_id":15,"duration_ms":296,"http_status":200} 
+2026-11-18 21:05:29 INFO Keeta: atualizar loja {"operation":"atualizar loja","keeta_integration_id":1,"company_id":15,"duration_ms":326,"http_status":204} 
+2026-11-18 21:07:22 INFO Keeta: recarregar cardápio {"operation":"recarregar cardápio","keeta_integration_id":1,"company_id":15,"duration_ms":1088,"http_status":204} 
+2026-11-18 21:07:22 INFO Keeta: cardápio atualizado {"keeta_integration_id":1} 
+2026-11-18 21:13:39 INFO Keeta: recarregar cardápio {"operation":"recarregar cardápio","keeta_integration_id":1,"company_id":15,"duration_ms":1591,"http_status":204} 
+2026-11-18 21:13:39 INFO Keeta: cardápio atualizado {"keeta_integration_id":1} 
+2026-11-18 21:15:07 INFO Keeta: recarregar cardápio {"operation":"recarregar cardápio","keeta_integration_id":1,"company_id":15,"duration_ms":1057,"http_status":204} 
+2026-11-18 21:15:07 INFO Keeta: cardápio atualizado {"keeta_integration_id":1} 
+2026-11-18 21:16:41 INFO Keeta: recarregar cardápio {"operation":"recarregar cardápio","keeta_integration_id":1,"company_id":15,"duration_ms":1046,"http_status":204} 
+2026-11-18 21:16:41 INFO Keeta: cardápio atualizado {"keeta_integration_id":1} 
+2026-11-18 21:18:55 INFO Keeta: recarregar cardápio {"operation":"recarregar cardápio","keeta_integration_id":1,"company_id":15,"duration_ms":1086,"http_status":204} 
+2026-11-18 21:18:55 INFO Keeta: cardápio atualizado {"keeta_integration_id":1} 
+2026-11-18 21:19:02 INFO Keeta: status da loja {"operation":"status da loja","keeta_integration_id":1,"company_id":15,"duration_ms":328,"http_status":200} 
+2026-11-18 21:19:13 INFO Keeta: obter token {"operation":"obter token","duration_ms":310,"http_status":200} 
+2026-11-18 21:19:13 INFO Keeta: status da loja {"operation":"status da loja","keeta_integration_id":1,"company_id":15,"duration_ms":293,"http_status":200} 
+2026-11-18 21:19:27 INFO Keeta: link de autorização {"operation":"link de autorização","duration_ms":317,"http_status":200} 
+2026-11-18 21:33:55 INFO Keeta: recarregar cardápio {"operation":"recarregar cardápio","keeta_integration_id":1,"company_id":15,"duration_ms":1109,"http_status":204} 
+2026-11-18 21:33:55 INFO Keeta: cardápio atualizado {"keeta_integration_id":1} 
+2026-11-18 21:35:32 INFO Keeta: recarregar cardápio {"operation":"recarregar cardápio","keeta_integration_id":1,"company_id":15,"duration_ms":1070,"http_status":204} 
+2026-11-18 21:35:32 INFO Keeta: cardápio atualizado {"keeta_integration_id":1} 
+2026-11-18 21:37:06 INFO Keeta: recarregar cardápio {"operation":"recarregar cardápio","keeta_integration_id":1,"company_id":15,"duration_ms":1026,"http_status":204} 
+2026-11-18 21:37:06 INFO Keeta: cardápio atualizado {"keeta_integration_id":1} 
+2026-11-18 21:38:41 INFO Keeta: recarregar cardápio {"operation":"recarregar cardápio","keeta_integration_id":1,"company_id":15,"duration_ms":1005,"http_status":204} 
+2026-11-18 21:38:41 INFO Keeta: cardápio atualizado {"keeta_integration_id":1} 
+2026-11-18 21:41:22 INFO Keeta: recarregar cardápio {"operation":"recarregar cardápio","keeta_integration_id":1,"company_id":15,"duration_ms":1090,"http_status":204} 
+2026-11-18 21:41:22 INFO Keeta: cardápio atualizado {"keeta_integration_id":1} 

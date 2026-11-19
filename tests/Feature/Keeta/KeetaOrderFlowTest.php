@@ -48,6 +48,33 @@ it('importa o pedido do evento CREATED com itens, valores e cliente', function (
     Http::assertNotSent(fn (Request $r) => str_ends_with($r->url(), '/v1/batchDecrypt'));
 });
 
+it('exibe displayId, pickupCode, observações e valores no comprovante do pedido', function () {
+    $ctx = keetaContext();
+    $order = receiveKeetaOrder($this, $ctx, keetaOrder($ctx));
+    $html = view('livewire.admin.orders.receipt', ['order' => $order->load('branch', 'customer', 'items'), 'company' => $ctx['company']])->render();
+
+    expect($html)->toContain('Keeta #1042', 'Codigo de coleta: 7731', 'Bem quente', 'Sem cebola', 'Coxinha', '8,00', '20,00');
+    expect($order->items->firstWhere('product_id', $ctx['product']->id)->notes)->toBe('Bem quente');
+});
+
+it('contabiliza MIN_ORDER_FEE conforme quem recebe a taxa e preserva o total Keeta', function () {
+    $ctx = keetaContext();
+    $raw = keetaOrder($ctx);
+    $raw['otherFees'][] = ['type' => 'MIN_ORDER_FEE', 'receivedBy' => 'MERCHANT', 'price' => ['value' => 2.5]];
+    $raw['total']['orderAmount']['value'] = 29.48;
+    $raw['payments']['prepaid'] = 29.48;
+    $order = receiveKeetaOrder($this, $ctx, $raw);
+
+    expect((float) $order->service_fee)->toBe(2.5)
+        ->and((float) $order->total)->toBe(22.5)
+        ->and($order->keetaDetails()->get('keeta_order_amount'))->toBe(29.48)
+        ->and($order->keetaDetails()->additionalFeeLines())->toBe([['label' => 'Taxa de pedido mínimo', 'value' => 2.5]]);
+
+    $raw['otherFees'][2]['receivedBy'] = 'MARKETPLACE';
+    $dto = \App\DTOs\KeetaOrderDTO::fromArray($raw);
+    expect($dto->serviceFee)->toBe(0.0)->and($dto->reportedTotal)->toBe(20.0)->and($dto->orderAmount)->toBe(29.48);
+});
+
 it('confirma, marca pronto e conclui pelos eventos da entrega Keeta', function () {
     $ctx = keetaContext();
     $raw = keetaOrder($ctx);
@@ -212,6 +239,42 @@ it('entrega própria descriptografa contato e despacha/entrega pela API', functi
 
     expect($order->fresh()->status)->toBe('delivered')
         ->and(keetaCalls())->toContain('POST /v1/orders/783441058793308/dispatch', 'POST /v1/orders/783441058793308/delivered');
+});
+
+it('despacha sem corpo quando o rastreamento opcional não foi informado', function () {
+    $ctx = keetaContext();
+    fakeKeetaApi();
+
+    app(\App\Contracts\KeetaGatewayContract::class)->dispatchOrder($ctx['integration'], '123');
+
+    Http::assertSent(fn (Request $request) => str_ends_with($request->url(), '/v1/orders/123/dispatch') && $request->body() === '');
+});
+
+it('descriptografa nome e endereço completo na entrega própria sem gravar ENC_ como CEP', function () {
+    $ctx = keetaContext();
+    $raw = keetaOrder($ctx, [
+        'customer' => ['name' => 'ENC_nome'],
+        'delivery' => ['deliveredBy' => 'MERCHANT', 'deliveryAddress' => [
+            'street' => 'ENC_rua', 'city' => 'ENC_cidade', 'postalCode' => 'ENC_12345', 'reference' => 'ENC_ref',
+        ]],
+    ]);
+    $translations = ['ENC_nome' => 'Cliente SIT', 'ENC_rua' => 'Rua SIT', 'ENC_cidade' => 'São Paulo', 'ENC_12345' => '01310-100', 'ENC_ref' => 'Portão azul'];
+    fakeKeetaApi($raw, ['*/v1/batchDecrypt' => Http::response(['plainInfos' => collect($translations)
+        ->map(fn ($plain, $cipher) => ['cipherText' => $cipher, 'plainText' => $plain, 'errorCode' => 0])->values()->all()], 200)]);
+
+    postKeetaWebhook($this, keetaEvent('PLACED', $raw['id']), $ctx['integration']->merchant_ref)->assertNoContent();
+    $order = Order::withoutGlobalScopes()->where('external_order_id', $raw['id'])->firstOrFail();
+    expect($order->customer->name)->toBe('Cliente SIT')
+        ->and($order->customer->address)->toBe('Rua SIT')
+        ->and($order->customer->city)->toBe('São Paulo')
+        ->and($order->customer->cep)->toBe('01310100');
+    Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/v1/batchDecrypt')
+        && collect($r['cipherInfos'])->pluck('cipherText')->contains('ENC_nome')
+        && collect($r['cipherInfos'])->pluck('cipherText')->contains('ENC_rua'));
+
+    $withoutDecryption = \App\DTOs\KeetaOrderDTO::fromArray($raw);
+    expect($withoutDecryption->customerName)->toBe('Cliente Keeta')
+        ->and($withoutDecryption->deliveryAddress['cep'] ?? '')->toBe('');
 });
 
 it('propaga para a Keeta o "pronto" marcado fora do serviço de ações', function () {

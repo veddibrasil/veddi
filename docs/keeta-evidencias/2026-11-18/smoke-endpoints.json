@@ -1,0 +1,62 @@
+[
+  {
+    "base": "http://localhost:8000",
+    "method": "POST",
+    "path": "/webhooks/keeta/orders",
+    "status": 401,
+    "expected": 401,
+    "pass": true
+  },
+  {
+    "base": "http://localhost:8000",
+    "method": "POST",
+    "path": "/webhooks/keeta/authorization",
+    "status": 401,
+    "expected": 401,
+    "pass": true
+  },
+  {
+    "base": "http://localhost:8000",
+    "method": "GET",
+    "path": "/integrations/keeta/merchant/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "status": 404,
+    "expected": 404,
+    "pass": true
+  },
+  {
+    "base": "https://<tunel-sit>",
+    "method": "GET",
+    "path": "/admin/dashboard",
+    "status": 404,
+    "expected": 404,
+    "pass": true
+  },
+  {
+    "base": "https://<tunel-sit>",
+    "method": "GET",
+    "path": "/login",
+    "status": 404,
+    "expected": 404,
+    "pass": true
+  },
+  {
+    "base": "https://<tunel-sit>",
+    "method": "POST",
+    "path": "/webhooks/keeta/orders",
+    "status": 401,
+    "expected": 401,
+    "pass": true
+  },
+  {
+    "base": "https://<tunel-sit>",
+    "method": "POST",
+    "path": "/webhooks/keeta/authorization",
+    "status": 401,
+    "expected": 401,
+    "pass": true
+  },
+  {
+    "check": "Keeta exige sessão autenticada",
+    "pass": true
+  }
+]

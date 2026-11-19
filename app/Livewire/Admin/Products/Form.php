@@ -6,6 +6,7 @@ use App\Jobs\DisableIfoodItemJob;
 use App\Jobs\SetFood99ItemStatusJob;
 use App\Jobs\SyncFood99CatalogJob;
 use App\Jobs\SyncIfoodCatalogJob;
+use App\Jobs\SyncKeetaCatalogJob;
 use App\Models\Branch;
 use App\Models\Company;
 use App\Models\Food99Integration;
@@ -82,6 +83,14 @@ class Form extends Component
 
     public bool $available_in_keeta = true;
 
+    public bool $keeta_schedule_enabled = false;
+
+    public array $keeta_available_days = [0, 1, 2, 3, 4, 5, 6];
+
+    public string $keeta_available_start = '10:00';
+
+    public string $keeta_available_end = '22:00';
+
     public int $sort_order = 0;
 
     public $image;
@@ -152,6 +161,11 @@ class Form extends Component
             'available_in_ifood' => ['boolean'],
             'available_in_99food' => ['boolean'],
             'available_in_keeta' => ['boolean'],
+            'keeta_schedule_enabled' => ['boolean'],
+            'keeta_available_days' => ['exclude_unless:keeta_schedule_enabled,true', 'required', 'array', 'min:1', 'max:7'],
+            'keeta_available_days.*' => ['integer', 'between:0,6', 'distinct'],
+            'keeta_available_start' => ['exclude_unless:keeta_schedule_enabled,true', 'required', 'date_format:H:i'],
+            'keeta_available_end' => ['exclude_unless:keeta_schedule_enabled,true', 'required', 'date_format:H:i', 'different:keeta_available_start'],
             'sort_order' => ['integer', 'min:0'],
             'image' => ['nullable', 'image', 'max:2048', ...($this->appliesIfoodRules() ? ['mimes:jpg,jpeg,png'] : [])],
             'selectedBranches' => ['array'],
@@ -338,6 +352,12 @@ class Form extends Component
             $this->available_in_ifood = (bool) ($product->available_in_ifood ?? true);
             $this->available_in_99food = (bool) ($product->available_in_99food ?? true);
             $this->available_in_keeta = (bool) ($product->available_in_keeta ?? true);
+            if ($product->keeta_availability) {
+                $this->keeta_schedule_enabled = true;
+                $this->keeta_available_days = $product->keeta_availability['days'];
+                $this->keeta_available_start = $product->keeta_availability['start'];
+                $this->keeta_available_end = $product->keeta_availability['end'];
+            }
             $this->description = $product->description ?? '';
             $this->price = (string) $product->price;
             $this->isVariant = (bool) $product->is_variant;
@@ -921,6 +941,11 @@ class Form extends Component
             'available_in_ifood' => $validated['available_in_ifood'],
             'available_in_99food' => $validated['available_in_99food'],
             'available_in_keeta' => $validated['available_in_keeta'],
+            'keeta_availability' => $validated['keeta_schedule_enabled'] ? [
+                'days' => array_map('intval', $validated['keeta_available_days']),
+                'start' => $validated['keeta_available_start'],
+                'end' => $validated['keeta_available_end'],
+            ] : null,
             'sort_order' => $validated['sort_order'],
             'image_path' => $imagePath,
             'fiscal_data' => $generalFiscalData,
@@ -1109,6 +1134,10 @@ class Form extends Component
         // Depois de gravar filiais, grupos e opções: invalida o cardápio de todas as filiais da empresa
         // (inclui filiais desmarcadas neste save), sem janela para outro request repopular com dado velho.
         app(MenuCache::class)->forgetCompany((int) ($product->company_id ?? $this->company_id));
+
+        // Complementos e vínculos de filial são gravados depois do evento saved do produto.
+        // Inclui filiais removidas e produtos que usam grupos compartilhados.
+        SyncKeetaCatalogJob::debounceForCompany((int) $companyId);
 
         // O formulário grava relações depois do produto; publicar apenas o estado final.
         $integrations = IfoodIntegration::withoutGlobalScopes()

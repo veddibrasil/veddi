@@ -35,7 +35,7 @@ class SyncKeetaCatalogJob implements ShouldBeUnique, ShouldQueue
     /** Aviso automático depois de uma alteração: espera um minuto juntando as próximas. */
     public static function debounce(int $branchId): void
     {
-        static::dispatch($branchId)->delay(now()->addSeconds(60));
+        static::dispatch($branchId)->delay(now()->addSeconds(60))->afterCommit();
     }
 
     /** Filiais da empresa com Keeta ativa e cardápio publicado. */

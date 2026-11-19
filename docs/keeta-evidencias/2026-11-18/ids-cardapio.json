@@ -1,0 +1,22 @@
+{
+    "test_data": {
+        "category_id": 52,
+        "product_id": 103,
+        "group_id": 40,
+        "option_id": 132
+    },
+    "before_offer_ids": [
+        "veddi-po65",
+        "veddi-po66",
+        "veddi-po72",
+        "veddi-po73"
+    ],
+    "after_offer_ids": [
+        "veddi-po65",
+        "veddi-po66",
+        "veddi-po72",
+        "veddi-po73",
+        "veddi-po103"
+    ],
+    "existing_ids_preserved": true
+}

@@ -47,11 +47,23 @@ class KeetaCatalogBuilder
 
                 return false;
             }
+            // Validado na SIT (18/11/2026): a Keeta descarta, sem erro, categoria e produto cujo nome
+            // cita outro app de entrega. Fica de fora com pendência em vez de sumir sem explicação.
+            if ($brand = $this->competitorBrand($product->category->name)) {
+                $issues[$product->id] = "A Keeta recusa categoria com nome de outro app ({$brand}). Renomeie a categoria \"{$product->category->name}\".";
+
+                return false;
+            }
+            if ($brand = $this->competitorBrand($product->name)) {
+                $issues[$product->id] = "A Keeta recusa produto com nome de outro app ({$brand}). Tire \"{$brand}\" do nome do produto.";
+
+                return false;
+            }
 
             return true;
         })->groupBy('product_category_id')->sortBy(fn (Collection $items) => [$items->first()->category->sort_order, $items->first()->category->id]);
 
-        $categories = $itemOffers = $items = $groups = $included = [];
+        $categories = $itemOffers = $items = $groups = $included = $availabilities = [];
 
         foreach ($byCategory as $categoryProducts) {
             $category = $categoryProducts->first()->category;
@@ -69,6 +81,17 @@ class KeetaCatalogBuilder
                 }
 
                 $available = $availability[$product->id] ?? false;
+                $availabilityId = null;
+                if ($product->keeta_availability) {
+                    $availabilityId = 'veddi-a'.$product->id;
+                    $schedule = $product->keeta_availability;
+                    $scheduleBranch = new Branch([
+                        'available_days' => $schedule['days'],
+                        'opens_at' => $schedule['start'],
+                        'closes_at' => $schedule['end'],
+                    ]);
+                    $availabilities[] = ['id' => $availabilityId, 'hours' => $this->hours->forBranch($scheduleBranch)];
+                }
                 $items['veddi-p'.$product->id] = $this->item(
                     'veddi-p'.$product->id,
                     $product->name,
@@ -84,6 +107,7 @@ class KeetaCatalogBuilder
                     'status' => $available ? 'AVAILABLE' : 'UNAVAILABLE',
                     'price' => $this->price((float) $product->effective_price, (float) $product->price),
                     'optionGroupsId' => $groupIds === [] ? null : $groupIds,
+                    'availabilityId' => $availabilityId ? [$availabilityId] : null,
                 ], fn ($value) => $value !== null);
                 $offerIds[] = 'veddi-po'.$product->id;
                 $included[] = $product->id;
@@ -130,6 +154,7 @@ class KeetaCatalogBuilder
                 'itemOffers' => $itemOffers,
                 'items' => array_values($items),
                 'optionGroups' => array_values($groups),
+                'availabilities' => $availabilities,
             ],
             'issues' => $issues,
             'products' => $included,
@@ -191,9 +216,34 @@ class KeetaCatalogBuilder
         return ['value' => round($value, 2), 'originalValue' => round(max($value, $original), 2)];
     }
 
+    /**
+     * Nome de outro app de entrega citado no texto, ou null. iFood (categoria e produto) e Rappi
+     * (produto) foram descartados na SIT; os demais seguem a mesma regra por precaução.
+     */
+    private function competitorBrand(?string $name): ?string
+    {
+        foreach ([
+            'iFood' => '/\bi\s*-?\s*food\b/iu',
+            'Rappi' => '/\brappi\b/iu',
+            '99Food' => '/\b99\s*-?\s*food\b/iu',
+            'Uber Eats' => '/\buber\s*-?\s*eats\b/iu',
+            'aiqfome' => '/\baiqfome\b/iu',
+        ] as $brand => $pattern) {
+            if (preg_match($pattern, (string) $name)) {
+                return $brand;
+            }
+        }
+
+        return null;
+    }
+
     private function basicInfo(Branch $branch): array
     {
         $phone = preg_replace('/\D/', '', (string) $branch->phone);
+        // Formato do exemplo da Keeta: país, hífen, DDD e número ("55-11999999999").
+        if (preg_match('/^(?:55)?(\d{10,11})$/', $phone, $national)) {
+            $phone = '55-'.$national[1];
+        }
         $email = (string) ($branch->company?->email ?? '');
 
         return [

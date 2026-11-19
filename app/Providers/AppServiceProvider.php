@@ -26,6 +26,8 @@ use App\Models\ProductCategory;
 use App\Models\Role;
 use App\Models\User;
 use App\Observers\FiscalNoteObserver;
+use App\Observers\KeetaBranchObserver;
+use App\Observers\KeetaCompanyObserver;
 use App\Observers\ProductObserver;
 use App\Policies\BranchPolicy;
 use App\Policies\CompanyPolicy;
@@ -150,6 +152,8 @@ class AppServiceProvider extends ServiceProvider
 
         FiscalNote::observe(FiscalNoteObserver::class);
         Product::observe(ProductObserver::class);
+        Branch::observe(KeetaBranchObserver::class);
+        Company::observe(KeetaCompanyObserver::class);
 
         // E-mail marketing: envios por segundo somando todos os workers (conforme o plano do provedor).
         RateLimiter::for('marketing-send', function () {

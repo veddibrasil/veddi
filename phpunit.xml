@@ -31,6 +31,11 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="KEETA_ENABLED" value="false" force="true"/>
+        <env name="KEETA_HOMOLOGATION_MODE" value="false" force="true"/>
+        <env name="KEETA_CLIENT_ID" value="" force="true"/>
+        <env name="KEETA_CLIENT_SECRET" value="" force="true"/>
+        <env name="KEETA_APP_ID" value="" force="true"/>
         <env name="CHAT_WHATSAPP_META_ENABLED" value="true" force="true"/>
         <env name="CHAT_WHATSAPP_WUZAPI_FALLBACK_ENABLED" value="false" force="true"/>
         <env name="WUZAPI_SESSION_TOKEN" value="" force="true"/>

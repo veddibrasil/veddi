@@ -54,6 +54,14 @@ class KeetaClient
         }
     }
 
+    /** O link de autorização precisa funcionar antes da primeira loja autorizar o app. */
+    public function authorizationUrlRequest(array $query): mixed
+    {
+        $this->ensureConfigured();
+
+        return $this->send('GET', '/oauth/authorization/url', 'link de autorização', $query, null, null, [], null);
+    }
+
     /**
      * Token do app. Renova sob lock quando falta menos que a margem; quem chega durante a
      * renovação espera e lê o token novo do cache.

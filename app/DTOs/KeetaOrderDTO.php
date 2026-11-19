@@ -172,11 +172,18 @@ readonly class KeetaOrderDTO
         $address = $order['delivery']['deliveryAddress'] ?? [];
 
         return array_values(array_filter([
+            $order['customer']['name'] ?? null,
             $order['customer']['phone']['number'] ?? null,
+            $order['customer']['documentNumber'] ?? null,
+            $address['street'] ?? null,
             $address['district'] ?? null,
             $address['number'] ?? null,
             $address['complement'] ?? null,
             $address['formattedAddress'] ?? null,
+            $address['city'] ?? null,
+            $address['state'] ?? null,
+            $address['postalCode'] ?? null,
+            $address['reference'] ?? null,
         ], fn ($value) => is_string($value) && str_starts_with($value, 'ENC_')));
     }
 
@@ -359,7 +366,7 @@ readonly class KeetaOrderDTO
             'neighborhood' => $text($address['district'] ?? null) ?? '',
             'city' => $text($address['city'] ?? null) ?? '',
             'state' => $text($address['state'] ?? null) ?? '',
-            'cep' => preg_replace('/\D/', '', (string) ($address['postalCode'] ?? '')),
+            'cep' => preg_replace('/\D/', '', $text($address['postalCode'] ?? null) ?? ''),
             'latitude' => is_numeric($coordinates['latitude'] ?? null) ? (float) $coordinates['latitude'] : null,
             'longitude' => is_numeric($coordinates['longitude'] ?? null) ? (float) $coordinates['longitude'] : null,
             'reference' => $text($address['reference'] ?? null),

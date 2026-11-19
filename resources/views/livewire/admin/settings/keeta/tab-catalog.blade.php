@@ -53,5 +53,5 @@
             </x-admin.alert>
         @endif
     @endif
-    <p class="text-xs text-neutral-500 dark:text-neutral-400">Só produtos ativos, desta filial e marcados como "Disponível na Keeta" entram. Horários vêm do cadastro da filial.</p>
+    <p class="text-xs text-neutral-500 dark:text-neutral-400">Só produtos ativos, desta filial e marcados como "Disponível na Keeta" entram. Horários vêm do cadastro da filial; o produto pode ter horário próprio na Keeta no cadastro dele.</p>
 </x-admin.form-card>

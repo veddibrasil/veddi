@@ -5,7 +5,6 @@ namespace App\Services\Keeta;
 use App\Contracts\KeetaGatewayContract;
 use App\Exceptions\KeetaApiException;
 use App\Models\KeetaIntegration;
-use stdClass;
 
 /**
  * Endpoints da Keeta Open Delivery (v1.0.7+). Tudo passa pelo KeetaClient (token do app,
@@ -19,7 +18,7 @@ class KeetaGatewayService implements KeetaGatewayContract
     {
         $this->client->ensureConfigured();
 
-        $response = $this->client->request('GET', '/oauth/authorization/url', 'link de autorização', array_filter([
+        $response = $this->client->authorizationUrlRequest(array_filter([
             'clientId' => (string) config('keeta.client_id'),
             'redirectUri' => $redirectUri,
         ], fn ($value) => $value !== null && $value !== ''));
@@ -84,7 +83,9 @@ class KeetaGatewayService implements KeetaGatewayContract
 
     public function merchantUpdate(KeetaIntegration $integration, array $body = []): void
     {
-        $this->client->request('POST', '/v1/merchantUpdate/'.rawurlencode($integration->merchant_ref), $body === [] ? 'recarregar cardápio' : 'atualizar loja', [], $body === [] ? new stdClass : $body, $integration);
+        // Na API real, {} é incluído na assinatura pelo servidor apesar da regra de omiti-lo
+        // na documentação. Sem corpo é aceito e significa recarregar o GET merchant.
+        $this->client->request('POST', '/v1/merchantUpdate/'.rawurlencode($integration->merchant_ref), $body === [] ? 'recarregar cardápio' : 'atualizar loja', [], $body === [] ? null : $body, $integration);
     }
 
     public function pollEvents(array $merchantRefs): array
@@ -138,7 +139,7 @@ class KeetaGatewayService implements KeetaGatewayContract
 
     public function dispatchOrder(KeetaIntegration $integration, string $orderId, ?array $deliveryTrackingInfo = null): void
     {
-        $this->client->request('POST', $this->orderPath($orderId, 'dispatch'), 'despachar pedido', [], $deliveryTrackingInfo !== null ? ['deliveryTrackingInfo' => $deliveryTrackingInfo] : new stdClass, $integration);
+        $this->client->request('POST', $this->orderPath($orderId, 'dispatch'), 'despachar pedido', [], $deliveryTrackingInfo !== null ? ['deliveryTrackingInfo' => $deliveryTrackingInfo] : null, $integration);
     }
 
     public function markDelivered(KeetaIntegration $integration, string $orderId): void

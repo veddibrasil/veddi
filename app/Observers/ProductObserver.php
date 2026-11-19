@@ -14,6 +14,11 @@ use Illuminate\Support\Facades\DB;
 
 class ProductObserver
 {
+    public function deleted(Product $product): void
+    {
+        SyncKeetaCatalogJob::debounceForCompany((int) $product->company_id);
+    }
+
     /**
      * Dispara sync de disponibilidade em tempo real no iFood quando o produto
      * muda de status (pausar item em falta, reativar, etc). Preço/cardápio
@@ -45,7 +50,7 @@ class ProductObserver
      */
     private function syncKeeta(Product $product): void
     {
-        if (! config('keeta.enabled') || ! $product->wasChanged(['active', 'available_in_keeta', 'name', 'price', 'promo_price_enabled', 'promo_price_type', 'promo_price_value', 'description', 'image_path', 'product_category_id', 'sort_order'])) {
+        if (! config('keeta.enabled') || ! $product->wasChanged(['active', 'available_in_keeta', 'keeta_availability', 'name', 'price', 'promo_price_enabled', 'promo_price_type', 'promo_price_value', 'description', 'image_path', 'product_category_id', 'sort_order'])) {
             return;
         }
 

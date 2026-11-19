@@ -152,10 +152,6 @@ class KeetaSigner
             return '0';
         }
 
-        if (floor($value) === $value && abs($value) < 1e21) {
-            return sprintf('%.0f', $value);
-        }
-
         $text = (string) json_encode($value, JSON_THROW_ON_ERROR);
 
         if (stripos($text, 'e') === false) {
@@ -165,6 +161,22 @@ class KeetaSigner
         [$mantissa, $exponent] = explode('e', strtolower($text), 2);
         $mantissa = str_contains($mantissa, '.') ? rtrim(rtrim($mantissa, '0'), '.') : $mantissa;
         $exponent = (int) $exponent;
+
+        // ECMAScript usa notação decimal de 1e-6 (inclusive) a 1e21 (exclusive).
+        // Expande a representação mais curta do float, sem arredondar via sprintf.
+        if ($exponent >= -6 && $exponent < 21) {
+            $negative = str_starts_with($mantissa, '-');
+            $unsigned = ltrim($mantissa, '-');
+            $point = (strpos($unsigned, '.') ?: strlen($unsigned)) + $exponent;
+            $digits = str_replace('.', '', $unsigned);
+            $decimal = match (true) {
+                $point <= 0 => '0.'.str_repeat('0', -$point).$digits,
+                $point >= strlen($digits) => $digits.str_repeat('0', $point - strlen($digits)),
+                default => substr($digits, 0, $point).'.'.substr($digits, $point),
+            };
+
+            return ($negative ? '-' : '').$decimal;
+        }
 
         return $mantissa.'e'.($exponent >= 0 ? '+' : '-').abs($exponent);
     }
