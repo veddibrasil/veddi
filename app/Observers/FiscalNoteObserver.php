@@ -5,6 +5,8 @@ namespace App\Observers;
 use App\Events\FiscalNoteAuthorized;
 use App\Events\FiscalNoteFailed;
 use App\Models\FiscalNote;
+use App\Services\Fiscal\FiscalAutoIssueMonitor;
+use Illuminate\Support\Facades\Log;
 
 class FiscalNoteObserver
 {
@@ -27,6 +29,16 @@ class FiscalNoteObserver
         // nesse caso, então é aqui que o PDV fica sabendo que não vai ter o que imprimir.
         if (in_array($note->status, ['rejected', 'error'], true) && $note->order_id) {
             FiscalNoteFailed::dispatch($note->order_id, $note->error_message);
+
+            // Nota automática: resumo no sino e disjuntor da filial (nunca derruba o update da nota).
+            try {
+                app(FiscalAutoIssueMonitor::class)->noteFailed($note);
+            } catch (\Throwable $e) {
+                Log::channel('fiscal')->error('Emissão automática: falha ao registrar rejeição', [
+                    'fiscal_note_id' => $note->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
     }
 }

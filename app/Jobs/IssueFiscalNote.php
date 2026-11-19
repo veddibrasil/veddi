@@ -13,9 +13,10 @@ use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Emissão de uma nota fiscal por pedido. Disparada só por ação de alguém: o caixa no PDV
- * ("Emitir e imprimir nota fiscal"), o botão do pedido ou o Controle de notas fiscais
- * (individual ou em lote via Bus::batch, na fila 'low' pra não segurar a 'default').
+ * Emissão de uma nota fiscal por pedido, pedida por alguém: o caixa no PDV ("Emitir e imprimir
+ * nota fiscal"), o botão do pedido ou o Controle de notas fiscais (individual ou em lote via
+ * Bus::batch, na fila 'low' pra não segurar a 'default'). A NFC-e automática da filial usa
+ * AutoIssueFiscalNote.
  */
 class IssueFiscalNote implements ShouldQueue
 {

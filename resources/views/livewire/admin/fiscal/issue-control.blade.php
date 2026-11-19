@@ -56,6 +56,7 @@
             <option value="pending">Em processamento</option>
             <option value="authorized">Autorizada</option>
             <option value="cancelled">Cancelada</option>
+            <option value="cancelled_order">Pedido cancelado com nota ativa</option>
             <option value="all">Todas</option>
         </flux:select>
         {{-- Chat do VEDDI e PDV separados das integrações; option dentro de optgroup precisa do tema escuro explícito. --}}
@@ -184,6 +185,12 @@
                             <span class="rounded-full px-2 py-1 text-xs font-medium {{ $situationColors[$situation] ?? '' }}">
                                 {{ $situationLabels[$situation] ?? $situation }}
                             </span>
+                            @if($note?->data['automatic'] ?? false)
+                                <span class="ml-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" title="Emitida pela emissão automática">Automática</span>
+                            @endif
+                            @if($order->isClosed())
+                                <p class="mt-1 text-xs font-medium text-red-600 dark:text-red-400">Pedido {{ $order->status === 'refunded' ? 'estornado' : 'cancelado' }}</p>
+                            @endif
                             @if($errorMessage)
                                 <p class="mt-1 max-w-[9rem] truncate text-xs {{ $situation === 'not_sent' ? 'text-amber-800 dark:text-amber-300' : 'text-red-600 dark:text-red-400' }} md:max-w-[12rem] xl:max-w-xs" title="{{ $situation === 'not_sent' ? 'Na última tentativa: '.$errorMessage : $errorMessage }}">{{ $situation === 'not_sent' ? 'Na última tentativa: ' : '' }}{{ $errorMessage }}</p>
                             @endif

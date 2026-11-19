@@ -184,6 +184,23 @@
                 <flux:switch wire:model="nfceCnpjEnabled" label="Permitir NFC-e com CNPJ nesta filial" :disabled="!$canManage" />
                 <p class="text-xs text-neutral-500">Vale só para venda presencial (balcão ou comanda), operação interna, abaixo de R$ 200 mil e comprador não contribuinte com a IE conferida. Fora disso, e sempre que o comprador pedir, sai NF-e. Ligue somente depois de a contabilidade aprovar e de testar em homologação.</p>
             </div>
+
+            <div class="rounded-lg border border-neutral-200 p-3 space-y-2 dark:border-zinc-700">
+                <flux:switch wire:model="autoIssueEnabled" label="Emitir NFC-e automaticamente nesta filial" :disabled="!$canManage" />
+                <p class="text-xs text-neutral-500">Pedidos do chat e do PDV recebem a NFC-e sozinhos quando a loja aceita e o pagamento é recebido. Só valem pedidos feitos depois de ligar. No PDV, "Emitir e imprimir nota fiscal" já vem marcado e o caixa pode desmarcar. Ficam para o Controle de notas: CNPJ (NF-e), marketplace (iFood, 99Food, Keeta), brinde sem valor e qualquer pendência. Pedido cancelado tem a nota cancelada junto, dentro do prazo da SEFAZ. Depende da emissão fiscal habilitada acima.</p>
+
+                @if ($autoIssuePausedAt)
+                    <div class="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+                        <p class="font-medium">Pausada em {{ $autoIssuePausedAt }} por notas rejeitadas em sequência.</p>
+                        @if ($autoIssuePauseReason)
+                            <p class="mt-1 text-xs">Último motivo: {{ $autoIssuePauseReason }}</p>
+                        @endif
+                        @if ($canManage)
+                            <flux:button wire:click="resumeAutoIssue" size="sm" class="mt-2">Já corrigi, retomar</flux:button>
+                        @endif
+                    </div>
+                @endif
+            </div>
         </div>
 
         {{-- Provider --}}

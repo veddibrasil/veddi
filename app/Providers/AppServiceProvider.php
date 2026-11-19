@@ -151,6 +151,9 @@ class AppServiceProvider extends ServiceProvider
         ));
 
         FiscalNote::observe(FiscalNoteObserver::class);
+        // NFC-e automática e cancelamento da nota de pedido cancelado (FiscalAutoIssuePolicy).
+        Order::observe(\App\Observers\OrderFiscalObserver::class);
+        \App\Models\Payment::observe(\App\Observers\PaymentFiscalObserver::class);
         Product::observe(ProductObserver::class);
         Branch::observe(KeetaBranchObserver::class);
         Company::observe(KeetaCompanyObserver::class);

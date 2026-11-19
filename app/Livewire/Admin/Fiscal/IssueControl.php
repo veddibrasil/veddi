@@ -22,9 +22,10 @@ use Livewire\Component;
 use Livewire\WithPagination;
 
 /**
- * Controle de notas fiscais: lista pedidos pagos com a situação fiscal de cada um. A emissão
- * deixou de ser automática — o que o caixa não emitiu no PDV ("Emitir e imprimir nota fiscal")
- * fica aqui "sem nota" e pode ser emitido individualmente ou em lote (Bus::batch na fila 'low').
+ * Controle de notas fiscais: lista pedidos pagos com a situação fiscal de cada um. O que não saiu
+ * no PDV ("Emitir e imprimir nota fiscal") nem pela NFC-e automática da filial (AutoIssueFiscalNote:
+ * NF-e, marketplace, pendência, falha) fica aqui e pode ser emitido individualmente ou em lote
+ * (Bus::batch na fila 'low').
  */
 class IssueControl extends Component
 {
@@ -424,8 +425,12 @@ class IssueControl extends Component
         $to = $this->parseDate($this->dateTo)?->endOfDay();
         $search = trim($this->search);
 
+        // "Pedido cancelado com nota ativa": cancelamento automático da nota que não saiu
+        // (prazo da SEFAZ vencido, rejeição). Os demais filtros olham só pedidos pagos.
+        $statuses = $this->situationFilter === 'cancelled_order' ? ['cancelled', 'refunded'] : Order::FISCAL_ISSUABLE_STATUSES;
+
         return Order::query()
-            ->whereIn('status', Order::FISCAL_ISSUABLE_STATUSES)
+            ->whereIn('status', $statuses)
             ->when($this->lockedBranchId, fn (Builder $q) => $q->where('branch_id', $this->lockedBranchId))
             ->when(! $this->lockedBranchId && $this->branchFilter !== '', fn (Builder $q) => $q->where('branch_id', (int) $this->branchFilter))
             ->when($from, fn (Builder $q) => $q->where('created_at', '>=', $from))
@@ -485,6 +490,7 @@ class IssueControl extends Component
             'failed' => $query->where(fn (Builder $q) => $q->where($withLatest(['error', 'rejected']))
                 ->orWhere(fn (Builder $q) => $q->whereDoesntHave('fiscalNotes')->whereNotNull('fiscal_error'))),
             'pending', 'authorized', 'cancelled' => $query->where($withLatest([$this->situationFilter])),
+            'cancelled_order' => $query->whereHas('fiscalNotes', fn (Builder $n) => $n->whereIn('status', ['pending', 'authorized'])),
             default => null,
         };
     }

@@ -27,4 +27,15 @@ return [
         'nfce_max_total' => (float) env('FISCAL_NFCE_MAX_TOTAL', 200000),
     ],
 
+    // Emissão automática de NFC-e (App\Services\Fiscal\FiscalAutoIssuePolicy), ligada por filial
+    // em Fiscal › Configurações. delay_seconds: espera depois do aceite/pagamento, para o PDV e o
+    // painel terminarem de gravar o pedido. lookback_days: a varredura (fiscal:auto-issue) só
+    // olha pedidos recentes. breaker_threshold: notas automáticas rejeitadas seguidas na mesma
+    // filial que pausam a emissão automática dela.
+    'auto_issue' => [
+        'delay_seconds' => (int) env('FISCAL_AUTO_ISSUE_DELAY', 15),
+        'lookback_days' => (int) env('FISCAL_AUTO_ISSUE_LOOKBACK_DAYS', 3),
+        'breaker_threshold' => (int) env('FISCAL_AUTO_ISSUE_BREAKER', 3),
+    ],
+
 ];

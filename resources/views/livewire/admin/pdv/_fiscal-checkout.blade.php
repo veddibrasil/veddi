@@ -11,6 +11,10 @@
         <span class="text-sm">Emitir e imprimir nota fiscal</span>
     </label>
 
+    @if ($fiscalAutoIssueOn && ! $issueFiscalNote)
+        <p class="text-xs text-amber-700 dark:text-amber-300">Emissão automática ligada nesta filial: desmarcado, esta venda fica sem nota (Controle de notas).</p>
+    @endif
+
     @if ($issueFiscalNote)
         <div class="space-y-1.5">
             <div class="flex items-end gap-2">

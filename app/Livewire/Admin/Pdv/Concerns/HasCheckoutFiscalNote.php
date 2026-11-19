@@ -16,10 +16,10 @@ use Livewire\Attributes\Locked;
 /**
  * Compartilhado entre Terminal (HasPaymentFlow) e TabTerminal (HasOpenTabs).
  *
- * A nota fiscal não é mais emitida automaticamente quando o pedido vira 'paid': no PDV ela só
- * sai quando o caixa marca "Emitir e imprimir nota fiscal". Sem a marcação, o pedido fica
- * "sem nota" no Controle de notas fiscais (Admin\Fiscal\IssueControl), onde pode ser emitido
- * depois — individualmente ou em lote.
+ * No PDV a nota sai na hora quando o caixa marca "Emitir e imprimir nota fiscal". Com a NFC-e
+ * automática ligada na filial, a caixa já vem marcada; desmarcar grava orders.fiscal_auto_skip e
+ * o pedido fica "sem nota" no Controle de notas fiscais (Admin\Fiscal\IssueControl), onde pode
+ * ser emitido depois. Venda a receber ou agendada recebe a NFC-e automática quando for paga.
  *
  * Marcando a emissão aparece o "CPF/CNPJ na nota", que não depende de cliente cadastrado
  * (venda de balcão é a mais comum). O modelo vem da FiscalEmissionPolicy: CPF ou vazio = NFC-e;
@@ -45,6 +45,46 @@ trait HasCheckoutFiscalNote
     /** Aviso da consulta do CNPJ (falhou, situação diferente de ATIVA) — texto montado no servidor. */
     #[Locked]
     public ?string $fiscalCompanyNotice = null;
+
+    /**
+     * Filial com a NFC-e automática ligada: "Emitir e imprimir" já vem marcado e desmarcar grava
+     * orders.fiscal_auto_skip (o pedido fica sem nota, no Controle). Recalculado ao trocar de filial.
+     */
+    #[Locked]
+    public bool $fiscalAutoIssueOn = false;
+
+    /** Lê a chave da filial selecionada e aplica o padrão do "Emitir e imprimir nota fiscal". */
+    private function syncFiscalAutoIssueDefault(): void
+    {
+        $company = app()->bound('current.company') ? app('current.company') : null;
+        $config = $this->canUseFiscalNotes && $company && $this->selectedBranchId
+            ? app(FiscalConfigResolver::class)->forBranch($company, $this->selectedBranchId)
+            : null;
+
+        $this->fiscalAutoIssueOn = (bool) $config?->autoIssueActive();
+        $this->issueFiscalNote = $this->fiscalAutoIssueOn;
+    }
+
+    /**
+     * Venda que nasce paga com a NFC-e automática ligada: o PDV decide a nota na hora (emite se
+     * marcado, fica sem nota se desmarcado) e grava orders.fiscal_auto_skip para a automática não
+     * repetir nem contrariar o caixa. Lê a chave da filial agora, não a da abertura da tela: o
+     * disjuntor pode ter pausado no meio do turno. Venda a receber ou agendada não decide aqui:
+     * a automática emite quando pagar.
+     *
+     * @return array<string, mixed>
+     */
+    private function checkoutFiscalAutoAttributes(string $status): array
+    {
+        if (! $this->canUseFiscalNotes || $status !== 'paid') {
+            return [];
+        }
+
+        $company = app('current.company');
+        $autoOn = (bool) app(FiscalConfigResolver::class)->forBranch($company, $this->selectedBranchId)?->autoIssueActive();
+
+        return $autoOn ? ['fiscal_auto_skip' => true] : [];
+    }
 
     public function updatedIssueFiscalNote(bool $value): void
     {
@@ -147,7 +187,10 @@ trait HasCheckoutFiscalNote
     {
         $customer = $this->checkoutCustomer();
 
-        if (! $this->issueFiscalNote || ! $this->canUseFiscalNotes) {
+        // Marcado (padrão com a automática ligada) mas escondido porque a venda não é paga agora:
+        // a nota sai depois, então nada do formulário fiscal pode travar a venda.
+        $hidden = method_exists($this, 'checkoutSettlesNow') && ! $this->fiscalNoteAvailableOnCheckout;
+        if (! $this->issueFiscalNote || ! $this->canUseFiscalNotes || $hidden) {
             return $customer ? FiscalRecipient::fromCustomer($customer) : null;
         }
 
@@ -289,7 +332,8 @@ trait HasCheckoutFiscalNote
 
     private function resetCheckoutFiscalState(): void
     {
-        $this->issueFiscalNote = false;
+        // Relê a chave a cada venda: pausada pelo disjuntor ou desligada, a próxima vem desmarcada.
+        $this->syncFiscalAutoIssueDefault();
         $this->fiscalDocument = '';
         $this->fiscalCompany = [];
         $this->fiscalCompanyNotice = null;

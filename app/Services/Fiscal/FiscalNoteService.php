@@ -51,8 +51,9 @@ class FiscalNoteService
     /**
      * @param  string|null  $confirmedModel  modelo que o operador viu e confirmou na tela; se a
      *                                       política agora decidir outro, a emissão para e pede nova conferência
+     * @param  bool  $automatic  emissão automática (AutoIssueFiscalNote): marca a nota para o disjuntor e o resumo de falhas
      */
-    public function issue(Order $order, ?string $customerDocument = null, ?int $requestedBy = null, ?string $confirmedModel = null): FiscalNote
+    public function issue(Order $order, ?string $customerDocument = null, ?int $requestedBy = null, ?string $confirmedModel = null, bool $automatic = false): FiscalNote
     {
         $company = $order->company;
 
@@ -99,13 +100,15 @@ class FiscalNoteService
             freight: (float) $order->delivery_fee,
             discount: (float) $order->discount + (float) $order->manual_discount,
             otherExpenses: (float) $order->service_fee + (float) $order->couvert_fee,
-            payments: $model === '55' ? $order->payments()->where('status', 'paid')->get()->map(fn ($payment) => [
+            // Uma forma por pagamento recebido (pagamento dividido no PDV, por exemplo); o envio só
+            // usa a lista quando a soma bate com o total, senão manda a forma do pedido.
+            payments: $order->payments()->where('status', 'paid')->get()->map(fn ($payment) => [
                 'method' => match ($payment->payment_gateway) {
                     'cash' => 'cash', 'card_machine' => 'credit_card', 'pix_manual' => 'pix',
                     default => $order->payment_method,
                 },
                 'amount' => (float) ($payment->original_amount ?? $payment->amount),
-            ])->all() : [],
+            ])->all(),
             interstate: $decision->interstate,
             presential: $decision->presential,
         );
@@ -120,6 +123,7 @@ class FiscalNoteService
             'data' => [
                 'recipient' => $recipient,
                 'requested_by' => $requestedBy ?? auth()->id(),
+                'automatic' => $automatic,
                 // Decisão da política gravada antes do envio: qual versão escolheu o modelo e por quê.
                 'policy' => $decision->toArray(),
                 'issuer' => [
@@ -375,6 +379,11 @@ class FiscalNoteService
     {
         return DB::transaction(function () use ($order, $companyId, $branchId, $attributes) {
             $lockedOrder = Order::withoutGlobalScopes()->whereKey($order->id)->lockForUpdate()->firstOrFail();
+            // Cancelado entre a checagem e o envio (emissão automática ou fila atrasada): o
+            // cancelamento só cancela nota que já existe, então aqui ela não pode nascer.
+            if ($lockedOrder->isClosed()) {
+                throw new \RuntimeException('Pedido cancelado: a nota fiscal não foi emitida.');
+            }
             if ($lockedOrder->fiscal_recipient !== $order->fiscal_recipient) {
                 throw new \RuntimeException('Os dados fiscais foram alterados durante a emissão. Confira o pedido e tente novamente.');
             }
