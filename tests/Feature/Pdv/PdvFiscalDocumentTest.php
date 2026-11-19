@@ -18,7 +18,7 @@ function fiscalPdvContext(): array
 {
     $context = pdvContext();
     $context['company']->update(['fiscal_notes_enabled' => true]);
-    CompanyFiscalConfig::create(['company_id' => $context['company']->id, 'branch_id' => $context['branch']->id, 'is_default' => true, 'enabled' => true]);
+    CompanyFiscalConfig::create(['company_id' => $context['company']->id, 'branch_id' => $context['branch']->id, 'is_default' => true, 'enabled' => true, 'auto_issue_enabled' => false]);
 
     return $context;
 }
@@ -40,6 +40,86 @@ function pdvCheckout($product)
         ->set('paymentMethod', 'cash')
         ->set('cashReceivedInput', '10.00');
 }
+
+function pdvPersonalFiscalBuyer(): array
+{
+    return [
+        'document' => '52998224725', 'name' => 'Maria da Silva', 'street' => 'Rua das Flores',
+        'number' => '10', 'neighborhood' => 'Centro', 'city' => 'São Paulo', 'state' => 'SP',
+        'zip' => '01001000', 'ie_indicator' => '9',
+    ];
+}
+
+test('PDV permite NF-e para CPF e exige dados completos antes de concluir a venda', function () {
+    ['admin' => $admin, 'product' => $product] = fiscalPdvContext();
+    Bus::fake();
+    Http::preventStrayRequests();
+    $this->actingAs($admin);
+
+    pdvCheckout($product)
+        ->set('issueFiscalNote', true)
+        ->set('fiscalDocument', '529.982.247-25')
+        ->assertSee('NFC-e (cupom fiscal)')
+        ->call('$set', 'fiscalDocumentChoice', 'nfe')
+        ->assertSee('Completar ou conferir dados para NF-e')
+        ->call('processOrder')
+        ->assertHasErrors(['fiscalCompany.name', 'fiscalCompany.street', 'fiscalCompany.zip'])
+        ->assertSet('showFiscalCompanyForm', true)
+        ->assertSee('Nome completo')
+        ->set('fiscalCompany', pdvPersonalFiscalBuyer())
+        ->call('confirmFiscalCompany')->assertHasNoErrors()
+        ->call('processOrder')->assertHasNoErrors();
+
+    $order = Order::withoutGlobalScopes()->sole();
+    expect($order->fiscal_document_preference)->toBe('nfe')
+        ->and($order->fiscal_recipient['name'])->toBe('Maria da Silva')
+        ->and($order->fiscal_recipient['document'])->toBe('52998224725');
+    Bus::assertDispatched(IssueFiscalNote::class, fn ($job) => $job->orderId === $order->id && $job->confirmedModel === '55');
+    Http::assertNothingSent();
+});
+
+test('PDV reaproveita o endereço fiscal do mesmo CPF cadastrado para NF-e', function () {
+    ['admin' => $admin, 'product' => $product, 'company' => $company] = fiscalPdvContext();
+    $customer = Customer::create(['company_id' => $company->id, 'name' => 'Maria', 'phone' => '11966665555', 'fiscal_recipient' => pdvPersonalFiscalBuyer()]);
+    Bus::fake();
+    Http::preventStrayRequests();
+    $this->actingAs($admin);
+
+    pdvCheckout($product)
+        ->call('selectCustomer', $customer->id)
+        ->set('issueFiscalNote', true)
+        ->assertSet('fiscalCompany.street', 'Rua das Flores')
+        ->call('$set', 'fiscalDocumentChoice', 'nfe')
+        ->call('processOrder')->assertHasNoErrors();
+
+    expect(Order::withoutGlobalScopes()->sole()->fiscal_recipient['name'])->toBe('Maria da Silva');
+    Bus::assertDispatched(IssueFiscalNote::class, fn ($job) => $job->confirmedModel === '55');
+    Http::assertNothingSent();
+});
+
+test('trocar CPF no PDV descarta endereço e escolha de documento do comprador anterior', function () {
+    ['admin' => $admin, 'product' => $product] = fiscalPdvContext();
+    Bus::fake();
+    Http::preventStrayRequests();
+    $this->actingAs($admin);
+
+    pdvCheckout($product)
+        ->set('issueFiscalNote', true)
+        ->set('fiscalDocument', '52998224725')
+        ->set('fiscalCompany', pdvPersonalFiscalBuyer())
+        ->call('$set', 'fiscalDocumentChoice', 'nfe')
+        ->set('fiscalDocument', '11144477735')
+        ->assertSet('fiscalDocumentChoice', '')
+        ->assertSet('fiscalCompany.document', '11144477735')
+        ->assertSet('fiscalCompany.name', '')
+        ->assertSet('fiscalCompany.street', '')
+        ->call('$set', 'fiscalDocumentChoice', 'nfe')
+        ->call('processOrder')->assertHasErrors('fiscalCompany.name');
+
+    expect(Order::withoutGlobalScopes()->count())->toBe(0);
+    Bus::assertNotDispatched(IssueFiscalNote::class);
+    Http::assertNothingSent();
+});
 
 test('venda de balcão sem cliente cadastrado leva o CPF digitado para a nota', function () {
     ['admin' => $admin, 'product' => $product, 'company' => $company] = fiscalPdvContext();

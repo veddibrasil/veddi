@@ -19,8 +19,9 @@ use App\Models\Order;
  *   Fora disso, NF-e. O operador pode pedir NF-e mesmo quando a NFC-e é permitida. IE ainda não
  *   conferida mantém a NF-e (como antes da política) e sinaliza needs = ie_confirmation: a NFC-e
  *   só sai depois que alguém conferir; pedir NFC-e sem conferir bloqueia.
- * - CPF ou sem documento: NFC-e. A partir do valor do inciso VII, "a", exige identificação;
- *   a partir do § 4º não há modelo suportado (NF-e para CPF não existe no Veddi).
+ * - CPF: NFC-e no varejo interno, com opção de NF-e. Operação interestadual, contribuinte
+ *   de ICMS ou valor a partir do teto da NFC-e exigem NF-e, também para pessoa física.
+ * - Sem documento: NFC-e abaixo do limite de identificação; NF-e exige CPF ou CNPJ.
  * - Venda não presencial com CNPJ segue em NF-e: a NFC-e não presencial exige endereço da
  *   entrega no destinatário (inciso VII, "c"), que ainda não é enviado.
  *
@@ -28,7 +29,7 @@ use App\Models\Order;
  */
 class FiscalEmissionPolicy
 {
-    public const VERSION = '2026-11-16';
+    public const VERSION = '2026-11-19';
 
     public const PREFERENCES = ['nfce', 'nfe'];
 
@@ -88,6 +89,18 @@ class FiscalEmissionPolicy
             return ['document' => $document];
         }
 
+        // Pedido que guardou só o documento: completa com o cadastro do cliente, mas só quando é o
+        // mesmo comprador (mesmo documento). fillMissing não mistura partes de endereços diferentes.
+        if ($order->fiscal_recipient !== null && $order->customer) {
+            $customer = FiscalRecipient::customerProfile($order->customer);
+            $sameBuyer = FiscalRecipient::normalizeDocument($customer['document']) !== ''
+                && FiscalRecipient::normalizeDocument($customer['document']) === FiscalRecipient::normalizeDocument($recipient['document'] ?? '');
+            if ($sameBuyer) {
+                $recipient = FiscalRecipient::fillMissing($recipient, FiscalRecipient::fromCustomer($order->customer),
+                    ['name', 'email', 'street', 'number', 'complement', 'neighborhood', 'city', 'state', 'zip']);
+            }
+        }
+
         return $recipient;
     }
 
@@ -131,20 +144,37 @@ class FiscalEmissionPolicy
             return $decision(null, [], ['CPF ou CNPJ inválido.'], ['document']);
         }
 
-        if ($type === 'none' || $type === FiscalRecipient::TYPE_CPF) {
-            if ($preference === 'nfe') {
-                return $decision(null, ['65'], [$type === 'none'
-                    ? 'NF-e exige o CNPJ do comprador.'
-                    : 'NF-e para CPF não é suportada. Emita NFC-e ou informe um CNPJ.'], $type === 'none' ? ['document'] : []);
+        $nfceBlockers = array_values(array_filter([
+            $interstate ? 'Operação interestadual: NFC-e só para operação interna.' : null,
+            $total >= $max ? 'Venda a partir de R$ '.self::money($max).': NFC-e vedada.' : null,
+            in_array((string) ($recipient['ie_indicator'] ?? ''), ['1', '2'], true)
+                ? 'Comprador contribuinte ou isento de IE: utilize NF-e.' : null,
+        ]));
+
+        if ($type === 'none') {
+            if ($preference === 'nfe' || $nfceBlockers !== []) {
+                return $decision(null, $nfceBlockers === [] ? ['65'] : ['55'],
+                    [...$nfceBlockers, 'Informe o CPF ou CNPJ do comprador para emitir NF-e.'], ['document']);
             }
-            if ($total >= $max) {
-                return $decision(null, [], ['Venda a partir de R$ '.self::money($max).': NFC-e vedada. Informe o CNPJ do comprador para emitir NF-e.'], ['document']);
-            }
-            if ($type === 'none' && $total >= $threshold) {
+            if ($total >= $threshold) {
                 return $decision(null, [], ['NFC-e a partir de R$ '.self::money($threshold).' exige CPF ou CNPJ do comprador.'], ['document']);
             }
 
-            return $decision('65', ['65'], [$type === 'none' ? 'NFC-e sem identificar o consumidor.' : 'NFC-e com CPF do consumidor.']);
+            return $decision('65', ['65'], ['NFC-e sem identificar o consumidor.']);
+        }
+
+        if ($type === FiscalRecipient::TYPE_CPF) {
+            $allowed = $nfceBlockers === [] ? ['65', '55'] : ['55'];
+            if ($preference === 'nfce' && $nfceBlockers !== []) {
+                return $decision(null, $allowed, $nfceBlockers);
+            }
+            if ($preference === 'nfe' || $nfceBlockers !== []) {
+                return $decision('55', $allowed, $nfceBlockers === []
+                    ? ['NF-e solicitada para o CPF do comprador.']
+                    : [...$nfceBlockers, 'NF-e para o CPF do comprador.']);
+            }
+
+            return $decision('65', $allowed, ['NFC-e com CPF do consumidor.']);
         }
 
         // CNPJ
@@ -153,9 +183,7 @@ class FiscalEmissionPolicy
         $blockers = array_values(array_filter([
             ! $enabled ? 'NFC-e com CNPJ não está habilitada nesta filial.' : null,
             ! $presential ? 'Venda não presencial (entrega ou retirada): NFC-e com CNPJ só no balcão ou comanda.' : null,
-            $interstate ? 'Operação interestadual: NFC-e só para operação interna.' : null,
-            $total >= $max ? 'Venda a partir de R$ '.self::money($max).': NFC-e vedada.' : null,
-            in_array($ie, ['1', '2'], true) ? 'Comprador contribuinte ou isento de IE: NFC-e só para não contribuinte.' : null,
+            ...$nfceBlockers,
         ]));
         $ieConfirmed = $ie === '9' && (bool) ($recipient['ie_confirmed'] ?? false);
         $nfceAllowed = $blockers === [] && $ieConfirmed;

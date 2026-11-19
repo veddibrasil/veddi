@@ -2,12 +2,13 @@
 
 namespace App\Livewire\Admin\Pdv\Concerns;
 
-use App\Contracts\CnpjLookupInterface;
 use App\Jobs\IssueFiscalNote;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Services\Fiscal\FiscalConfigResolver;
+use App\Services\Fiscal\FiscalPostalCodeLookup;
 use App\Services\Fiscal\FiscalRecipient;
+use App\Services\Fiscal\FiscalRecipientAutofill;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
@@ -22,16 +23,16 @@ use Livewire\Attributes\Locked;
  * ser emitido depois. Venda a receber ou agendada recebe a NFC-e automática quando for paga.
  *
  * Marcando a emissão aparece o "CPF/CNPJ na nota", que não depende de cliente cadastrado
- * (venda de balcão é a mais comum). O modelo vem da FiscalEmissionPolicy: CPF ou vazio = NFC-e;
- * CNPJ = NF-e, ou NFC-e com CNPJ quando a filial está liberada (o caixa pode escolher NF-e).
- * Os dados da empresa vêm do cadastro do cliente ou da consulta pública do CNPJ, pro caixa conferir.
+ * (venda de balcão é a mais comum). O modelo vem da FiscalEmissionPolicy: CPF pode receber
+ * NFC-e ou NF-e; CNPJ pode receber NFC-e quando a filial está liberada. Dados do comprador
+ * vêm do cadastro do cliente ou da consulta pública do CNPJ, para o caixa conferir.
  */
 trait HasCheckoutFiscalNote
 {
     /** CPF/CNPJ como o caixa digitou (com máscara) — normalizado só ao montar o destinatário. */
     public string $fiscalDocument = '';
 
-    /** Dados da empresa pra NF-e (formato FiscalRecipient), preenchidos quando o documento é um CNPJ. */
+    /** Dados fiscais do comprador (CPF ou CNPJ), no formato FiscalRecipient. */
     public array $fiscalCompany = [];
 
     public bool $showFiscalCompanyForm = false;
@@ -99,18 +100,18 @@ trait HasCheckoutFiscalNote
         $this->fiscalDocumentChoice = '';
         $digits = FiscalRecipient::normalizeDocument($this->fiscalDocument);
 
-        if (FiscalRecipient::documentType($digits) !== FiscalRecipient::TYPE_CNPJ) {
+        if (! FiscalRecipient::isValidDocument($digits)) {
             $this->fiscalCompany = [];
             $this->fiscalCompanyNotice = null;
 
             return;
         }
 
-        if (! FiscalRecipient::isValidDocument($digits) || ($this->fiscalCompany['document'] ?? null) === $digits) {
+        if (($this->fiscalCompany['document'] ?? null) === $digits) {
             return;
         }
 
-        $this->loadFiscalCompany($digits);
+        $this->loadFiscalBuyer($digits);
     }
 
     public function clearFiscalDocument(): void
@@ -127,7 +128,25 @@ trait HasCheckoutFiscalNote
         $this->showFiscalCompanyForm = true;
     }
 
-    /** "Usar estes dados" do painel da empresa: só fecha se o destinatário já for válido pra NF-e. */
+    public function updatedFiscalDocumentChoice(): void
+    {
+        $this->resetValidation(['fiscalDocument', 'fiscalCompany.*']);
+        if ($this->fiscalDecision?->model === '55' && ! $this->fiscalCompanyComplete()) {
+            $this->showFiscalCompanyForm = true;
+        }
+    }
+
+    public function updatedFiscalCompany(mixed $value, ?string $key = null): void
+    {
+        if ($key !== 'zip' || strlen(preg_replace('/\D/', '', (string) $value)) !== 8) {
+            return;
+        }
+        $address = app(FiscalPostalCodeLookup::class)->find((string) $value);
+        $this->fiscalCompanyNotice = $address === null ? 'CEP não encontrado ou consulta indisponível. Preencha o endereço manualmente.' : null;
+        $this->fiscalCompany = array_replace($this->fiscalCompany, $address ?? []);
+    }
+
+    /** "Usar estes dados": só fecha quando o destinatário é válido para o documento escolhido. */
     public function confirmFiscalCompany(): void
     {
         // "Usar estes dados" é a conferência do caixa, inclusive da situação da IE.
@@ -144,8 +163,7 @@ trait HasCheckoutFiscalNote
         if (! $this->issueFiscalNote || ! $this->canUseFiscalNotes) {
             return null;
         }
-        $digits = FiscalRecipient::normalizeDocument($this->fiscalDocument);
-        $recipient = FiscalRecipient::documentType($digits) === FiscalRecipient::TYPE_CNPJ ? [...$this->fiscalCompany, 'document' => $digits] : ['document' => $digits];
+        $recipient = $this->checkoutFiscalBuyer();
 
         return app(\App\Services\Fiscal\FiscalEmissionPolicy::class)->forCheckout(
             app('current.company')->id,
@@ -226,16 +244,15 @@ trait HasCheckoutFiscalNote
 
     private function validatedFiscalRecipient(): array
     {
-        $digits = FiscalRecipient::normalizeDocument($this->fiscalDocument);
-        $isCompany = FiscalRecipient::documentType($digits) === FiscalRecipient::TYPE_CNPJ;
-        $recipient = $isCompany ? [...$this->fiscalCompany, 'document' => $digits] : ['document' => $digits];
+        $this->resetValidation(['fiscalDocument', 'fiscalCompany.*']);
+        $recipient = $this->checkoutFiscalBuyer();
 
         try {
-            return FiscalRecipient::validate($recipient);
+            return FiscalRecipient::validate($recipient, $this->fiscalDecision?->model);
         } catch (ValidationException $e) {
             $errors = $e->errors();
 
-            if ($isCompany && array_diff_key($errors, ['document' => true]) !== []) {
+            if (array_diff_key($errors, ['document' => true]) !== []) {
                 $this->showFiscalCompanyForm = true;
             }
 
@@ -248,12 +265,22 @@ trait HasCheckoutFiscalNote
     private function fiscalCompanyComplete(): bool
     {
         try {
-            FiscalRecipient::validate([...$this->fiscalCompany, 'document' => FiscalRecipient::normalizeDocument($this->fiscalDocument)]);
+            FiscalRecipient::validate($this->checkoutFiscalBuyer(), $this->fiscalDecision?->model);
 
             return true;
         } catch (ValidationException) {
             return false;
         }
+    }
+
+    /** Não reaproveita nome, endereço ou IE de outro CPF/CNPJ digitado anteriormente. */
+    private function checkoutFiscalBuyer(): array
+    {
+        $document = FiscalRecipient::normalizeDocument($this->fiscalDocument);
+
+        return FiscalRecipient::normalizeDocument($this->fiscalCompany['document'] ?? '') === $document
+            ? [...$this->fiscalCompany, 'document' => $document]
+            : ['document' => $document];
     }
 
     /**
@@ -274,51 +301,19 @@ trait HasCheckoutFiscalNote
 
         $this->fiscalDocument = FiscalRecipient::formatDocument($digits);
 
-        if (FiscalRecipient::documentType($digits) === FiscalRecipient::TYPE_CNPJ) {
-            $this->loadFiscalCompany($digits);
-        }
+        $this->loadFiscalBuyer($digits);
     }
 
-    /** Dados da empresa: do cadastro do cliente quando é o mesmo CNPJ, senão da consulta pública. */
-    private function loadFiscalCompany(string $cnpj): void
+    /** Cadastro do mesmo CPF/CNPJ; consulta pública somente para CNPJ. */
+    private function loadFiscalBuyer(string $document): void
     {
         $this->resetValidation('fiscalCompany.*');
-        $saved = FiscalRecipient::fromCustomer($this->checkoutCustomer());
-
-        if (FiscalRecipient::normalizeDocument($saved['document'] ?? '') === $cnpj && filled($saved['name'] ?? null)) {
-            $this->fiscalCompany = [...$saved, 'document' => $cnpj];
-            $this->fiscalCompanyNotice = null;
-
-            return;
-        }
-
-        $found = app(CnpjLookupInterface::class)->find($cnpj);
-
-        $this->fiscalCompany = [
-            'document' => $cnpj,
-            'name' => $found['name'] ?? '',
-            'email' => $found['email'] ?? '',
-            'street' => $found['street'] ?? '',
-            'number' => $found['number'] ?? '',
-            'complement' => $found['complement'] ?? '',
-            'neighborhood' => $found['neighborhood'] ?? '',
-            'city' => $found['city'] ?? '',
-            'state' => $found['state'] ?? '',
-            'zip' => $found['zip'] ?? '',
-            // Sugestão (consumo final sem ICMS a recolher); a consulta pública não informa a IE,
-            // então fica "a conferir" até o caixa usar os dados.
-            'ie_indicator' => '9',
-            'ie' => '',
-            'ie_confirmed' => false,
-        ];
-
-        $this->fiscalCompanyNotice = match (true) {
-            $found === null => 'Não foi possível consultar o CNPJ. Preencha os dados da empresa.',
-            filled($found['status'] ?? null) && mb_strtoupper($found['status']) !== 'ATIVA' => "Situação do CNPJ na Receita: {$found['status']}. Confira antes de emitir.",
-            default => null,
-        };
-
-        if ($found === null) {
+        $result = app(FiscalRecipientAutofill::class)->forDocument(
+            app('current.company')->id, $document, $this->checkoutCustomer(), $this->fiscalCompany,
+        );
+        $this->fiscalCompany = FiscalRecipient::draft($result['recipient']);
+        $this->fiscalCompanyNotice = $result['notice'];
+        if ($result['notice'] !== null && ! $this->fiscalCompanyComplete()) {
             $this->showFiscalCompanyForm = true;
         }
     }

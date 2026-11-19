@@ -172,7 +172,7 @@
                 <div>
                     <flux:input wire:model="nfeSerie" label="Série NF-e" type="number" min="1" max="999" :disabled="!$canManage" />
                     @error('nfeSerie') <p class="text-red-500 text-xs">{{ $message }}</p> @enderror
-                    <p class="text-xs text-neutral-500">CPF ou sem documento: NFC-e. CNPJ: NF-e, salvo quando a opção abaixo estiver ligada.</p>
+                    <p class="text-xs text-neutral-500">CPF pode receber NFC-e ou NF-e, conforme a operação e a escolha do comprador. CNPJ recebe NF-e, salvo quando a opção abaixo permitir NFC-e.</p>
                 </div>
                 <div>
                     <flux:input wire:model="nfceSerie" label="Série NFC-e" type="number" min="1" :disabled="!$canManage" />
@@ -187,7 +187,10 @@
 
             <div class="rounded-lg border border-neutral-200 p-3 space-y-2 dark:border-zinc-700">
                 <flux:switch wire:model="autoIssueEnabled" label="Emitir NFC-e automaticamente nesta filial" :disabled="!$canManage" />
-                <p class="text-xs text-neutral-500">Pedidos do chat e do PDV recebem a NFC-e sozinhos quando a loja aceita e o pagamento é recebido. Só valem pedidos feitos depois de ligar. No PDV, "Emitir e imprimir nota fiscal" já vem marcado e o caixa pode desmarcar. Ficam para o Controle de notas: CNPJ (NF-e), marketplace (iFood, 99Food, Keeta), brinde sem valor e qualquer pendência. Pedido cancelado tem a nota cancelada junto, dentro do prazo da SEFAZ. Depende da emissão fiscal habilitada acima.</p>
+                @if ($hasFiscalConfig && ! $autoIssueEnabled)
+                    <p class="rounded bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">Desligada nesta filial (configuração anterior à mudança de padrão). Confirme com a contabilidade antes de ligar.</p>
+                @endif
+                <p class="text-xs text-neutral-500">Pedidos do chat e do PDV recebem a NFC-e sozinhos quando a loja aceita e o pagamento é recebido. Só valem pedidos feitos depois de ligar. No PDV, "Emitir e imprimir nota fiscal" já vem marcado e o caixa pode desmarcar. Ficam para o Controle de notas: operações que exigem NF-e (com CPF ou CNPJ), marketplace (iFood, 99Food, Keeta), brinde sem valor e qualquer pendência. Pedido cancelado tem a nota cancelada junto, dentro do prazo da SEFAZ. Depende da emissão fiscal habilitada acima.</p>
 
                 @if ($autoIssuePausedAt)
                     <div class="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">

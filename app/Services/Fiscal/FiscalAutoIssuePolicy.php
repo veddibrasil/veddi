@@ -21,7 +21,7 @@ use App\Models\Order;
  * - pedido aceito pela loja e com pagamento recebido. Chat e iFood ficam 'paid' antes do aceite;
  *   "a receber" do PDV e "pagar na entrega" do chat avançam de etapa antes de receber;
  * - nenhuma nota tentada antes (falha volta pelo Controle, nunca reemite sozinha);
- * - FiscalEmissionPolicy decide NFC-e. CNPJ (NF-e) ou documento a conferir ficam no Controle.
+ * - FiscalEmissionPolicy decide NFC-e. NF-e (CPF ou CNPJ) e documento a conferir ficam no Controle.
  * - valor maior que zero em todos os itens: brinde sem valor precisa da contabilidade (CFOP de
  *   bonificação) e é emitido pelo Controle.
  */
@@ -127,7 +127,7 @@ class FiscalAutoIssuePolicy
         $decision = $this->emissionPolicy->forOrder($order);
         if ($decision->model !== '65') {
             return FiscalAutoIssueVerdict::skip($decision->model === '55'
-                ? 'NF-e (CNPJ do comprador): emitir pelo Controle de notas.'
+                ? 'Esta operação exige NF-e: emitir pelo Controle de notas.'
                 : implode(' ', $decision->reasons));
         }
 

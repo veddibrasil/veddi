@@ -174,6 +174,12 @@ class Show extends Component
     public string $fiscalDocumentChoice = '';
 
     #[Locked]
+    public ?int $fiscalPendingAfterNoteId = null;
+
+    #[Locked]
+    public ?int $fiscalEmissionQueuedAt = null;
+
+    #[Locked]
     public bool $canIssueFiscal = false;
 
     /** Link "Corrigir dados" das pendências de produto (products.update + papel do cardápio). */
@@ -194,6 +200,8 @@ class Show extends Component
             "echo-private:order.{$this->order->id},IfoodOrderUpdated" => '$refresh',
             "echo-private:order.{$this->order->id},Food99OrderUpdated" => '$refresh',
             "echo-private:order.{$this->order->id},KeetaOrderUpdated" => '$refresh',
+            "echo-private:order.{$this->order->id},.FiscalNoteAuthorized" => 'refreshFiscalStatus',
+            "echo-private:order.{$this->order->id},.FiscalNoteFailed" => 'refreshFiscalStatus',
         ];
     }
 
@@ -235,6 +243,10 @@ class Show extends Component
         }
 
         $this->order->loadMissing('items.product.category', 'payments');
+        if ($this->order->activeFiscalNote?->status === 'pending') {
+            $this->fiscalPendingAfterNoteId = $this->order->activeFiscalNote->id - 1;
+            $this->fiscalEmissionQueuedAt = now()->timestamp;
+        }
 
         if ($this->canViewHistory) {
             $this->order->loadMissing(['statusHistories' => fn ($q) => $q->latest()->with('user')]);
@@ -1580,6 +1592,49 @@ class Show extends Component
         $this->showFiscalRecipient = false;
     }
 
+    /** Completa o comprador do CPF/CNPJ visível no modal, sem reutilizar dados de outro documento. */
+    public function editFiscalBuyer(): void
+    {
+        $this->openFiscalRecipient();
+        $document = FiscalRecipient::normalizeDocument($this->fiscalCustomerDocument);
+        if ($document !== FiscalRecipient::normalizeDocument($this->fiscalRecipientDraft['document'] ?? '')) {
+            $this->fiscalRecipientDraft = ['document' => $document];
+            $this->updatedFiscalRecipientDraft($document, 'document');
+        }
+    }
+
+    public function updatedFiscalDocumentChoice(): void
+    {
+        $this->resetValidation(['fiscalCustomerDocument', 'fiscalEmission']);
+        if ($this->showFiscalRecipient) {
+            return;
+        }
+        if ($this->fiscalDocumentChoice === 'nfe') {
+            $check = app(FiscalNoteService::class)->check($this->order->fresh(), $this->fiscalCustomerDocument, preference: 'nfe', usePreference: false);
+            if (collect($check['issues'])->contains(fn ($issue) => $issue['group'] === 'recipient')) {
+                $this->editFiscalBuyer();
+            }
+        }
+    }
+
+    #[Computed]
+    public function fiscalDraftReadiness(): ?array
+    {
+        if (! $this->showFiscalRecipient || ! $this->canIssueFiscal) {
+            return null;
+        }
+        $order = $this->order->fresh();
+        $order->fiscal_recipient = [...$this->fiscalRecipientDraft, 'ie_confirmed' => true];
+
+        return app(FiscalNoteService::class)->check($order, preference: $this->fiscalDocumentChoice ?: null, usePreference: false);
+    }
+
+    public function saveFiscalRecipientAndIssue(string $confirmedModel): void
+    {
+        $this->saveFiscalRecipientAndContinue();
+        $this->issueFiscalNote($confirmedModel);
+    }
+
     /**
      * CNPJ novo digitado no modal abre a conferência da empresa já preenchida pela consulta
      * pública; voltar ao documento salvo fecha o formulário. Trocar o documento volta a escolha
@@ -1629,7 +1684,13 @@ class Show extends Component
         }
 
         $order = $this->order->fresh();
-        $check = app(FiscalNoteService::class)->check($order, $this->fiscalCustomerDocument, null, $this->fiscalDocumentChoice ?: null, usePreference: false);
+        $document = $this->fiscalCustomerDocument;
+        if ($this->showFiscalRecipient) {
+            // Prévia do que será salvo e confirmado pelo operador, sem gravar nem emitir.
+            $order->fiscal_recipient = [...$this->fiscalRecipientDraft, 'ie_confirmed' => true];
+            $document = $this->fiscalRecipientDraft['document'] ?? '';
+        }
+        $check = app(FiscalNoteService::class)->check($order, $document, null, $this->fiscalDocumentChoice ?: null, usePreference: false);
         $config = app(\App\Services\Fiscal\FiscalConfigResolver::class)->forBranch(app('current.company'), $order->branch_id);
         $issuerBranch = $config ? \App\Models\Branch::find($config->branch_id ?? $order->branch_id) : null;
 
@@ -1640,7 +1701,7 @@ class Show extends Component
                 'cnpj' => FiscalRecipient::formatDocument($config->issuer_cnpj ?: $issuerBranch?->cnpj),
                 'environment' => FiscalNoteService::resolveEmissionEnvironment($config->emission_environment),
             ] : null,
-            'recipient' => FiscalEmissionPolicy::recipientFor($order, $this->fiscalCustomerDocument),
+            'recipient' => FiscalEmissionPolicy::recipientFor($order, $document),
         ];
     }
 
@@ -1667,7 +1728,7 @@ class Show extends Component
         return $this->canIssueFiscal && ! $this->order->activeFiscalNote ? app(FiscalEmissionPolicy::class)->forOrder($this->order) : null;
     }
 
-    public function issueFiscalNote(): void
+    public function issueFiscalNote(?string $confirmedModel = null): void
     {
         abort_unless($this->canIssueFiscal, 403);
         abort_unless(in_array($this->order->status, Order::FISCAL_ISSUABLE_STATUSES, true), 422);
@@ -1698,7 +1759,7 @@ class Show extends Component
         // emitente aparecem aqui, juntos, em vez de virar "enfileirada" e falhar depois no sino.
         $preference = $this->fiscalDocumentChoice ?: null;
         ['decision' => $decision, 'issues' => $issues] = app(FiscalNoteService::class)
-            ->check($this->order->fresh(), $this->fiscalCustomerDocument, null, $preference, usePreference: false);
+            ->check($this->order->fresh(), $this->fiscalCustomerDocument, $confirmedModel, $preference, usePreference: false);
         if ($issues !== []) {
             throw \Illuminate\Validation\ValidationException::withMessages([
                 'fiscalEmission' => (new \App\Exceptions\FiscalPreflightException($issues))->getMessage(),
@@ -1709,20 +1770,40 @@ class Show extends Component
         // a execução, a emissão para em vez de sair em outro modelo.
         $updated = Order::whereKey($this->order->id)
             ->whereDoesntHave('fiscalNotes', fn ($q) => $q->whereIn('status', ['pending', 'authorized']))
-            ->update(['fiscal_document_preference' => $preference]);
+            ->update(['fiscal_document_preference' => $preference, 'fiscal_error' => null]);
         if ($updated === 0) {
             throw \Illuminate\Validation\ValidationException::withMessages(['fiscalEmission' => 'Este pedido já tem uma nota ativa.']);
         }
 
+        $this->fiscalPendingAfterNoteId = (int) $this->order->fiscalNotes()->max('id');
+        $this->fiscalEmissionQueuedAt = now()->timestamp;
         IssueFiscalNote::dispatch($this->order->id, $this->fiscalCustomerDocument, auth()->id(), $decision->model);
 
         $this->showFiscalModal = false;
         session()->flash('status', 'Emissão da '.FiscalEmissionDecision::label($decision->model).' enfileirada.');
     }
 
+    public function refreshFiscalStatus(): void
+    {
+        $this->order = $this->order->fresh(['activeFiscalNote']);
+        if ($this->fiscalPendingAfterNoteId === null) {
+            return;
+        }
+        $latest = $this->order->fiscalNotes()->latest('id')->first();
+        $finished = $latest && $latest->id > $this->fiscalPendingAfterNoteId && $latest->status !== 'pending';
+        if ($finished || $this->order->fiscal_error || now()->timestamp - ($this->fiscalEmissionQueuedAt ?? 0) >= 900) {
+            $this->fiscalPendingAfterNoteId = null;
+            $this->fiscalEmissionQueuedAt = null;
+        }
+    }
+
     public function render()
     {
-        $this->order->loadMissing('activeFiscalNote');
+        if ($this->fiscalPendingAfterNoteId !== null) {
+            $this->refreshFiscalStatus();
+        } else {
+            $this->order->load('activeFiscalNote');
+        }
 
         return view('livewire.admin.orders.show')
             ->layout('layouts.app', ['title' => "Pedido {$this->order->order_number}"]);

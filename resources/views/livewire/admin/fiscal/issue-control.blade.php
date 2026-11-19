@@ -59,6 +59,11 @@
             <option value="cancelled_order">Pedido cancelado com nota ativa</option>
             <option value="all">Todas</option>
         </flux:select>
+        <flux:select wire:model.live="modelFilter" label="Modelo da nota">
+            <option value="">Todos os modelos</option>
+            <option value="nfce">NFC-e (modelo 65)</option>
+            <option value="nfe">NF-e (modelo 55)</option>
+        </flux:select>
         {{-- Chat do VEDDI e PDV separados das integrações; option dentro de optgroup precisa do tema escuro explícito. --}}
         <flux:select wire:model.live="channelFilter" label="Canal" class="dark:[&_optgroup]:bg-zinc-700 dark:[&_optgroup]:text-white dark:[&_option]:bg-zinc-700 dark:[&_option]:text-white">
             <option value="">Todos os canais</option>
@@ -102,6 +107,11 @@
                 @if(count($selected) > 0)
                     <flux:button wire:click="clearSelection" size="sm" variant="ghost">Limpar</flux:button>
                 @endif
+                <flux:select wire:model="batchModel" size="sm" class="w-44" aria-label="Modelo do lote">
+                    <option value="auto">Modelo: automático</option>
+                    <option value="nfce">Forçar NFC-e</option>
+                    <option value="nfe">Forçar NF-e</option>
+                </flux:select>
                 <flux:button wire:click="prepareIssue" wire:loading.attr="disabled" wire:target="prepareIssue" size="sm" variant="primary" :disabled="count($selected) === 0 || ($batch && ! $batch->finished())">
                     Emitir selecionadas
                 </flux:button>

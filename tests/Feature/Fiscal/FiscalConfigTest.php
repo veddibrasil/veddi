@@ -107,6 +107,7 @@ test('usuário com permissão fiscal.settings salva configuração fiscal', func
         ->test(Config::class)
         ->assertSet('canManage', true)
         ->set('enabled', true)
+        ->set('certificateFile', fakeFiscalCertificate('senha123'))->set('certificatePassword', 'senha123')
         ->set('crt', 3)
         ->set('inscricaoEstadual', '123456789')
         ->set('nfceSerie', '2')
@@ -338,6 +339,7 @@ test('erro 422 da Focus NFe (certificado inválido) impede salvar e mostra erro 
     Livewire::actingAs($admin)
         ->test(Config::class)
         ->set('enabled', true)
+        ->set('certificateFile', fakeFiscalCertificate('senha123'))->set('certificatePassword', 'senha123')
         // Senha bate com o certificado (passa na validação local) — o 422 simulado
         // representa uma rejeição do lado da Focus (ex.: cert revogado/expirado),
         // não senha incorreta, que já é barrada antes de qualquer chamada à API.
@@ -364,6 +366,7 @@ test('falha de conexão com Focus NFe não persiste config quando enabled=true',
     Livewire::actingAs($admin)
         ->test(Config::class)
         ->set('enabled', true)
+        ->set('certificateFile', fakeFiscalCertificate('senha123'))->set('certificatePassword', 'senha123')
         ->call('save')
         ->assertHasErrors(['enabled']);
 
@@ -496,6 +499,7 @@ test('CNPJ trava para edição depois que a empresa é registrada na Focus NFe',
         ->test(Config::class)
         ->assertSet('hasBranchCnpj', false)
         ->set('enabled', true)
+        ->set('certificateFile', fakeFiscalCertificate('senha123'))->set('certificatePassword', 'senha123')
         ->call('save')
         ->assertHasNoErrors()
         ->assertSet('hasBranchCnpj', true);
@@ -553,6 +557,7 @@ test('salvar envia inscrição municipal, CSC e telefone/complemento da filial n
     Livewire::actingAs($admin)
         ->test(Config::class)
         ->set('enabled', true)
+        ->set('certificateFile', fakeFiscalCertificate('senha123'))->set('certificatePassword', 'senha123')
         ->set('inscricaoMunicipal', '987654')
         ->set('cscNfceProducao', 'meu-csc-secreto')
         ->set('idTokenNfceProducao', '000002')
@@ -588,6 +593,7 @@ test('habilitar produção sem CSC e ID do Token barra o salvamento antes da Foc
     Livewire::actingAs($admin)
         ->test(Config::class)
         ->set('enabled', true)
+        ->set('certificateFile', fakeFiscalCertificate('senha123'))->set('certificatePassword', 'senha123')
         ->call('save')
         ->assertHasErrors(['cscNfceProducao', 'idTokenNfceProducao']);
 
@@ -662,6 +668,7 @@ test('com mais de uma filial, usuário escolhe qual delas envia o endereço pro 
         ->set('branchId', $secondBranch->id)
         ->assertSet('branchAddress', 'Rua da Filial Dois')
         ->set('enabled', true)
+        ->set('certificateFile', fakeFiscalCertificate('senha123'))->set('certificatePassword', 'senha123')
         ->call('save')
         ->assertHasNoErrors();
 
@@ -730,6 +737,7 @@ test('registro na Focus NFe sempre bate no domínio de produção, mesmo fora de
     Livewire::actingAs($admin)
         ->test(Config::class)
         ->set('enabled', true)
+        ->set('certificateFile', fakeFiscalCertificate('senha123'))->set('certificatePassword', 'senha123')
         ->call('save')
         ->assertHasNoErrors();
 
@@ -754,6 +762,7 @@ test('webhook não é registrado fora de ambiente de produção', function () {
     Livewire::actingAs($admin)
         ->test(Config::class)
         ->set('enabled', true)
+        ->set('certificateFile', fakeFiscalCertificate('senha123'))->set('certificatePassword', 'senha123')
         ->call('save')
         ->assertHasNoErrors();
 
@@ -786,6 +795,7 @@ test('salvar em produção registra webhook (POST /v2/hooks) quando ainda não e
     Livewire::actingAs($admin)
         ->test(Config::class)
         ->set('enabled', true)
+        ->set('certificateFile', fakeFiscalCertificate('senha123'))->set('certificatePassword', 'senha123')
         ->set('cscNfceProducao', 'csc-producao')
         ->set('idTokenNfceProducao', '000001')
         ->call('save')
@@ -867,6 +877,7 @@ test('falha ao registrar webhook não impede salvar a configuração fiscal', fu
     Livewire::actingAs($admin)
         ->test(Config::class)
         ->set('enabled', true)
+        ->set('certificateFile', fakeFiscalCertificate('senha123'))->set('certificatePassword', 'senha123')
         ->set('cscNfceProducao', 'csc-producao')
         ->set('idTokenNfceProducao', '000001')
         ->call('save')

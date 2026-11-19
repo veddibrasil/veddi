@@ -234,7 +234,7 @@ test('filial sem a chave, pedido anterior à ativação e marketplace nunca emit
     'disjuntor aberto' => [[], true, ['auto_issue_paused_at' => now()]],
 ]);
 
-test('NF-e (CNPJ), brinde sem valor e caixa que desmarcou ficam no Controle sem chamar a Focus', function (array $orderAttributes, array $item) {
+test('NF-e, brinde sem valor e caixa que desmarcou ficam no Controle sem chamar a Focus', function (array $orderAttributes, array $item) {
     Queue::fake();
     $provider = autoIssueFakeProvider();
     ['order' => $order] = autoIssueContext($orderAttributes, item: $item);
@@ -248,6 +248,8 @@ test('NF-e (CNPJ), brinde sem valor e caixa que desmarcou ficam no Controle sem 
         ->and($fresh->fiscal_error)->toBeNull();
 })->with([
     'CNPJ vira NF-e' => [['fiscal_recipient' => ['document' => '11444777000161', 'name' => 'Padaria LTDA']], []],
+    'CPF com NF-e solicitada' => [['fiscal_recipient' => ['document' => '52998224725'], 'fiscal_document_preference' => 'nfe'], []],
+    'CPF em operação interestadual' => [['fiscal_recipient' => ['document' => '52998224725', 'state' => 'PR']], []],
     'brinde com valor zero' => [[], ['product_name' => 'Coxinha (Brinde)', 'unit_price' => 0, 'subtotal' => 0]],
     'caixa desmarcou' => [['order_type' => 'pdv', 'fiscal_auto_skip' => true], []],
 ]);
@@ -545,7 +547,7 @@ test('PDV marcado emite pela tela e a automática não repete', function () {
 test('PDV com a automática desligada continua desmarcado e sem marcar o pedido', function () {
     ['admin' => $admin, 'product' => $product, 'company' => $company, 'branch' => $branch] = pdvContext();
     $company->update(['fiscal_notes_enabled' => true]);
-    CompanyFiscalConfig::create(['company_id' => $company->id, 'branch_id' => $branch->id, 'is_default' => true, 'enabled' => true]);
+    CompanyFiscalConfig::create(['company_id' => $company->id, 'branch_id' => $branch->id, 'is_default' => true, 'enabled' => true, 'auto_issue_enabled' => false]);
     Bus::fake();
     $this->actingAs($admin);
 

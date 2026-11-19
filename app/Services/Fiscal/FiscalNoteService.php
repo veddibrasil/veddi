@@ -326,7 +326,7 @@ class FiscalNoteService
 
         $recipient = FiscalEmissionPolicy::recipientFor($order, $customerDocument);
         try {
-            $recipient = FiscalRecipient::validate($recipient);
+            $recipient = FiscalRecipient::validate($recipient, $model);
         } catch (\Illuminate\Validation\ValidationException $e) {
             if (! in_array('document', $decision->needs, true)) {
                 $issues[] = ['group' => 'recipient', 'message' => 'Dados fiscais pendentes: '.implode(' ', $e->validator->errors()->all()), 'fields' => array_keys($e->errors())];

@@ -45,11 +45,13 @@ class CompanyFiscalConfig extends Model
     /**
      * NF-e sempre habilitada. NFC-e com CNPJ só quando a filial for liberada
      * (FiscalEmissionPolicy); desligada, CNPJ no destinatário emite NF-e.
+     * Emissão automática nasce ligada em filial nova; a valia real exige a emissão habilitada
+     * (autoIssueActive), então ligar aqui não emite nada antes da configuração completa.
      */
     protected $attributes = [
         'nfe_enabled' => true,
         'nfce_cnpj_enabled' => false,
-        'auto_issue_enabled' => false,
+        'auto_issue_enabled' => true,
     ];
 
     protected $casts = [

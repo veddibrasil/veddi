@@ -34,7 +34,7 @@ class IssueControl extends Component
     /** Teto por lote — protege a fila e a Focus NFe de um "selecionar tudo" de meses. */
     public const MAX_BATCH = 200;
 
-    private const FILTERS = ['dateFrom', 'dateTo', 'branchFilter', 'channelFilter', 'paymentFilter', 'situationFilter', 'search'];
+    private const FILTERS = ['dateFrom', 'dateTo', 'branchFilter', 'channelFilter', 'paymentFilter', 'situationFilter', 'modelFilter', 'search'];
 
     #[Url]
     public string $dateFrom = '';
@@ -53,6 +53,16 @@ class IssueControl extends Component
 
     #[Url]
     public string $situationFilter = 'to_issue';
+
+    /** Modelo da nota já emitida ou tentada: '' todos, 'nfce' (65), 'nfe' (55). */
+    public string $modelFilter = '';
+
+    /**
+     * Modelo escolhido para o lote: 'auto' (a política decide), 'nfce' ou 'nfe'. Passa como
+     * preferência à pré-checagem: NFC-e bloqueada aparece como pedido bloqueado, nunca vira NF-e
+     * sem o operador saber.
+     */
+    public string $batchModel = 'auto';
 
     #[Url]
     public string $search = '';
@@ -180,7 +190,7 @@ class IssueControl extends Component
         $models = [];
 
         foreach ($orders as $order) {
-            ['decision' => $decision, 'issues' => $issues] = $service->check($order);
+            ['decision' => $decision, 'issues' => $issues] = $service->check($order, null, null, $this->batchPreference());
 
             if ($issues === []) {
                 $ready->push($order);
@@ -438,6 +448,7 @@ class IssueControl extends Component
             ->when($this->channelFilter !== '', fn (Builder $q) => $this->applyChannelFilter($q))
             ->when($this->paymentFilter !== '', fn (Builder $q) => $this->applyPaymentFilter($q))
             ->when($this->situationFilter !== '' && $this->situationFilter !== 'all', fn (Builder $q) => $this->applySituationFilter($q))
+            ->when($this->modelFilter !== '', fn (Builder $q) => $this->applyModelFilter($q))
             ->when($search !== '', function (Builder $q) use ($search) {
                 // Documento pode ter letras (CNPJ alfanumérico): busca pelo valor normalizado.
                 $digits = \App\Services\Fiscal\FiscalRecipient::normalizeDocument($search);
@@ -451,6 +462,21 @@ class IssueControl extends Component
                     }
                 });
             });
+    }
+
+    /** 'auto' usa a preferência do próprio pedido (usePreference); 'nfce'/'nfe' forçam o lote. */
+    private function batchPreference(): ?string
+    {
+        return in_array($this->batchModel, ['nfce', 'nfe'], true) ? $this->batchModel : null;
+    }
+
+    private function applyModelFilter(Builder $query): void
+    {
+        match ($this->modelFilter) {
+            'nfce' => $query->whereHas('latestFiscalNote', fn (Builder $n) => $n->where('model', '65')),
+            'nfe' => $query->whereHas('latestFiscalNote', fn (Builder $n) => $n->where('model', '55')),
+            default => null,
+        };
     }
 
     private function applyChannelFilter(Builder $query): void

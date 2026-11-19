@@ -46,7 +46,10 @@
         </x-slot:actions>
     </x-admin.page-header>
 
-    <x-admin.sales-suggestions context="orders" :order-id="$order->id" />
+    {{-- O componente lazy mantém seu próprio estado durante as atualizações rápidas do formulário fiscal. --}}
+    <div wire:ignore wire:key="order-sales-suggestions-{{ $order->id }}">
+        <x-admin.sales-suggestions context="orders" :order-id="$order->id" />
+    </div>
 
     {{-- Avisos antes do resumo iFood: o resultado de aceitar/recusar não pode ficar escondido lá embaixo. --}}
     @if (session('status'))
@@ -111,7 +114,7 @@
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <x-admin.form-card padding="p-4">
                     <p class="text-xs text-neutral-400 uppercase tracking-wide mb-2 dark:text-neutral-500">Cliente</p>
-                    <p class="font-semibold text-neutral-800 dark:text-neutral-100">{{ $order->customer->name }}</p>
+                    <p class="font-semibold text-neutral-800 dark:text-neutral-100">{{ $order->customer?->name ?? 'Consumidor não identificado' }}</p>
                     @if ($marketplace = $order->marketplaceDetails())
                         {{-- O telefone do cadastro de marketplace é interno; o contato é o 0800/número virtual + localizador do pedido. --}}
                         @if ($marketplace->customerPhone())
@@ -119,7 +122,7 @@
                                 {{ $marketplace->customerPhone() }}@if ($marketplace->phoneLocalizer()) · localizador {{ $marketplace->phoneLocalizer() }}@endif
                             </p>
                         @endif
-                    @else
+                    @elseif ($order->customer)
                         <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ $order->customer->phone }}</p>
                         @if ($order->customer->email)
                             <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ $order->customer->email }}</p>
@@ -1016,7 +1019,7 @@
         $canShowFiscal = $fiscalEnabled && in_array($order->status, \App\Models\Order::FISCAL_ISSUABLE_STATUSES, true);
     @endphp
     @if($canShowFiscal || $activeFiscalNote)
-        <div class="mt-6">
+        <div class="mt-6" @if($fiscalPendingAfterNoteId !== null) wire:poll.2s="refreshFiscalStatus" @endif>
             <x-admin.form-card padding="p-4">
                 <p class="font-semibold text-neutral-700 mb-3 dark:text-neutral-200">Nota Fiscal{{ $activeFiscalNote ? ' ('.$activeFiscalNote->model_label.')' : ($this->fiscalDocumentPreview?->model ? ' ('.\App\DTOs\FiscalEmissionDecision::label($this->fiscalDocumentPreview->model).')' : '') }}</p>
 
@@ -1041,6 +1044,9 @@
                     <p class="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-800/60 dark:bg-red-900/20 dark:text-red-200">
                         Última tentativa de emissão falhou: {{ $order->fiscal_error }}
                     </p>
+                @endif
+                @if($fiscalPendingAfterNoteId !== null)
+                    <p role="status" class="mb-3 text-sm text-neutral-600 dark:text-neutral-300">Emissão solicitada. Aguardando autorização da nota fiscal…</p>
                 @endif
                 @if($activeFiscalNote)
                     @php
@@ -1076,6 +1082,8 @@
                             <span class="text-xs text-red-500 dark:text-red-400">{{ $activeFiscalNote->error_message }}</span>
                         @endif
                     </div>
+                @elseif($fiscalPendingAfterNoteId !== null)
+                    <button type="button" wire:click="refreshFiscalStatus" class="text-xs font-medium text-blue-600 dark:text-blue-400">Consultar situação</button>
                 @elseif($canShowFiscal && $canIssueFiscal)
                     @include('livewire.admin.orders._fiscal-card')
                 @elseif($canShowFiscal)
