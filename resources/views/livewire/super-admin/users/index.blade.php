@@ -47,6 +47,10 @@
                                 wire:navigate>
                                 Permissões
                             </a>
+                            <button wire:click="openGrantAll({{ $user->id }})"
+                                class="text-emerald-600 hover:text-emerald-800 text-xs font-medium dark:text-emerald-400 dark:hover:text-emerald-300">
+                                Acesso a todas
+                            </button>
                             <button wire:click="openAssign({{ $user->id }})"
                                 class="text-amber-600 hover:text-amber-800 text-xs font-medium dark:text-amber-400 dark:hover:text-amber-300">
                                 Vincular empresa
@@ -111,6 +115,25 @@
                         Cancelar
                     </button>
                     <flux:button wire:click="toggleSuperAdmin" variant="danger">
+                        Confirmar
+                    </flux:button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- Acesso de administrador a todas as empresas (suporte) --}}
+    @if($grantAllUserId)
+        <div class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+            <div class="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4 dark:bg-zinc-800 dark:border dark:border-zinc-700">
+                <h3 class="font-bold text-neutral-800 dark:text-neutral-100">Dar acesso de administrador a todas as empresas?</h3>
+                <p class="text-sm text-neutral-500 dark:text-neutral-400">O usuário passa a ver e alterar os dados de todas as empresas da plataforma. Vínculos que ele já tem não mudam. Fica registrado na trilha de auditoria.</p>
+                <div class="flex justify-end gap-3 pt-2">
+                    <button wire:click="cancelGrantAll"
+                        class="px-4 py-2 text-sm text-neutral-600 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200">
+                        Cancelar
+                    </button>
+                    <flux:button wire:click="grantAllCompanies" variant="danger">
                         Confirmar
                     </flux:button>
                 </div>

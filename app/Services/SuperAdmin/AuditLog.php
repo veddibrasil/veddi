@@ -27,6 +27,20 @@ final class AuditLog
         );
     }
 
+    /** @param  array<int, string>  $companyNames */
+    public static function companyAccessGranted(User $actor, User $target, array $companyNames, string $role): void
+    {
+        Log::channel('discord')->warning('Super Admin: acesso concedido em empresas', [
+            'actor_id' => $actor->id,
+            'actor_email' => $actor->email,
+            'target_user_id' => $target->id,
+            'target_email' => $target->email,
+            'role' => $role,
+            'companies_count' => count($companyNames),
+            'company_names' => $companyNames,
+        ]);
+    }
+
     public static function companyDeleted(User $actor, Company $company): void
     {
         Log::channel('discord')->critical('Super Admin: empresa EXCLUÍDA', [

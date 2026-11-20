@@ -35,6 +35,39 @@
 
             </flux:sidebar.header>
 
+            @php
+                // Seletor de empresa: só aparece pra quem tem vínculo com mais de uma empresa.
+                $switchableCompanies = ($user && ! $user->isSuperAdmin())
+                    ? $user->companies()->orderBy('companies.name')->get()
+                    : collect();
+            @endphp
+            @if($switchableCompanies->count() > 1)
+                <div class="px-3 pb-2" data-test="company-switcher">
+                    <flux:dropdown position="bottom" align="start">
+                        <flux:button variant="filled" icon="building-storefront" icon-trailing="chevron-down" class="w-full justify-between">
+                            {{ $company?->name ?? 'Selecionar empresa' }}
+                        </flux:button>
+
+                        <flux:menu>
+                            <flux:menu.radio.group>
+                                @foreach($switchableCompanies as $switchable)
+                                    <form method="POST" action="{{ route('admin.company.switch') }}">
+                                        @csrf
+                                        <input type="hidden" name="company_id" value="{{ $switchable->id }}">
+                                        <flux:menu.item
+                                            type="submit"
+                                            :icon="$switchable->id === $company?->id ? 'check' : null"
+                                        >
+                                            {{ $switchable->name }}
+                                        </flux:menu.item>
+                                    </form>
+                                @endforeach
+                            </flux:menu.radio.group>
+                        </flux:menu>
+                    </flux:dropdown>
+                </div>
+            @endif
+
             <flux:sidebar.nav>
 
                 @if(auth()->user()?->isSuperAdmin())
@@ -44,6 +77,9 @@
                         </flux:sidebar.item>
                         <flux:sidebar.item icon="building-office-2" :href="route('superadmin.companies.index')" :current="request()->routeIs('superadmin.companies.*')" wire:navigate>
                             Empresas
+                        </flux:sidebar.item>
+                        <flux:sidebar.item icon="users" :href="route('superadmin.users.index')" :current="request()->routeIs('superadmin.users.*')" wire:navigate>
+                            Usuários
                         </flux:sidebar.item>
                         <flux:sidebar.item icon="chat-bubble-left-ellipsis" :href="route('superadmin.whatsapp.index')" :current="request()->routeIs('superadmin.whatsapp.*')" wire:navigate>
                             WhatsApp

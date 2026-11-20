@@ -6,6 +6,7 @@ use App\Livewire\SuperAdmin\Concerns\RequiresSuperAdmin;
 use App\Models\Company;
 use App\Models\Scopes\CompanyScope;
 use App\Models\User;
+use App\Services\Company\CompanyAccessGranter;
 use App\Services\Company\UserPermissionService;
 use App\Services\SuperAdmin\AuditLog;
 use Livewire\Component;
@@ -29,6 +30,8 @@ class Index extends Component
     public int $assignBranchId = 0;
 
     public ?int $togglingSuperAdminId = null;
+
+    public ?int $grantAllUserId = null;
 
     public function openAssign(int $userId): void
     {
@@ -73,6 +76,37 @@ class Index extends Component
     public function cancelToggleSuperAdmin(): void
     {
         $this->togglingSuperAdminId = null;
+    }
+
+    public function openGrantAll(int $userId): void
+    {
+        $this->grantAllUserId = $userId;
+    }
+
+    public function cancelGrantAll(): void
+    {
+        $this->grantAllUserId = null;
+    }
+
+    /** Vincula o usuário como admin de todas as empresas (suporte). Vínculos existentes ficam como estão. */
+    public function grantAllCompanies(): void
+    {
+        $user = User::findOrFail($this->grantAllUserId);
+        $companies = Company::withoutGlobalScope(CompanyScope::class)->orderBy('id')->get();
+
+        $added = CompanyAccessGranter::grant($user, $companies, 'company_admin');
+
+        AuditLog::companyAccessGranted(
+            auth()->user(),
+            $user,
+            $added->pluck('name')->all(),
+            'company_admin',
+        );
+
+        $this->grantAllUserId = null;
+        session()->flash('status', $added->isEmpty()
+            ? 'O usuário já tinha vínculo com todas as empresas.'
+            : "Acesso de administrador concedido em {$added->count()} empresa(s).");
     }
 
     public function toggleSuperAdmin(): void
