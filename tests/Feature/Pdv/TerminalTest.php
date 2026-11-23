@@ -346,7 +346,7 @@ test('pagamento dividido com duas partes em dinheiro bloqueia e não cria pedido
 function enableFiscalForPdv(Company $company, Branch $branch, bool $configEnabled = true): void
 {
     $company->update(['fiscal_notes_enabled' => true]);
-    CompanyFiscalConfig::create(['company_id' => $company->id, 'branch_id' => $branch->id, 'is_default' => true, 'enabled' => $configEnabled]);
+    CompanyFiscalConfig::create(['company_id' => $company->id, 'branch_id' => $branch->id, 'is_default' => true, 'enabled' => $configEnabled, 'auto_issue_enabled' => false]);
 }
 
 test('pedido PDV pago sem marcar "Emitir e imprimir nota fiscal" não emite nota', function () {

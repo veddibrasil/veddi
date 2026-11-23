@@ -24,8 +24,9 @@ return [
     'client_id' => env('KEETA_CLIENT_ID'),
     'client_secret' => env('KEETA_CLIENT_SECRET'),
 
-    /* AppId da Keeta (header X-App-Id dos webhooks de pedido). Vazio = não confere. */
-    'app_id' => env('KEETA_APP_ID'),
+    /* Remetente no header X-App-Id dos webhooks de pedido: a Keeta manda o literal "Keeta" (SIT 19/11/2026),
+       não o Application ID do app VEDDI. Vazio = não confere (a assinatura continua obrigatória). */
+    'app_id' => env('KEETA_APP_ID', 'Keeta'),
 
     'api_base_url' => rtrim((string) env('KEETA_API_BASE_URL', 'https://open.mykeeta.com/api/open/opendelivery'), '/'),
     'timezone' => env('KEETA_TIMEZONE', 'America/Sao_Paulo'),

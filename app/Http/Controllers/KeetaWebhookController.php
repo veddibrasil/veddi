@@ -34,7 +34,9 @@ class KeetaWebhookController extends Controller
 
         $appId = (string) config('keeta.app_id');
         if ($appId !== '' && (string) $request->header('X-App-Id') !== $appId) {
-            Log::channel('keeta')->warning('Keeta webhook: X-App-Id diferente do configurado');
+            Log::channel('keeta')->warning('Keeta webhook: X-App-Id diferente do configurado', [
+                'received_app_id' => mb_substr((string) $request->header('X-App-Id'), 0, 40),
+            ]);
 
             return response()->noContent(403);
         }

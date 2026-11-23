@@ -142,6 +142,11 @@ Route::middleware(['auth', 'verified', 'company.role:company_admin'])
         Route::get('/wallet', \App\Livewire\Admin\Wallet\CompanyWallet::class)->name('wallet');
     });
 
+// Troca de empresa: fora de company.active para permitir sair de uma empresa bloqueada pelo billing.
+Route::post('/admin/trocar-empresa', \App\Http\Controllers\Admin\CompanySwitchController::class)
+    ->middleware(['auth', 'verified'])
+    ->name('admin.company.switch');
+
 Route::middleware(['auth', 'verified', 'company.active'])
     ->prefix('admin')
     ->name('admin.')

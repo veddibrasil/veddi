@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Company;
+use App\Models\User;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -48,7 +49,7 @@ class IdentifyCompany
         // 3. Authenticated user's company (multi-tenant: never trust query-string overrides)
         // Do not filter by active — EnsureCompanyIsActive handles inactive/pending redirects.
         if (! $company && auth()->check()) {
-            $company = auth()->user()->companies()->orderBy('id')->first();
+            $company = $this->resolveAuthenticatedCompany(auth()->user());
         }
 
         // 4. Fallback: first active company (single-tenant dev compatibility; debug only)
@@ -66,5 +67,26 @@ class IdentifyCompany
         view()->share('currentCompany', $company);
 
         return $next($request);
+    }
+
+    /**
+     * Empresa escolhida pelo usuário (sessão) se ele ainda tiver vínculo com ela; senão, a de menor id.
+     * O vínculo é conferido a cada request: se for removido, a sessão é descartada e não há acesso.
+     */
+    private function resolveAuthenticatedCompany($user): ?Company
+    {
+        $selectedId = (int) session(User::ACTIVE_COMPANY_SESSION_KEY, 0);
+
+        if ($selectedId > 0) {
+            $selected = $user->companies()->where('companies.id', $selectedId)->first();
+
+            if ($selected) {
+                return $selected;
+            }
+
+            session()->forget(User::ACTIVE_COMPANY_SESSION_KEY);
+        }
+
+        return $user->companies()->orderBy('companies.id')->first();
     }
 }

@@ -17,6 +17,9 @@ class User extends Authenticatable
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable, SoftDeletes, TwoFactorAuthenticatable;
 
+    /** Chave da sessão com a empresa escolhida no seletor (ver IdentifyCompany). */
+    public const ACTIVE_COMPANY_SESSION_KEY = 'active_company_id';
+
     /**
      * The attributes that are mass assignable.
      *
@@ -142,9 +145,16 @@ class User extends Authenticatable
             return 'superadmin.dashboard';
         }
 
-        $company = $this->companies()->orderBy('id')->first();
-        $role = $company ? $this->roleForCompany($company) : null;
+        $company = app()->bound('current.company')
+            ? app('current.company')
+            : $this->companies()->orderBy('companies.id')->first();
 
+        return self::homeRouteForRole($company ? $this->roleForCompany($company) : null);
+    }
+
+    /** Tela inicial de cada papel (ver homeRouteName). */
+    public static function homeRouteForRole(?string $role): string
+    {
         return match ($role) {
             'garcom' => 'admin.pdv.tabs',
             'caixa' => 'admin.pdv',

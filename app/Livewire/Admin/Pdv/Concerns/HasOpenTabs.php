@@ -441,6 +441,7 @@ trait HasOpenTabs
                     // na tela de pagamento é descartada e o pedido fica com "Cliente Balcão".
                     ...($customerId ? ['customer_id' => $customerId] : []),
                     ...($fiscalRecipient !== null ? ['fiscal_recipient' => $fiscalRecipient, 'fiscal_document_preference' => $this->checkoutFiscalPreference()] : []),
+                    ...$this->checkoutFiscalAutoAttributes($isPaidOnCreate ? 'paid' : 'awaiting_payment'),
                 ]);
 
                 if ($isPaidOnCreate) {
@@ -628,6 +629,7 @@ trait HasOpenTabs
                         'pdv_cash_session_id' => $this->cashSessionId,
                         ...($customerId ? ['customer_id' => $customerId] : []),
                         ...($fiscalRecipient !== null ? ['fiscal_recipient' => $fiscalRecipient, 'fiscal_document_preference' => $this->checkoutFiscalPreference()] : []),
+                        ...$this->checkoutFiscalAutoAttributes('paid'),
                     ]);
 
                     app(PaymentOrchestrator::class)->processSplit($order, $orderParts);

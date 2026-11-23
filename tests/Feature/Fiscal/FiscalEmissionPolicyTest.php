@@ -140,9 +140,16 @@ test('matriz da política de emissão', function (array $recipient, array $conte
     'NFC-e pedida sem ser permitida' => [policyRecipient(), ['presential' => false, 'preference' => 'nfce'], null, ['55'], []],
     'CNPJ logo abaixo de R$ 200 mil' => [policyRecipient(), ['total' => 199999.99], '65', ['65', '55'], []],
     'CNPJ no limite de R$ 200 mil' => [policyRecipient(), ['total' => 200000.00], '55', ['55'], []],
-    'CPF' => [['document' => '52998224725'], [], '65', ['65'], []],
-    'CPF pedindo NF-e' => [['document' => '52998224725'], ['preference' => 'nfe'], null, ['65'], []],
-    'CPF a partir de R$ 200 mil' => [['document' => '52998224725'], ['total' => 200000.00], null, [], ['document']],
+    'CPF' => [['document' => '52998224725'], [], '65', ['65', '55'], []],
+    'CPF pedindo NF-e' => [['document' => '52998224725'], ['preference' => 'nfe'], '55', ['65', '55'], []],
+    'CPF logo abaixo do teto da NFC-e' => [['document' => '52998224725'], ['total' => 199999.99], '65', ['65', '55'], []],
+    'CPF a partir de R$ 200 mil' => [['document' => '52998224725'], ['total' => 200000.00], '55', ['55'], []],
+    'CPF pedindo NFC-e acima do teto' => [['document' => '52998224725'], ['total' => 200000.00, 'preference' => 'nfce'], null, ['55'], []],
+    'CPF em operação interestadual' => [['document' => '52998224725'], ['presential' => false, 'operationState' => 'SP'], '55', ['55'], []],
+    'CPF pedindo NFC-e interestadual' => [['document' => '52998224725'], ['presential' => false, 'operationState' => 'SP', 'preference' => 'nfce'], null, ['55'], []],
+    'CPF de contribuinte de ICMS' => [['document' => '52998224725', 'ie_indicator' => '1', 'ie' => '123456789'], [], '55', ['55'], []],
+    'CPF isento de IE' => [['document' => '52998224725', 'ie_indicator' => '2'], [], '55', ['55'], []],
+    'sem documento em operação interestadual' => [['document' => ''], ['presential' => false, 'operationState' => 'SP'], null, ['55'], ['document']],
     'sem documento logo abaixo de R$ 10 mil' => [['document' => ''], ['total' => 9999.99], '65', ['65'], []],
     'sem documento no limite de R$ 10 mil' => [['document' => ''], ['total' => 10000.00], null, [], ['document']],
     'sem documento pedindo NF-e' => [['document' => ''], ['preference' => 'nfe'], null, ['65'], ['document']],
@@ -159,6 +166,143 @@ test('pedido decide pela venda: balcão e comanda são presenciais, entrega e re
 
     ['order' => $order] = policyContext(order: ['order_type' => 'delivery', 'delivery_type' => null]);
     expect(app(FiscalEmissionPolicy::class)->forOrder($order)->model)->toBe('55');
+});
+
+test('NF-e com CPF envia identificação exclusiva, endereço completo e série de NF-e', function () {
+    ['order' => $order] = policyContext(order: ['fiscal_document_preference' => 'nfe'], recipient: ['document' => '52998224725', 'name' => 'Maria da Silva']);
+    Http::fake(function ($request) {
+        expect($request->url())->toContain('/v2/nfe?ref=')
+            ->and($request['cpf_destinatario'])->toBe('52998224725')
+            ->and($request->data())->not->toHaveKey('cnpj_destinatario')
+            ->and($request['serie'])->toBe(3)
+            ->and($request['indicador_inscricao_estadual_destinatario'])->toBe(9)
+            ->and($request['logradouro_destinatario'])->toBe('Rua B')
+            ->and($request['uf_destinatario'])->toBe('PR')
+            ->and($request['items'][0]['cfop'])->toBe('5102');
+
+        return Http::response(['status' => 'autorizado'], 201);
+    });
+
+    $note = app(FiscalNoteService::class)->issue($order, confirmedModel: '55');
+    expect($note->model)->toBe('55')->and($note->data['recipient']['name'])->toBe('Maria da Silva');
+});
+
+test('NF-e para CPF exige nome e endereço antes de criar nota ou enviar ao provedor', function () {
+    ['order' => $order] = policyContext(order: ['fiscal_document_preference' => 'nfe']);
+    $order->update(['fiscal_recipient' => ['document' => '52998224725']]);
+    Http::fake();
+
+    $check = app(FiscalNoteService::class)->check($order);
+    expect($check['decision']->model)->toBe('55')
+        ->and($check['issues'][0]['group'])->toBe('recipient')
+        ->and($check['issues'][0]['fields'])->toContain('name', 'street', 'number', 'neighborhood', 'city', 'state', 'zip');
+    expect(fn () => app(FiscalNoteService::class)->issue($order))->toThrow(\App\Exceptions\FiscalPreflightException::class);
+    expect(FiscalNote::count())->toBe(0);
+    Http::assertNothingSent();
+});
+
+test('CPF em venda interestadual emite NF-e com CFOP interestadual', function () {
+    ['order' => $order] = policyContext(order: ['order_type' => 'delivery', 'delivery_type' => null], recipient: ['document' => '52998224725', 'state' => 'SP']);
+    Http::fake(function ($request) {
+        expect($request->url())->toContain('/v2/nfe?ref=')
+            ->and($request['cpf_destinatario'])->toBe('52998224725')
+            ->and($request['local_destino'])->toBe('2')
+            ->and($request['presenca_comprador'])->toBe('2')
+            ->and($request['items'][0]['cfop'])->toBe('6102');
+
+        return Http::response(['status' => 'processando_autorizacao'], 202);
+    });
+
+    expect(app(FiscalNoteService::class)->issue($order)->model)->toBe('55');
+});
+
+test('NFC-e explícita nunca contorna a restrição de operação interestadual para CPF', function () {
+    ['order' => $order] = policyContext(order: ['order_type' => 'delivery', 'fiscal_document_preference' => 'nfce'], recipient: ['document' => '52998224725', 'state' => 'SP']);
+    Http::fake();
+
+    expect(fn () => app(FiscalNoteService::class)->issue($order))->toThrow(\App\Exceptions\FiscalPreflightException::class);
+    Http::assertNothingSent();
+});
+
+test('pessoa física contribuinte mantém a IE na NF-e e exige o número da inscrição', function () {
+    $buyer = policyRecipient(['document' => '52998224725', 'ie_indicator' => '1', 'ie' => '']);
+    expect(fn () => FiscalRecipient::validate($buyer, '55'))->toThrow(\Illuminate\Validation\ValidationException::class);
+    ['order' => $order] = policyContext(recipient: [...$buyer, 'ie' => '123456789']);
+    Http::fake(function ($request) {
+        expect($request['cpf_destinatario'])->toBe('52998224725')
+            ->and($request['indicador_inscricao_estadual_destinatario'])->toBe(1)
+            ->and($request['inscricao_estadual_destinatario'])->toBe('123456789');
+
+        return Http::response(['status' => 'processando_autorizacao'], 202);
+    });
+
+    expect(app(FiscalNoteService::class)->issue($order)->model)->toBe('55');
+});
+
+test('indicador numérico de contribuinte também exige a IE para CPF', function () {
+    $buyer = policyRecipient(['document' => '52998224725', 'ie_indicator' => 1, 'ie' => '']);
+    expect(fn () => FiscalRecipient::validate($buyer, '55'))->toThrow(\Illuminate\Validation\ValidationException::class);
+    expect(FiscalRecipient::validate([...$buyer, 'ie' => '123456789'], '55')['ie_indicator'])->toBe('1');
+});
+
+test('NF-e para CPF não usa classificação fiscal genérica do produto', function () {
+    ['order' => $order, 'product' => $product] = policyContext(order: ['fiscal_document_preference' => 'nfe'], recipient: ['document' => '52998224725']);
+    $product->update(['fiscal_data' => []]);
+    Http::fake();
+
+    $issues = app(FiscalNoteService::class)->check($order)['issues'];
+    expect($issues[0]['group'])->toBe('products');
+    expect(fn () => app(FiscalNoteService::class)->issue($order))->toThrow(\App\Exceptions\FiscalPreflightException::class);
+    Http::assertNothingSent();
+});
+
+test('pedido permite escolher NF-e para CPF, completar dados e enfileirar o modelo conferido', function () {
+    ['order' => $order, 'company' => $company] = policyContext();
+    $order->update(['fiscal_recipient' => ['document' => '52998224725']]);
+    Queue::fake();
+
+    Livewire::actingAs(policyIssuer($company))->test(Show::class, ['order' => $order])
+        ->call('openFiscalModal')
+        ->assertSee('NFC-e (cupom fiscal)')
+        ->call('$set', 'fiscalDocumentChoice', 'nfe')
+        ->assertSet('showFiscalRecipient', true)
+        ->call('issueFiscalNote')->assertHasErrors('fiscalCustomerDocument')
+        ->call('editFiscalBuyer')
+        ->assertSee('Nome completo')
+        ->call('saveFiscalRecipientAndContinue')->assertHasErrors('fiscalRecipientDraft.name')
+        ->set('fiscalRecipientDraft', policyRecipient(['document' => '52998224725', 'name' => 'Maria da Silva']))
+        ->call('saveFiscalRecipientAndContinue')->assertHasNoErrors()
+        ->assertSee('Pronto para emitir NF-e')
+        ->call('issueFiscalNote')->assertHasNoErrors();
+
+    expect($order->fresh()->fiscal_document_preference)->toBe('nfe');
+    Queue::assertPushed(IssueFiscalNote::class, fn ($job) => $job->orderId === $order->id && $job->confirmedModel === '55');
+    Http::assertNothingSent();
+});
+
+test('editar CPF digitado no modal descarta dados fiscais do CNPJ anterior', function () {
+    ['order' => $order, 'company' => $company] = policyContext();
+
+    Livewire::actingAs(policyIssuer($company))->test(Show::class, ['order' => $order])
+        ->call('openFiscalModal')
+        ->set('fiscalCustomerDocument', '52998224725')
+        ->call('$set', 'fiscalDocumentChoice', 'nfe')
+        ->call('editFiscalBuyer')
+        ->assertSet('fiscalRecipientDraft.document', '52998224725')
+        ->assertSet('fiscalRecipientDraft.name', '')
+        ->call('saveFiscalRecipientAndContinue')->assertHasErrors('fiscalRecipientDraft.name');
+
+    expect($order->fresh()->fiscal_recipient['document'])->toBe('11222333000181');
+});
+
+test('alterar o documento dentro do formulário fiscal também limpa os dados do comprador anterior', function () {
+    ['order' => $order, 'company' => $company] = policyContext();
+
+    Livewire::actingAs(policyIssuer($company))->test(Show::class, ['order' => $order])
+        ->call('openFiscalRecipient')
+        ->set('fiscalRecipientDraft.document', '52998224725')
+        ->assertSet('fiscalRecipientDraft.document', '52998224725')
+        ->assertSet('fiscalRecipientDraft.name', '');
 });
 
 // ── Payload / XML ─────────────────────────────────────────────────────────
@@ -432,8 +576,8 @@ test('retorno da correção do produto só aceita caminho interno do painel', fu
 
 // ── Controle de notas e PDV ───────────────────────────────────────────────
 
-test('lote do Controle de notas confirma no job o modelo da pré-checagem', function () {
-    ['order' => $order, 'company' => $company] = policyContext();
+test('lote do Controle de notas confirma no job o modelo da pré-checagem', function (array $attributes, array $recipient, string $summary, string $model) {
+    ['order' => $order, 'company' => $company] = policyContext(order: $attributes, recipient: $recipient);
     $user = policyIssuer($company);
     $view = \App\Models\Permission::firstOrCreate(['name' => 'fiscal.view'], ['group' => 'fiscal', 'label' => 'Ver notas']);
     \App\Models\UserPermission::create(['user_id' => $user->id, 'company_id' => $company->id, 'permission_id' => $view->id, 'granted' => true]);
@@ -443,11 +587,15 @@ test('lote do Controle de notas confirma no job o modelo da pré-checagem', func
         ->set('dateFrom', '')->set('dateTo', '')
         ->set('selected', [$order->id])
         ->call('prepareIssue')
-        ->assertSet('confirmSummary.nfce', 1)
+        ->assertSet('confirmSummary.'.$summary, 1)
         ->call('issueSelected');
 
-    Bus::assertBatched(fn (PendingBatch $batch) => $batch->jobs->first()->confirmedModel === '65');
-});
+    Bus::assertBatched(fn (PendingBatch $batch) => $batch->jobs->first()->confirmedModel === $model);
+})->with([
+    'CNPJ elegível para NFC-e' => [[], [], 'nfce', '65'],
+    'CPF com NF-e solicitada' => [['fiscal_document_preference' => 'nfe'], ['document' => '52998224725'], 'nfe', '55'],
+    'CPF em operação interestadual' => [['order_type' => 'delivery'], ['document' => '52998224725', 'state' => 'SP'], 'nfe', '55'],
+]);
 
 test('PDV com filial liberada emite NFC-e com CNPJ conferido e grava a escolha do caixa', function () {
     ['admin' => $admin, 'product' => $product, 'company' => $company, 'branch' => $branch] = pdvContext();

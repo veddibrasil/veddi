@@ -202,6 +202,7 @@ class TabTerminal extends Component
         $this->canUseFiscalNotes = $company->canUseFiscalNotes();
 
         $this->selectedBranchId = $this->resolveInitialBranch($company, $user)?->id;
+        $this->syncFiscalAutoIssueDefault();
 
         if ($this->isWaiter) {
             $this->step = 'catalog';
@@ -242,6 +243,8 @@ class TabTerminal extends Component
         if ($company) {
             $this->rememberSelectedBranch($company->id);
         }
+
+        $this->syncFiscalAutoIssueDefault();
 
         if ($this->isWaiter) {
             $this->step = 'catalog';

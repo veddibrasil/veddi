@@ -330,20 +330,26 @@ class FocusNfeService implements FiscalNoteProviderInterface
             ],
         ];
 
-        if ($dto->model === '55') {
-            if ($dto->payments !== [] && round(array_sum(array_column($dto->payments, 'amount')) * 100) === round($dto->total * 100)) {
-                $payload['formas_pagamento'] = array_map(fn ($payment) => [
-                    'forma_pagamento' => $this->mapPaymentMethod($payment['method']),
-                    'valor_pagamento' => $payment['amount'],
-                ], $dto->payments);
+        // Pagamento dividido (PDV) sai com uma forma por pagamento, na NF-e e na NFC-e. Só quando a
+        // soma bate com o total; senão fica a forma do pedido.
+        if ($dto->payments !== [] && round(array_sum(array_column($dto->payments, 'amount')) * 100) === round($dto->total * 100)) {
+            $payload['formas_pagamento'] = array_map(fn ($payment) => [
+                'forma_pagamento' => $this->mapPaymentMethod($payment['method']),
+                'valor_pagamento' => $payment['amount'],
+                'method' => $payment['method'],
+            ], $dto->payments);
+        }
+        // Forma 99 (Outros) exige a descrição do meio de pagamento (xPag) no XML.
+        foreach ($payload['formas_pagamento'] as &$payment) {
+            $method = $payment['method'] ?? $dto->paymentMethod;
+            unset($payment['method']);
+            if ($payment['forma_pagamento'] === '99') {
+                $payment['descricao_pagamento'] = $this->paymentDescription($method);
             }
-            foreach ($payload['formas_pagamento'] as &$payment) {
-                if ($payment['forma_pagamento'] === '99') {
-                    $payment['descricao_pagamento'] = 'Outros';
-                }
-            }
-            unset($payment);
+        }
+        unset($payment);
 
+        if ($dto->model === '55') {
             return NfePayloadBuilder::build($dto, $payload);
         }
 
@@ -377,6 +383,18 @@ class FocusNfeService implements FiscalNoteProviderInterface
             'debit_card', 'cartao_debito' => '04',
             'cash', 'dinheiro' => '01',
             default => '99',
+        };
+    }
+
+    /** Texto do meio de pagamento na forma 99 (descricao_pagamento, 2 a 60 caracteres). */
+    private function paymentDescription(?string $method): string
+    {
+        return match (strtolower((string) $method)) {
+            'ifood' => 'Pago pelo iFood',
+            '99food' => 'Pago pela 99Food',
+            'keeta' => 'Pago pela Keeta',
+            'split' => 'Pagamento combinado',
+            default => 'Outros',
         };
     }
 

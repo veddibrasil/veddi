@@ -23,13 +23,71 @@ class FiscalRecipient
 
     public const TYPE_CNPJ = 'cnpj';
 
+    /** Campos presentes desde a abertura: atualizações rápidas continuam sendo por campo no Livewire. */
+    public static function draft(array $recipient): array
+    {
+        $draft = array_replace(array_fill_keys([
+            'document', 'name', 'email', 'street', 'number', 'complement', 'neighborhood', 'city', 'state', 'zip', 'ie',
+        ], ''), ['ie_indicator' => '9', 'ie_confirmed' => false], $recipient);
+        $zip = preg_replace('/\D/', '', (string) $draft['zip']);
+        if (strlen($zip) === 8) {
+            // A máscara recebe o valor já formatado, sem disparar outra consulta no navegador.
+            $draft['zip'] = substr($zip, 0, 5).'-'.substr($zip, 5);
+        }
+
+        return $draft;
+    }
+
     public static function fromCustomer(?Customer $customer): array
     {
         if (! $customer) {
             return ['document' => ''];
         }
 
-        return $customer->fiscal_recipient ?? [
+        $profile = self::customerProfile($customer);
+        $saved = $customer->fiscal_recipient;
+        if ($saved === null) {
+            return $profile;
+        }
+        $document = self::normalizeDocument($saved['document'] ?? '');
+        $profileDocument = self::normalizeDocument($profile['document']);
+        // Contato de empresa não é razão social. Dados fiscais completos sempre têm prioridade.
+        if (self::documentType($document) === self::TYPE_CPF && ($profileDocument === '' || $profileDocument === $document)) {
+            $saved = self::fillMissing($saved, $profile, ['name', 'email', 'street', 'number', 'complement', 'neighborhood', 'city', 'state', 'zip']);
+        }
+
+        return $saved;
+    }
+
+    /** Complementa o mesmo comprador sem combinar partes de endereços diferentes. */
+    public static function fillMissing(array $recipient, array $source, array $fields): array
+    {
+        $addressFields = ['street', 'number', 'complement', 'neighborhood', 'city', 'state', 'zip'];
+        $conflictingAddress = false;
+        foreach (['street', 'number', 'city', 'state', 'zip'] as $field) {
+            if (filled($recipient[$field] ?? null) && filled($source[$field] ?? null)) {
+                $normalize = fn ($value) => $field === 'zip' ? preg_replace('/\D/', '', (string) $value) : mb_strtoupper(trim((string) $value));
+                if ($normalize($recipient[$field]) !== $normalize($source[$field])) {
+                    $conflictingAddress = true;
+                    break;
+                }
+            }
+        }
+        foreach ($fields as $field) {
+            if ($conflictingAddress && in_array($field, $addressFields, true)) {
+                continue;
+            }
+            if (blank($recipient[$field] ?? null) && filled($source[$field] ?? null)) {
+                $recipient[$field] = $source[$field];
+            }
+        }
+
+        return $recipient;
+    }
+
+    public static function customerProfile(Customer $customer): array
+    {
+        return [
             'document' => $customer->tax_id ?? '',
             'name' => $customer->name ?? '',
             'email' => $customer->email ?? '',
@@ -72,7 +130,7 @@ class FiscalRecipient
         };
     }
 
-    public static function validate(array $recipient): array
+    public static function validate(array $recipient, ?string $model = null): array
     {
         $recipient['document'] = self::normalizeDocument($recipient['document'] ?? '');
         $recipient['zip'] = preg_replace('/\D/', '', $recipient['zip'] ?? '');
@@ -83,9 +141,15 @@ class FiscalRecipient
             }
         }
         $company = self::documentType($recipient['document']) === self::TYPE_CNPJ;
-        $required = $company ? 'required' : 'nullable';
+        $required = $company || $model === '55' ? 'required' : 'nullable';
+        if (! $company) {
+            $recipient['ie_indicator'] ??= '9';
+        }
+        if (isset($recipient['ie_indicator'])) {
+            $recipient['ie_indicator'] = (string) $recipient['ie_indicator'];
+        }
         $data = Validator::make($recipient, [
-            'document' => ['nullable', 'string'],
+            'document' => [$model === '55' ? 'required' : 'nullable', 'string'],
             'name' => [$required, 'string', 'max:60'],
             'email' => ['nullable', 'email', 'max:255'],
             'street' => [$required, 'string', 'max:60'],
@@ -96,10 +160,10 @@ class FiscalRecipient
             'state' => [$required, 'in:AC,AL,AP,AM,BA,CE,DF,ES,GO,MA,MT,MS,MG,PA,PB,PR,PE,PI,RJ,RN,RS,RO,RR,SC,SP,SE,TO'],
             'zip' => [$required, 'regex:/^\d{8}$/'],
             'ie_indicator' => [$required, 'in:1,2,9'],
-            'ie' => [($company && ($recipient['ie_indicator'] ?? '') === '1') ? 'required' : 'nullable', 'string', 'max:14'],
+            'ie' => [(($recipient['ie_indicator'] ?? '') === '1') ? 'required' : 'nullable', 'string', 'max:14'],
             'ie_confirmed' => ['nullable', 'boolean'],
         ], [], [
-            'document' => 'CPF ou CNPJ', 'name' => 'razão social', 'street' => 'logradouro',
+            'document' => 'CPF ou CNPJ', 'name' => $company ? 'razão social' : 'nome completo', 'street' => 'logradouro',
             'number' => 'número', 'neighborhood' => 'bairro', 'city' => 'município',
             'state' => 'UF', 'zip' => 'CEP', 'ie_indicator' => 'situação da inscrição estadual', 'ie' => 'inscrição estadual',
         ])->validate();
@@ -109,8 +173,8 @@ class FiscalRecipient
             throw ValidationException::withMessages(['document' => 'CPF ou CNPJ inválido.']);
         }
         // Situação da IE vinda da consulta pública é sugestão; só vale como conferida quando
-        // alguém salvou o formulário (ie_confirmed = true). CPF não tem IE a conferir.
-        $data['ie_confirmed'] = $company && (bool) ($recipient['ie_confirmed'] ?? false);
+        // alguém salvou o formulário (ie_confirmed = true). Pessoa física também pode ter IE.
+        $data['ie_confirmed'] = (bool) ($recipient['ie_confirmed'] ?? false);
 
         return $data;
     }

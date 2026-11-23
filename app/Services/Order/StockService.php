@@ -6,6 +6,7 @@ use App\Enums\OrderChannel;
 use App\Exceptions\InsufficientStockException;
 use App\Jobs\SetFood99ItemStatusJob;
 use App\Jobs\SyncIfoodCatalogJob;
+use App\Jobs\SyncKeetaCatalogJob;
 use App\Models\Branch;
 use App\Models\IfoodIntegration;
 use App\Models\Order;
@@ -399,6 +400,11 @@ class StockService
      */
     public function toggleTracking(Branch $branch, Product $product, bool $track): void
     {
+        $pivot = DB::table('branch_product')
+            ->where('branch_id', $branch->id)
+            ->where('product_id', $product->id)
+            ->first(['available', 'track_stock', 'quantity']);
+
         DB::table('branch_product')
             ->where('branch_id', $branch->id)
             ->where('product_id', $product->id)
@@ -406,6 +412,12 @@ class StockService
 
         Cache::forget("stock:low:branch:{$branch->id}");
         $this->forgetMenu($branch->id, $branch->company_id);
+
+        // Ligar o rastreio com quantidade zerada esgota o item (e desligar reativa): os
+        // marketplaces precisam saber, igual a quando a quantidade muda.
+        if ($pivot && (bool) $pivot->available && (int) $pivot->quantity <= 0) {
+            $this->syncMarketplaceAvailability($branch->id, $product->id, ! $pivot->track_stock, ! $track);
+        }
     }
 
     /**
@@ -430,6 +442,10 @@ class StockService
 
         if (config('food99.enabled') && ($companyId = DB::table('branches')->where('id', $branchId)->value('company_id'))) {
             SetFood99ItemStatusJob::forProduct((int) $companyId, $productId, [$branchId]);
+        }
+
+        if (config('keeta.enabled') && ($companyId = DB::table('branches')->where('id', $branchId)->value('company_id'))) {
+            SyncKeetaCatalogJob::debounceForCompany((int) $companyId, [$branchId]);
         }
     }
 

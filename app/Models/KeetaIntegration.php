@@ -157,6 +157,6 @@ class KeetaIntegration extends Model
     /** URL do nosso GET merchant desta loja (a Keeta busca o cardápio aqui). */
     public function menuUrl(): string
     {
-        return route('integrations.keeta.merchant', ['merchantRef' => $this->merchant_ref]);
+        return rtrim((string) config('app.url'), '/').route('integrations.keeta.merchant', ['merchantRef' => $this->merchant_ref], absolute: false);
     }
 }

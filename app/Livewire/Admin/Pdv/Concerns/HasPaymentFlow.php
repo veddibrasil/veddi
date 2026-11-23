@@ -177,6 +177,7 @@ trait HasPaymentFlow
 
                 $order->delivery_type = $this->deliveryType;
                 $order->fiscal_document_preference = $this->checkoutFiscalPreference();
+                $order->fill($this->checkoutFiscalAutoAttributes($status));
 
                 // Link order to current cash session
                 if ($this->cashSessionId) {

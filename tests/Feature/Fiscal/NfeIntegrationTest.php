@@ -340,12 +340,12 @@ test('CNPJ digitado no pedido preenche razão social e endereço pela consulta',
     \App\Models\UserPermission::create(['user_id' => $user->id, 'company_id' => $company->id, 'permission_id' => $permission->id, 'granted' => true]);
     Livewire::actingAs($user)->test(Show::class, ['order' => $order])
         ->call('openFiscalRecipient')
-        ->set('fiscalRecipientDraft.document', '11.222.333/0001-81')
+        ->set('fiscalRecipientDraft.document', '11.444.777/0001-61')
         ->assertSet('fiscalRecipientDraft.name', 'Empresa Consultada Ltda')
         ->assertSet('fiscalRecipientDraft.street', 'Rua Consulta')
         ->call('saveFiscalRecipient')->assertHasNoErrors();
     expect($order->fresh()->fiscal_recipient['name'])->toBe('Empresa Consultada Ltda');
-    expect($order->fresh()->fiscal_recipient['document'])->toBe('11222333000181');
+    expect($order->fresh()->fiscal_recipient['document'])->toBe('11444777000161');
 });
 
 test('emissão com CNPJ diferente do destinatário salvo exige cadastro fiscal antes', function () {

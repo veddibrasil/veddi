@@ -88,6 +88,19 @@ it('loja fora da autorização não pode ser escolhida', function () {
     Http::assertNotSent(fn (Request $r) => str_contains($r->url(), 'merchantOnboarding'));
 });
 
+it('envia URLs públicas no onboarding mesmo com o painel aberto em localhost', function () {
+    $ctx = keetaContext();
+    fakeKeetaApi();
+    config(['app.url' => 'https://public.veddi.test']);
+    \Illuminate\Support\Facades\URL::forceRootUrl('http://localhost:8000');
+
+    app(\App\Services\Keeta\KeetaAuthService::class)->onboard($ctx['integration']);
+
+    Http::assertSent(fn (Request $r) => str_contains($r->url(), '/v1/merchantOnboarding')
+        && $r['ordersWebhookURL'] === 'https://public.veddi.test/webhooks/keeta/orders'
+        && $r['getMerchantURL']['baseURL'] === 'https://public.veddi.test/integrations/keeta/merchant/'.$ctx['integration']->merchant_ref);
+});
+
 it('onboarding recusado deixa a integração em erro', function () {
     $ctx = keetaContext(integration: ['keeta_merchant_id' => null, 'status' => 'pending_mapping', 'available_shops' => [['id' => '7', 'name' => 'A', 'address' => null]]]);
     $this->actingAs(keetaAdmin($ctx));

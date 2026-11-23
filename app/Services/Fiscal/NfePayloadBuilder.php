@@ -22,10 +22,9 @@ class NfePayloadBuilder
                 false => $dto->orderType === 'pdv' ? '3' : '2',
                 null => $dto->orderType === 'delivery' ? '2' : '1',
             },
-            'cnpj_destinatario' => $recipient['document'],
             'nome_destinatario' => $dto->environment === 'homologacao'
                 ? 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL' : $recipient['name'],
-            'indicador_inscricao_estadual_destinatario' => (int) $recipient['ie_indicator'],
+            'indicador_inscricao_estadual_destinatario' => (int) ($recipient['ie_indicator'] ?? '9'),
             'logradouro_destinatario' => $recipient['street'],
             'numero_destinatario' => $recipient['number'],
             'bairro_destinatario' => $recipient['neighborhood'],
@@ -38,6 +37,10 @@ class NfePayloadBuilder
             'valor_produtos' => array_sum(array_column($dto->items, 'subtotal')),
             'valor_total' => $dto->total,
         ]);
+        unset($payload['cpf_destinatario'], $payload['cnpj_destinatario']);
+        $documentField = FiscalRecipient::documentType($recipient['document']) === FiscalRecipient::TYPE_CPF
+            ? 'cpf_destinatario' : 'cnpj_destinatario';
+        $payload[$documentField] = FiscalRecipient::normalizeDocument($recipient['document']);
         if (($recipient['ie_indicator'] ?? '') === '1') {
             $payload['inscricao_estadual_destinatario'] = $recipient['ie'];
         }

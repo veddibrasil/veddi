@@ -243,6 +243,7 @@ class Terminal extends Component
         $this->canUseFiscalNotes = $company->canUseFiscalNotes();
 
         $this->selectedBranchId = $this->resolveInitialBranch($company, $user)?->id;
+        $this->syncFiscalAutoIssueDefault();
 
         $this->syncCashSession();
     }
@@ -264,6 +265,7 @@ class Terminal extends Component
             $this->rememberSelectedBranch($company->id);
         }
 
+        $this->syncFiscalAutoIssueDefault();
         $this->syncCashSession();
     }
 

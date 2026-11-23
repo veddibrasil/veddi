@@ -40,6 +40,19 @@ class Config extends Component
     /** Liberação da NFC-e com CNPJ nesta filial (FiscalEmissionPolicy). Só depois da contabilidade e da homologação. */
     public bool $nfceCnpjEnabled = false;
 
+    /** NFC-e automática nesta filial (FiscalAutoIssuePolicy): pedido aceito e pago recebe a nota sozinho. Filial nova nasce ligada. */
+    public bool $autoIssueEnabled = true;
+
+    /** Filial já tem configuração salva: a tela avisa quando a emissão automática está desligada nela. */
+    public bool $hasFiscalConfig = false;
+
+    /** Disjuntor aberto (FiscalAutoIssueMonitor): quando e por quê. Só o servidor muda. */
+    #[Locked]
+    public ?string $autoIssuePausedAt = null;
+
+    #[Locked]
+    public ?string $autoIssuePauseReason = null;
+
     public $certificateFile = null;
 
     public bool $hasCertificate = false;
@@ -193,8 +206,10 @@ class Config extends Component
         $this->nfceSerie = (string) ($config?->nfce_serie ?? '1');
         $this->nfeSerie = (string) ($config?->nfe_serie ?? '1');
         $this->nfceCnpjEnabled = (bool) ($config?->nfce_cnpj_enabled ?? false);
+        $this->fillAutoIssueState($config);
         $this->hasProviderToken = filled($config?->provider_token);
         $this->hasCertificate = filled($config?->certificate_path);
+        $this->hasFiscalConfig = $config !== null;
         $this->focusNfeCompanyId = $config?->focus_nfe_company_id;
         $this->hasCscNfceProducao = filled($config?->csc_nfce_producao);
         $this->idTokenNfceProducao = $config?->id_token_nfce_producao ?? '';
@@ -231,6 +246,7 @@ class Config extends Component
             'nfceSerie' => ['required', 'integer', 'min:1', 'max:999'],
             'nfeSerie' => ['required', 'integer', 'min:1', 'max:999'],
             'nfceCnpjEnabled' => ['boolean'],
+            'autoIssueEnabled' => ['boolean'],
             'inscricaoEstadual' => ['nullable', 'string', 'max:50'],
             'inscricaoMunicipal' => ['nullable', 'string', 'max:50'],
             'branchCnpj' => ['nullable', 'string'],
@@ -363,6 +379,16 @@ class Config extends Component
         $config->nfe_enabled = true;
         $config->nfe_serie = (int) $this->nfeSerie;
         $config->nfce_cnpj_enabled = $this->nfceCnpjEnabled;
+        // Ligar marca o início: pedidos anteriores nunca saem sozinhos. Religar fecha o disjuntor.
+        // Lê o valor gravado (não o atributo): config nova já nasce com o padrão ligado.
+        $wasAutoIssueOn = $config->exists && (bool) $config->getOriginal('auto_issue_enabled');
+        if ($this->autoIssueEnabled && ! $wasAutoIssueOn) {
+            $config->auto_issue_enabled_at = now();
+            $config->auto_issue_paused_at = null;
+            $config->auto_issue_pause_reason = null;
+            $config->auto_issue_resumed_at = null;
+        }
+        $config->auto_issue_enabled = $this->autoIssueEnabled;
         $config->id_token_nfce_producao = $this->idTokenNfceProducao ?: null;
 
         // Token/senha/CSC só são sobrescritos quando o usuário digita um novo valor —
@@ -388,6 +414,16 @@ class Config extends Component
 
             if (strlen($cnpj) !== 14) {
                 $this->addError('enabled', 'Cadastre o CNPJ da filial (ou da empresa) antes de habilitar a emissão fiscal.');
+
+                return;
+            }
+
+            // Emissão só vale com certificado A1 da filial: sem ele a emissão automática
+            // (e qualquer nota) falha na SEFAZ. Exigido ao habilitar (transição), antes de
+            // registrar na Focus NFe; configuração já habilitada segue salvando como antes.
+            $wasEnabled = $config->exists && (bool) $config->getOriginal('enabled');
+            if (! $wasEnabled && ! $this->certificateFile && blank($config->certificate_path)) {
+                $this->addError('certificateFile', 'Envie o certificado A1 da filial antes de habilitar a emissão fiscal.');
 
                 return;
             }
@@ -448,8 +484,41 @@ class Config extends Component
         $this->focusNfeCompanyId = $config->focus_nfe_company_id;
         $this->hasBranchCnpj = $config->isIssuerLocked();
         $this->isDefault = $config->is_default;
+        $this->fillAutoIssueState($config);
 
         session()->flash('status', 'Configurações fiscais salvas.');
+    }
+
+    /** Fecha o disjuntor da emissão automática depois de corrigir o motivo das rejeições. */
+    public function resumeAutoIssue(): void
+    {
+        $company = app('current.company');
+        abort_unless($company->fiscal_notes_enabled && auth()->user()->hasPermission('fiscal.settings', $company), 403);
+        abort_unless(auth()->user()->canAccessBranch($company, $this->branchId), 403);
+
+        $config = CompanyFiscalConfig::where('company_id', $company->id)->where('branch_id', $this->branchId)->first();
+        if (! $config) {
+            return;
+        }
+
+        $config->update(['auto_issue_paused_at' => null, 'auto_issue_pause_reason' => null, 'auto_issue_resumed_at' => now()]);
+        $this->fillAutoIssueState($config);
+
+        Log::channel('fiscal')->info('Emissão automática retomada', [
+            'company_id' => $company->id,
+            'fiscal_config_id' => $config->id,
+            'user_id' => auth()->id(),
+        ]);
+
+        session()->flash('status', 'Emissão automática retomada nesta filial.');
+    }
+
+    private function fillAutoIssueState(?CompanyFiscalConfig $config): void
+    {
+        // Filial sem configuração salva nasce ligada; configuração existente mantém o que foi gravado.
+        $this->autoIssueEnabled = $config ? (bool) $config->auto_issue_enabled : true;
+        $this->autoIssuePausedAt = $config?->auto_issue_paused_at?->format('d/m/Y H:i');
+        $this->autoIssuePauseReason = $config?->auto_issue_pause_reason;
     }
 
     private function registerWithFocusNfe(Company $company, CompanyFiscalConfig $config, string $cnpj, ?Branch $branch): void

@@ -991,7 +991,7 @@ test('fechar comanda paga sem marcar "Emitir e imprimir nota fiscal" não emite 
     $table = openTable($company, $branch);
 
     $company->update(['fiscal_notes_enabled' => true]);
-    CompanyFiscalConfig::create(['company_id' => $company->id, 'branch_id' => $branch->id, 'is_default' => true, 'enabled' => true]);
+    CompanyFiscalConfig::create(['company_id' => $company->id, 'branch_id' => $branch->id, 'is_default' => true, 'enabled' => true, 'auto_issue_enabled' => false]);
 
     $this->actingAs($admin);
 
@@ -1020,7 +1020,7 @@ test('fechar comanda com "Emitir e imprimir nota fiscal" marcado emite a nota', 
     $table = openTable($company, $branch);
 
     $company->update(['fiscal_notes_enabled' => true]);
-    CompanyFiscalConfig::create(['company_id' => $company->id, 'branch_id' => $branch->id, 'is_default' => true, 'enabled' => true]);
+    CompanyFiscalConfig::create(['company_id' => $company->id, 'branch_id' => $branch->id, 'is_default' => true, 'enabled' => true, 'auto_issue_enabled' => false]);
 
     $this->actingAs($admin);
 
@@ -1289,7 +1289,7 @@ test('fechar comanda com checkbox de nota fiscal marcado dispara order-paid com 
     $table = openTable($company, $branch);
 
     $company->update(['fiscal_notes_enabled' => true]);
-    CompanyFiscalConfig::create(['company_id' => $company->id, 'branch_id' => $branch->id, 'is_default' => true, 'enabled' => true]);
+    CompanyFiscalConfig::create(['company_id' => $company->id, 'branch_id' => $branch->id, 'is_default' => true, 'enabled' => true, 'auto_issue_enabled' => false]);
     Bus::fake();
 
     $this->actingAs($admin);
@@ -1317,7 +1317,7 @@ test('fechar comanda NÃO reimprime cupom mesmo com impressora de auto-print con
     $table = openTable($company, $branch);
 
     $company->update(['fiscal_notes_enabled' => true]);
-    CompanyFiscalConfig::create(['company_id' => $company->id, 'branch_id' => $branch->id, 'is_default' => true, 'enabled' => true]);
+    CompanyFiscalConfig::create(['company_id' => $company->id, 'branch_id' => $branch->id, 'is_default' => true, 'enabled' => true, 'auto_issue_enabled' => false]);
     Bus::fake();
 
     \App\Models\BranchPrinter::create([

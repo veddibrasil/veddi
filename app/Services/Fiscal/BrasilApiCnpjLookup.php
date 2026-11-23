@@ -31,7 +31,7 @@ class BrasilApiCnpjLookup implements CnpjLookupInterface
         }
 
         try {
-            $response = Http::timeout(5)->acceptJson()->get(self::BASE_URL.$cnpj);
+            $response = Http::connectTimeout(1)->timeout(3)->acceptJson()->get(self::BASE_URL.$cnpj);
         } catch (ConnectionException $e) {
             Log::channel('fiscal')->warning('Consulta de CNPJ indisponível', ['cnpj' => $cnpj, 'error' => $e->getMessage()]);
 
@@ -59,7 +59,7 @@ class BrasilApiCnpjLookup implements CnpjLookupInterface
             'name' => mb_substr($name, 0, 60),
             'email' => is_string($email) && filter_var($email, FILTER_VALIDATE_EMAIL) ? mb_strtolower($email) : null,
             'street' => $street !== '' ? mb_substr($street, 0, 60) : null,
-            'number' => filled($body['numero'] ?? null) ? mb_substr((string) $body['numero'], 0, 60) : 'S/N',
+            'number' => filled($body['numero'] ?? null) ? mb_substr((string) $body['numero'], 0, 60) : null,
             'complement' => filled($body['complemento'] ?? null) ? mb_substr((string) $body['complemento'], 0, 60) : null,
             'neighborhood' => filled($body['bairro'] ?? null) ? mb_substr((string) $body['bairro'], 0, 60) : null,
             'city' => $body['municipio'] ?? null,

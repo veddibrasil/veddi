@@ -1,10 +1,10 @@
 @php
     $recipient = $this->effectiveFiscalRecipient();
-    $recipientModel = \App\Services\Fiscal\FiscalRecipient::model($recipient);
+    $recipientIsCompany = \App\Services\Fiscal\FiscalRecipient::documentType($recipient['document'] ?? '') === 'cnpj';
 @endphp
 <div class="rounded-xl border border-neutral-200 bg-white p-3 space-y-2 dark:bg-zinc-800 dark:border-zinc-700">
-    <p class="text-sm font-medium text-neutral-800 dark:text-neutral-100">Nota fiscal: {{ $recipientModel === '55' ? 'NF-e' : 'NFC-e' }}{{ filled($recipient['document'] ?? '') ? ' · '.($recipientModel === '55' ? ($recipient['name'] ?? $recipient['document']) : $recipient['document']) : '' }}</p>
-    <p class="text-xs text-neutral-500">CNPJ: NF-e para a empresa. CPF ou sem documento: NFC-e.</p>
+    <p class="text-sm font-medium text-neutral-800 dark:text-neutral-100">Dados fiscais{{ filled($recipient['document'] ?? '') ? ' · '.($recipientIsCompany ? ($recipient['name'] ?? $recipient['document']) : $recipient['document']) : ' · Consumidor sem identificação' }}</p>
+    <p class="text-xs text-neutral-500">CPF e CNPJ identificam o comprador. O documento fiscal depende da operação e da configuração da loja.</p>
     <button type="button" wire:click="openFiscalRecipient" class="text-sm text-blue-600 underline">Alterar dados fiscais</button>
     @if($showFiscalRecipient)
         <div class="space-y-3 border-t pt-3 dark:border-zinc-700">
@@ -13,9 +13,13 @@
             @if($fiscalRecipientNotice)
                 <p class="text-xs text-amber-600 dark:text-amber-400">{{ $fiscalRecipientNotice }}</p>
             @endif
-            @if(\App\Services\Fiscal\FiscalRecipient::model($fiscalRecipientDraft) === '55')
-                <p class="text-xs text-neutral-500">Informe os dados fiscais da empresa. O endereço pode ser diferente do endereço de entrega.</p>
-                @foreach(['name' => 'Razão social', 'email' => 'E-mail fiscal', 'street' => 'Logradouro', 'number' => 'Número', 'complement' => 'Complemento', 'neighborhood' => 'Bairro', 'city' => 'Município', 'state' => 'UF', 'zip' => 'CEP'] as $field => $label)
+            @if(\App\Services\Fiscal\FiscalRecipient::documentType($fiscalRecipientDraft['document'] ?? '') !== null)
+                @php($draftIsCompany = \App\Services\Fiscal\FiscalRecipient::documentType($fiscalRecipientDraft['document'] ?? '') === 'cnpj')
+                <p class="text-xs text-neutral-500">Informe os dados fiscais do comprador. O endereço pode ser diferente do endereço de entrega.</p>
+                <flux:input wire:model.live.debounce.350ms="fiscalRecipientDraft.zip" label="CEP" inputmode="numeric" autocomplete="postal-code" description="Preenche o endereço." />
+                <p wire:loading wire:target="fiscalRecipientDraft.zip" role="status" class="text-xs text-neutral-500">Buscando endereço…</p>
+                @error('fiscalRecipientDraft.zip') <p class="text-xs text-red-600">{{ $message }}</p> @enderror
+                @foreach(['name' => $draftIsCompany ? 'Razão social' : 'Nome completo', 'email' => 'E-mail fiscal', 'street' => 'Logradouro', 'number' => 'Número', 'complement' => 'Complemento', 'neighborhood' => 'Bairro', 'city' => 'Município', 'state' => 'UF'] as $field => $label)
                     <flux:input wire:model="fiscalRecipientDraft.{{ $field }}" :label="$label" />
                     @error('fiscalRecipientDraft.'.$field) <p class="text-xs text-red-600">{{ $message }}</p> @enderror
                 @endforeach

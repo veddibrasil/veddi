@@ -33,6 +33,11 @@ class CompanyFiscalConfig extends Model
         'nfe_enabled',
         'nfe_serie',
         'nfce_cnpj_enabled',
+        'auto_issue_enabled',
+        'auto_issue_enabled_at',
+        'auto_issue_paused_at',
+        'auto_issue_pause_reason',
+        'auto_issue_resumed_at',
         'certificate_path',
         'certificate_password',
     ];
@@ -40,10 +45,13 @@ class CompanyFiscalConfig extends Model
     /**
      * NF-e sempre habilitada. NFC-e com CNPJ só quando a filial for liberada
      * (FiscalEmissionPolicy); desligada, CNPJ no destinatário emite NF-e.
+     * Emissão automática nasce ligada em filial nova; a valia real exige a emissão habilitada
+     * (autoIssueActive), então ligar aqui não emite nada antes da configuração completa.
      */
     protected $attributes = [
         'nfe_enabled' => true,
         'nfce_cnpj_enabled' => false,
+        'auto_issue_enabled' => true,
     ];
 
     protected $casts = [
@@ -54,6 +62,10 @@ class CompanyFiscalConfig extends Model
         'nfe_enabled' => 'boolean',
         'nfe_serie' => 'integer',
         'nfce_cnpj_enabled' => 'boolean',
+        'auto_issue_enabled' => 'boolean',
+        'auto_issue_enabled_at' => 'datetime',
+        'auto_issue_paused_at' => 'datetime',
+        'auto_issue_resumed_at' => 'datetime',
         'provider_token' => 'encrypted',
         'token_producao' => 'encrypted',
         'token_homologacao' => 'encrypted',
@@ -83,6 +95,21 @@ class CompanyFiscalConfig extends Model
         $token = $environment === 'producao' ? $this->token_producao : $this->token_homologacao;
 
         return $token ?: $this->provider_token;
+    }
+
+    /**
+     * Emissão automática de NFC-e valendo agora nesta filial: configuração habilitada, chave
+     * ligada e disjuntor fechado (FiscalAutoIssuePolicy, FiscalAutoIssueMonitor).
+     */
+    public function autoIssueActive(): bool
+    {
+        return $this->enabled && $this->auto_issue_enabled && $this->auto_issue_paused_at === null;
+    }
+
+    /** Início da contagem do disjuntor: a ativação ou a última retomada, o que vier por último. */
+    public function autoIssueBreakerSince(): ?\Carbon\CarbonInterface
+    {
+        return collect([$this->auto_issue_enabled_at, $this->auto_issue_resumed_at])->filter()->max();
     }
 
     public function isRegisteredWithFocus(): bool

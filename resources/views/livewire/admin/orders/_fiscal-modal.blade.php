@@ -12,12 +12,13 @@
         $isCompany = $documentType === \App\Services\Fiscal\FiscalRecipient::TYPE_CNPJ;
         $blockingIssues = collect($issues)->reject(fn ($issue) => $issue['group'] === 'policy')->values()->all();
         $ready = $decision && ! $decision->blocked() && $issues === [] && ! $showFiscalRecipient;
+        $readyToSave = $decision && ! $decision->blocked() && $issues === [] && $showFiscalRecipient;
         $label = \App\DTOs\FiscalEmissionDecision::label($decision?->model);
     @endphp
     @if($readiness)
         <div class="space-y-5">
             <div>
-                <flux:heading size="lg" id="fiscal-modal-title">Emitir nota fiscal · Pedido {{ $order->order_number }}</flux:heading>
+                <flux:heading level="2" size="lg" id="fiscal-modal-title">Emitir nota fiscal · Pedido {{ $order->order_number }}</flux:heading>
                 @if($readiness['issuer'])
                     <flux:text class="mt-1">
                         Emitente: {{ $readiness['issuer']['branch'] ?? 'filial' }} · CNPJ {{ $readiness['issuer']['cnpj'] }}
@@ -61,6 +62,10 @@
                     </div>
                 @elseif($documentType === \App\Services\Fiscal\FiscalRecipient::TYPE_CPF)
                     <p class="text-xs text-neutral-500 dark:text-neutral-400">CPF {{ \App\Services\Fiscal\FiscalRecipient::formatDocument($fiscalCustomerDocument) }}.</p>
+                    @if(filled($recipient['name'] ?? null))
+                        <p class="text-sm text-neutral-700 dark:text-neutral-200">{{ $recipient['name'] }} · {{ $recipient['city'] ?? '' }}/{{ $recipient['state'] ?? '' }}</p>
+                    @endif
+                    <button type="button" wire:click="editFiscalBuyer" class="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400">{{ $decision?->model === '55' ? 'Completar ou conferir dados para NF-e' : 'Alterar dados do comprador' }}</button>
                 @endif
             </section>
 
@@ -72,14 +77,14 @@
                         <legend class="sr-only">Modelo da nota</legend>
                         <label class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm dark:border-zinc-700 {{ $decision->model === '65' ? 'border-purple-500 ring-1 ring-purple-500' : '' }}">
                             <input type="radio" name="fiscal-model" value="nfce" wire:click="$set('fiscalDocumentChoice', 'nfce')" @checked($decision->model === '65')>
-                            NFC-e com CNPJ
+                            {{ $isCompany ? 'NFC-e com CNPJ' : 'NFC-e (cupom fiscal)' }}
                         </label>
                         <label class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm dark:border-zinc-700 {{ $decision->model === '55' ? 'border-purple-500 ring-1 ring-purple-500' : '' }}">
                             <input type="radio" name="fiscal-model" value="nfe" wire:click="$set('fiscalDocumentChoice', 'nfe')" @checked($decision->model === '55')>
                             NF-e
                         </label>
                     </fieldset>
-                    <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ $decision->reasons[0] ?? '' }} Use NF-e quando o comprador pedir.</p>
+                    <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ $decision->reasons[0] ?? '' }} A NF-e exige nome e endereço completos, tanto para CPF quanto para CNPJ.</p>
                 @elseif($decision->blocked())
                     <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-200">
                         @foreach($decision->reasons as $reason)
@@ -114,22 +119,26 @@
                     ])
                 @elseif($ready)
                     <p class="text-sm text-green-700 dark:text-green-400">Pronto para emitir {{ $label }}.</p>
+                @elseif($readyToSave)
+                    <p class="text-sm text-green-700 dark:text-green-400">Dados prontos. Confira e use “Salvar e emitir {{ $label }}”.</p>
                 @else
                     <p class="text-sm text-neutral-500 dark:text-neutral-400">Resolva o comprador e o documento acima.</p>
                 @endif
             </section>
 
-            @unless($ready)
+            @unless($ready || $readyToSave)
                 <p class="text-xs text-neutral-500 dark:text-neutral-400">O botão de emitir libera quando não houver pendência. Depois de corrigir um cadastro, clique em "Verificar novamente".</p>
             @endunless
             <div class="flex flex-wrap items-center justify-between gap-3 border-t pt-4 dark:border-zinc-700">
                 <flux:button type="button" wire:click="$refresh" size="sm" variant="ghost" icon="arrow-path">Verificar novamente</flux:button>
                 <div class="flex gap-2">
                     <flux:button type="button" wire:click="closeFiscalModal" variant="ghost">Cancelar</flux:button>
+                    @unless($showFiscalRecipient)
                     <flux:button type="button" wire:click="issueFiscalNote" variant="primary" :disabled="! $ready" wire:loading.attr="disabled" wire:target="issueFiscalNote" class="disabled:cursor-not-allowed disabled:opacity-50" :aria-describedby="$ready ? null : 'fiscal-ready-title'">
                         <span wire:loading.remove wire:target="issueFiscalNote">Emitir {{ $ready ? $label : 'nota' }}</span>
                         <span wire:loading wire:target="issueFiscalNote">Enfileirando…</span>
                     </flux:button>
+                    @endunless
                 </div>
             </div>
         </div>

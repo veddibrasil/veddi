@@ -100,6 +100,12 @@ Schedule::job(new ReconcilePendingFiscalNotesJob)
     ->withoutOverlapping(expiresAt: 10)
     ->onOneServer();
 
+// NFC-e automática: pega pedidos prontos que escaparam do observer (filiais com a chave ligada).
+Schedule::command('fiscal:auto-issue')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(expiresAt: 10)
+    ->onOneServer();
+
 // Comentado: reconciliação depende de endpoints Yapay de saldo/listagem — não confirmados.
 // Schedule::job(new \App\Jobs\VindiReconciliationJob)
 //     ->name('vindi-reconciliation')

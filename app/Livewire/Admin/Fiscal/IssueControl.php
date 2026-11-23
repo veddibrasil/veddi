@@ -22,9 +22,10 @@ use Livewire\Component;
 use Livewire\WithPagination;
 
 /**
- * Controle de notas fiscais: lista pedidos pagos com a situação fiscal de cada um. A emissão
- * deixou de ser automática — o que o caixa não emitiu no PDV ("Emitir e imprimir nota fiscal")
- * fica aqui "sem nota" e pode ser emitido individualmente ou em lote (Bus::batch na fila 'low').
+ * Controle de notas fiscais: lista pedidos pagos com a situação fiscal de cada um. O que não saiu
+ * no PDV ("Emitir e imprimir nota fiscal") nem pela NFC-e automática da filial (AutoIssueFiscalNote:
+ * NF-e, marketplace, pendência, falha) fica aqui e pode ser emitido individualmente ou em lote
+ * (Bus::batch na fila 'low').
  */
 class IssueControl extends Component
 {
@@ -33,7 +34,7 @@ class IssueControl extends Component
     /** Teto por lote — protege a fila e a Focus NFe de um "selecionar tudo" de meses. */
     public const MAX_BATCH = 200;
 
-    private const FILTERS = ['dateFrom', 'dateTo', 'branchFilter', 'channelFilter', 'paymentFilter', 'situationFilter', 'search'];
+    private const FILTERS = ['dateFrom', 'dateTo', 'branchFilter', 'channelFilter', 'paymentFilter', 'situationFilter', 'modelFilter', 'search'];
 
     #[Url]
     public string $dateFrom = '';
@@ -52,6 +53,16 @@ class IssueControl extends Component
 
     #[Url]
     public string $situationFilter = 'to_issue';
+
+    /** Modelo da nota já emitida ou tentada: '' todos, 'nfce' (65), 'nfe' (55). */
+    public string $modelFilter = '';
+
+    /**
+     * Modelo escolhido para o lote: 'auto' (a política decide), 'nfce' ou 'nfe'. Passa como
+     * preferência à pré-checagem: NFC-e bloqueada aparece como pedido bloqueado, nunca vira NF-e
+     * sem o operador saber.
+     */
+    public string $batchModel = 'auto';
 
     #[Url]
     public string $search = '';
@@ -179,7 +190,7 @@ class IssueControl extends Component
         $models = [];
 
         foreach ($orders as $order) {
-            ['decision' => $decision, 'issues' => $issues] = $service->check($order);
+            ['decision' => $decision, 'issues' => $issues] = $service->check($order, null, null, $this->batchPreference());
 
             if ($issues === []) {
                 $ready->push($order);
@@ -424,8 +435,12 @@ class IssueControl extends Component
         $to = $this->parseDate($this->dateTo)?->endOfDay();
         $search = trim($this->search);
 
+        // "Pedido cancelado com nota ativa": cancelamento automático da nota que não saiu
+        // (prazo da SEFAZ vencido, rejeição). Os demais filtros olham só pedidos pagos.
+        $statuses = $this->situationFilter === 'cancelled_order' ? ['cancelled', 'refunded'] : Order::FISCAL_ISSUABLE_STATUSES;
+
         return Order::query()
-            ->whereIn('status', Order::FISCAL_ISSUABLE_STATUSES)
+            ->whereIn('status', $statuses)
             ->when($this->lockedBranchId, fn (Builder $q) => $q->where('branch_id', $this->lockedBranchId))
             ->when(! $this->lockedBranchId && $this->branchFilter !== '', fn (Builder $q) => $q->where('branch_id', (int) $this->branchFilter))
             ->when($from, fn (Builder $q) => $q->where('created_at', '>=', $from))
@@ -433,6 +448,7 @@ class IssueControl extends Component
             ->when($this->channelFilter !== '', fn (Builder $q) => $this->applyChannelFilter($q))
             ->when($this->paymentFilter !== '', fn (Builder $q) => $this->applyPaymentFilter($q))
             ->when($this->situationFilter !== '' && $this->situationFilter !== 'all', fn (Builder $q) => $this->applySituationFilter($q))
+            ->when($this->modelFilter !== '', fn (Builder $q) => $this->applyModelFilter($q))
             ->when($search !== '', function (Builder $q) use ($search) {
                 // Documento pode ter letras (CNPJ alfanumérico): busca pelo valor normalizado.
                 $digits = \App\Services\Fiscal\FiscalRecipient::normalizeDocument($search);
@@ -446,6 +462,21 @@ class IssueControl extends Component
                     }
                 });
             });
+    }
+
+    /** 'auto' usa a preferência do próprio pedido (usePreference); 'nfce'/'nfe' forçam o lote. */
+    private function batchPreference(): ?string
+    {
+        return in_array($this->batchModel, ['nfce', 'nfe'], true) ? $this->batchModel : null;
+    }
+
+    private function applyModelFilter(Builder $query): void
+    {
+        match ($this->modelFilter) {
+            'nfce' => $query->whereHas('latestFiscalNote', fn (Builder $n) => $n->where('model', '65')),
+            'nfe' => $query->whereHas('latestFiscalNote', fn (Builder $n) => $n->where('model', '55')),
+            default => null,
+        };
     }
 
     private function applyChannelFilter(Builder $query): void
@@ -485,6 +516,7 @@ class IssueControl extends Component
             'failed' => $query->where(fn (Builder $q) => $q->where($withLatest(['error', 'rejected']))
                 ->orWhere(fn (Builder $q) => $q->whereDoesntHave('fiscalNotes')->whereNotNull('fiscal_error'))),
             'pending', 'authorized', 'cancelled' => $query->where($withLatest([$this->situationFilter])),
+            'cancelled_order' => $query->whereHas('fiscalNotes', fn (Builder $n) => $n->whereIn('status', ['pending', 'authorized'])),
             default => null,
         };
     }

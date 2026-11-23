@@ -31,6 +31,7 @@ class Product extends Model
         'available_in_ifood',
         'available_in_99food',
         'available_in_keeta',
+        'keeta_availability',
         'is_variant',
         'sort_order',
         'fiscal_data',
@@ -46,6 +47,7 @@ class Product extends Model
         'available_in_ifood' => 'boolean',
         'available_in_99food' => 'boolean',
         'available_in_keeta' => 'boolean',
+        'keeta_availability' => 'array',
         'is_variant' => 'boolean',
         'fiscal_data' => 'array',
     ];

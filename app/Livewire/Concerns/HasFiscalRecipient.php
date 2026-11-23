@@ -2,10 +2,11 @@
 
 namespace App\Livewire\Concerns;
 
-use App\Contracts\CnpjLookupInterface;
 use App\Models\Customer;
 use App\Models\Order;
+use App\Services\Fiscal\FiscalPostalCodeLookup;
 use App\Services\Fiscal\FiscalRecipient;
+use App\Services\Fiscal\FiscalRecipientAutofill;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Locked;
@@ -80,43 +81,66 @@ trait HasFiscalRecipient
         $this->fiscalRecipientNotice = null;
         $this->rememberFiscalRecipient = false;
         $this->showFiscalRecipient = true;
+        $this->autofillFiscalRecipient();
+    }
+
+    /** Modelo em conferência no pedido; o chat apenas cadastra os dados, sem emitir. */
+    private function fiscalRecipientValidationModel(): ?string
+    {
+        if (! isset($this->order)) {
+            return null;
+        }
+
+        $order = clone $this->order;
+        $order->fiscal_recipient = $this->fiscalRecipientDraft;
+
+        return app(\App\Services\Fiscal\FiscalEmissionPolicy::class)->forOrder(
+            $order, preference: $this->fiscalDocumentChoice ?: null, usePreference: false,
+        )->model;
+    }
+
+    /** Trocar o documento no formulário não pode transferir dados pessoais de outro comprador. */
+    public function updatingFiscalRecipientDraft(mixed $value, ?string $key = null): void
+    {
+        if ($key === 'document' && FiscalRecipient::normalizeDocument((string) $value)
+            !== FiscalRecipient::normalizeDocument($this->fiscalRecipientDraft['document'] ?? '')) {
+            $this->fiscalRecipientDraft = [];
+        }
     }
 
     /** Ao digitar um CNPJ válido no formulário, preenche razão social e endereço pela consulta pública. */
     public function updatedFiscalRecipientDraft(mixed $value, ?string $key = null): void
     {
-        if ($key !== 'document') {
-            return;
-        }
-        $digits = FiscalRecipient::normalizeDocument((string) $value);
-        if (FiscalRecipient::documentType($digits) !== FiscalRecipient::TYPE_CNPJ || ! FiscalRecipient::isValidDocument($digits)) {
-            $this->fiscalRecipientNotice = null;
+        if ($key === 'zip') {
+            $postalCode = preg_replace('/\D/', '', (string) $value);
+            if (strlen($postalCode) === 8) {
+                $address = app(FiscalPostalCodeLookup::class)->find($postalCode);
+                $this->fiscalRecipientNotice = $address === null ? 'CEP não encontrado ou consulta indisponível. Preencha o endereço manualmente.' : null;
+                $this->fiscalRecipientDraft = array_replace($this->fiscalRecipientDraft, $address ?? []);
+            }
 
             return;
         }
-        $found = app(CnpjLookupInterface::class)->find($digits);
-        $this->fiscalRecipientNotice = match (true) {
-            $found === null => 'Não foi possível consultar o CNPJ. Preencha os dados da empresa.',
-            filled($found['status'] ?? null) && mb_strtoupper($found['status']) !== 'ATIVA' => "Situação do CNPJ na Receita: {$found['status']}. Confira antes de salvar.",
-            default => null,
-        };
-        if ($found === null) {
+        if ($key !== 'document') {
             return;
         }
-        $draft = $this->fiscalRecipientDraft;
-        foreach (['name', 'email', 'street', 'number', 'complement', 'neighborhood', 'city', 'state', 'zip'] as $field) {
-            $draft[$field] = $found[$field] ?? '';
-        }
-        // Sugestão: venda pra empresa costuma ser consumo final sem ICMS a recolher. Fica "a conferir"
-        // (ie_confirmed = false) até alguém salvar o formulário — a consulta pública não informa a IE.
-        $draft['ie_indicator'] = '9';
-        $draft['ie'] = '';
-        $draft['ie_confirmed'] = false;
-        $this->fiscalRecipientDraft = $draft;
+        $this->autofillFiscalRecipient();
+    }
+
+    private function autofillFiscalRecipient(): void
+    {
+        $companyId = isset($this->order) ? $this->order->company_id : $this->companyId;
+        $result = app(FiscalRecipientAutofill::class)->forDocument(
+            $companyId, $this->fiscalRecipientDraft['document'] ?? '', $this->fiscalCustomer(),
+            $this->fiscalRecipientDraft, reuseStoreData: isset($this->order),
+        );
+        $this->fiscalRecipientDraft = FiscalRecipient::draft($result['recipient']);
+        $this->fiscalRecipientNotice = $result['notice'];
     }
 
     public function saveFiscalRecipient(): void
     {
+        $this->resetValidation('fiscalRecipientDraft.*');
         $customer = $this->fiscalCustomer();
         abort_unless($customer || isset($this->order), 422);
         if (isset($this->order)) {
@@ -124,7 +148,7 @@ trait HasFiscalRecipient
         }
         try {
             // Salvar o formulário é a conferência da situação da IE (reaproveitada nas próximas compras).
-            $recipient = FiscalRecipient::validate([...$this->fiscalRecipientDraft, 'ie_confirmed' => true]);
+            $recipient = FiscalRecipient::validate([...$this->fiscalRecipientDraft, 'ie_confirmed' => true], $this->fiscalRecipientValidationModel());
         } catch (ValidationException $e) {
             throw ValidationException::withMessages(collect($e->errors())->mapWithKeys(fn ($messages, $field) => ['fiscalRecipientDraft.'.$field => $messages])->all());
         }
