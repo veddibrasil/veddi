@@ -1,7 +1,10 @@
 <div class="space-y-6">
 
     {{-- ══════════════ CHECKLIST DE CONFIGURAÇÃO INICIAL ══════════════ --}}
-    <livewire:admin.setup-checklist />
+    {{-- Passos levam a Configurações, Filiais, Categorias e Produtos: só para quem abre Configurações (administrador). --}}
+    @if($canSettings)
+        <livewire:admin.setup-checklist />
+    @endif
 
     <x-admin.sales-suggestions />
 

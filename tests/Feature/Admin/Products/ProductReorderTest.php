@@ -89,7 +89,15 @@ test('updateOrder aborts for user without products.update permission', function 
     $company = reorderTestCompany('d');
     app()->instance('current.company', $company);
 
-    $viewer = User::factory()->create(); // sem vínculo com a empresa: hasPermission() nega
+    $viewer = User::factory()->create();
+    // Vê produtos (a tela abre), mas sem products.update: a ação é que precisa barrar.
+    $viewer->companies()->attach($company->id, ['role' => 'viewer']);
+    \App\Models\UserPermission::create([
+        'user_id' => $viewer->id,
+        'company_id' => $company->id,
+        'permission_id' => \App\Models\Permission::firstOrCreate(['name' => 'products.view'], ['group' => 'products', 'label' => 'Visualizar produtos'])->id,
+        'granted' => true,
+    ]);
 
     $category = ProductCategory::withoutGlobalScopes()->create([
         'company_id' => $company->id, 'name' => 'Salgados', 'active' => true, 'sort_order' => 1,
@@ -158,6 +166,14 @@ test('updateCategoryOrder aborts for user without products.update permission', f
     app()->instance('current.company', $company);
 
     $viewer = User::factory()->create();
+    // Vê produtos (a tela abre), mas sem products.update: a ação é que precisa barrar.
+    $viewer->companies()->attach($company->id, ['role' => 'viewer']);
+    \App\Models\UserPermission::create([
+        'user_id' => $viewer->id,
+        'company_id' => $company->id,
+        'permission_id' => \App\Models\Permission::firstOrCreate(['name' => 'products.view'], ['group' => 'products', 'label' => 'Visualizar produtos'])->id,
+        'granted' => true,
+    ]);
 
     $category = ProductCategory::withoutGlobalScopes()->create([
         'company_id' => $company->id, 'name' => 'Salgados', 'active' => true, 'sort_order' => 1,

@@ -456,10 +456,18 @@ test('usuário sem permissão orders.update não pode atualizar status do pedido
 
     $viewer = User::factory()->create();
     $viewer->companies()->attach($company->id, ['role' => 'viewer']);
+    // Vê o pedido (a tela abre), mas sem orders.update: a ação é que precisa barrar.
+    \App\Models\UserPermission::create([
+        'user_id' => $viewer->id,
+        'company_id' => $company->id,
+        'permission_id' => \App\Models\Permission::where('name', 'orders.view')->value('id'),
+        'granted' => true,
+    ]);
 
     $this->actingAs($viewer);
 
-    expect($viewer->hasPermission('orders.update', $company))->toBeFalse();
+    expect($viewer->hasPermission('orders.update', $company))->toBeFalse()
+        ->and($viewer->hasPermission('orders.view', $company))->toBeTrue();
 
     Livewire::test(Show::class, ['order' => $order])
         ->call('updateStatus', 'preparing')

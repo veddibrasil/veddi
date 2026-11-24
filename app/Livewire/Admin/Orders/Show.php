@@ -229,6 +229,7 @@ class Show extends Component
             $company = app('current.company');
             // A lista já esconde pedidos de outras filiais; aqui fecha o acesso direto pela URL.
             abort_unless($user->canAccessBranch($company, $this->order->branch_id), 404);
+            abort_unless($user->hasPermission('orders.view', $company), 403);
             $this->canUpdate = $user->hasPermission('orders.update', $company);
             // fiscal.issue é concedida por papel (company_admin ganha por padrão), mas
             // isso não significa que a empresa contratou o módulo fiscal em Faturamento —

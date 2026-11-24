@@ -75,6 +75,8 @@ class Index extends Component
             $this->canAdjust = $this->canToggle = true;
         } elseif (app()->bound('current.company')) {
             $company = app('current.company');
+            // Sem stock.view a tela some do menu; sem isto ainda abria pela URL.
+            abort_unless($user->hasPermission('stock.view', $company), 403);
             $this->canAdjust = $user->hasPermission('stock.adjust', $company);
             $this->canToggle = $user->hasPermission('stock.toggle', $company);
         }

@@ -50,13 +50,15 @@ class BranchMenuCopier
             ->get([
                 'branch_product.product_id',
                 'branch_product.available',
+                'branch_product.paused_at',
                 'branch_product.track_stock',
                 'branch_product.min_quantity',
             ])
             ->map(fn ($row) => [
                 'branch_id' => $target->id,
                 'product_id' => $row->product_id,
-                'available' => $row->track_stock ? false : (bool) $row->available,
+                // Pausa é da operação da filial de origem (acabou lá): a nova começa vendendo.
+                'available' => $row->track_stock ? false : ((bool) $row->available || $row->paused_at !== null),
                 'track_stock' => (bool) $row->track_stock,
                 'min_quantity' => (int) $row->min_quantity,
                 'quantity' => 0,

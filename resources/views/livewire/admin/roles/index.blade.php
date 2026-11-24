@@ -15,6 +15,12 @@
         </div>
     @endif
 
+    @if(session('error'))
+        <div class="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg dark:bg-red-900/20 dark:border-red-800 dark:text-red-400">
+            {{ session('error') }}
+        </div>
+    @endif
+
     {{-- Tipos de sistema --}}
     <div class="bg-white border rounded-xl shadow-sm dark:bg-zinc-800 dark:border-zinc-700">
         <div class="px-6 py-4 border-b dark:border-zinc-700">
@@ -57,21 +63,30 @@
         </div>
 
         <div>
-            <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3">Permissões</label>
+            <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Permissões</label>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400 mb-3">Cada permissão marcada libera a tela correspondente no menu. Ao salvar, quem já tem este tipo recebe a mudança na hora.</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-y-4 gap-x-8">
                 @foreach($permissions as $group => $groupPermissions)
                     <div class="space-y-1.5">
-                        <p class="text-xs font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">{{ ucfirst($group) }}</p>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">{{ $groupLabels[$group] ?? ucfirst($group) }}</p>
                         @foreach($groupPermissions as $perm)
-                            <label class="flex items-center gap-2 text-sm cursor-pointer text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100">
-                                <input
-                                    type="checkbox"
-                                    wire:model="selectedPermissions"
-                                    value="{{ $perm->name }}"
-                                    class="rounded border-neutral-300 text-amber-500 focus:ring-amber-400 dark:border-zinc-600 dark:bg-zinc-700"
-                                />
-                                {{ $perm->label }}
-                            </label>
+                            @if(in_array($perm->name, $adminOnlyPermissions))
+                                <label class="flex items-center gap-2 text-sm text-neutral-400 dark:text-neutral-500 cursor-not-allowed" data-test="admin-only-permission">
+                                    <input type="checkbox" disabled class="rounded border-neutral-200 dark:border-zinc-700 dark:bg-zinc-800" />
+                                    {{ $perm->label }}
+                                    <span class="text-[11px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-500 dark:bg-zinc-700 dark:text-neutral-400">Somente administrador</span>
+                                </label>
+                            @else
+                                <label class="flex items-center gap-2 text-sm cursor-pointer text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100">
+                                    <input
+                                        type="checkbox"
+                                        wire:model="selectedPermissions"
+                                        value="{{ $perm->name }}"
+                                        class="rounded border-neutral-300 text-amber-500 focus:ring-amber-400 dark:border-zinc-600 dark:bg-zinc-700"
+                                    />
+                                    {{ $perm->label }}
+                                </label>
+                            @endif
                         @endforeach
                     </div>
                 @endforeach
@@ -108,6 +123,10 @@
                             <div>
                                 <span class="font-medium text-neutral-800 dark:text-neutral-200">{{ $role->name }}</span>
                                 <span class="ml-2 text-xs text-neutral-400 font-mono">{{ $role->slug }}</span>
+                                @php($total = (int) ($memberCounts[$role->slug] ?? 0))
+                                <span class="ml-2 text-xs text-neutral-500 dark:text-neutral-400" data-test="role-member-count">
+                                    {{ $total }} {{ $total === 1 ? 'usuário' : 'usuários' }}
+                                </span>
                             </div>
                             <div class="flex items-center gap-1">
                                 {{-- Atribuir usuário --}}
@@ -147,8 +166,8 @@
                         @if($role->permissions->isNotEmpty())
                             <div class="flex flex-wrap gap-1.5">
                                 @foreach($role->permissions as $perm)
-                                    <span class="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 font-mono">
-                                        {{ $perm->name }}
+                                    <span class="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                                        {{ $perm->label }}
                                     </span>
                                 @endforeach
                             </div>
@@ -192,7 +211,7 @@
                 </div>
                 <div>
                     <flux:heading size="lg">Remover tipo?</flux:heading>
-                    <flux:subheading>Esta ação não pode ser desfeita. Usuários com este tipo perderão o acesso.</flux:subheading>
+                    <flux:subheading>Esta ação não pode ser desfeita. Só é possível remover um tipo sem usuários.</flux:subheading>
                 </div>
             </div>
             <div class="flex justify-end gap-3">
