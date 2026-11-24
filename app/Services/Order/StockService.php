@@ -89,9 +89,9 @@ class StockService
                 ->where('product_id', $item->product_id)
                 ->update([
                     'quantity' => $newQty,
-                    'available' => $newQty > 0,
+                    'available' => $available = $this->sellable($pivot, $newQty > 0),
                 ]);
-            $this->syncMarketplaceAvailability($order->branch_id, $item->product_id, (bool) $pivot->available, $newQty > 0);
+            $this->syncMarketplaceAvailability($order->branch_id, $item->product_id, (bool) $pivot->available, $available);
 
             StockMovement::withoutGlobalScopes()->create([
                 'company_id' => $order->company_id,
@@ -152,9 +152,9 @@ class StockService
                     ->where('product_id', $movement->product_id)
                     ->update([
                         'quantity' => $newQty,
-                        'available' => true,
+                        'available' => $available = $this->sellable($pivot, true),
                     ]);
-                $this->syncMarketplaceAvailability($movement->branch_id, $movement->product_id, (bool) $pivot->available, true);
+                $this->syncMarketplaceAvailability($movement->branch_id, $movement->product_id, (bool) $pivot->available, $available);
 
                 StockMovement::withoutGlobalScopes()->create([
                     'company_id' => $order->company_id,
@@ -209,9 +209,9 @@ class StockService
             ->where('product_id', $productId)
             ->update([
                 'quantity' => $newQty,
-                'available' => $newQty > 0,
+                'available' => $available = $this->sellable($pivot, $newQty > 0),
             ]);
-        $this->syncMarketplaceAvailability($order->branch_id, $productId, (bool) $pivot->available, $newQty > 0);
+        $this->syncMarketplaceAvailability($order->branch_id, $productId, (bool) $pivot->available, $available);
 
         StockMovement::withoutGlobalScopes()->create([
             'company_id' => $order->company_id,
@@ -256,9 +256,9 @@ class StockService
             ->where('product_id', $productId)
             ->update([
                 'quantity' => $newQty,
-                'available' => true,
+                'available' => $available = $this->sellable($pivot, true),
             ]);
-        $this->syncMarketplaceAvailability($order->branch_id, $productId, (bool) $pivot->available, true);
+        $this->syncMarketplaceAvailability($order->branch_id, $productId, (bool) $pivot->available, $available);
 
         StockMovement::withoutGlobalScopes()->create([
             'company_id' => $order->company_id,
@@ -301,9 +301,9 @@ class StockService
                 ->where('product_id', $product->id)
                 ->update([
                     'quantity' => $newQty,
-                    'available' => $newQty > 0,
+                    'available' => $available = $this->sellable($pivot, $newQty > 0),
                 ]);
-            $this->syncMarketplaceAvailability($branch->id, $product->id, (bool) ($pivot?->available ?? false), $newQty > 0);
+            $this->syncMarketplaceAvailability($branch->id, $product->id, (bool) ($pivot?->available ?? false), $available);
 
             $type = $quantity >= 0 ? StockMovement::TYPE_MANUAL_ADD : StockMovement::TYPE_MANUAL_REMOVE;
 
@@ -362,9 +362,9 @@ class StockService
                 ->where('product_id', $product->id)
                 ->update([
                     'quantity' => $safeQty,
-                    'available' => $safeQty > 0,
+                    'available' => $available = $this->sellable($pivot, $safeQty > 0),
                 ]);
-            $this->syncMarketplaceAvailability($branch->id, $product->id, (bool) ($pivot?->available ?? false), $safeQty > 0);
+            $this->syncMarketplaceAvailability($branch->id, $product->id, (bool) ($pivot?->available ?? false), $available);
 
             $movement = StockMovement::withoutGlobalScopes()->create([
                 'company_id' => $branch->company_id,
@@ -418,6 +418,82 @@ class StockService
         if ($pivot && (bool) $pivot->available && (int) $pivot->quantity <= 0) {
             $this->syncMarketplaceAvailability($branch->id, $product->id, ! $pivot->track_stock, ! $track);
         }
+    }
+
+    /**
+     * Pausa manual da filial (acabou o ingrediente, equipamento parado): tira o item de venda
+     * no chat, no PDV e nos marketplaces, que leem `branch_product.available`. Caixa, cozinha e
+     * bar pausam ao mesmo tempo sem se atropelar: a linha fica travada e repetir a pausa não
+     * muda nada.
+     *
+     * @return bool false quando o produto não está nesta filial
+     */
+    public function pause(Branch $branch, Product $product, User $user): bool
+    {
+        return $this->setPaused($branch, $product, $user, true);
+    }
+
+    /** Devolve o item à venda; com estoque controlado e zerado ele segue indisponível. */
+    public function resume(Branch $branch, Product $product, User $user): bool
+    {
+        return $this->setPaused($branch, $product, $user, false);
+    }
+
+    private function setPaused(Branch $branch, Product $product, User $user, bool $pause): bool
+    {
+        $changed = DB::transaction(function () use ($branch, $product, $user, $pause) {
+            $pivot = DB::table('branch_product')
+                ->where('branch_id', $branch->id)
+                ->where('product_id', $product->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $pivot) {
+                return null;
+            }
+
+            // Já está como pedido (outra pessoa pausou/retomou antes): não sobrescreve quem pausou.
+            if ($pause === ($pivot->paused_at !== null)) {
+                return false;
+            }
+
+            $available = $pause ? false : (! $pivot->track_stock || (int) $pivot->quantity > 0);
+
+            DB::table('branch_product')
+                ->where('branch_id', $branch->id)
+                ->where('product_id', $product->id)
+                ->update([
+                    'paused_at' => $pause ? now() : null,
+                    'paused_by' => $pause ? $user->id : null,
+                    'available' => $available,
+                ]);
+            $this->syncMarketplaceAvailability($branch->id, $product->id, (bool) $pivot->available, $available);
+
+            return true;
+        });
+
+        if ($changed === null) {
+            return false;
+        }
+
+        if ($changed) {
+            $this->forgetMenu($branch->id, $branch->company_id);
+
+            Log::channel('audit')->info($pause ? 'Produto pausado na filial' : 'Produto retomado na filial', [
+                'user_id' => $user->id,
+                'company_id' => $branch->company_id,
+                'branch_id' => $branch->id,
+                'product_id' => $product->id,
+            ]);
+        }
+
+        return true;
+    }
+
+    /** Estoque só devolve o item à venda se ninguém o pausou na filial. */
+    private function sellable(?object $pivot, bool $hasStock): bool
+    {
+        return $hasStock && ($pivot?->paused_at ?? null) === null;
     }
 
     /**

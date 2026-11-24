@@ -122,6 +122,13 @@
                                 </flux:sidebar.item>
                             </flux:sidebar.group>
                         @endif
+                        @if($can('products.pause'))
+                            <flux:sidebar.group heading="Cardápio" class="grid">
+                                <flux:sidebar.item icon="pause-circle" :href="route('admin.products.pauses')" :current="request()->routeIs('admin.products.pauses')" wire:navigate>
+                                    Pausar produtos
+                                </flux:sidebar.item>
+                            </flux:sidebar.group>
+                        @endif
                     @else
 
                     <flux:sidebar.group :heading="__('Plataforma')" class="grid">
@@ -177,7 +184,8 @@
                         $showProducts   = $can('products.view');
                         $showStock      = $can('stock.view');
                         $showCoupons    = $can('coupons.view');
-                        $showCardapio   = $showCategories || $showProducts || $showStock || $showCoupons;
+                        $showPauses     = $can('products.pause');
+                        $showCardapio   = $showCategories || $showProducts || $showStock || $showCoupons || $showPauses;
                     @endphp
 
                     {{-- Filial é a loja (endereço, horários, entrega, impressoras), não item de cardápio: grupo próprio, antes do cardápio. --}}
@@ -197,8 +205,13 @@
                                 </flux:sidebar.item>
                             @endif
                             @if($showProducts)
-                                <flux:sidebar.item icon="shopping-bag" :href="route('admin.products.index')" :current="request()->routeIs('admin.products.*')" wire:navigate>
+                                <flux:sidebar.item icon="shopping-bag" :href="route('admin.products.index')" :current="request()->routeIs('admin.products.*') && ! request()->routeIs('admin.products.pauses')" wire:navigate>
                                     Produtos
+                                </flux:sidebar.item>
+                            @endif
+                            @if($showPauses)
+                                <flux:sidebar.item icon="pause-circle" :href="route('admin.products.pauses')" :current="request()->routeIs('admin.products.pauses')" wire:navigate>
+                                    Pausar produtos
                                 </flux:sidebar.item>
                             @endif
                             @if($showStock)

@@ -21,6 +21,7 @@ class PermissionSeeder extends Seeder
             ['name' => 'products.create', 'group' => 'products', 'label' => 'Criar produto'],
             ['name' => 'products.update', 'group' => 'products', 'label' => 'Editar produto'],
             ['name' => 'products.delete', 'group' => 'products', 'label' => 'Remover produto'],
+            ['name' => 'products.pause',  'group' => 'products', 'label' => 'Pausar/retomar produto na filial'],
 
             // Categorias
             ['name' => 'categories.view',   'group' => 'categories', 'label' => 'Visualizar categorias'],
@@ -72,7 +73,7 @@ class PermissionSeeder extends Seeder
 
         $companyAdminPermissions = [
             'orders.view', 'orders.update', 'orders.report',
-            'products.view', 'products.create', 'products.update', 'products.delete',
+            'products.view', 'products.create', 'products.update', 'products.delete', 'products.pause',
             'categories.view', 'categories.create', 'categories.update', 'categories.delete',
             'branches.view', 'branches.create', 'branches.update', 'branches.delete',
             'company.settings',
@@ -86,7 +87,7 @@ class PermissionSeeder extends Seeder
 
         $branchManagerPermissions = [
             'orders.view', 'orders.update', 'orders.report',
-            'products.view', 'products.create', 'products.update', 'products.delete',
+            'products.view', 'products.create', 'products.update', 'products.delete', 'products.pause',
             'categories.view', 'categories.create', 'categories.update', 'categories.delete',
             'branches.view',
             'stock.view', 'stock.adjust', 'stock.toggle',
@@ -113,21 +114,21 @@ class PermissionSeeder extends Seeder
                 'slug' => 'cozinha',
                 'company_id' => null,
                 'is_system' => true,
-                'permissions' => ['orders.view', 'orders.update', 'pdv.sell'],
+                'permissions' => ['orders.view', 'orders.update', 'pdv.sell', 'products.pause'],
             ],
             [
                 'name' => 'Caixa',
                 'slug' => 'caixa',
                 'company_id' => null,
                 'is_system' => true,
-                'permissions' => ['orders.view', 'orders.update', 'pdv.operate'],
+                'permissions' => ['orders.view', 'orders.update', 'pdv.operate', 'products.pause'],
             ],
             [
                 'name' => 'Bar',
                 'slug' => 'bar',
                 'company_id' => null,
                 'is_system' => true,
-                'permissions' => ['orders.view', 'orders.update'],
+                'permissions' => ['orders.view', 'orders.update', 'products.pause'],
             ],
             [
                 'name' => 'Entrega',
