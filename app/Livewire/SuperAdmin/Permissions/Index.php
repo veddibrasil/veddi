@@ -5,6 +5,7 @@ namespace App\Livewire\SuperAdmin\Permissions;
 use App\Livewire\SuperAdmin\Concerns\RequiresSuperAdmin;
 use App\Models\Permission;
 use App\Models\Role;
+use App\Services\Company\UserPermissionService;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
@@ -33,14 +34,16 @@ class Index extends Component
     {
         $role = Role::where('slug', $roleSlug)->whereNull('company_id')->firstOrFail();
         $permission = Permission::where('name', $permissionName)->firstOrFail();
+        $current = $role->permissions()->pluck('permissions.id')->all();
 
-        if ($role->permissions()->where('name', $permissionName)->exists()) {
-            $role->permissions()->detach($permission->id);
+        // Via serviço: quem já tem o papel (em todas as empresas) recebe a mudança na hora.
+        if (in_array($permission->id, $current)) {
+            UserPermissionService::syncRolePermissions($role, array_values(array_diff($current, [$permission->id])));
             $this->rolePermissions[$roleSlug] = array_values(
                 array_filter($this->rolePermissions[$roleSlug] ?? [], fn ($p) => $p !== $permissionName)
             );
         } else {
-            $role->permissions()->attach($permission->id);
+            UserPermissionService::syncRolePermissions($role, [...$current, $permission->id]);
             $this->rolePermissions[$roleSlug][] = $permissionName;
         }
 

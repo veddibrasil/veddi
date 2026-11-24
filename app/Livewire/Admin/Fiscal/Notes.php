@@ -148,7 +148,9 @@ class Notes extends Component
         $this->canIssue = $user->hasPermission('fiscal.issue', $company);
         $this->lockedBranchId = $user->lockedBranchId($company);
 
-        abort_unless($this->canView, 403);
+        // Quem só emite/cancela também precisa da lista para cancelar ou corrigir: o menu já mostra
+        // "Notas Fiscais" com qualquer uma das duas (mesma regra de FiscalDocumentController).
+        abort_unless($this->canView || $this->canIssue, 403);
     }
 
     public function updatedStatusFilter(): void
@@ -308,6 +310,7 @@ class Notes extends Component
                 ->when($this->lockedBranchId, fn ($query, $id) => $query->where('branch_id', $id))->with('branch')->get(),
             'errorNote' => $this->errorNoteId ? $this->notes()->find($this->errorNoteId) : null,
             'reissueNote' => $this->showReissueModal && $this->reissueNoteId ? $this->findReissuableNote($this->reissueNoteId) : null,
+            'canOpenOrders' => auth()->user()->isSuperAdmin() || auth()->user()->hasPermission('orders.view', app('current.company')),
         ])->layout('layouts.app', ['title' => 'Notas Fiscais']);
     }
 }

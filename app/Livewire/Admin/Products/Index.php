@@ -53,6 +53,8 @@ class Index extends Component
             $this->canCreate = $this->canUpdate = $this->canDelete = true;
         } elseif (app()->bound('current.company')) {
             $company = app('current.company');
+            // Sem products.view a tela some do menu; sem isto ainda abria pela URL.
+            $this->authorize('viewAny', Product::class);
             $this->canCreate = $user->hasPermission('products.create', $company);
             $this->canUpdate = $user->hasPermission('products.update', $company);
             $this->canDelete = $user->hasPermission('products.delete', $company);

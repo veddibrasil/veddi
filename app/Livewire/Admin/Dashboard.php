@@ -47,7 +47,8 @@ class Dashboard extends Component
         $canViewOrders = $can('orders.view');
         $canViewBranches = $can('branches.view') && ! ($company && $user?->isBranchScoped($company));
         $canViewProducts = $can('products.view');
-        $canSettings = $can('company.settings');
+        // A rota de Configurações é só de company_admin: outro papel com company.settings levaria 403.
+        $canSettings = $can('company.settings') && ($isSuperAdmin || ($company && $user?->isCompanyAdmin($company)));
 
         $todayOrders = collect();
         $todayRevenue = 0;

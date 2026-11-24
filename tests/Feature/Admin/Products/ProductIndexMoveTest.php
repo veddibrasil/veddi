@@ -153,9 +153,17 @@ test('produto com variações não pode ter o 1º grupo pulável ou com mínimo 
 });
 
 test('moveProduct e moveCategory exigem permissão products.update', function () {
-    ['category' => $category, 'products' => [$a]] = moveTestSetup('j');
+    ['company' => $company, 'category' => $category, 'products' => [$a]] = moveTestSetup('j');
 
-    $viewer = User::factory()->create(); // sem vínculo com a empresa: hasPermission() nega
+    $viewer = User::factory()->create();
+    // Vê produtos (a tela abre), mas sem products.update: a ação é que precisa barrar.
+    $viewer->companies()->attach($company->id, ['role' => 'viewer']);
+    \App\Models\UserPermission::create([
+        'user_id' => $viewer->id,
+        'company_id' => $company->id,
+        'permission_id' => \App\Models\Permission::firstOrCreate(['name' => 'products.view'], ['group' => 'products', 'label' => 'Visualizar produtos'])->id,
+        'granted' => true,
+    ]);
 
     // Uma resposta 403 encerra o componente de teste: cada ação ganha o seu.
     Livewire::actingAs($viewer)->test(Index::class)->call('moveProduct', $a->id, 'down')->assertForbidden();

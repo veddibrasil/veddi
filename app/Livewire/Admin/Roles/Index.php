@@ -7,6 +7,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Models\UserPermission;
 use App\Services\Company\UserPermissionService;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
@@ -55,6 +56,12 @@ class Index extends Component
         $company = app('current.company');
         $slug = \Illuminate\Support\Str::slug($this->name, '_');
 
+        if ($slug === '') {
+            $this->addError('name', 'Use letras ou números no nome do tipo.');
+
+            return;
+        }
+
         if ($this->editingId) {
             $role = Role::where('id', $this->editingId)
                 ->where('company_id', $company->id)
@@ -79,11 +86,18 @@ class Index extends Component
             ]);
         }
 
-        $permissionIds = Permission::whereIn('name', $this->selectedPermissions)->pluck('id');
-        $role->permissions()->sync($permissionIds);
+        // A tela desabilita, mas a requisição pode trazer: permissão de tela só do admin não entra.
+        $permissionIds = Permission::whereIn('name', $this->selectedPermissions)
+            ->whereNotIn('name', Role::ADMIN_ONLY_PERMISSIONS)
+            ->pluck('id')
+            ->all();
+
+        $members = UserPermissionService::syncRolePermissions($role, $permissionIds);
 
         $this->reset(['name', 'selectedPermissions', 'editingId']);
-        session()->flash('status', 'Tipo de usuário salvo com sucesso.');
+        session()->flash('status', $members > 0
+            ? "Tipo de usuário salvo. Acesso atualizado para {$members} ".($members === 1 ? 'usuário' : 'usuários').' com este tipo.'
+            : 'Tipo de usuário salvo com sucesso.');
     }
 
     public function edit(int $id): void
@@ -95,7 +109,10 @@ class Index extends Component
 
         $this->editingId = $role->id;
         $this->name = $role->name;
-        $this->selectedPermissions = $role->permissions()->pluck('name')->toArray();
+        $this->selectedPermissions = $role->permissions()
+            ->whereNotIn('name', Role::ADMIN_ONLY_PERMISSIONS)
+            ->pluck('name')
+            ->toArray();
     }
 
     public function cancelEdit(): void
@@ -123,9 +140,20 @@ class Index extends Component
 
         $company = app('current.company');
         $role = Role::where('id', $this->deletingId)->where('company_id', $company->id)->firstOrFail();
+        $this->deletingId = null;
+
+        // Quem está no tipo guarda cópia das permissões (user_permissions) e seguiria usando o
+        // PDV; e um tipo novo com o mesmo nome devolveria o acesso a eles sem ninguém ver.
+        $members = $role->memberships()->count();
+        if ($members > 0) {
+            session()->flash('error', "Não é possível remover: {$members} ".($members === 1 ? 'usuário usa' : 'usuários usam')
+                .' este tipo. Troque o tipo deles em Usuários antes de remover.');
+
+            return;
+        }
+
         $role->delete();
 
-        $this->deletingId = null;
         session()->flash('status', 'Tipo de usuário removido.');
     }
 
@@ -193,10 +221,32 @@ class Index extends Component
         $customRoles = Role::where('company_id', $company->id)->orderBy('name')->with('permissions')->get();
         $permissions = Permission::orderBy('group')->orderBy('label')->get()->groupBy('group');
 
+        $memberCounts = DB::table('company_user')
+            ->where('company_id', $company->id)
+            ->whereIn('role', $customRoles->pluck('slug'))
+            ->selectRaw('role, count(*) as total')
+            ->groupBy('role')
+            ->pluck('total', 'role');
+
         return view('livewire.admin.roles.index', [
             'systemRoles' => $systemRoles,
             'customRoles' => $customRoles,
             'permissions' => $permissions,
+            'adminOnlyPermissions' => Role::ADMIN_ONLY_PERMISSIONS,
+            'groupLabels' => [
+                'branches' => 'Filiais',
+                'categories' => 'Categorias',
+                'company' => 'Empresa',
+                'coupons' => 'Cupons',
+                'fiscal' => 'Fiscal',
+                'orders' => 'Pedidos',
+                'pdv' => 'PDV',
+                'products' => 'Produtos',
+                'roles' => 'Tipos de usuário',
+                'stock' => 'Estoque',
+                'users' => 'Usuários',
+            ],
+            'memberCounts' => $memberCounts,
         ]);
     }
 }

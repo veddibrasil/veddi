@@ -8,17 +8,22 @@
         $company = app()->bound('current.company') ? app('current.company') : null;
         $user = auth()->user();
         $can = fn(string $perm) => $company && $user?->hasPermission($perm, $company);
+        $roleSlug = $company ? $user?->roleForCompany($company) : null;
+        // Tipo criado pela empresa: o menu segue só as permissões marcadas nele.
+        $isCustomRole = $roleSlug && \App\Models\Role::where('company_id', $company->id)->where('slug', $roleSlug)->exists();
         // Garçom só opera mesas/comandas — sem acesso ao dashboard nem ao resto do painel.
-        $isWaiterOnly = $can('pdv.waiter_operate') && !$can('pdv.operate');
+        $isWaiterOnly = !$isCustomRole && $can('pdv.waiter_operate') && !$can('pdv.operate');
+        $canWaiterPdv = $can('pdv.waiter_operate') && $company?->waiter_module_enabled;
         // Entregador só opera a fila de entregas — sem acesso ao dashboard nem ao resto do painel.
-        $isDeliveryOnly = $company && $user?->roleForCompany($company) === 'entrega';
+        $isDeliveryOnly = $roleSlug === 'entrega';
         // Cozinha/bar só operam a própria fila de pedidos — sem acesso ao dashboard nem ao resto do painel.
-        $isStationOnly = $company && in_array($user?->roleForCompany($company), ['cozinha', 'bar']);
+        $isStationOnly = in_array($roleSlug, ['cozinha', 'bar'], true);
         // Caixa não precisa de notificações de pedido — opera o PDV diretamente.
-        $isCashier = $company && $user?->roleForCompany($company) === 'caixa';
-        $showOrderNotifications = $orderNotifications && !$isWaiterOnly && !$isCashier && !request()->routeIs('admin.pdv*');
+        $isCashier = $roleSlug === 'caixa';
+        // Sino, toasts e alarme abrem o pedido: sem orders.view (ex.: tipo só de garçom) cada clique dava 403.
+        $showOrderNotifications = $orderNotifications && !$isWaiterOnly && !$isCashier && ($user?->isSuperAdmin() || $can('orders.view')) && !request()->routeIs('admin.pdv*');
         // Botão de suporte via WhatsApp só aparece pros papéis administrativos.
-        $isAdmin = $company && in_array($user?->roleForCompany($company), ['company_admin', 'branch_manager']);
+        $isAdmin = in_array($roleSlug, ['company_admin', 'branch_manager'], true);
     @endphp
     <body class="{{ $bodyClass }} bg-[#f8f8fb] dark:bg-[#0d1825]">
         <flux:sidebar sticky collapsible="mobile" class="veddi-sidebar border-e border-[#5c0079]">
@@ -149,7 +154,7 @@
                         </flux:sidebar.item>
                     @endif
 
-                    @if(($can('pdv.operate') || $can('pdv.sell')) && $company?->pdv_module_enabled)
+                    @if(($can('pdv.operate') || $can('pdv.sell') || $canWaiterPdv) && $company?->pdv_module_enabled)
                         <flux:sidebar.group heading="PDV" class="grid">
                                 <flux:sidebar.item icon="computer-desktop" :href="route('admin.pdv')" :current="request()->routeIs('admin.pdv') || request()->routeIs('admin.pdv.checkout') || request()->routeIs('admin.pdv.tabs')" wire:navigate>
                                     Terminal PDV
@@ -235,9 +240,12 @@
                     @endif
 
                     @php
-                        $showUsers = $can('users.view') || $can('users.manage');
-                        $showRoles = $can('roles.manage');
-                        $showSettings = $can('company.settings');
+                        // Rotas só de company_admin (Role::ADMIN_ONLY_PERMISSIONS): com a permissão por
+                        // override individual, outro papel veria o item e levaria 403 ao clicar.
+                        $isCompanyAdmin = $company && $user?->isCompanyAdmin($company);
+                        $showUsers = $isCompanyAdmin && ($can('users.view') || $can('users.manage'));
+                        $showRoles = $isCompanyAdmin && $can('roles.manage');
+                        $showSettings = $isCompanyAdmin && $can('company.settings');
                     @endphp
 
                     @if($showUsers || $showRoles)

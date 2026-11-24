@@ -137,6 +137,8 @@ class Index extends Component
             $company = app('current.company');
             $this->companyId = $company->id;
             $this->canView = $user->hasPermission('orders.view', $company);
+            // Sem orders.view a tela some do menu; sem isto a lista ainda abria pela URL.
+            abort_unless($this->canView, 403);
             $this->canUpdate = $user->hasPermission('orders.update', $company);
             $this->canManageClosing = $user->canManageClosing($company);
 

@@ -19,11 +19,17 @@
         <flux:button wire:click="openInvalidation" size="sm">Inutilizar numeração de NF-e</flux:button>
     @endif
     <p class="text-sm text-neutral-500 dark:text-neutral-400">
-        Histórico das notas emitidas. Para emitir notas de pedidos sem nota ou com erro, use o
-        <a href="{{ route('admin.fiscal.control') }}" class="text-blue-600 underline dark:text-blue-400" wire:navigate>Controle de notas</a>.
+        Histórico das notas emitidas.
+        {{-- Controle de notas e exportação exigem fiscal.view; quem só emite cairia em 403. --}}
+        @if($canView)
+            Para emitir notas de pedidos sem nota ou com erro, use o
+            <a href="{{ route('admin.fiscal.control') }}" class="text-blue-600 underline dark:text-blue-400" wire:navigate>Controle de notas</a>.
+        @endif
     </p>
     {{-- Filters --}}
-    <livewire:admin.fiscal.monthly-export />
+    @if($canView)
+        <livewire:admin.fiscal.monthly-export />
+    @endif
 
     <div class="flex flex-col sm:flex-row gap-3">
         <flux:input wire:model.live.debounce.300ms="search" placeholder="Buscar por chave, ref ou pedido..." class="sm:max-w-xs" />
@@ -72,10 +78,13 @@
                     @endphp
                     <tr class="hover:bg-neutral-50 dark:hover:bg-zinc-750 transition-colors">
                         <td class="px-4 py-3 text-sm text-neutral-700 dark:text-neutral-200">
-                            @if($note->order)
+                            @if($note->order && $canOpenOrders)
                                 <a href="{{ route('admin.orders.show', $note->order) }}" class="font-medium hover:underline" wire:navigate>
                                     {{ $note->order->order_number }} · {{ $note->model_label }}
                                 </a>
+                            @elseif($note->order)
+                                {{-- Quem só emite notas (sem orders.view) levaria 403 no pedido. --}}
+                                <span class="font-medium">{{ $note->order->order_number }} · {{ $note->model_label }}</span>
                             @else
                                 <span class="text-neutral-400">—</span>
                             @endif
