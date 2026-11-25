@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Contracts\AsaasServiceInterface;
 use App\Contracts\RefundServiceInterface;
 use App\Contracts\TransactionServiceInterface;
 use App\Contracts\WalletServiceInterface;
@@ -259,15 +260,21 @@ class ProcessAsaasWebhook implements ShouldBeUnique, ShouldQueue
                 ]);
             }
 
-            $company->update(['setup_fee_paid_at' => now()]);
+            // Apply pending plan (upgrade from free to paid via billing settings)
+            $wasUpgradeFromFree = $company->pending_plan !== null;
+
+            // No cartão a mesma cobrança gera PAYMENT_CONFIRMED e, uns 30 dias depois,
+            // PAYMENT_RECEIVED: a data da taxa é a do primeiro aviso, não a da liquidação.
+            // No upgrade do gratuito a data antiga é a da taxa zero do cadastro, então regrava.
+            if (! $company->hasSetupFeePaid() || $wasUpgradeFromFree) {
+                $company->update(['setup_fee_paid_at' => now()]);
+            }
 
             Log::channel('payments')->info('Taxa de ativação confirmada', [
                 'company_id' => $company->id,
                 'charge_id' => $paymentId,
             ]);
 
-            // Apply pending plan (upgrade from free to paid via billing settings)
-            $wasUpgradeFromFree = $company->pending_plan !== null;
             if ($wasUpgradeFromFree) {
                 $company->update([
                     'plan' => $company->pending_plan->value,
@@ -276,14 +283,16 @@ class ProcessAsaasWebhook implements ShouldBeUnique, ShouldQueue
                 $company->refresh();
             }
 
-            $companyService->activate($company);
-
             // For plans with monthly subscription, kick off subscription creation now.
             // When upgrading from free, start next month (first month already paid in setup fee charge).
             if ($company->hasMonthlySubscription() && $company->asaas_subscription_id === null) {
                 $nextDueDate = $wasUpgradeFromFree ? now()->addMonth()->toDateString() : null;
                 CreateAsaasSubscription::dispatch($company->fresh(), $nextDueDate);
             }
+
+            // Por último: se a conferência no Asaas falhar, o job tenta de novo e o que veio
+            // antes já foi feito (o job da assinatura é único por empresa).
+            $this->activateAfterPayment($company, $companyService, $paymentId);
 
             return;
         }
@@ -296,7 +305,42 @@ class ProcessAsaasWebhook implements ShouldBeUnique, ShouldQueue
             ]);
         }
 
-        $companyService->activate($company);
+        $this->activateAfterPayment($company, $companyService, $paymentId);
+    }
+
+    /**
+     * Empresa em atraso ou bloqueada só volta a ficar ativa quando o Asaas não tem mais
+     * nenhuma cobrança vencida dela. Um pagamento confirmado não diz que a fatura em aberto
+     * foi paga: pode ser a liquidação (PAYMENT_RECEIVED ~30 dias depois) de uma cobrança
+     * antiga no cartão ou de um proporcional de módulo — foi o que reativaria a empresa 5
+     * em 11/2026 com a fatura de 24/11 vencida.
+     */
+    private function activateAfterPayment(Company $company, CompanyService $companyService, ?string $paymentId): void
+    {
+        if (! $company->isOverdue() && ! $company->isBlocked()) {
+            $companyService->activate($company);
+
+            return;
+        }
+
+        try {
+            $companyService->reactivateIfNothingOverdue($company, app(AsaasServiceInterface::class), array_filter([$paymentId]));
+        } catch (\Throwable $e) {
+            // Asaas fora do ar: o job tenta de novo pelo backoff. Na última tentativa reativa
+            // como antes, para não bloquear quem pagou — e avisa para conferir.
+            if ($this->attempts() < $this->tries) {
+                throw $e;
+            }
+
+            Log::channel('discord')->warning('Asaas webhook: não foi possível conferir cobranças vencidas — empresa reativada sem conferência', [
+                'type' => 'payments',
+                'company_id' => $company->id,
+                'payment_id' => $paymentId,
+                'error' => $e->getMessage(),
+            ]);
+
+            $companyService->activate($company);
+        }
     }
 
     private function handlePaymentOverdue(Company $company, CompanyService $companyService): void

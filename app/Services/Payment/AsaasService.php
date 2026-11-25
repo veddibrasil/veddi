@@ -8,6 +8,7 @@ use App\DTOs\CreditCardDTO;
 use App\DTOs\CreditCardHolderDTO;
 use App\Enums\Plan;
 use App\Exceptions\AsaasCircuitOpenException;
+use App\Exceptions\CardPaymentDeclinedException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
@@ -228,25 +229,11 @@ class AsaasService implements AsaasServiceInterface
             $payload['creditCardToken'] = $creditCardToken;
         } else {
             if ($creditCard !== null) {
-                $payload['creditCard'] = [
-                    'holderName' => strtoupper($creditCard->holderName),
-                    'number' => preg_replace('/\D/', '', $creditCard->number),
-                    'expiryMonth' => $creditCard->expiryMonth,
-                    'expiryYear' => $creditCard->expiryYear,
-                    'ccv' => $creditCard->ccv,
-                ];
+                $payload['creditCard'] = $this->creditCardPayload($creditCard);
             }
 
             if ($holderInfo !== null) {
-                $payload['creditCardHolderInfo'] = array_filter([
-                    'name' => $holderInfo->name,
-                    'email' => $holderInfo->email,
-                    'cpfCnpj' => preg_replace('/\D/', '', $holderInfo->cpfCnpj),
-                    'postalCode' => preg_replace('/\D/', '', $holderInfo->postalCode),
-                    'addressNumber' => $holderInfo->addressNumber,
-                    'mobilePhone' => $holderInfo->mobilePhone ?? $holderInfo->phone,
-                    'phone' => $holderInfo->phone ?? $holderInfo->mobilePhone,
-                ], fn ($v) => $v !== null && $v !== '');
+                $payload['creditCardHolderInfo'] = $this->holderInfoPayload($holderInfo);
             }
         }
 
@@ -415,6 +402,114 @@ class AsaasService implements AsaasServiceInterface
         }
     }
 
+    public function getCustomerOverduePayments(string $customerId): array
+    {
+        $response = $this->request('get', 'payments', ['customer' => $customerId, 'status' => 'OVERDUE', 'limit' => 100], 10);
+
+        if ($response->failed()) {
+            Log::channel('payments')->warning('Falha ao buscar cobranças vencidas do cliente no Asaas', [
+                'customer_id' => $customerId,
+                'status' => $response->status(),
+            ]);
+            throw new RuntimeException('Asaas overdue payments error: '.$response->body(), $response->status());
+        }
+
+        return $response->json('data', []);
+    }
+
+    public function updateSubscriptionCreditCard(
+        string $subscriptionId,
+        CreditCardDTO $creditCard,
+        CreditCardHolderDTO $holderInfo,
+        string $remoteIp,
+    ): array {
+        Log::channel('payments')->info('Atualizando cartão da assinatura no Asaas', ['subscription_id' => $subscriptionId]);
+
+        $response = $this->request('post', "subscriptions/{$subscriptionId}/updateCreditCard", [
+            'creditCard' => $this->creditCardPayload($creditCard),
+            'creditCardHolderInfo' => $this->holderInfoPayload($holderInfo),
+            'remoteIp' => $remoteIp,
+        ], 30);
+
+        $this->throwIfCardRequestFailed($response, 'Erro ao atualizar cartão da assinatura no Asaas', ['subscription_id' => $subscriptionId]);
+
+        Log::channel('payments')->info('Cartão da assinatura atualizado no Asaas', ['subscription_id' => $subscriptionId]);
+
+        return $response->json() ?? [];
+    }
+
+    public function payWithCreditCard(string $paymentId, CreditCardDTO $creditCard, CreditCardHolderDTO $holderInfo): array
+    {
+        Log::channel('payments')->info('Pagando cobrança existente com cartão no Asaas', ['payment_id' => $paymentId]);
+
+        $response = $this->request('post', "payments/{$paymentId}/payWithCreditCard", [
+            'creditCard' => $this->creditCardPayload($creditCard),
+            'creditCardHolderInfo' => $this->holderInfoPayload($holderInfo),
+        ], 30);
+
+        $this->throwIfCardRequestFailed($response, 'Erro ao pagar cobrança com cartão no Asaas', ['payment_id' => $paymentId]);
+
+        $data = $response->json() ?? [];
+
+        Log::channel('payments')->info('Cobrança existente processada no cartão', [
+            'payment_id' => $paymentId,
+            'status' => $data['status'] ?? null,
+            'decline_reason' => $data['creditCard']['declineReason'] ?? null,
+        ]);
+
+        return $data;
+    }
+
+    /**
+     * 400 num pedido com cartão é o Asaas/banco recusando (nada foi cobrado): vira recusa com
+     * o motivo do Asaas. O resto (401, 404, 5xx) fica como erro. Só as descrições de erro do
+     * Asaas vão para o log, nunca o corpo enviado.
+     */
+    private function throwIfCardRequestFailed(Response $response, string $message, array $context): void
+    {
+        if (! $response->failed()) {
+            return;
+        }
+
+        $errors = collect($response->json('errors', []))->pluck('description')->filter()->implode('; ');
+
+        Log::channel('discord')->error($message, array_merge($context, [
+            'type' => 'payments',
+            'status' => $response->status(),
+            'errors' => $errors,
+        ]));
+
+        if ($response->status() === 400) {
+            throw new CardPaymentDeclinedException($errors ?: null);
+        }
+
+        throw new RuntimeException("{$message}: ".($errors ?: $response->status()), $response->status());
+    }
+
+    private function creditCardPayload(CreditCardDTO $creditCard): array
+    {
+        return [
+            'holderName' => strtoupper($creditCard->holderName),
+            'number' => preg_replace('/\D/', '', $creditCard->number),
+            'expiryMonth' => $creditCard->expiryMonth,
+            'expiryYear' => $creditCard->expiryYear,
+            'ccv' => $creditCard->ccv,
+        ];
+    }
+
+    private function holderInfoPayload(CreditCardHolderDTO $holderInfo): array
+    {
+        return array_filter([
+            'name' => $holderInfo->name,
+            'email' => $holderInfo->email,
+            'cpfCnpj' => preg_replace('/\D/', '', $holderInfo->cpfCnpj),
+            'postalCode' => preg_replace('/\D/', '', $holderInfo->postalCode),
+            'addressNumber' => $holderInfo->addressNumber,
+            'mobilePhone' => $holderInfo->mobilePhone ?? $holderInfo->phone,
+            'phone' => $holderInfo->phone ?? $holderInfo->mobilePhone,
+        ], fn ($v) => $v !== null && $v !== '');
+    }
+
     /**
      * Cancel (delete) a subscription in Asaas.
      */
@@ -525,22 +620,8 @@ class AsaasService implements AsaasServiceInterface
             // Token substitui creditCard/creditCardHolderInfo — cartão não trafega novamente.
             $payload['creditCardToken'] = $creditCardToken;
         } else {
-            $payload['creditCard'] = [
-                'holderName' => strtoupper($creditCard->holderName),
-                'number' => preg_replace('/\D/', '', $creditCard->number),
-                'expiryMonth' => $creditCard->expiryMonth,
-                'expiryYear' => $creditCard->expiryYear,
-                'ccv' => $creditCard->ccv,
-            ];
-            $payload['creditCardHolderInfo'] = array_filter([
-                'name' => $holderInfo->name,
-                'email' => $holderInfo->email,
-                'cpfCnpj' => preg_replace('/\D/', '', $holderInfo->cpfCnpj),
-                'postalCode' => preg_replace('/\D/', '', $holderInfo->postalCode),
-                'addressNumber' => $holderInfo->addressNumber,
-                'mobilePhone' => $holderInfo->mobilePhone ?? $holderInfo->phone,
-                'phone' => $holderInfo->phone ?? $holderInfo->mobilePhone,
-            ], fn ($v) => $v !== null && $v !== '');
+            $payload['creditCard'] = $this->creditCardPayload($creditCard);
+            $payload['creditCardHolderInfo'] = $this->holderInfoPayload($holderInfo);
         }
 
         if ($installments > 1) {

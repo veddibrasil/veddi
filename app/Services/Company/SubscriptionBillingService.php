@@ -18,7 +18,8 @@ use RuntimeException;
 
 /**
  * Cobranças no cartão que mexem na assinatura da empresa: ativar módulo, trocar de
- * plano e o checkout do onboarding.
+ * plano, trocar o cartão da assinatura (pagando as faturas vencidas) e o checkout do
+ * onboarding.
  *
  * Regra de ordem: primeiro o que não move dinheiro e pode ser desfeito (criar ou
  * atualizar a assinatura), por último a cobrança. Se a cobrança é recusada, o passo
@@ -31,7 +32,66 @@ class SubscriptionBillingService
     /** O Asaas não aceita cobrança abaixo de R$ 5,00: proporcional menor que isso não é cobrado. */
     public const MIN_CHARGE = 5.00;
 
-    public function __construct(private AsaasServiceInterface $asaas) {}
+    public function __construct(
+        private AsaasServiceInterface $asaas,
+        private CompanyService $companies,
+    ) {}
+
+    /**
+     * Quanto a troca de cartão cobra agora: as faturas vencidas da assinatura.
+     *
+     * @return array{overdue_total: float, overdue_count: int}
+     *
+     * @throws SubscriptionBillingException assinatura ausente, inativa ou fora do cartão
+     */
+    public function quoteCardUpdate(Company $company): array
+    {
+        $overdue = $this->overdueInvoices($company, $this->cardSubscriptionId($company));
+
+        return [
+            'overdue_total' => round((float) collect($overdue)->sum('value'), 2),
+            'overdue_count' => count($overdue),
+        ];
+    }
+
+    /**
+     * Troca o cartão da assinatura e paga com ele as faturas vencidas dela.
+     *
+     * As vencidas vêm primeiro: recusa ali não muda nada e o cliente tenta outro cartão.
+     * Depois o cartão vai para a assinatura — o Asaas não cobra nada nessa troca e passa a
+     * usar o cartão nas faturas pendentes e nas próximas. Sem fatura vencida, só troca o
+     * cartão. Assinatura criada sem cartão (empresa 5, 26/10) nunca é cobrada sozinha:
+     * este é o caminho para o cliente colocar o cartão nela.
+     *
+     * @return array{paid_count: int, paid_total: float, card_updated: bool, reactivated: bool}
+     *
+     * @throws CardPaymentDeclinedException nada foi cobrado nem trocado
+     * @throws SubscriptionBillingException regra impediu, pagamento parcial ou resultado incerto
+     */
+    public function updateCard(Company $company, CreditCardDTO $creditCard, CreditCardHolderDTO $holderInfo, string $remoteIp): array
+    {
+        return $this->withCompanyLock($company, function () use ($company, $creditCard, $holderInfo, $remoteIp) {
+            $company->refresh();
+
+            $subscriptionId = $this->cardSubscriptionId($company);
+            $paid = [];
+
+            foreach ($this->overdueInvoices($company, $subscriptionId) as $invoice) {
+                $this->payOverdueInvoice($company, $invoice, $paid, $creditCard, $holderInfo);
+                $paid[] = $invoice;
+            }
+
+            $cardUpdated = $this->replaceSubscriptionCard($company, $subscriptionId, $paid, $creditCard, $holderInfo, $remoteIp);
+            $reactivated = $paid !== [] && $this->reactivateAfterOverduePaid($company, $paid);
+
+            return [
+                'paid_count' => count($paid),
+                'paid_total' => round((float) collect($paid)->sum('value'), 2),
+                'card_updated' => $cardUpdated,
+                'reactivated' => $reactivated,
+            ];
+        });
+    }
 
     /**
      * Quanto a ativação do módulo cobra agora e quanto passa a ser a mensalidade.
@@ -757,6 +817,155 @@ class SubscriptionBillingService
                 'company_id' => $company->id,
                 'error' => $e->getMessage(),
             ]);
+        }
+    }
+
+    /**
+     * @throws SubscriptionBillingException assinatura ausente, inativa ou fora do cartão
+     */
+    private function cardSubscriptionId(Company $company): string
+    {
+        $subscriptionId = $company->asaas_subscription_id;
+
+        if (! $subscriptionId || ! $company->asaas_customer_id) {
+            throw new SubscriptionBillingException('Sua empresa não tem assinatura para atualizar o cartão. Fale com o suporte.');
+        }
+
+        $subscription = $this->asaas->getSubscription($subscriptionId);
+
+        if ($subscription['deleted'] || $subscription['status'] !== 'ACTIVE') {
+            throw new SubscriptionBillingException('Sua assinatura não está ativa no momento. Fale com o suporte para regularizar.');
+        }
+
+        if (($subscription['billingType'] ?? null) !== 'CREDIT_CARD') {
+            throw new SubscriptionBillingException('Sua assinatura não é cobrada no cartão de crédito. Pague a fatura em aberto pelo link em "Cobranças recentes" ou fale com o suporte.');
+        }
+
+        return $subscriptionId;
+    }
+
+    /**
+     * Faturas vencidas da assinatura, da mais antiga para a mais nova.
+     *
+     * @return array<int, array{id: string, value: float, dueDate: string}>
+     */
+    private function overdueInvoices(Company $company, string $subscriptionId): array
+    {
+        return collect($this->asaas->getCustomerOverduePayments($company->asaas_customer_id))
+            ->filter(fn (array $payment) => ($payment['subscription'] ?? null) === $subscriptionId
+                && ($payment['status'] ?? null) === 'OVERDUE'
+                && ! empty($payment['id']))
+            ->sortBy('dueDate')
+            ->map(fn (array $payment) => [
+                'id' => $payment['id'],
+                'value' => (float) ($payment['value'] ?? 0),
+                'dueDate' => (string) ($payment['dueDate'] ?? ''),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Paga uma fatura vencida com o cartão. Recusa sem nada pago antes sobe como
+     * CardPaymentDeclinedException (nada mudou); recusa depois de outra fatura paga vira
+     * mensagem dizendo o que ficou pago. Erro de comunicação não é retentado: o pagamento
+     * com cartão do Asaas não é idempotente.
+     *
+     * @param  array{id: string, value: float, dueDate: string}  $invoice
+     * @param  array<int, array{id: string, value: float, dueDate: string}>  $alreadyPaid
+     */
+    private function payOverdueInvoice(Company $company, array $invoice, array $alreadyPaid, CreditCardDTO $creditCard, CreditCardHolderDTO $holderInfo): void
+    {
+        try {
+            $payment = $this->asaas->payWithCreditCard($invoice['id'], $creditCard, $holderInfo);
+        } catch (CardPaymentDeclinedException $e) {
+            throw $alreadyPaid === [] ? $e : $this->partialPaymentException($invoice, $alreadyPaid, $e->reason);
+        } catch (\Throwable $e) {
+            Log::channel('discord')->error('Troca de cartão: resultado incerto ao pagar fatura vencida — conferir no Asaas antes de tentar de novo', [
+                'type' => 'payments',
+                'company_id' => $company->id,
+                'payment_id' => $invoice['id'],
+                'error' => $e->getMessage(),
+            ]);
+
+            throw new SubscriptionBillingException('Não conseguimos confirmar o pagamento da fatura com o Asaas. Aguarde alguns minutos e recarregue a página antes de tentar de novo.');
+        }
+
+        if (! in_array($payment['status'] ?? null, ['CONFIRMED', 'RECEIVED'], true)) {
+            $declined = CardPaymentDeclinedException::fromCharge($payment);
+
+            throw $alreadyPaid === [] ? $declined : $this->partialPaymentException($invoice, $alreadyPaid, $declined->reason);
+        }
+
+        $company->saveAsaasCreditCardFromCharge($payment);
+    }
+
+    /**
+     * @param  array{id: string, value: float, dueDate: string}  $declinedInvoice
+     * @param  array<int, array{id: string, value: float, dueDate: string}>  $paid
+     */
+    private function partialPaymentException(array $declinedInvoice, array $paid, ?string $reason): SubscriptionBillingException
+    {
+        $paidTotal = number_format((float) collect($paid)->sum('value'), 2, ',', '.');
+        $dueDate = CarbonImmutable::parse($declinedInvoice['dueDate'])->format('d/m/Y');
+
+        return new SubscriptionBillingException(
+            "Pagamos R$ {$paidTotal} em faturas vencidas, mas a fatura de {$dueDate} foi recusada"
+            .($reason ? ": {$reason}" : '')
+            .'. O cartão da assinatura não foi trocado. Tente outro cartão para quitar o restante.'
+        );
+    }
+
+    /**
+     * Põe o cartão na assinatura. Sem fatura paga antes, falha sobe (nada mudou). Com fatura
+     * já paga, falha aqui não desfaz o pagamento: vira alerta e o resultado avisa a tela.
+     *
+     * @param  array<int, array{id: string, value: float, dueDate: string}>  $paid
+     */
+    private function replaceSubscriptionCard(Company $company, string $subscriptionId, array $paid, CreditCardDTO $creditCard, CreditCardHolderDTO $holderInfo, string $remoteIp): bool
+    {
+        try {
+            $this->asaas->updateSubscriptionCreditCard($subscriptionId, $creditCard, $holderInfo, $remoteIp);
+
+            return true;
+        } catch (\Throwable $e) {
+            if ($paid === []) {
+                throw $e;
+            }
+
+            Log::channel('discord')->error('Troca de cartão: fatura vencida paga, mas o cartão não foi para a assinatura', [
+                'type' => 'payments',
+                'company_id' => $company->id,
+                'subscription_id' => $subscriptionId,
+                'paid_payment_ids' => collect($paid)->pluck('id')->all(),
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    /**
+     * Sai do atraso/bloqueio na hora, sem esperar o webhook — mas só se não sobrou nada
+     * vencido no Asaas. Se a conferência falhar, o webhook PAYMENT_CONFIRMED reativa depois.
+     *
+     * @param  array<int, array{id: string, value: float, dueDate: string}>  $paid
+     */
+    private function reactivateAfterOverduePaid(Company $company, array $paid): bool
+    {
+        if (! $company->isOverdue() && ! $company->isBlocked()) {
+            return false;
+        }
+
+        try {
+            return $this->companies->reactivateIfNothingOverdue($company, $this->asaas, collect($paid)->pluck('id')->all());
+        } catch (\Throwable $e) {
+            Log::channel('payments')->warning('Troca de cartão: fatura paga, reativação fica para o webhook', [
+                'company_id' => $company->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
         }
     }
 
