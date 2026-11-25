@@ -73,3 +73,63 @@ test('faturas pendentes da assinatura são filtradas por status no Asaas', funct
         && str_starts_with($request->url(), 'https://asaas.test/api/v3/subscriptions/sub_1/payments')
         && $request['status'] === 'PENDING');
 });
+
+// ─── Troca do cartão da assinatura ──────────────────────────────────────────
+
+function asaasApiCard(): array
+{
+    return [
+        new \App\DTOs\CreditCardDTO(holderName: 'fulano', number: '4111 1111 1111 1111', expiryMonth: '12', expiryYear: '2030', ccv: '123'),
+        new \App\DTOs\CreditCardHolderDTO(name: 'Fulano', email: 'fulano@example.com', cpfCnpj: '123.456.789-09', postalCode: '01310-000', addressNumber: '100', mobilePhone: '11999990000', phone: '11999990000'),
+    ];
+}
+
+test('troca de cartão usa o endpoint updateCreditCard com o IP de quem paga', function () {
+    Http::fake(['asaas.test/*' => Http::response(['id' => 'sub_1', 'status' => 'ACTIVE'])]);
+    [$card, $holder] = asaasApiCard();
+
+    app(AsaasService::class)->updateSubscriptionCreditCard('sub_1', $card, $holder, '200.100.50.25');
+
+    Http::assertSent(fn (Request $request) => $request->method() === 'POST'
+        && $request->url() === 'https://asaas.test/api/v3/subscriptions/sub_1/updateCreditCard'
+        && $request['remoteIp'] === '200.100.50.25'
+        && $request['creditCard']['number'] === '4111111111111111'
+        && $request['creditCard']['holderName'] === 'FULANO'
+        && $request['creditCardHolderInfo']['cpfCnpj'] === '12345678909'
+        && $request['creditCardHolderInfo']['postalCode'] === '01310000');
+});
+
+test('pagar fatura existente usa o endpoint payWithCreditCard e devolve a cobrança', function () {
+    Http::fake(['asaas.test/*' => Http::response(['id' => 'pay_1', 'status' => 'CONFIRMED'])]);
+    [$card, $holder] = asaasApiCard();
+
+    $payment = app(AsaasService::class)->payWithCreditCard('pay_1', $card, $holder);
+
+    expect($payment['status'])->toBe('CONFIRMED');
+    Http::assertSent(fn (Request $request) => $request->method() === 'POST'
+        && $request->url() === 'https://asaas.test/api/v3/payments/pay_1/payWithCreditCard'
+        && $request['creditCard']['ccv'] === '123');
+});
+
+test('400 do Asaas no cartão vira recusa com o motivo; 500 vira erro de comunicação', function (int $status, string $exception, string $message) {
+    Http::fake(['asaas.test/*' => Http::response(['errors' => [['code' => 'invalid_creditCard', 'description' => 'Transação não autorizada']]], $status)]);
+    [$card, $holder] = asaasApiCard();
+
+    expect(fn () => app(AsaasService::class)->payWithCreditCard('pay_1', $card, $holder))
+        ->toThrow($exception, $message);
+})->with([
+    'recusado' => [400, \App\Exceptions\CardPaymentDeclinedException::class, 'Transação não autorizada'],
+    'fora do ar' => [500, RuntimeException::class, 'Erro ao pagar cobrança com cartão no Asaas'],
+]);
+
+test('cobranças vencidas do cliente filtram por cliente e status', function () {
+    Http::fake(['asaas.test/*' => Http::response(['data' => [['id' => 'pay_nov', 'status' => 'OVERDUE']]])]);
+
+    $payments = app(AsaasService::class)->getCustomerOverduePayments('cus_1');
+
+    expect($payments)->toHaveCount(1);
+    Http::assertSent(fn (Request $request) => $request->method() === 'GET'
+        && str_starts_with($request->url(), 'https://asaas.test/api/v3/payments?')
+        && $request['customer'] === 'cus_1'
+        && $request['status'] === 'OVERDUE');
+});

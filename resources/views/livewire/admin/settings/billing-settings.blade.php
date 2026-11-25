@@ -12,9 +12,13 @@
      x-on:open-plan-card-modal.window="$flux.modal('plan-change-card').show()"
      x-on:open-pdv-card-modal.window="$flux.modal('pdv-module-card').show()"
      x-on:open-fiscal-card-modal.window="$flux.modal('fiscal-module-card').show()"
-     x-on:open-waiter-card-modal.window="$flux.modal('waiter-module-card').show()">
+     x-on:open-waiter-card-modal.window="$flux.modal('waiter-module-card').show()"
+     x-on:open-card-update-modal.window="$flux.modal('subscription-card-update').show()">
 
     <h1 class="text-2xl font-bold text-neutral-800 dark:text-neutral-100">Assinatura</h1>
+
+    <x-admin.flash-error />
+    <x-admin.flash-status />
 
     {{-- Plano Atual --}}
     <div class="bg-white border rounded-xl shadow-sm p-6 space-y-5 dark:bg-zinc-800 dark:border-zinc-700">
@@ -48,6 +52,11 @@
                     <span class="w-1.5 h-1.5 rounded-full bg-yellow-500"></span>
                     Aguardando pagamento
                 </span>
+            @elseif($status === 'OVERDUE')
+                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400">
+                    <span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>
+                    Em atraso
+                </span>
             @elseif($status === 'BLOCKED')
                 <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400">
                     <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>
@@ -66,9 +75,28 @@
             </div>
         @endif
 
+        @if($status === 'OVERDUE')
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between bg-orange-50 border border-orange-200 rounded-lg px-4 py-3 text-sm text-orange-800 dark:bg-orange-900/20 dark:border-orange-700/50 dark:text-orange-300">
+                <span>
+                    Sua mensalidade está vencida.
+                    @if($subscriptionOnCard)
+                        Atualize o cartão para pagar agora e evitar o bloqueio — as próximas mensalidades passam a ser cobradas nele automaticamente.
+                    @else
+                        Pague a cobrança em aberto em "Cobranças recentes" para evitar o bloqueio.
+                    @endif
+                </span>
+                @if($subscriptionOnCard)
+                    <flux:button size="sm" variant="primary" wire:click="openCardUpdate" class="shrink-0">Atualizar cartão e pagar</flux:button>
+                @endif
+            </div>
+        @endif
+
         @if($status === 'BLOCKED')
-            <div class="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-800 dark:bg-red-900/20 dark:border-red-700/50 dark:text-red-300">
-                Sua conta está bloqueada por falta de pagamento. Efetue o pagamento da cobrança em aberto para reativar o acesso.
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-800 dark:bg-red-900/20 dark:border-red-700/50 dark:text-red-300">
+                <span>Sua conta está bloqueada por falta de pagamento. Efetue o pagamento da cobrança em aberto para reativar o acesso.</span>
+                @if($subscriptionOnCard)
+                    <flux:button size="sm" variant="primary" wire:click="openCardUpdate" class="shrink-0">Atualizar cartão e pagar</flux:button>
+                @endif
             </div>
         @endif
 
@@ -96,6 +124,16 @@
                         <p class="text-lg font-semibold text-neutral-800 dark:text-neutral-100">{{ $lastPaymentAt }}</p>
                     </div>
                 @endif
+            </div>
+        @endif
+
+        @if($subscriptionOnCard)
+            <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-3">
+                <div>
+                    <p class="text-xs text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Forma de pagamento</p>
+                    <p class="text-sm font-medium text-neutral-800 dark:text-neutral-100">Cartão de crédito{{ $savedCardLabel ? ' — '.$savedCardLabel : '' }}</p>
+                </div>
+                <flux:button size="sm" wire:click="openCardUpdate">Atualizar cartão</flux:button>
             </div>
         @endif
 
@@ -345,6 +383,75 @@
             @endif
         </div>
     @endif
+
+    {{-- Modal de troca do cartão da assinatura (paga as faturas vencidas com o cartão novo) --}}
+    <flux:modal name="subscription-card-update" class="max-w-lg">
+        <div class="space-y-5">
+            <div>
+                <flux:heading size="lg">Atualizar cartão da assinatura</flux:heading>
+                <flux:subheading class="mt-1">As próximas mensalidades serão cobradas neste cartão automaticamente.</flux:subheading>
+            </div>
+
+            @if($cardUpdateSuccess)
+                <div class="flex flex-col items-center gap-3 py-6 text-center">
+                    <div class="flex h-14 w-14 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
+                        <svg class="h-7 w-7 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                        </svg>
+                    </div>
+                    <p class="text-sm text-neutral-700 dark:text-neutral-300">{{ $cardUpdateMessage }}</p>
+                    <flux:button variant="primary" x-on:click="window.location.reload()">Fechar</flux:button>
+                </div>
+            @else
+                @if($cardUpdateOverdueCount > 0)
+                    <div class="rounded-xl border border-orange-200 bg-orange-50 dark:bg-orange-900/20 dark:border-orange-700/50 p-4 text-sm text-orange-800 dark:text-orange-300">
+                        {{ $cardUpdateOverdueCount === 1 ? 'Há 1 fatura vencida' : "Há {$cardUpdateOverdueCount} faturas vencidas" }}.
+                        Ao confirmar, <strong>R$ {{ number_format($cardUpdateOverdueTotal, 2, ',', '.') }}</strong> serão cobrados agora neste cartão.
+                    </div>
+                @elseif($cardUpdateOverdueTotal === null)
+                    <p class="text-sm text-neutral-600 dark:text-neutral-400">Se houver fatura vencida, ela será cobrada agora neste cartão.</p>
+                @else
+                    <p class="text-sm text-neutral-600 dark:text-neutral-400">Nada será cobrado agora: o cartão só passa a valer para as próximas mensalidades.</p>
+                @endif
+
+                @if($cardUpdateError)
+                    <div class="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-700/50 p-4 text-sm text-red-700 dark:text-red-400">
+                        <svg class="h-5 w-5 shrink-0 mt-0.5 text-red-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                        </svg>
+                        <span>{{ $cardUpdateError }}</span>
+                    </div>
+                @endif
+
+                @include('livewire.admin.settings._credit-card-fields')
+
+                <button
+                    wire:click="updateSubscriptionCard"
+                    wire:loading.attr="disabled"
+                    wire:loading.class="opacity-75 cursor-not-allowed"
+                    @if($cardUpdateProcessing) disabled @endif
+                    class="w-full flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-white shadow-sm transition-all duration-200 disabled:opacity-75"
+                    style="background: linear-gradient(135deg, #5c0079, #7A00A3);"
+                >
+                    <span wire:loading.remove wire:target="updateSubscriptionCard">
+                        @if($cardUpdateOverdueCount > 0)
+                            Pagar R$ {{ number_format($cardUpdateOverdueTotal, 2, ',', '.') }} e salvar cartão
+                        @else
+                            Salvar cartão
+                        @endif
+                    </span>
+                    <span wire:loading wire:target="updateSubscriptionCard" class="flex items-center gap-2">
+                        <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                        </svg>
+                        Processando...
+                    </span>
+                </button>
+
+                <p class="text-center text-xs text-neutral-600 dark:text-neutral-400">Pagamento processado com segurança via Asaas</p>
+            @endif
+        </div>
+    </flux:modal>
 
     {{-- Modal de cartão de crédito para troca de plano --}}
     <flux:modal name="plan-change-card" class="max-w-lg">

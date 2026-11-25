@@ -36,6 +36,35 @@ interface AsaasServiceInterface
 
     public function getSubscriptionPayments(string $subscriptionId): array;
 
+    /**
+     * Cobranças vencidas (OVERDUE) do cliente, de qualquer assinatura ou avulsas. Lança em falha:
+     * quem chama decide se a empresa sai do atraso a partir disso.
+     *
+     * @return array<int, array{id: string, status: string, value: float, dueDate: string, subscription: ?string}>
+     */
+    public function getCustomerOverduePayments(string $customerId): array;
+
+    /**
+     * Troca o cartão da assinatura sem cobrar nada. As faturas pendentes passam para o novo
+     * cartão; as vencidas não (essas são pagas com payWithCreditCard).
+     *
+     * @throws \App\Exceptions\CardPaymentDeclinedException cartão recusado pelo Asaas (4xx)
+     */
+    public function updateSubscriptionCreditCard(
+        string $subscriptionId,
+        CreditCardDTO $creditCard,
+        CreditCardHolderDTO $holderInfo,
+        string $remoteIp,
+    ): array;
+
+    /**
+     * Paga com cartão uma cobrança que já existe (ex.: fatura vencida da assinatura).
+     * Não é idempotente: depois de timeout, consultar a cobrança antes de tentar de novo.
+     *
+     * @throws \App\Exceptions\CardPaymentDeclinedException cartão recusado pelo Asaas (4xx)
+     */
+    public function payWithCreditCard(string $paymentId, CreditCardDTO $creditCard, CreditCardHolderDTO $holderInfo): array;
+
     public function cancelSubscription(string $subscriptionId): void;
 
     public function createCharge(string $customerId, float $amount, string $description, string $billingType = 'PIX'): array;

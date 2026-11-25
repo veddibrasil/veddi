@@ -163,6 +163,28 @@ class BillingSettings extends Component
 
     public bool $waiterSuccess = false;
 
+    // Cartão da assinatura: a troca paga as faturas vencidas com o cartão novo e deixa as
+    // próximas mensalidades no automático (ver SubscriptionBillingService::updateCard).
+    #[Locked]
+    public bool $subscriptionOnCard = false;
+
+    // Faturas vencidas cobradas na troca, consultadas ao abrir o modal. null = Asaas
+    // indisponível na abertura (as vencidas são consultadas de novo na confirmação).
+    #[Locked]
+    public ?float $cardUpdateOverdueTotal = null;
+
+    #[Locked]
+    public int $cardUpdateOverdueCount = 0;
+
+    public bool $cardUpdateProcessing = false;
+
+    public ?string $cardUpdateError = null;
+
+    public bool $cardUpdateSuccess = false;
+
+    #[Locked]
+    public ?string $cardUpdateMessage = null;
+
     private const CANCELLATION_MESSAGES = [
         'pdv' => 'Módulo PDV cancelado (o módulo Garçom, que depende dele, também foi cancelado). O valor foi debitado da sua assinatura a partir do próximo vencimento.',
         'fiscal' => 'Módulo Fiscal cancelado. O valor foi debitado da sua assinatura a partir do próximo vencimento.',
@@ -184,6 +206,8 @@ class BillingSettings extends Component
         $this->waiterModuleEnabled = (bool) $company->waiter_module_enabled;
         $this->waiterAddonAmount = AddonModulePricing::price('waiter');
         $this->savedCardLabel = $company->savedAsaasCardLabel();
+        $this->subscriptionOnCard = $company->asaas_subscription_id !== null
+            && $company->subscription_payment_method === 'CREDIT_CARD';
         $this->combinedMonthlyAmount = ($company->plan?->monthlyPrice() ?? 0.0)
             + AddonModulePricing::extraFor($company)['amount'];
 
@@ -436,6 +460,69 @@ class BillingSettings extends Component
     public function cancelWaiterModule(SubscriptionBillingService $billing): void
     {
         $this->cancelModule('waiter', $billing);
+    }
+
+    public function openCardUpdate(SubscriptionBillingService $billing): void
+    {
+        $company = app('current.company');
+
+        try {
+            $quote = $billing->quoteCardUpdate($company);
+
+            $this->cardUpdateOverdueTotal = $quote['overdue_total'];
+            $this->cardUpdateOverdueCount = $quote['overdue_count'];
+        } catch (SubscriptionBillingException $e) {
+            session()->flash('error', $e->getMessage());
+
+            return;
+        } catch (\Throwable $e) {
+            $this->cardUpdateOverdueTotal = null;
+            $this->cardUpdateOverdueCount = 0;
+        }
+
+        $this->cardUpdateError = null;
+        $this->cardUpdateSuccess = false;
+        $this->cardUpdateMessage = null;
+        $this->resetErrorBag();
+        $this->clearCardData();
+        $this->dispatch('open-card-update-modal');
+    }
+
+    public function updateSubscriptionCard(SubscriptionBillingService $billing): void
+    {
+        $company = app('current.company');
+
+        $this->validateCard();
+
+        $this->cardUpdateProcessing = true;
+        $this->cardUpdateError = null;
+
+        try {
+            [$creditCard, $holderInfo] = $this->cardPayload($company, useSavedCard: false);
+
+            // remoteIp é obrigatório no Asaas e tem de ser o IP de quem está pagando.
+            $result = $billing->updateCard($company, $creditCard, $holderInfo, (string) request()->ip());
+
+            Cache::forget("asaas_payments_{$company->asaas_subscription_id}");
+
+            if ($result['reactivated']) {
+                $this->status = 'ACTIVE';
+            }
+
+            $this->cardUpdateMessage = $this->cardUpdateResultMessage($result);
+            $this->cardUpdateSuccess = true;
+        } catch (CardPaymentDeclinedException $e) {
+            $reason = $e->reason ?? 'verifique os dados e tente novamente';
+            $this->cardUpdateError = "Cartão recusado: {$reason}. Nada foi cobrado e o cartão da assinatura continua o mesmo.";
+        } catch (SubscriptionBillingException $e) {
+            $this->cardUpdateError = $e->getMessage();
+        } catch (\Throwable $e) {
+            $this->logBillingFailure('troca do cartão da assinatura', $company, $e);
+            $this->cardUpdateError = 'Não foi possível atualizar o cartão agora. Tente novamente em alguns minutos ou fale com o suporte.';
+        } finally {
+            $this->cardUpdateProcessing = false;
+            $this->clearCardData();
+        }
     }
 
     public function render(): View
@@ -841,6 +928,29 @@ class BillingSettings extends Component
         );
 
         return [$creditCard, $holderInfo, null];
+    }
+
+    /**
+     * @param  array{paid_count: int, paid_total: float, card_updated: bool, reactivated: bool}  $result
+     */
+    private function cardUpdateResultMessage(array $result): string
+    {
+        if ($result['paid_count'] === 0) {
+            return 'Cartão atualizado. As próximas mensalidades serão cobradas nele automaticamente.';
+        }
+
+        $paid = 'R$ '.number_format($result['paid_total'], 2, ',', '.');
+        $access = match (true) {
+            $result['reactivated'] => ' Seu acesso foi liberado.',
+            in_array($this->status, ['OVERDUE', 'BLOCKED'], true) => ' A liberação do acesso pode levar alguns minutos.',
+            default => '',
+        };
+
+        if (! $result['card_updated']) {
+            return "Pagamento de {$paid} confirmado.{$access} Não conseguimos salvar o cartão para as próximas mensalidades: tente atualizar o cartão de novo mais tarde (nada será cobrado).";
+        }
+
+        return "Pagamento de {$paid} confirmado e cartão salvo: as próximas mensalidades serão cobradas nele automaticamente.{$access}";
     }
 
     private function declineMessage(CardPaymentDeclinedException $e): string
