@@ -31,12 +31,15 @@
         <livewire:admin.fiscal.monthly-export />
     @endif
 
-    <div class="flex flex-col sm:flex-row gap-3">
-        <flux:input wire:model.live.debounce.300ms="search" placeholder="Buscar por chave, ref ou pedido..." class="sm:max-w-xs" />
-        <flux:select wire:model.live="modelFilter" class="sm:max-w-xs">
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <flux:input wire:model.live.debounce.300ms="search" placeholder="Buscar por chave, ref ou pedido..." />
+        <flux:input wire:model.live.debounce.300ms="orderNumber" placeholder="Nº do pedido" />
+        <flux:input wire:model.live.debounce.300ms="customerName" placeholder="Nome do cliente" />
+        <flux:input wire:model.live.debounce.300ms="customerDocument" placeholder="CPF ou CNPJ" />
+        <flux:select wire:model.live="modelFilter">
             <option value="">Todos os modelos</option><option value="55">NF-e</option><option value="65">NFC-e</option>
         </flux:select>
-        <flux:select wire:model.live="statusFilter" class="sm:max-w-xs">
+        <flux:select wire:model.live="statusFilter">
             <option value="">Todos os status</option>
             <option value="pending">Pendente</option>
             <option value="authorized">Autorizada</option>
@@ -44,6 +47,9 @@
             <option value="cancelled">Cancelada</option>
             <option value="error">Erro</option>
         </flux:select>
+        <div class="flex justify-end sm:col-span-2 xl:col-span-3">
+            <flux:button wire:click="clearFilters" variant="ghost" size="sm">Limpar filtros</flux:button>
+        </div>
     </div>
 
     {{-- Table --}}
