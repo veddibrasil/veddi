@@ -78,13 +78,13 @@ class Dashboard extends Component
                         $query->where('company_id', $company->id);
                     }
 
-                    $todayOrders = (clone $query)->whereDate('created_at', today())->get();
+                    $todayOrders = (clone $query)->excludingStaffConsumption()->whereDate('created_at', today())->get();
 
                     return [
                         $todayOrders,
                         $todayOrders->whereIn('status', ['paid', 'preparing', 'ready', 'out_for_delivery', 'delivered'])->sum('total'),
-                        (clone $query)->whereIn('status', ['paid', 'preparing'])->count(),
-                        $query->count(),
+                        (clone $query)->excludingStaffConsumption()->whereIn('status', ['paid', 'preparing'])->count(),
+                        $query->excludingStaffConsumption()->count(),
                     ];
                 }
             );

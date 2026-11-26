@@ -16,7 +16,7 @@ class CompanyCommercialInsights
     {
         $usage = Cache::remember("superadmin:company:{$company->id}:commercial:v2", now()->addMinutes(5), function () use ($company) {
             $orders = Order::withoutGlobalScope(CompanyScope::class)->where('company_id', $company->id);
-            $confirmed = (clone $orders)->whereIn('status', Order::CONFIRMED_STATUSES);
+            $confirmed = (clone $orders)->excludingStaffConsumption()->whereIn('status', Order::CONFIRMED_STATUSES);
             $month = (clone $confirmed)->whereBetween('created_at', [now()->startOfMonth(), now()]);
             $recent = (clone $confirmed)->whereBetween('created_at', [now()->subDays(30), now()]);
             $previous = (clone $confirmed)->where('created_at', '>=', now()->subDays(60))->where('created_at', '<', now()->subDays(30));

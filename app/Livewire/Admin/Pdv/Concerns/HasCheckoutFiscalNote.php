@@ -348,7 +348,7 @@ trait HasCheckoutFiscalNote
      */
     private function issueFiscalNoteIfRequested(Order $order): bool
     {
-        if (! $this->issueFiscalNote || ! $this->canUseFiscalNotes || $order->status !== 'paid') {
+        if (! $this->issueFiscalNote || ! $this->canUseFiscalNotes || $order->status !== 'paid' || $order->isStaffConsumption()) {
             return false;
         }
 

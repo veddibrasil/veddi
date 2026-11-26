@@ -143,6 +143,7 @@ class Report extends Component
             'card' => 'Cartão',
             'cash' => 'Dinheiro',
             'split' => 'Dividido',
+            'staff' => 'Consumo de funcionário',
             default => $method,
         };
     }
@@ -151,7 +152,7 @@ class Report extends Component
     {
         $baseQuery = $this->buildQuery();
 
-        $allOrders = (clone $baseQuery)->get(['total', 'payment_method', 'status']);
+        $allOrders = (clone $baseQuery)->excludingStaffConsumption()->get(['total', 'payment_method', 'status']);
 
         // Faturamento e ticket médio só de pedidos confirmados: pendentes/aguardando pagamento
         // nunca foram pagos e cancelados não entram no divisor.
@@ -164,6 +165,11 @@ class Report extends Component
             : null;
         $topPaymentLabel = $topPayment ? $this->paymentMethodLabel($topPayment) : '—';
 
+        // Consumo de funcionário: fora de receita e ticket médio, mostrado em card próprio.
+        $staffOrders = (clone $baseQuery)->whereNotNull('staff_user_id')->whereNotIn('status', ['cancelled', 'refunded'])->get(['total']);
+        $staffCount = $staffOrders->count();
+        $staffTotal = round((float) $staffOrders->sum('total'), 2);
+
         $orders = (clone $baseQuery)->latest()->paginate(25);
 
         $branches = $this->isSuperAdmin
@@ -172,7 +178,7 @@ class Report extends Component
 
         return view('livewire.admin.orders.report', compact(
             'orders', 'branches',
-            'totalCount', 'totalRevenue', 'averageTicket', 'topPaymentLabel'
+            'totalCount', 'totalRevenue', 'averageTicket', 'topPaymentLabel', 'staffCount', 'staffTotal'
         ))->layout('layouts.app', ['title' => 'Relatório de Pedidos']);
     }
 }

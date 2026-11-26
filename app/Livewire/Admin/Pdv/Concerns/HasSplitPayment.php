@@ -23,7 +23,7 @@ trait HasSplitPayment
     /** Livewire chama automaticamente ao mudar $isSplitPayment (bound via wire:model.live no switch). */
     public function updatedIsSplitPayment(): void
     {
-        $methods = $this->availablePaymentMethods;
+        $methods = array_values(array_diff($this->availablePaymentMethods, ['staff']));
         $first = in_array('cash', $methods, true) ? 'cash' : ($methods[0] ?? '');
         $second = in_array('credit_card', $methods, true) ? 'credit_card' : (array_values(array_diff($methods, ['cash']))[0] ?? '');
         $this->splitPayments = $this->isSplitPayment
@@ -92,7 +92,7 @@ trait HasSplitPayment
 
     public function addSplitPart(): void
     {
-        $methods = $this->availablePaymentMethods;
+        $methods = array_values(array_diff($this->availablePaymentMethods, ['staff']));
         $method = in_array('credit_card', $methods, true) ? 'credit_card' : (array_values(array_diff($methods, ['cash']))[0] ?? 'cash');
         $this->splitPayments[] = ['method' => $method, 'amount' => '', 'cash_received' => '', 'paid' => false];
     }

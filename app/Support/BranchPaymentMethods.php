@@ -17,8 +17,11 @@ class BranchPaymentMethods
             'pix_online' => 'PIX online pelo chat',
             'card_online' => 'Cartão de crédito online pelo chat',
         ],
-        'pdv' => ['cash' => 'Dinheiro', 'pix' => 'PIX', 'credit_card' => 'Cartão'],
+        'pdv' => ['cash' => 'Dinheiro', 'pix' => 'PIX', 'credit_card' => 'Cartão', 'staff' => 'Consumo de funcionário'],
     ];
+
+    /** Forma do PDV que não é venda: valor vira débito do funcionário. Só no balcão e desligada por padrão. */
+    public const STAFF = 'staff';
 
     public static function chatChoice(string $method, bool $onReceipt): ?string
     {

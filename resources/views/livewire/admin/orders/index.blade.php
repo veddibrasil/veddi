@@ -187,6 +187,9 @@
                 <p class="text-xs font-medium text-neutral-400 uppercase tracking-wide">Geral hoje</p>
                 <p class="text-xl font-bold text-neutral-800 dark:text-neutral-100">R$ {{ number_format($closing['geral']['total'], 2, ',', '.') }}</p>
                 <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ $closing['geral']['count'] }} pedido(s)</p>
+                @if ($closing['geral']['staff_count'] > 0)
+                    <p class="text-xs text-neutral-500 dark:text-neutral-400">+ R$ {{ number_format($closing['geral']['staff_total'], 2, ',', '.') }} em consumo de funcionários ({{ $closing['geral']['staff_count'] }}), fora do total</p>
+                @endif
             </div>
         </div>
     @endif

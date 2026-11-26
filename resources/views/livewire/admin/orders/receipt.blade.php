@@ -184,6 +184,7 @@
                 @elseif (in_array($order->payment_method, ['card', 'credit_card'])) Cartao
                 @elseif ($order->payment_method === 'cash') Dinheiro
                 @elseif ($order->payment_method === 'split') Dividido
+                @elseif ($order->payment_method === 'staff') Consumo de funcionario{{ $order->staffUser ? ': '.$order->staffUser->name : '' }}
                 @else {{ $order->payment_method }}
                 @endif
             </td>

@@ -55,6 +55,7 @@ trait HasPaymentSettlement
             'cash' => $this->settleCashPayment($order),
             'credit_card' => app(PaymentOrchestrator::class)->processCardMachine($order),
             'pix' => app(PaymentOrchestrator::class)->processPixManual($order),
+            'staff' => app(PaymentOrchestrator::class)->processStaffAccount($order),
             default => null,
         };
     }

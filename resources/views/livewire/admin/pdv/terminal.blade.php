@@ -319,6 +319,7 @@
                                             'pix' => 'PIX',
                                             'credit_card' => 'Cartão',
                                             'cash' => 'Dinheiro',
+                                            'staff' => 'Consumo de funcionário',
                                             default => $sessionOrder->payment_method,
                                         };
                                     @endphp

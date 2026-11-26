@@ -23,7 +23,8 @@ trait HasPaymentAvailability
             return false;
         }
 
-        return array_diff($this->getAvailablePaymentMethodsProperty(), ['cash']) !== [];
+        // Consumo de funcionário não se divide: o valor inteiro vira débito de uma pessoa.
+        return array_diff($this->getAvailablePaymentMethodsProperty(), ['cash', 'staff']) !== [];
     }
 
     private function syncAvailablePaymentMethod(): void

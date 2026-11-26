@@ -1714,7 +1714,7 @@ class Show extends Component
     #[Computed]
     public function fiscalCardIssues(): ?array
     {
-        if (! $this->canIssueFiscal || $this->order->activeFiscalNote || ! in_array($this->order->status, Order::FISCAL_ISSUABLE_STATUSES, true)) {
+        if (! $this->canIssueFiscal || $this->order->isStaffConsumption() || $this->order->activeFiscalNote || ! in_array($this->order->status, Order::FISCAL_ISSUABLE_STATUSES, true)) {
             return null;
         }
 
@@ -1733,6 +1733,7 @@ class Show extends Component
     {
         abort_unless($this->canIssueFiscal, 403);
         abort_unless(in_array($this->order->status, Order::FISCAL_ISSUABLE_STATUSES, true), 422);
+        abort_if($this->order->isStaffConsumption(), 422);
 
         $this->resetValidation(['fiscalCustomerDocument', 'fiscalEmission']);
         $this->validate([

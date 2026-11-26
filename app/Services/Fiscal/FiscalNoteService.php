@@ -279,6 +279,10 @@ class FiscalNoteService
     {
         $company = $order->company;
 
+        if ($order->isStaffConsumption()) {
+            throw FiscalPreflightException::single('order', 'Consumo de funcionário não é venda: não emite nota fiscal.');
+        }
+
         if (! $company->canUseFiscalNotes()) {
             throw FiscalPreflightException::single('issuer', 'Módulo de nota fiscal não habilitado para esta empresa.');
         }

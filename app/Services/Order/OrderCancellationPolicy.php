@@ -65,6 +65,6 @@ class OrderCancellationPolicy
         }
 
         return $order->payments()->where('status', 'paid')
-            ->whereNotIn('payment_gateway', ['cash', 'card_machine', 'pix_manual'])->exists();
+            ->whereNotIn('payment_gateway', \App\Models\Payment::OFFLINE_GATEWAYS)->exists();
     }
 }

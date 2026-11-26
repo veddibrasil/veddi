@@ -422,6 +422,7 @@ class IssueControl extends Component
 
         return Order::query()
             ->whereKey(array_map('intval', $ids))
+            ->excludingStaffConsumption()
             ->whereIn('status', Order::FISCAL_ISSUABLE_STATUSES)
             ->when($this->lockedBranchId, fn (Builder $q) => $q->where('branch_id', $this->lockedBranchId))
             ->whereDoesntHave('fiscalNotes', fn (Builder $q) => $q->whereIn('status', ['pending', 'authorized']))
@@ -440,6 +441,7 @@ class IssueControl extends Component
         $statuses = $this->situationFilter === 'cancelled_order' ? ['cancelled', 'refunded'] : Order::FISCAL_ISSUABLE_STATUSES;
 
         return Order::query()
+            ->excludingStaffConsumption()
             ->whereIn('status', $statuses)
             ->when($this->lockedBranchId, fn (Builder $q) => $q->where('branch_id', $this->lockedBranchId))
             ->when(! $this->lockedBranchId && $this->branchFilter !== '', fn (Builder $q) => $q->where('branch_id', (int) $this->branchFilter))

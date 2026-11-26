@@ -25,7 +25,8 @@
                             <legend class="px-1 text-sm font-semibold text-neutral-800 dark:text-neutral-100">{{ $label }}</legend>
                             <flux:checkbox.group wire:model="methods.{{ $channel }}.{{ $type }}" aria-label="{{ $label }} — {{ $channel === 'chat' ? 'Chat' : 'PDV' }}">
                                 @foreach ($methodLabels[$channel] as $method => $methodLabel)
-                                    <flux:checkbox :value="$method" :label="$methodLabel" />
+                                    @continue($method === \App\Support\BranchPaymentMethods::STAFF && ! ($channel === 'pdv' && $type === 'balcao'))
+                                    <flux:checkbox :value="$method" :label="$methodLabel" :description="$method === \App\Support\BranchPaymentMethods::STAFF ? 'O valor vira débito do funcionário e não entra no faturamento, no caixa nem na nota fiscal.' : null" />
                                 @endforeach
                             </flux:checkbox.group>
                             @error("methods.$channel.$type") <p class="text-xs text-red-600 dark:text-red-400" role="alert">{{ $message }}</p> @enderror
