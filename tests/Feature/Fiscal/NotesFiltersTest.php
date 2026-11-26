@@ -164,3 +164,18 @@ test('filtro de documento não mostra nota de outra empresa com o mesmo CPF', fu
         ->assertSee('FLT-2026-0001')
         ->assertDontSee('OUT-2026-0001');
 });
+
+test('botão de limpar só aparece com filtro ativo e a contagem acompanha o filtro', function () {
+    filterNote(filterContext($this), 'FLT-2026-0001', $this->customerAna, ['document' => '52998224725', 'name' => 'Ana Lima']);
+    filterNote(filterContext($this), 'FLT-2026-0002', $this->customerBruno, ['document' => '11144477735', 'name' => 'Bruno Souza']);
+
+    Livewire::actingAs($this->admin)->test(Notes::class)
+        ->assertDontSee('Limpar filtros')
+        ->assertSee('2 notas encontradas')
+        ->set('customerName', 'Bruno')
+        ->assertSee('Limpar filtros')
+        ->assertSee('1 nota encontrada')
+        ->call('clearFilters')
+        ->assertDontSee('Limpar filtros')
+        ->assertSee('2 notas encontradas');
+});

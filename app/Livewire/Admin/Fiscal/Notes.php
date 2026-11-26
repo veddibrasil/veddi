@@ -379,6 +379,8 @@ class Notes extends Component
 
         return view('livewire.admin.fiscal.notes', [
             'notes' => $query->paginate(15),
+            'hasFilters' => collect([$this->search, $this->orderNumber, $this->customerName, $this->customerDocument, $this->modelFilter, $this->statusFilter])
+                ->contains(fn (string $value) => trim($value) !== ''),
             'fiscalEvents' => \App\Models\FiscalNoteEvent::query()->when($this->lockedBranchId, fn ($query, $id) => $query->where(fn ($scope) => $scope
                 ->whereHas('fiscalConfig', fn ($config) => $config->where('branch_id', $id))
                 ->orWhereHas('note', fn ($note) => $note->where('branch_id', $id))))->latest()->limit(20)->get(),
