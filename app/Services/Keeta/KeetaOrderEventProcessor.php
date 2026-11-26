@@ -112,12 +112,15 @@ class KeetaOrderEventProcessor implements KeetaEventHandler
     private function cancelled(Order $order, KeetaWebhookEvent $event): bool
     {
         $metadata = $event->metadata();
-        $code = isset($metadata['code']) ? (string) $metadata['code'] : null;
+        // Doc: code/reason. App real (SIT 26/11): cancelType/cancelReason, ex. 5010 "Cancelado pelo cliente".
+        $rawCode = $metadata['code'] ?? $metadata['cancelType'] ?? null;
+        $rawReason = $metadata['reason'] ?? $metadata['cancelReason'] ?? null;
+        $code = is_scalar($rawCode) && (string) $rawCode !== '' ? (string) $rawCode : null;
         $requestedByStore = ($order->keetaDetails()?->get('cancellation_request')['status'] ?? null) === 'requested';
         $cancellation = array_filter([
             'origin' => $requestedByStore ? 'store' : 'platform',
             'code' => $code,
-            'reason' => isset($metadata['reason']) ? mb_substr((string) $metadata['reason'], 0, 255) : null,
+            'reason' => is_scalar($rawReason) && trim((string) $rawReason) !== '' ? mb_substr(trim((string) $rawReason), 0, 255) : null,
         ], fn ($value) => $value !== null);
 
         KeetaRequest::withoutGlobalScopes()

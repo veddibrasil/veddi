@@ -36,6 +36,8 @@
 
         @if ($isCancel && $request->isOpen())
             <p class="text-xs text-neutral-500 dark:text-neutral-400">A Keeta decide o cancelamento pedido pelo cliente. Se confirmar, o pedido é cancelado aqui automaticamente.</p>
+        @elseif ($request->status === \App\Models\KeetaRequest::STATUS_SUPPORT)
+            <p class="text-xs text-neutral-500 dark:text-neutral-400">O atendimento da Keeta assumiu este reembolso e decide com o cliente. Se aprovar, o valor devolvido aparece aqui; a recusa a Keeta não avisa, só no portal dela.</p>
         @elseif ($request->response_reason)
             <p class="text-xs text-neutral-500 dark:text-neutral-400">Motivo da recusa: {{ $request->response_reason }}</p>
         @endif

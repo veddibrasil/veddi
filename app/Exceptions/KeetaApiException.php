@@ -41,6 +41,18 @@ class KeetaApiException extends RuntimeException
         return $this->httpStatus === 422;
     }
 
+    /**
+     * Reembolso que o atendimento da Keeta assumiu: a loja não responde. SIT 26/11, rejectRefund
+     * em pedido entregue pela Keeta: 422 "Please wait for the CS to process, you don't need to
+     * take any action".
+     */
+    public function isSupportReview(): bool
+    {
+        return $this->httpStatus === 422
+            && $this->title !== null
+            && preg_match('/\bCS\b|customer service|don\'t need to take any action/i', $this->title) === 1;
+    }
+
     public function isAuthError(): bool
     {
         return in_array($this->httpStatus, [401, 403], true);

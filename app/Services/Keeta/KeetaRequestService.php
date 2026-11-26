@@ -58,23 +58,28 @@ class KeetaRequestService implements KeetaEventHandler
         };
     }
 
-    public function accept(KeetaRequest $request, ?int $userId = null): void
+    /** @return string status final da solicitação (accepted, ou support quando o atendimento da Keeta assumiu) */
+    public function accept(KeetaRequest $request, ?int $userId = null): string
     {
         $this->assertAnswerable($request);
 
         try {
             $this->gateway->acceptRefund($this->integration($request), $request->external_order_id);
         } catch (KeetaApiException $e) {
+            if ($e->isSupportReview()) {
+                return $this->record($request, KeetaRequest::STATUS_SUPPORT, null, $userId);
+            }
             // 422: já respondida pelo portal; o REFUNDED/REFUND_FAILED fecha a solicitação.
             if (! $e->isStateConflict()) {
                 throw $e;
             }
         }
 
-        $this->record($request, KeetaRequest::STATUS_ACCEPTED, null, $userId);
+        return $this->record($request, KeetaRequest::STATUS_ACCEPTED, null, $userId);
     }
 
-    public function reject(KeetaRequest $request, string $code, string $reason, ?int $userId = null): void
+    /** @return string status final da solicitação (rejected, ou support quando o atendimento da Keeta assumiu) */
+    public function reject(KeetaRequest $request, string $code, string $reason, ?int $userId = null): string
     {
         $this->assertAnswerable($request);
 
@@ -89,12 +94,16 @@ class KeetaRequestService implements KeetaEventHandler
         try {
             $this->gateway->rejectRefund($this->integration($request), $request->external_order_id, $code, $reason);
         } catch (KeetaApiException $e) {
+            // A recusa não valeu: a decisão é do atendimento da Keeta (REFUNDED/REFUND_FAILED fecha).
+            if ($e->isSupportReview()) {
+                return $this->record($request, KeetaRequest::STATUS_SUPPORT, null, $userId);
+            }
             if (! $e->isStateConflict()) {
                 throw $e;
             }
         }
 
-        $this->record($request, KeetaRequest::STATUS_REJECTED, $reason, $userId);
+        return $this->record($request, KeetaRequest::STATUS_REJECTED, $reason, $userId);
     }
 
     /** Solicitações sem resposta no prazo ficam marcadas (a decisão final vem da Keeta). */
@@ -179,7 +188,7 @@ class KeetaRequestService implements KeetaEventHandler
             ->where('company_id', $integration->company_id)
             ->where('external_order_id', (string) $event->external_order_id)
             ->where('kind', KeetaRequest::KIND_REFUND)
-            ->whereIn('status', [KeetaRequest::STATUS_OPEN, KeetaRequest::STATUS_EXPIRED])
+            ->whereIn('status', [KeetaRequest::STATUS_OPEN, KeetaRequest::STATUS_EXPIRED, KeetaRequest::STATUS_SUPPORT])
             ->update(['status' => $refunded ? KeetaRequest::STATUS_ACCEPTED : KeetaRequest::STATUS_REJECTED, 'responded_at' => now()]);
 
         if (! $order) {
@@ -209,7 +218,7 @@ class KeetaRequestService implements KeetaEventHandler
         return true;
     }
 
-    private function record(KeetaRequest $request, string $status, ?string $reason, ?int $userId): void
+    private function record(KeetaRequest $request, string $status, ?string $reason, ?int $userId): string
     {
         $request->update([
             'status' => $status,
@@ -228,6 +237,8 @@ class KeetaRequestService implements KeetaEventHandler
             'status' => $status,
             'user_id' => $userId,
         ]);
+
+        return $status;
     }
 
     private function assertAnswerable(KeetaRequest $request): void
@@ -276,7 +287,7 @@ class KeetaRequestService implements KeetaEventHandler
             'title' => ($cancel ? 'Cliente pediu cancelamento' : 'Cliente pediu reembolso').' — Keeta'.($number ? " #{$number}" : ''),
             'subtitle' => $cancel
                 ? 'A Keeta analisa o pedido de cancelamento. Acompanhe no pedido.'
-                : 'Aceite ou recuse o reembolso no pedido ou no portal da Keeta.',
+                : 'Aceite ou recuse em até '.KeetaRequest::DEADLINE_MINUTES[KeetaRequest::KIND_REFUND].' minutos, no pedido ou no portal da Keeta.',
             'link' => $order ? route('admin.orders.show', $order->id) : route('admin.orders.index'),
         ]);
     }

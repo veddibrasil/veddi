@@ -86,7 +86,9 @@ trait HandlesKeetaRequests
     private function runKeetaRequestAction(callable $action, string $success): bool
     {
         try {
-            $action();
+            if ($action() === KeetaRequest::STATUS_SUPPORT) {
+                $success = 'O atendimento da Keeta está analisando este reembolso. A loja não precisa responder.';
+            }
         } catch (\InvalidArgumentException $e) {
             $this->addError('keetaRejectReason', $e->getMessage());
 

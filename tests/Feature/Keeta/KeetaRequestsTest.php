@@ -55,6 +55,46 @@ it('aceita e recusa o reembolso pela API, e o REFUNDED registra no pedido', func
     expect($second->fresh()->status)->toBe('rejected');
 });
 
+it('recusa que a Keeta manda pro atendimento fica em análise e o REFUND_FAILED fecha', function () {
+    // SIT 26/11: pedido entregue pela Keeta, rejectRefund → 422 "Please wait for the CS to process".
+    $ctx = keetaContext();
+    $raw = keetaOrder($ctx);
+    $order = receiveKeetaOrder($this, $ctx, $raw);
+    $ref = $ctx['integration']->merchant_ref;
+
+    postKeetaWebhook($this, keetaEvent('USER_REFUND_REQUEST', $raw['id'], ['metadata' => refundMetadata()]), $ref)->assertNoContent();
+    $request = KeetaRequest::withoutGlobalScopes()->first();
+
+    fakeKeetaApi($raw, ['*/v1/orders/*/rejectRefund' => Http::response(['title' => "Please wait for the CS to process, you don't need to take any action", 'status' => 422], 422)]);
+
+    $status = app(KeetaRequestService::class)->reject($request, 'OTHER', 'Todos os itens foram enviados', null);
+
+    expect($status)->toBe('support')
+        ->and($request->fresh()->status)->toBe('support')
+        ->and($request->fresh()->response_reason)->toBeNull()
+        ->and($request->fresh()->isAnswerable())->toBeFalse()
+        ->and($request->fresh()->statusLabel())->toBe('Em análise no atendimento da Keeta');
+
+    postKeetaWebhook($this, keetaEvent('REFUND_FAILED', $raw['id'], ['metadata' => refundMetadata()]), $ref)->assertNoContent();
+
+    expect($request->fresh()->status)->toBe('rejected')
+        ->and($order->fresh()->keetaDetails()->get('refunds')[0]['status'])->toBe('failed');
+});
+
+it('422 de etapa na resposta do reembolso segue como já respondido', function () {
+    $ctx = keetaContext();
+    $raw = keetaOrder($ctx);
+    receiveKeetaOrder($this, $ctx, $raw);
+
+    postKeetaWebhook($this, keetaEvent('USER_REFUND_REQUEST', $raw['id'], ['metadata' => refundMetadata()]), $ctx['integration']->merchant_ref)->assertNoContent();
+    $request = KeetaRequest::withoutGlobalScopes()->first();
+
+    fakeKeetaApi($raw, ['*/v1/orders/*/acceptRefund' => Http::response(['title' => 'order status is not in a valid state', 'status' => 422], 422)]);
+
+    expect(app(KeetaRequestService::class)->accept($request, null))->toBe('accepted')
+        ->and($request->fresh()->status)->toBe('accepted');
+});
+
 it('cancelamento pedido pelo cliente vira aviso e fecha com o CANCELLED', function () {
     $ctx = keetaContext();
     $raw = keetaOrder($ctx);

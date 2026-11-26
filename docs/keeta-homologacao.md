@@ -125,18 +125,32 @@ Pedidos criados no Dev Portal (Tools › Test order tool) e entrega simulada em 
 - A observação digitada no carrinho do Test order tool não chega; a ferramenta manda `items[].specialInstructions` = "Enviar talheres descartáveis para este pedido". Promoção não vem (`promotions` vazio) sem configuração da equipe Keeta.
 - A loja de teste é "Keeta delivery": casos de entrega própria (batchDecrypt) pedem outra loja de teste (Dev Portal › Test store › Create store, nome fixo, limite 5).
 
+## Validado no Keeta Test App (SIT, 26/11/2026)
+
+Keeta Test App (TestFlight, QR enviado pela Keeta no ticket 50003) espelhado no Mac, endereço `keetatestbr3` (igreja em Tsiroanomandidy; a loja aparece a 0,2 km). Pedido mínimo R$ 20. Os vouchers do app ("60% off" etc.) só valem em cidades selecionadas e não aplicam na área de teste.
+
+- **Pedido real do app vem mascarado**: nome do cliente `Guilherme***`, telefone, rua, número, bairro e complemento = "Proteção de Privacidade", estado `Bongolava`. O import quebrava (`addresses.number` tem 20 caracteres, `state` 2). Corrigido: número longo vira `S/N`, estado vira UF (nome do estado → sigla; fora do Brasil fica vazio) e os demais campos são cortados no tamanho da coluna. O Test order tool não pegava isso (manda endereço normal).
+- **Cancelamento imediato pelo usuário** (pedido 586 / Keeta 5950763345430018, aceite automático desligado no VEDDI e no Order Manager): o app mostra "Waiting for store to confirm"; o cliente cancela, o `CANCELLED` chega em ~2 s e o pedido fica cancelado no VEDDI. O metadata real usa `cancelType` (5010) e `cancelReason` ("Cancelado pelo cliente"), não `code`/`reason`: agora o VEDDI lê os dois formatos. O app mostra reembolso total automático.
+- **Fluxo com aceite automático** (pedido 587 / #2811): `CREATED` → `confirm` → `CONFIRMED` em 3 s; "Pedido pronto" na tela → `READY_FOR_PICKUP`; Courier simulator → `CONCLUDED` → entregue.
+- **Reembolso pedido pelo usuário** (mesmo pedido, depois de entregue): no app, "Missing item" → item → foto obrigatória → embalagem → "Submit request" (R$ 10, parcial). `USER_REFUND_REQUEST` chega em ~2 s e abre a solicitação na tela do pedido. **Recusar** (`rejectRefund`, motivo `OTHER`) volta **422 "Please wait for the CS to process, you don't need to take any action"**: em pedido com entrega Keeta o atendimento da Keeta decide, a loja não. Antes o VEDDI tratava todo 422 como "já respondido" e gravava "Recusada" sem a recusa valer; agora esse 422 deixa a solicitação **Em análise no atendimento da Keeta** (sem botões) e o `REFUNDED`/`REFUND_FAILED` fecha. O 422 de etapa ("order status is not in a valid state") segue como já respondido. Uns 20 min depois o app mostrou "Refund declined" (atendimento), **sem** `REFUND_FAILED` para nós.
+- **Loja de entrega própria** `159670600` ("VEDDI SIT Entrega Propria - API Test store", criada em Dev Portal › Test store com "Don't authorise yet"; usuário e senha do lojista vão para o e-mail da conta developer). Autorizada pelo fluxo do VEDDI (filial 28 "Nova filial" › Conectar Keeta › login do lojista › Authorize › callback lista só essa loja › Conectar esta loja → `merchantOnboarding` 201, integração 2) e cardápio publicado (GET merchant buscado em 3 s; o app passou a mostrar o cardápio do VEDDI uns 5 min depois).
+- **Entrega própria** (pedido 588 / #SD4617, `deliveredBy=MERCHANT`): `batchDecrypt` traz nome, telefone e endereço completos; aceite automático → "Pedido pronto" → "Saiu para entrega" → "Entregue" pela tela, com `READY_FOR_PICKUP`, `DISPATCHED`, `DELIVERED` e `CONCLUDED`. O `dispatch` com `datetime` em milissegundos (`.261Z`) voltava **400 "Invalid event datetime format, should comply with RFC3339"**: agora vai sem milissegundos (como o exemplo da doc). Nesta loja o frete (R$ 15) vem `receivedBy=LOGISTIC_SERVICES`, então não entra no total local (só `MERCHANT` entra): validar com a Keeta.
+- **Loja recusa reembolso do usuário** (mesmo pedido 588, reembolso total pedido no app): o app mostra "Waiting for store review… by 12:17" (pedido às 12:07: **prazo de 10 min**, agora usado no VEDDI em vez de 24 h). Recusa pela tela (`OTHER` + texto) → `rejectRefund` **204**; o app mostra "Refund rejected" com o texto da loja. Nenhum `REFUND_FAILED` chegou.
+- **Promoção** (pedido 589 / #SD9777): promoção da loja criada no portal do lojista (Promotion centre › Discounts, 25% acima de R$ 60, todos os clientes, 1 mês). 6× Coca colca: R$ 60 − R$ 15. Chegou `discounts` com `target=CART`, valor 15 e `sponsorshipValues` só da loja: no VEDDI `promotions` = "Desconto (21230085)", `shop_subsidy` 15, `manual_discount` 15, total 45, itens ligados ao cadastro. Pedido concluído pela API (pronto, despacho, entregue). Promoção paga pela Keeta não deu para testar: os vouchers do app são só de cidades selecionadas.
+- A loja de entrega própria apareceu **fechada** ("Automatically reopens at 27 Nov 08:00") minutos depois do primeiro pedido, sem chamada do VEDDI; o portal do lojista não reabre (manda usar o Keeta Orders). Reaberta com `merchantStatus` `AVAILABLE` pelo VEDDI. É a mesma lacuna de "loja fechada pela Keeta sem o VEDDI saber".
+
 ## Status da homologação (19/11/2026)
 
-SIT Platform (`api-integrate-guide.mynocode.host`, SIT V1.0.6): **25 de 30 aprovados + 1 N/A**, com ID do pedido, print e observação em cada caso. Progresso **salvo e ainda não enviado** (botão "Enviar / Submit"). O login usa um código de acesso que só o responsável tem; recarregar a página desloga e só fica o que foi salvo com "Salvar".
+SIT Platform (`api-integrate-guide.mynocode.host`, SIT V1.0.6): **30 de 30 aprovados + 1 N/A, enviada em 26/11/2026** (antes: 25/30 em 19/11), com ID do pedido, print e observação em cada caso. SOW V1.0.8 também enviado. O login usa um código de acesso que só o responsável tem; recarregar a página desloga e só fica o que foi salvo com "Salvar".
 
 | Bloco | Situação |
 |---|---|
 | Cadastro de nova loja | 1/1 |
 | Cardápio | 5/6 + 1 N/A (o caso "sem integração da API de cardápio" não se aplica) |
-| Fluxo de pedido direto | 5/6: falta **promoção Keeta** |
-| Fluxo reverso | 2/4: faltam **cancelamento imediato pelo usuário** e **loja recusa reembolso do usuário** |
+| Fluxo de pedido direto | 5/6 salvos; **promoção** executada em 26/11 (falta lançar) |
+| Fluxo reverso | 2/4 salvos; **cancelamento imediato pelo usuário** e **loja recusa reembolso** executados em 26/11 (falta lançar) |
 | Idempotência multi-terminal (Order Manager) | 2/2 |
-| Entrega própria (não obrigatório) | 0/2: batchDecrypt e fluxo Pronto → Saiu → Entregue |
+| Entrega própria (não obrigatório) | batchDecrypt e Pronto → Saiu → Entregue executados em 26/11 (falta lançar) |
 | Autenticação | 2/2 |
 | Loja | 5/5 |
 | Autorização do estabelecimento | 3/3 |
@@ -145,16 +159,23 @@ Pedidos de teste usados (empresa 15, filial 19): 577 / #9147 (fluxo completo, ID
 
 **Bloqueio atual:** a loja de teste 159655864 tem o texto de endereço "Avenida Faria Lima, 2000, São Paulo", mas o **pino fica em Tsiroanomandidy, Madagascar**. O app Keeta abre a loja pelo link de compartilhamento (portal do lojista › Settings › Profile › Share store link), mas diz "fora da área de entrega" para endereço em São Paulo. A localização não muda pelo portal (Profile › Edit só troca nome, categoria e fotos) nem pela API (a Keeta ignora `basicInfo.address`). Aberto o **ticket 50003** no Dev Portal (Tickets, tipo "Developer portal") pedindo mover o pino para São Paulo e configurar uma promoção com subsídio da Keeta e da loja.
 
-### O que falta para finalizar
+Resposta da Keeta (23/11): o pino **não muda**. As lojas de teste ficam em Bongolava (Madagascar) de propósito, e o endereço de entrega tem que estar perto delas. No celular, o pedido sai pelo **Keeta Test App**, não pelo app público. O Test App é instalado por um link enviado pela Keeta. Nele: escolher Brasil e, em "Digite um endereço", digitar `keetatestbr3` (uma igreja em Madagascar). No app público esse endereço não resolve (testado em 24/11). Segundo a doc (`api-docs.mykeeta.com/apis/opendelivery/keeta-test-app`), **reembolso não existe** nem no Test App nem no Developers Portal. Para a promoção, a Keeta pediu loja e item: em 24/11 respondemos loja 159655864 e item "Coxinha de frango" (`veddi-p66`, R$ 6,00). No mesmo dia pedimos o link do Test App e perguntamos como fazer o caso de reembolso recusado. Promoção só com subsídio da loja dá para criar no portal do lojista. A com subsídio da plataforma fica com o time de API da Keeta.
 
-1. **Acompanhar o ticket 50003** (Dev Portal › Tickets › View; a resposta também vai para o e-mail de contato da conta developer).
-2. Com a loja em São Paulo, fazer pelo **app Keeta** com a conta do "Link user" da loja de teste (Dev Portal › Test store › View details):
-   - *Cancelamento imediato pelo usuário*: aceite automático **desligado** no VEDDI (integração) e no Keeta Order Manager; pedir no app e cancelar antes de aceitar; conferir o `CANCELLED` e o pedido cancelado no VEDDI.
-   - *Loja recusa reembolso do usuário*: pedir no app, aceitar e marcar pronto no VEDDI, entregar pelo Courier simulator, pedir reembolso parcial no app e **recusar pela tela do pedido no VEDDI** (`rejectRefund`); conferir o fechamento do pedido de reembolso.
-   - *Promoção Keeta*: pedir um item com a promoção configurada pela Keeta, aceitar e conferir `promotions`, descontos patrocinados (Keeta × loja) e totais.
-3. **Entrega própria** (opcional): criar uma loja de teste "self-delivery" (Dev Portal › Test store › Create store; nome não muda, limite de 5), autorizar no VEDDI em outra filial e testar `batchDecrypt` (nome, telefone, endereço) e `dispatch`/`delivered`. Se não for fazer, marcar N/A e explicar no SOW.
-4. Preencher o **SOW** (SIT Platform, V1.0.8, ainda "Em andamento") e subir o SOW e o SIT Checklist em Dev Portal › Information management › Integration document management.
-5. **Enviar a SIT** ("Enviar / Submit"). A Keeta marca a SIT Review Meeting; depois vêm o cadastro da marca (onboarding) e a UAT por marca em produção.
+### O que falta para finalizar (atualizado 26/11)
+
+Todos os casos de pedido já rodaram na API real (seção "Validado no Keeta Test App"). Falta só a parte do responsável na SIT Platform (código de acesso):
+
+| Caso da SIT | Pedido VEDDI / Keeta | Observação para a SIT |
+|---|---|---|
+| Cancelamento imediato pelo usuário | 586 / 5950763345430018 (#0018) | aceite automático desligado; `CANCELLED` (cancelType 5010) em 2 s |
+| Loja recusa reembolso do usuário | 588 / 5950760032954617 (#SD4617) | loja de entrega própria; `rejectRefund` 204, app "Refund rejected". Na entrega Keeta (587 / #2811) a Keeta responde 422 "wait for the CS" e o atendimento decide |
+| Promoção | 589 / 5950763939129777 (#SD9777) | promoção da loja (25% acima de R$ 60); `discounts` CART 15, subsídio da loja 15. A paga pela Keeta não existe na área de teste |
+| Entrega própria: batchDecrypt | 588 | nome, telefone e endereço descriptografados |
+| Entrega própria: Pronto → Saiu → Entregue | 588 e 589 | `dispatch` 202 depois do ajuste do datetime, `delivered` 202 |
+
+**Feito em 26/11 (tarde):** casos lançados com ID, print e observação; SIT Platform **30/30 + 1 N/A, enviada** ("Enviado / Submitted"); **SOW V1.0.8 preenchido e enviado** online (App_level_token, polling + webhook, ativação B self-service, cardápio pela API, aceite manual com aceite automático opcional, cancelamento antes e depois do aceite, todos os eventos assinados; "Não" só em `merchantUpdate` com entityType, multi-cardápio, produto de sede, validação de imagem e "Send Delivery Updates"); modelos Word **SOW-Template-V1.0.7** e **SIT Test Cases-V1.0.7** preenchidos com as mesmas respostas e subidos no Dev Portal (Information management › Integration document management, "Latest upload: 26 Nov 2026"); **ticket 50003 marcado como resolvido**. Na SIT, o caso de promoção foi aprovado com a promoção da loja e a observação de que a paga pela Keeta não existe na área de teste.
+
+Próximo passo é da Keeta: SIT Review Meeting; depois cadastro da marca e UAT por marca em produção.
 
 ### Antes de produção
 
@@ -164,7 +185,8 @@ Pedidos de teste usados (empresa 15, filial 19): 577 / #9147 (fluxo completo, ID
 ### Ambiente local da SIT (para retomar)
 
 - `.env` local: `APP_URL` = túnel público, `KEETA_ENABLED=true`, `KEETA_HOMOLOGATION_MODE=true`, `KEETA_APP_ID=Keeta`. O túnel aponta para um proxy local que só repassa as rotas Keeta (`/webhooks/keeta/*` e `/integrations/keeta/*`) ao Docker na porta 8000. Ao trocar o túnel, reaplicar o onboarding da loja (a URL do webhook vai no `merchantOnboarding`).
-- Empresa 15, filial 19 (Centro), integração 1, loja 159655864, aceite automático ligado.
+- Empresa 15, filial 19 (Centro), integração 1, loja 159655864 (entrega Keeta), aceite automático ligado. Filial 28 (Nova filial), integração 2, loja 159670600 (entrega própria).
+- Keeta Test App (TestFlight) no iPhone, espelhado no Mac; endereço salvo "Eglise Adventiste (SDA Church)…" (busca `keetatestbr3`). O app às vezes volta para o endereço real ao reabrir: trocar no topo antes de pedir.
 - Sessões: SIT Platform (código de acesso), Dev Portal (conta developer) e portal do lojista / Order Manager dividem a sessão `mykeeta.com`. Usar o lojista numa janela anônima e o developer na janela normal.
 - Ferramentas do Dev Portal: Test order tool (cria o pedido, a observação do carrinho não chega), Courier simulator (só a conclusão gera evento), Log search.
 
@@ -172,7 +194,10 @@ Pedidos de teste usados (empresa 15, filial 19): 577 / #9147 (fluxo completo, ID
 
 - Forma exata da assinatura dos webhooks (corpo só ou URL + corpo; corpo cru ou canônico): o VEDDI aceita as quatro.
 - Formato do header `x-polling-merchants` com várias lojas (vírgula).
-- Prazo de resposta do reembolso (exibido como 24 h) e quais códigos de cancelamento valem na entrega Keeta.
+- Quais códigos de cancelamento valem na entrega Keeta. (Prazo do reembolso: 10 min, visto no app em 26/11.)
+- Frete da entrega própria vem `receivedBy=LOGISTIC_SERVICES` (loja 159670600): se é da loja, tem que entrar no total local.
+- `REFUND_FAILED` não chegou nem na recusa da loja (204) nem na do atendimento (26/11): confirmar se a Keeta manda esse evento.
+- Por que a loja de teste fica fechada ("reabre amanhã 08:00") logo depois de um pedido, sem chamada do VEDDI.
 - Se pedido agendado (`SCHEDULED`) também exige confirmação em 5 min.
 - Fórmula dos totais em pedido real (descontos patrocinados pela loja × Keeta, taxas `receivedBy`).
 - Se a Keeta também exige `basicInfo` completo (endereço, documento) apesar de marcar como ignorado.

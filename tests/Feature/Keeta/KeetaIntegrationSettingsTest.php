@@ -77,6 +77,13 @@ it('conecta: gera o link com state, recebe o retorno, escolhe a loja e faz o onb
         && $r['getMerchantURL']['apiKey'] === $integration->menu_api_key);
 });
 
+it('autorização com uma loja só já vem com ela marcada', function () {
+    $ctx = keetaContext(integration: ['keeta_merchant_id' => null, 'status' => 'pending_mapping', 'available_shops' => [['id' => '159670600', 'name' => 'A', 'address' => null]]]);
+    $this->actingAs(keetaAdmin($ctx));
+
+    Livewire::test(KeetaIntegrationSettings::class)->assertSet('selectedShopId', '159670600');
+});
+
 it('loja fora da autorização não pode ser escolhida', function () {
     $ctx = keetaContext(integration: ['keeta_merchant_id' => null, 'status' => 'pending_mapping', 'available_shops' => [['id' => '1', 'name' => 'A', 'address' => null]]]);
     $this->actingAs(keetaAdmin($ctx));

@@ -31,13 +31,16 @@ class KeetaRequest extends Model
 
     public const STATUS_EXPIRED = 'expired';
 
+    /** Reembolso assumido pelo atendimento da Keeta: a loja não responde (a Keeta devolve 422 "wait for the CS"). */
+    public const STATUS_SUPPORT = 'support';
+
     /**
-     * Prazo exibido pra loja responder. [VALIDAR Keeta] a doc não informa o prazo do reembolso;
-     * 24 h segue o da 99Food até a SIT confirmar.
+     * Prazo exibido pra loja responder. Reembolso: 10 min, o que o app da Keeta mostra ao cliente
+     * ("The store will review your request by 12:17" num pedido feito às 12:07, SIT 26/11).
      */
     public const DEADLINE_MINUTES = [
         self::KIND_CANCEL => 5,
-        self::KIND_REFUND => 24 * 60,
+        self::KIND_REFUND => 10,
     ];
 
     /** Motivos de recusa de reembolso aceitos pela Keeta (RequestDenied.code). */
@@ -119,6 +122,7 @@ class KeetaRequest extends Model
             self::STATUS_REJECTED => 'Recusada',
             self::STATUS_RESOLVED => 'Decidida pela Keeta',
             self::STATUS_EXPIRED => 'Sem resposta no prazo',
+            self::STATUS_SUPPORT => 'Em análise no atendimento da Keeta',
             default => $this->status,
         };
     }

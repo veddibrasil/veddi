@@ -48,6 +48,33 @@ it('importa o pedido do evento CREATED com itens, valores e cliente', function (
     Http::assertNotSent(fn (Request $r) => str_ends_with($r->url(), '/v1/batchDecrypt'));
 });
 
+it('importa pedido do app com endereço mascarado sem estourar as colunas de endereço', function () {
+    // SIT 26/11: pedido real do app (entrega Keeta) vem com "Proteção de Privacidade" em todo campo.
+    $masked = 'Proteção de Privacidade';
+    $ctx = keetaContext();
+    $order = receiveKeetaOrder($this, $ctx, keetaOrder($ctx, ['delivery' => ['deliveryAddress' => [
+        'state' => 'Bongolava', 'city' => 'Tsiroanomandidy', 'district' => $masked, 'street' => $masked,
+        'number' => $masked, 'complement' => $masked, 'formattedAddress' => $masked, 'postalCode' => '',
+    ]]]));
+
+    expect($order->customer->number)->toBe('S/N')
+        ->and($order->customer->state)->toBe('')
+        ->and($order->customer->address)->toBe($masked)
+        ->and($order->customer->city)->toBe('Tsiroanomandidy');
+});
+
+it('converte nome do estado em UF e corta campos longos do endereço', function () {
+    $ctx = keetaContext();
+    $dto = \App\DTOs\KeetaOrderDTO::fromArray(keetaOrder($ctx, ['delivery' => ['deliveryAddress' => [
+        'state' => 'São Paulo', 'number' => '123', 'complement' => str_repeat('x', 150), 'postalCode' => '01000-000123',
+    ]]]));
+
+    expect($dto->deliveryAddress['state'])->toBe('SP')
+        ->and($dto->deliveryAddress['number'])->toBe('123')
+        ->and(mb_strlen($dto->deliveryAddress['complement']))->toBe(100)
+        ->and($dto->deliveryAddress['cep'])->toBe('01000000');
+});
+
 it('exibe displayId, pickupCode, observações e valores no comprovante do pedido', function () {
     $ctx = keetaContext();
     $order = receiveKeetaOrder($this, $ctx, keetaOrder($ctx));
@@ -191,6 +218,22 @@ it('pede o cancelamento e só cancela quando chega o CANCELLED, devolvendo o est
         ->and((int) \Illuminate\Support\Facades\DB::table('branch_product')->where('product_id', $ctx['product']->id)->value('quantity'))->toBe($stockAfterOrder + 2);
 });
 
+it('cancelamento pelo cliente no app grava cancelReason e cancelType do metadata', function () {
+    // SIT 26/11: o app manda cancelType/cancelReason (não code/reason) no CANCELLED.
+    $ctx = keetaContext();
+    $raw = keetaOrder($ctx);
+    $order = receiveKeetaOrder($this, $ctx, $raw);
+
+    postKeetaWebhook($this, keetaEvent('CANCELLED', $raw['id'], ['metadata' => json_encode([
+        'orderViewId' => (int) $raw['id'], 'cancelType' => 5010, 'opType' => 10, 'cancelReason' => 'Cancelado pelo cliente', 'status' => 50,
+    ])]), $ctx['integration']->merchant_ref)->assertNoContent();
+
+    $order = $order->fresh();
+    expect($order->status)->toBe('cancelled')
+        ->and($order->keetaDetails()->cancellation())->toMatchArray(['origin' => 'platform', 'code' => '5010', 'reason' => 'Cancelado pelo cliente'])
+        ->and($order->cancellation_reason)->toContain('Cancelado pelo cliente');
+});
+
 it('recusa motivo de entrega própria em pedido com entrega Keeta', function () {
     $ctx = keetaContext();
     $order = receiveKeetaOrder($this, $ctx, keetaOrder($ctx));
@@ -239,6 +282,9 @@ it('entrega própria descriptografa contato e despacha/entrega pela API', functi
 
     expect($order->fresh()->status)->toBe('delivered')
         ->and(keetaCalls())->toContain('POST /v1/orders/783441058793308/dispatch', 'POST /v1/orders/783441058793308/delivered');
+    // RFC 3339 sem milissegundos: com ".261Z" a Keeta recusa o dispatch (SIT 26/11).
+    Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/dispatch')
+        && preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/', (string) $r['deliveryTrackingInfo']['event']['datetime']) === 1);
 });
 
 it('despacha sem corpo quando o rastreamento opcional não foi informado', function () {
