@@ -5,6 +5,7 @@ namespace App\Livewire\Admin\Fiscal;
 use App\Jobs\IssueFiscalNote;
 use App\Models\FiscalNote;
 use App\Services\Fiscal\FiscalNoteService;
+use App\Services\Fiscal\FiscalRecipient;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -22,6 +23,18 @@ class Notes extends Component
 
     #[Url]
     public string $modelFilter = '';
+
+    /** Número do pedido exibido na lista (order_number), não o id interno. */
+    #[Url]
+    public string $orderNumber = '';
+
+    /** Nome do destinatário da nota ou do cliente do pedido. */
+    #[Url]
+    public string $customerName = '';
+
+    /** CPF ou CNPJ, com ou sem pontuação. */
+    #[Url]
+    public string $customerDocument = '';
 
     public bool $showCorrectionModal = false;
 
@@ -163,6 +176,27 @@ class Notes extends Component
         $this->resetPage();
     }
 
+    public function updatedOrderNumber(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedCustomerName(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedCustomerDocument(): void
+    {
+        $this->resetPage();
+    }
+
+    public function clearFilters(): void
+    {
+        $this->reset('search', 'statusFilter', 'modelFilter', 'orderNumber', 'customerName', 'customerDocument');
+        $this->resetPage();
+    }
+
     public function openCancelModal(int $noteId): void
     {
         $this->authorizeFiscalWrite();
@@ -275,6 +309,22 @@ class Notes extends Component
         return $note && $note->order_id && in_array($note->status, ['error', 'rejected'], true) ? $note : null;
     }
 
+    /**
+     * LIKE em texto livre dentro de JSON. No MySQL o valor extraído do JSON vem em utf8mb4_bin,
+     * que diferencia maiúscula e acento ("joao" não acharia "João"); a collation da conexão deixa
+     * a busca igual à das colunas comuns, como customers.name. O LIKE do sqlite já ignora caixa.
+     */
+    private function whereTextLike(\Illuminate\Database\Eloquent\Builder $query, string $column, string $term, string $boolean = 'and'): void
+    {
+        $connection = $query->getConnection();
+        $sql = $query->getQuery()->getGrammar()->wrap($column);
+        if (in_array($connection->getDriverName(), ['mysql', 'mariadb'], true)) {
+            $sql .= ' collate '.($connection->getConfig('collation') ?: 'utf8mb4_unicode_ci');
+        }
+
+        $query->whereRaw($sql.' like ?', ['%'.$term.'%'], $boolean);
+    }
+
     private function notes()
     {
         return FiscalNote::query()->when($this->lockedBranchId, fn ($q) => $q->where('branch_id', $this->lockedBranchId));
@@ -301,8 +351,36 @@ class Notes extends Component
             });
         }
 
+        if (trim($this->orderNumber) !== '') {
+            $query->whereHas('order', fn ($o) => $o->where('order_number', 'like', '%'.trim($this->orderNumber).'%'));
+        }
+
+        if (trim($this->customerName) !== '') {
+            $name = trim($this->customerName);
+            // Nome vem do destinatário gravado na nota; notas sem ele caem no cliente do pedido.
+            $query->where(function ($q) use ($name) {
+                $this->whereTextLike($q, $q->qualifyColumn('data').'->recipient->name', $name);
+                $q->orWhereHas('order', function ($o) use ($name) {
+                    $this->whereTextLike($o, $o->qualifyColumn('buyer_data').'->name', $name);
+                    $o->orWhereHas('customer', fn ($c) => $c->where($c->qualifyColumn('name'), 'like', '%'.$name.'%'));
+                });
+            });
+        }
+
+        // Documento é guardado só com dígitos (ou CNPJ alfanumérico): a mesma normalização do cadastro.
+        $document = FiscalRecipient::normalizeDocument($this->customerDocument);
+        if ($document !== '') {
+            $like = '%'.$document.'%';
+            $query->where(fn ($q) => $q->where('data->recipient->document', 'like', $like)
+                ->orWhereHas('order', fn ($o) => $o->where('fiscal_recipient->document', 'like', $like)
+                    ->orWhere('buyer_data->tax_id', 'like', $like)
+                    ->orWhereHas('customer', fn ($c) => $c->where('tax_id', 'like', $like))));
+        }
+
         return view('livewire.admin.fiscal.notes', [
             'notes' => $query->paginate(15),
+            'hasFilters' => collect([$this->search, $this->orderNumber, $this->customerName, $this->customerDocument, $this->modelFilter, $this->statusFilter])
+                ->contains(fn (string $value) => trim($value) !== ''),
             'fiscalEvents' => \App\Models\FiscalNoteEvent::query()->when($this->lockedBranchId, fn ($query, $id) => $query->where(fn ($scope) => $scope
                 ->whereHas('fiscalConfig', fn ($config) => $config->where('branch_id', $id))
                 ->orWhereHas('note', fn ($note) => $note->where('branch_id', $id))))->latest()->limit(20)->get(),

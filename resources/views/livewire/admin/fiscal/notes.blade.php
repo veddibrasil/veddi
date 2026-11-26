@@ -31,20 +31,46 @@
         <livewire:admin.fiscal.monthly-export />
     @endif
 
-    <div class="flex flex-col sm:flex-row gap-3">
-        <flux:input wire:model.live.debounce.300ms="search" placeholder="Buscar por chave, ref ou pedido..." class="sm:max-w-xs" />
-        <flux:select wire:model.live="modelFilter" class="sm:max-w-xs">
-            <option value="">Todos os modelos</option><option value="55">NF-e</option><option value="65">NFC-e</option>
-        </flux:select>
-        <flux:select wire:model.live="statusFilter" class="sm:max-w-xs">
-            <option value="">Todos os status</option>
-            <option value="pending">Pendente</option>
-            <option value="authorized">Autorizada</option>
-            <option value="rejected">Rejeitada</option>
-            <option value="cancelled">Cancelada</option>
-            <option value="error">Erro</option>
-        </flux:select>
-    </div>
+    <section class="space-y-4 rounded-xl border border-neutral-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800" aria-labelledby="notes-filters-title">
+        <div class="flex items-start justify-between gap-3">
+            <div>
+                <h2 id="notes-filters-title" class="font-semibold text-neutral-800 dark:text-neutral-100">Filtrar notas</h2>
+                <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400" aria-live="polite">
+                    {{ $notes->total() }} {{ $notes->total() === 1 ? 'nota encontrada' : 'notas encontradas' }}
+                </p>
+            </div>
+            @if($hasFilters)
+                <flux:button wire:click="clearFilters" variant="ghost" size="sm" icon="x-mark">Limpar filtros</flux:button>
+            @endif
+        </div>
+
+        {{-- Mobile: textos em linha cheia, Modelo e Status lado a lado; lg: 2 linhas de 4 colunas. --}}
+        <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div class="col-span-2">
+                <flux:input wire:model.live.debounce.300ms="search" label="Buscar" placeholder="Chave ou referência" icon="magnifying-glass" clearable />
+            </div>
+            <div class="col-span-2 sm:col-span-1">
+                <flux:input wire:model.live.debounce.300ms="orderNumber" label="Nº do pedido" placeholder="Número ou parte dele" clearable />
+            </div>
+            <div class="col-span-2 sm:col-span-1">
+                <flux:input wire:model.live.debounce.300ms="customerDocument" label="CPF ou CNPJ" placeholder="Com ou sem pontuação" clearable />
+            </div>
+            <div class="col-span-2">
+                <flux:input wire:model.live.debounce.300ms="customerName" label="Cliente" placeholder="Nome do cliente" clearable />
+            </div>
+            <flux:select wire:model.live="modelFilter" label="Modelo">
+                <option value="">Todos</option><option value="55">NF-e</option><option value="65">NFC-e</option>
+            </flux:select>
+            <flux:select wire:model.live="statusFilter" label="Status">
+                <option value="">Todos</option>
+                <option value="pending">Pendente</option>
+                <option value="authorized">Autorizada</option>
+                <option value="rejected">Rejeitada</option>
+                <option value="cancelled">Cancelada</option>
+                <option value="error">Erro</option>
+            </flux:select>
+        </div>
+    </section>
 
     {{-- Table --}}
     <div class="bg-white border rounded-xl shadow-sm overflow-x-auto dark:bg-zinc-800 dark:border-zinc-700">
