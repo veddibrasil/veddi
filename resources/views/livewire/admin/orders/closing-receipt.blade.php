@@ -92,6 +92,12 @@
                 <td class="total-label">TOTAL {{ $label }}</td>
                 <td class="total-value">R$ {{ number_format($channel['revenue'], 2, ',', '.') }}</td>
             </tr>
+            @if ($channel['staff']['count'] > 0)
+                <tr>
+                    <td class="sm">Consumo de funcionários ({{ $channel['staff']['count'] }}) — fora do total</td>
+                    <td class="right sm">R$ {{ number_format($channel['staff']['total'], 2, ',', '.') }}</td>
+                </tr>
+            @endif
         </table>
     @endforeach
 

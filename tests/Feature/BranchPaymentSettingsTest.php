@@ -26,7 +26,8 @@ test('filial sem configuração mantém todas as formas atuais e modalidade inv�
     $branch = $ctx['branch']->fresh();
     foreach (BranchPaymentMethods::ORDER_TYPES as $channel => $types) {
         foreach ($types as $type => $label) {
-            expect($branch->paymentMethodsFor($channel, $type))->toBe(array_keys(BranchPaymentMethods::LABELS[$channel]));
+            // Consumo de funcionário (PDV) não é venda: vem desligado até a filial ligar.
+            expect($branch->paymentMethodsFor($channel, $type))->toBe(array_values(array_diff(array_keys(BranchPaymentMethods::LABELS[$channel]), [BranchPaymentMethods::STAFF])));
         }
     }
     expect($branch->paymentMethodsFor('pdv', 'invalid'))->toBe([]);

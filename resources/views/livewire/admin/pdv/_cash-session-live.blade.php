@@ -103,6 +103,23 @@
         </div>
     @endif
 
+    @if ($liveReport['staff']['orders'] > 0)
+        <div class="rounded-xl border bg-neutral-50 p-4 text-sm space-y-2 dark:border-zinc-700 dark:bg-zinc-800">
+            <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Consumo de funcionários</p>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400">Fora do faturamento e do esperado no caixa.</p>
+            @foreach ($liveReport['staff']['by_user'] as $staffRow)
+                <div class="flex justify-between gap-3">
+                    <span class="min-w-0 text-neutral-600 dark:text-neutral-400">{{ $staffRow['name'] }} <span class="text-xs">({{ $staffRow['orders'] }})</span></span>
+                    <span class="shrink-0 font-medium">R$ {{ number_format($staffRow['total'], 2, ',', '.') }}</span>
+                </div>
+            @endforeach
+            <div class="flex justify-between border-t pt-2 font-bold dark:border-zinc-600">
+                <span>Total</span>
+                <span>R$ {{ number_format($liveReport['staff']['total'], 2, ',', '.') }}</span>
+            </div>
+        </div>
+    @endif
+
     @if ($liveReport['top_products']->isNotEmpty())
         <div class="rounded-xl border bg-neutral-50 p-4 text-sm space-y-2 dark:border-zinc-700 dark:bg-zinc-800">
             <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Mais vendidos</p>

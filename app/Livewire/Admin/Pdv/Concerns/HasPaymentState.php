@@ -10,9 +10,13 @@ namespace App\Livewire\Admin\Pdv\Concerns;
  */
 trait HasPaymentState
 {
+    /** Funcionário que consome (forma "Consumo de funcionário"). Validado no servidor contra a empresa. */
+    public ?int $staffUserId = null;
+
     private function resetPaymentState(): void
     {
         $this->paymentMethod = 'cash';
+        $this->staffUserId = null;
         $this->cashReceivedInput = '';
         $this->manualDiscountAmount = 0.0;
         $this->manualDiscountInput = '';

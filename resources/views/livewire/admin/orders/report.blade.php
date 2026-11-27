@@ -123,6 +123,14 @@
         </div>
     </div>
 
+    @if ($staffCount > 0)
+        <div class="bg-white border rounded-xl p-4 shadow-sm dark:bg-zinc-800 dark:border-zinc-700">
+            <p class="text-xs text-neutral-500 uppercase tracking-wide dark:text-neutral-400">Consumo de funcionários</p>
+            <p class="text-2xl font-bold text-red-600 mt-1 dark:text-red-400">R$ {{ number_format($staffTotal, 2, ',', '.') }}</p>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ $staffCount }} pedido(s), fora da receita e do ticket médio. Detalhe por funcionário no Relatório PDV.</p>
+        </div>
+    @endif
+
     {{-- Orders Table --}}
     <div class="bg-white border rounded-xl shadow-sm overflow-hidden dark:bg-zinc-800 dark:border-zinc-700">
 

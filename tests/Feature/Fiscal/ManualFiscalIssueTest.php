@@ -93,7 +93,8 @@ test('pedido que vira pago não emite nota sozinho, em nenhum canal', function (
 test('rodar o job de emissão duas vezes para o mesmo pedido (corrida real) só cria uma nota fiscal', function () {
     // Sem Bus::fake(): executa o job de verdade duas vezes, simulando dois disparos
     // concorrentes (evento de pagamento duplicado, retry) chegando quase juntos.
-    ['order' => $order, 'company' => $company] = manualIssueTestContext();
+    // Retirada: NFC-e sem documento (a de entrega a domicílio exige CPF e endereço).
+    ['order' => $order, 'company' => $company] = manualIssueTestContext(orderType: 'pickup');
     $company->update(['owner_cpf_cnpj' => '12345678000100']);
 
     app()->bind(FiscalNoteProviderInterface::class, function () {

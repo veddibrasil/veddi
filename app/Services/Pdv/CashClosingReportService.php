@@ -31,6 +31,7 @@ class CashClosingReportService
             'cancelled_count' => $orderStats['cancelled'],
             'discounts' => $orderStats['discounts'],
             'top_products' => $this->topProducts($session->id),
+            'staff' => $this->staffConsumption($session->id),
         ];
     }
 
@@ -108,6 +109,7 @@ class CashClosingReportService
         $stats = DB::table('orders')
             ->where('pdv_cash_session_id', $sessionId)
             ->where('is_open_tab', false)
+            ->whereNull('staff_user_id')
             ->whereNotIn('status', ['cancelled', 'refunded'])
             ->selectRaw('
                 COUNT(*) as total_orders,
@@ -119,6 +121,7 @@ class CashClosingReportService
         $cancelled = DB::table('orders')
             ->where('pdv_cash_session_id', $sessionId)
             ->where('is_open_tab', false)
+            ->whereNull('staff_user_id')
             ->whereIn('status', ['cancelled', 'refunded'])
             ->count();
 
@@ -130,12 +133,44 @@ class CashClosingReportService
         ];
     }
 
+    /**
+     * Consumo de funcionário da sessão: fora de vendas, caixa e faturamento, mas listado no
+     * fechamento pra o gestor ver quanto saiu como débito de funcionário e de quem.
+     *
+     * @return array{orders: int, total: float, by_user: array<int, array{name: string, orders: int, total: float}>}
+     */
+    private function staffConsumption(int $sessionId): array
+    {
+        $rows = DB::table('orders')
+            ->leftJoin('users', 'users.id', '=', 'orders.staff_user_id')
+            ->where('orders.pdv_cash_session_id', $sessionId)
+            ->whereNotNull('orders.staff_user_id')
+            ->whereNotIn('orders.status', ['cancelled', 'refunded'])
+            ->groupBy('orders.staff_user_id', 'users.name')
+            ->selectRaw('users.name as name, COUNT(*) as orders, COALESCE(SUM(orders.total), 0) as total')
+            ->orderBy('users.name')
+            ->get();
+
+        $byUser = $rows->map(fn ($r) => [
+            'name' => $r->name ?? 'Funcionário removido',
+            'orders' => (int) $r->orders,
+            'total' => round((float) $r->total, 2),
+        ])->all();
+
+        return [
+            'orders' => array_sum(array_column($byUser, 'orders')),
+            'total' => round(array_sum(array_column($byUser, 'total')), 2),
+            'by_user' => $byUser,
+        ];
+    }
+
     private function topProducts(int $sessionId, int $limit = 5): \Illuminate\Support\Collection
     {
         return DB::table('order_items')
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->where('orders.pdv_cash_session_id', $sessionId)
             ->where('orders.is_open_tab', false)
+            ->whereNull('orders.staff_user_id')
             ->whereNotIn('orders.status', ['cancelled', 'refunded'])
             ->selectRaw('order_items.product_name, SUM(order_items.quantity) as total_qty')
             ->groupBy('order_items.product_name')

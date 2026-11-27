@@ -649,7 +649,7 @@ class OrderService implements OrderServiceInterface
         ]);
 
         if ($policy->requiresRefund($order)) {
-            foreach ($order->payments()->where('status', 'paid')->whereNotIn('payment_gateway', ['cash', 'card_machine', 'pix_manual'])->get() as $payment) {
+            foreach ($order->payments()->where('status', 'paid')->whereNotIn('payment_gateway', \App\Models\Payment::OFFLINE_GATEWAYS)->get() as $payment) {
                 Log::channel('orders')->info('Cancelamento do cliente disparando reembolso', [
                     'order_id' => $order->id,
                     'customer_id' => $customerId,
@@ -701,7 +701,7 @@ class OrderService implements OrderServiceInterface
         ]);
 
         if ($policy->requiresRefund($order)) {
-            foreach ($order->payments()->where('status', 'paid')->whereNotIn('payment_gateway', ['cash', 'card_machine', 'pix_manual'])->get() as $payment) {
+            foreach ($order->payments()->where('status', 'paid')->whereNotIn('payment_gateway', \App\Models\Payment::OFFLINE_GATEWAYS)->get() as $payment) {
                 Log::channel('orders')->info('Cancelamento do admin disparando reembolso', [
                     'order_id' => $order->id,
                     'admin_id' => $adminUserId,
@@ -798,7 +798,7 @@ class OrderService implements OrderServiceInterface
             $locked->update(['status' => 'cancelled', 'cancellation_reason' => $reason, 'cancelled_at' => now()]);
             app(StockService::class)->restoreForOrder($locked);
             $this->recordStatusHistory($locked, null, $previous, 'cancelled', $reason, ['source' => 'chat_acceptance_timeout']);
-            foreach ($locked->payments()->where('status', 'paid')->whereNotIn('payment_gateway', ['cash', 'card_machine', 'pix_manual'])->get() as $payment) {
+            foreach ($locked->payments()->where('status', 'paid')->whereNotIn('payment_gateway', \App\Models\Payment::OFFLINE_GATEWAYS)->get() as $payment) {
                 app(RefundServiceInterface::class)->initiateRefund($locked, $payment, (float) $payment->amount, 'system', null, 'chat_acceptance_timeout');
             }
 

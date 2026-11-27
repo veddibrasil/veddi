@@ -173,6 +173,7 @@ final class OrderFulfillment
             'card_machine' => 'Maquininha',
             'card', 'credit_card' => $order->payment_on_delivery || $order->order_type === 'pdv' ? 'Cartão na maquininha' : 'Cartão',
             'split' => 'Dividido',
+            'staff' => 'Consumo de funcionário',
             null, '' => 'Não informado',
             default => ucfirst((string) $order->payment_method),
         };

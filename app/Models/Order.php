@@ -38,6 +38,8 @@ class Order extends Model
         'manual_discount', 'service_fee', 'couvert_fee',
         'pdv_cash_session_id',
         'attendant_id',
+        'staff_user_id',
+        'staff_settled_at',
         'table_label',
         'is_open_tab',
         'restaurant_table_id',
@@ -61,6 +63,7 @@ class Order extends Model
         'payment_on_delivery' => 'boolean',
         'external_metadata' => 'array',
         'cancelled_at' => 'datetime',
+        'staff_settled_at' => 'datetime',
         'buyer_data' => 'array',
     ];
 
@@ -506,6 +509,23 @@ class Order extends Model
     }
 
     /** Restringe a query a pedidos de entrega, mesmo critério de {@see isDeliveryOrder()}. */
+    /** Consumo de funcionário (PDV): débito do funcionário, não é venda nem receita da loja. */
+    public function isStaffConsumption(): bool
+    {
+        return $this->staff_user_id !== null;
+    }
+
+    public function staffUser(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(User::class, 'staff_user_id');
+    }
+
+    /** Só vendas de verdade: tira o consumo de funcionário de faturamento, ticket médio e relatórios. */
+    public function scopeExcludingStaffConsumption(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query->whereNull($query->getModel()->qualifyColumn('staff_user_id'));
+    }
+
     public function scopeDeliveryOnly(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
     {
         return $query->where(function ($q) {

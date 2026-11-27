@@ -72,8 +72,10 @@ class KeetaOrderActionService
         }
 
         $integration = $this->resolveIntegration($order);
+        // Sem milissegundos: com ".261Z" a Keeta responde "Invalid event datetime format, should
+        // comply with RFC3339" (SIT 26/11), ao contrário do confirm, que aceita.
         $this->call($order, $integration, 'DISPATCHED', fn () => $this->gateway->dispatchOrder($integration, $details->orderId(), [
-            'event' => ['type' => 'DELIVERY_ONGOING', 'datetime' => now()->utc()->format('Y-m-d\TH:i:s.v\Z')],
+            'event' => ['type' => 'DELIVERY_ONGOING', 'datetime' => now()->utc()->format('Y-m-d\TH:i:s\Z')],
         ]));
         $this->sync->advance($order, 'DISPATCHED', $userId, 'veddi');
 

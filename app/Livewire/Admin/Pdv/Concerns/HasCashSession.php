@@ -331,6 +331,7 @@ trait HasCashSession
         $stats = DB::table('orders')
             ->where('pdv_cash_session_id', $sessionId)
             ->where('is_open_tab', false)
+            ->whereNull('staff_user_id')
             ->whereNotIn('status', ['cancelled', 'refunded'])
             ->selectRaw('COUNT(*) as total_orders, COALESCE(SUM(total), 0) as total_revenue')
             ->first();

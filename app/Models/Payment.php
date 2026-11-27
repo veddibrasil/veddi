@@ -8,6 +8,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Payment extends Model
 {
+    /** Gateways sem cobrança externa (PDV): cancelar não chama gateway nem gera estorno online. */
+    public const OFFLINE_GATEWAYS = ['cash', 'card_machine', 'pix_manual', 'staff_account'];
+
     protected $fillable = [
         'order_id',
         'asaas_payment_id',

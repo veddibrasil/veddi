@@ -338,6 +338,10 @@ class EscPosPrinterService implements PrinterServiceInterface
             $printer->setEmphasis(true);
             $printer->text("TOTAL {$label}: R$ ".number_format((float) $channel['revenue'], 2, ',', '.')."\n");
             $printer->setEmphasis(false);
+
+            if (($channel['staff']['count'] ?? 0) > 0) {
+                $printer->text("Consumo funcionarios ({$channel['staff']['count']}), fora do total: R$ ".number_format((float) $channel['staff']['total'], 2, ',', '.')."\n");
+            }
         }
 
         $this->divider($printer);
@@ -413,6 +417,7 @@ class EscPosPrinterService implements PrinterServiceInterface
                 $order->payment_method === 'pix' => 'PIX',
                 in_array($order->payment_method, ['card', 'credit_card'], true) => 'Cartao',
                 $order->payment_method === 'cash' => 'Dinheiro',
+                $order->payment_method === 'staff' => 'Consumo de funcionario'.($order->staffUser ? ': '.$order->staffUser->name : ''),
                 default => $order->payment_method,
             };
 

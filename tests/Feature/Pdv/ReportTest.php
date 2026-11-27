@@ -410,3 +410,117 @@ test('caixa só vê pedidos e sessões do próprio caixa, não os de outro opera
         ->assertDontSee('RPT-OTHER')
         ->assertDontSee('Terminal do outro');
 });
+
+// ─── Paginação das sessões de caixa ───────────────────────────────────────────
+
+test('sessões de caixa são paginadas de 25 em 25, mais recentes primeiro', function () {
+    ['admin' => $admin, 'company' => $company, 'branch' => $branch] = pdvReportContext();
+
+    // CX-00 é a sessão mais recente; CX-29 a mais antiga (30 fechadas no total).
+    for ($i = 0; $i < 30; $i++) {
+        $s = PdvCashSession::withoutGlobalScopes()->create([
+            'company_id' => $company->id,
+            'branch_id' => $branch->id,
+            'user_id' => $admin->id,
+            'terminal_name' => 'CX-'.str_pad((string) $i, 2, '0', STR_PAD_LEFT),
+            'opening_amount' => 10,
+            'closing_amount' => 10,
+            'expected_amount' => 10,
+            'closed_at' => now()->subMinutes($i),
+        ]);
+        // created_at não é fillable: grava depois do create para controlar a ordem.
+        $s->forceFill(['created_at' => now()->subMinutes($i + 1)])->save();
+    }
+
+    $this->actingAs($admin);
+
+    // Sem filtro de data: o período padrão (mês corrente) não deve depender da data do teste.
+    $component = Livewire::test(Report::class)
+        ->set('dateStart', '')
+        ->set('dateEnd', '');
+
+    $component->assertSee('CX-00')
+        ->assertSee('CX-24')
+        ->assertDontSee('CX-25')
+        ->assertDontSee('CX-29');
+
+    $component->set('paginators.sessionsPage', 2)
+        ->assertSee('CX-25')
+        ->assertSee('CX-29')
+        ->assertDontSee('CX-00')
+        ->assertDontSee('CX-24');
+});
+
+test('troca de filtro volta a listagem de sessões para a página 1', function () {
+    ['admin' => $admin, 'company' => $company, 'branch' => $branch] = pdvReportContext();
+
+    for ($i = 0; $i < 30; $i++) {
+        $s = PdvCashSession::withoutGlobalScopes()->create([
+            'company_id' => $company->id,
+            'branch_id' => $branch->id,
+            'user_id' => $admin->id,
+            'terminal_name' => 'CX-'.str_pad((string) $i, 2, '0', STR_PAD_LEFT),
+            'opening_amount' => 10,
+            'closing_amount' => 10,
+            'expected_amount' => 10,
+            'closed_at' => now()->subMinutes($i),
+        ]);
+        // created_at não é fillable: grava depois do create para controlar a ordem.
+        $s->forceFill(['created_at' => now()->subMinutes($i + 1)])->save();
+    }
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Report::class)
+        ->set('dateStart', '')
+        ->set('dateEnd', '')
+        ->set('paginators.sessionsPage', 2)
+        ->assertSee('CX-29');
+
+    $component->set('dateEnd', '')
+        ->assertSee('CX-00')
+        ->assertDontSee('CX-29');
+});
+
+test('caixa aberto aparece na primeira página com o esperado parcial, sem afetar a paginação', function () {
+    ['admin' => $admin, 'company' => $company, 'branch' => $branch] = pdvReportContext();
+
+    PdvCashSession::withoutGlobalScopes()->create([
+        'company_id' => $company->id,
+        'branch_id' => $branch->id,
+        'user_id' => $admin->id,
+        'terminal_name' => 'CX-ABERTO',
+        'opening_amount' => 40.00,
+    ]);
+
+    for ($i = 0; $i < 30; $i++) {
+        $s = PdvCashSession::withoutGlobalScopes()->create([
+            'company_id' => $company->id,
+            'branch_id' => $branch->id,
+            'user_id' => $admin->id,
+            'terminal_name' => 'CX-'.str_pad((string) $i, 2, '0', STR_PAD_LEFT),
+            'opening_amount' => 10,
+            'closing_amount' => 10,
+            'expected_amount' => 10,
+            'closed_at' => now()->subMinutes($i),
+        ]);
+        // created_at não é fillable: grava depois do create para controlar a ordem.
+        $s->forceFill(['created_at' => now()->subMinutes($i + 1)])->save();
+    }
+
+    $this->actingAs($admin);
+
+    $component = Livewire::test(Report::class)
+        ->set('dateStart', '')
+        ->set('dateEnd', '');
+
+    // Aberto vem primeiro, então entra na página 1 mesmo com 30 fechados depois dele.
+    $component->assertSee('CX-ABERTO')
+        ->assertSee('até agora')
+        ->assertSee('CX-23')
+        ->assertDontSee('CX-24');
+
+    $component->set('paginators.sessionsPage', 2)
+        ->assertDontSee('CX-ABERTO')
+        ->assertSee('CX-24');
+});

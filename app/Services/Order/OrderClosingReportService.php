@@ -29,7 +29,9 @@ class OrderClosingReportService
 
     private function summarize($query): array
     {
-        $orders = $query->get(['total', 'status', 'payment_method', 'discount']);
+        // Consumo de funcionário não é venda: sai do faturamento e vira linha própria.
+        $staff = (clone $query)->whereNotNull('staff_user_id')->whereNotIn('status', ['cancelled', 'refunded'])->get(['total']);
+        $orders = $query->excludingStaffConsumption()->get(['total', 'status', 'payment_method', 'discount']);
 
         // Faturamento só de pedidos confirmados; pendente/aguardando pagamento fica numa linha própria.
         $valid = $orders->whereIn('status', Order::CONFIRMED_STATUSES);
@@ -42,6 +44,7 @@ class OrderClosingReportService
             'revenue' => (float) $valid->sum('total'),
             'discounts' => (float) $valid->sum('discount'),
             'payments' => $this->paymentBreakdown($valid),
+            'staff' => ['count' => $staff->count(), 'total' => round((float) $staff->sum('total'), 2)],
         ];
     }
 

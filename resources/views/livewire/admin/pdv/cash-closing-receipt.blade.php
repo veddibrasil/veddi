@@ -114,6 +114,24 @@
         </tr>
     </table>
 
+    @if ($report['staff']['orders'] > 0)
+        <div class="divider"></div>
+        <div class="section-title">CONSUMO DE FUNCIONÁRIOS</div>
+        <div class="sm muted">Fora do total de vendas e do saldo do caixa.</div>
+        <table class="row">
+            @foreach ($report['staff']['by_user'] as $staffRow)
+                <tr>
+                    <td>{{ $staffRow['name'] }} ({{ $staffRow['orders'] }})</td>
+                    <td class="right">R$ {{ number_format($staffRow['total'], 2, ',', '.') }}</td>
+                </tr>
+            @endforeach
+            <tr style="border-top: 1px solid #dca8f5;">
+                <td class="bold">TOTAL CONSUMO</td>
+                <td class="right bold">R$ {{ number_format($report['staff']['total'], 2, ',', '.') }}</td>
+            </tr>
+        </table>
+    @endif
+
     <div class="divider"></div>
 
     <table class="row">

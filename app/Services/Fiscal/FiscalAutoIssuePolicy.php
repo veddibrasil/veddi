@@ -75,6 +75,7 @@ class FiscalAutoIssuePolicy
     {
         return $order->fiscal_auto_attempted_at === null
             && ! $order->fiscal_auto_skip
+            && ! $order->isStaffConsumption()
             && ! $order->is_open_tab
             && ! $order->isMarketplaceOrder()
             && in_array($order->status, Order::FISCAL_ISSUABLE_STATUSES, true)
@@ -88,6 +89,9 @@ class FiscalAutoIssuePolicy
         }
         if ($order->isMarketplaceOrder()) {
             return FiscalAutoIssueVerdict::off('Pedido de marketplace: emitir pelo Controle de notas.');
+        }
+        if ($order->isStaffConsumption()) {
+            return FiscalAutoIssueVerdict::skip('Consumo de funcionário não é venda: sem nota fiscal.');
         }
 
         if (! $this->activeConfigFor($order)) {

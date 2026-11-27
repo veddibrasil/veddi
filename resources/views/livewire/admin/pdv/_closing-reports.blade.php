@@ -214,6 +214,9 @@
                         </button>
                     @endforeach
                 </div>
+                <div class="max-w-2xl mx-auto mt-4">
+                    {{ $this->closedSessions->links() }}
+                </div>
             @endif
         @endif
     </div>

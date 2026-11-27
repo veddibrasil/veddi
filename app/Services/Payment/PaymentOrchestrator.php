@@ -750,6 +750,33 @@ class PaymentOrchestrator
      * Pix manual no PDV — operador confirmou o recebimento (ex: pix na maquininha
      * ou QR estático da empresa), só registra. Sem geração de cobrança no gateway.
      */
+    /**
+     * Consumo de funcionário (PDV): fecha o pedido como pago sem entrada de dinheiro. É um débito do
+     * funcionário: não passa por caixa, carteira, taxa da plataforma nem nota fiscal.
+     */
+    public function processStaffAccount(Order $order): array
+    {
+        $payment = Payment::create([
+            'order_id' => $order->id,
+            'payment_gateway' => 'staff_account',
+            'amount' => (float) $order->total,
+            'pix_fee' => 0.0,
+            'platform_fee' => 0.0,
+            'company_net_amount' => (float) $order->total,
+            'status' => 'paid',
+            'paid_at' => now(),
+            'payment_token' => hash('sha256', 'staff'.$order->id.now()->timestamp.Str::random(8)),
+        ]);
+
+        Log::channel('payments')->info('Consumo de funcionário registrado (PDV)', [
+            'order_id' => $order->id,
+            'staff_user_id' => $order->staff_user_id,
+            'amount' => (float) $order->total,
+        ]);
+
+        return ['id' => $payment->id, 'status' => 'paid', 'method' => 'staff', 'gateway' => 'staff_account'];
+    }
+
     public function processPixManual(Order $order, ?float $amount = null): array
     {
         $chargeAmount = $amount ?? (float) $order->total;

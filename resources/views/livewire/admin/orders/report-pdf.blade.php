@@ -43,6 +43,9 @@
     </p>
 
     @php
+        // Consumo de funcionário não é venda: sai da receita/ticket médio e vira linha própria.
+        $staffOrders   = $orders->whereNotNull('staff_user_id')->whereNotIn('status', ['cancelled', 'refunded']);
+        $orders        = $orders->whereNull('staff_user_id')->values();
         $totalCount    = $orders->count();
         $totalRevenue  = $orders->sum('total');
         $averageTicket = $totalCount > 0 ? $totalRevenue / $totalCount : 0;
@@ -116,6 +119,9 @@
 
     <p class="footer">
         Total: {{ $totalCount }} pedido(s) &nbsp;·&nbsp; Receita: R$ {{ number_format($totalRevenue, 2, ',', '.') }}
+        @if ($staffOrders->isNotEmpty())
+            &nbsp;·&nbsp; Consumo de funcionários (fora da receita): {{ $staffOrders->count() }} pedido(s), R$ {{ number_format($staffOrders->sum('total'), 2, ',', '.') }}
+        @endif
     </p>
 
 </body>

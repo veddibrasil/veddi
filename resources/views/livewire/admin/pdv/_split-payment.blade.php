@@ -16,12 +16,27 @@
 
     @if (! $isSplitPayment)
         <flux:radio.group wire:model.live="paymentMethod" variant="segmented" class="w-full">
-            @foreach (['cash', 'pix', 'credit_card'] as $method)
+            @foreach (['cash', 'pix', 'credit_card', 'staff'] as $method)
                 @if (in_array($method, $availableMethods, true))
                     <flux:radio :value="$method" :label="$methodLabels[$method]" />
                 @endif
             @endforeach
         </flux:radio.group>
+
+        @if ($paymentMethod === 'staff')
+            <div class="pt-3 space-y-1.5" id="pdv-staff-consumption">
+                <flux:label class="text-xs font-semibold">Funcionário</flux:label>
+                <flux:select wire:model.live="staffUserId" id="pdv-staff-select">
+                    <flux:select.option value="">Selecione o funcionário</flux:select.option>
+                    @foreach ($this->staffMembers as $member)
+                        <flux:select.option :value="$member->id">{{ $member->name }}</flux:select.option>
+                    @endforeach
+                </flux:select>
+                <p class="text-xs text-neutral-500 dark:text-neutral-400">
+                    O valor fica como débito deste funcionário. Não entra no faturamento, no caixa nem na nota fiscal.
+                </p>
+            </div>
+        @endif
 
         @if ($paymentMethod === 'cash')
             <div class="pt-3 space-y-1.5">

@@ -329,7 +329,11 @@
                             @include('livewire.admin.pdv._fiscal-checkout')
                         @else
                             <p class="px-3 py-2 border border-dashed rounded-xl text-xs text-neutral-500 dark:border-zinc-700 dark:text-neutral-400">
-                                Nota fiscal: emita pelo Controle de notas depois do pagamento.
+                                @if (! $isSplitPayment && $paymentMethod === 'staff')
+                                    Consumo de funcionário não é venda: não emite nota fiscal.
+                                @else
+                                    Nota fiscal: emita pelo Controle de notas depois do pagamento.
+                                @endif
                             </p>
                         @endif
                     @endif

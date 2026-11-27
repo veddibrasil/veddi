@@ -675,11 +675,14 @@ class Index extends Component
 
         $summarize = function (\Illuminate\Database\Eloquent\Builder $query): array {
             // Só pedidos confirmados: pendente/aguardando pagamento nunca foi pago.
-            $orders = $query->whereIn('status', Order::CONFIRMED_STATUSES)->get(['total']);
+            $staff = (clone $query)->whereNotNull('staff_user_id')->whereIn('status', Order::CONFIRMED_STATUSES)->get(['total']);
+            $orders = $query->excludingStaffConsumption()->whereIn('status', Order::CONFIRMED_STATUSES)->get(['total']);
 
             return [
                 'count' => $orders->count(),
                 'total' => $orders->sum('total'),
+                'staff_count' => $staff->count(),
+                'staff_total' => $staff->sum('total'),
             ];
         };
 

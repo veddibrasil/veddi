@@ -9,6 +9,7 @@ use App\Jobs\CancelFiscalNotesOfCancelledOrder;
 use App\Jobs\IssueFiscalNote;
 use App\Livewire\Admin\Fiscal\Config;
 use App\Livewire\Admin\Fiscal\IssueControl;
+use App\Models\Address;
 use App\Models\Branch;
 use App\Models\Company;
 use App\Models\CompanyFiscalConfig;
@@ -92,6 +93,14 @@ function autoIssueFakeProvider(string $issueStatus = 'authorized', string $cance
     return $fake;
 }
 
+/** Entrega do chat como na produção: endereço sem UF e CPF na nota (NFC-e com presença 4). */
+function autoIssueDeliveryFiscal(): array
+{
+    $address = Address::create(['line1' => 'Rua das Flores', 'number' => '45', 'neighborhood' => 'Bela Vista', 'city' => 'São Paulo', 'cep' => '01310100']);
+
+    return ['delivery_address_id' => $address->id, 'fiscal_recipient' => ['document' => '52998224725']];
+}
+
 /**
  * Empresa com módulo fiscal, filial com NFC-e automática ligada há 1 hora e um pedido do chat
  * aceito (status 'preparing') com um item. $order sobrescreve os campos do pedido.
@@ -159,6 +168,7 @@ function autoIssueContext(array $order = [], bool $autoIssue = true, array $conf
             'order_type' => 'delivery',
             'channel' => 'chat',
             ...$order,
+            ...(($order['order_type'] ?? 'delivery') === 'delivery' ? array_diff_key(autoIssueDeliveryFiscal(), $order) : []),
         ]);
 
         OrderItem::create([
@@ -297,6 +307,7 @@ test('pendência antes do envio grava o motivo e gera um resumo só no sino', fu
         'company_id' => $company->id, 'branch_id' => $branch->id, 'customer_id' => $customer->id,
         'subtotal' => 30, 'delivery_fee' => 0, 'total' => 30, 'fee' => 0, 'net_value' => 30,
         'status' => 'preparing', 'payment_method' => 'PIX', 'order_type' => 'delivery', 'channel' => 'chat',
+        ...autoIssueDeliveryFiscal(),
     ]);
     OrderItem::create(['order_id' => $second->id, 'product_id' => $product->id, 'product_name' => 'Coxinha', 'unit_price' => 10, 'quantity' => 3, 'subtotal' => 30]);
     runAutoIssue($second->id);
@@ -321,6 +332,7 @@ test('rejeições seguidas na mesma filial pausam a emissão automática e avisa
             'company_id' => $company->id, 'branch_id' => $branch->id, 'customer_id' => $customer->id,
             'subtotal' => 30, 'delivery_fee' => 0, 'total' => 30, 'fee' => 0, 'net_value' => 30,
             'status' => 'preparing', 'payment_method' => 'PIX', 'order_type' => 'delivery', 'channel' => 'chat',
+            ...autoIssueDeliveryFiscal(),
         ]);
         OrderItem::create(['order_id' => $order->id, 'product_id' => $product->id, 'product_name' => 'Coxinha', 'unit_price' => 10, 'quantity' => 3, 'subtotal' => 30]);
 
@@ -355,6 +367,7 @@ test('depois de retomar, só rejeições novas contam para o disjuntor', functio
             'company_id' => $company->id, 'branch_id' => $branch->id, 'customer_id' => $customer->id,
             'subtotal' => 30, 'delivery_fee' => 0, 'total' => 30, 'fee' => 0, 'net_value' => 30,
             'status' => 'preparing', 'payment_method' => 'PIX', 'order_type' => 'delivery', 'channel' => 'chat',
+            ...autoIssueDeliveryFiscal(),
         ]);
         OrderItem::create(['order_id' => $order->id, 'product_id' => $product->id, 'product_name' => 'Coxinha', 'unit_price' => 10, 'quantity' => 3, 'subtotal' => 30]);
 
@@ -403,6 +416,7 @@ test('resumo de falhas não conta nota rejeitada emitida pelo caixa', function (
         'company_id' => $company->id, 'branch_id' => $branch->id, 'customer_id' => $customer->id,
         'subtotal' => 30, 'delivery_fee' => 0, 'total' => 30, 'fee' => 0, 'net_value' => 30,
         'status' => 'preparing', 'payment_method' => 'PIX', 'order_type' => 'delivery', 'channel' => 'chat',
+        ...autoIssueDeliveryFiscal(),
     ]);
     OrderItem::create(['order_id' => $auto->id, 'product_id' => $product->id, 'product_name' => 'Coxinha', 'unit_price' => 10, 'quantity' => 3, 'subtotal' => 30]);
     runAutoIssue($auto->id);

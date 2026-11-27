@@ -16,6 +16,10 @@ class Report extends Component
 {
     use WithPagination;
 
+    private const SESSIONS_PAGE_NAME = 'sessionsPage';
+
+    private const SESSIONS_PER_PAGE = 25;
+
     public string $dateStart = '';
 
     public string $dateEnd = '';
@@ -93,29 +97,92 @@ class Report extends Component
         return $session ? app(CashClosingReportService::class)->build($session) : null;
     }
 
+    /**
+     * Consumo de funcionário no período/filial filtrados: o que cada um deve (em aberto) e o que
+     * já foi acertado. Fora de faturamento e caixa; cancelado/estornado não conta.
+     *
+     * @return \Illuminate\Support\Collection<int, array{user_id: int, name: string, orders: int, pending: float, settled: float}>
+     */
+    #[Computed]
+    public function staffConsumption(): \Illuminate\Support\Collection
+    {
+        if ($this->isCaixa) {
+            return collect();
+        }
+
+        return $this->staffConsumptionQuery()
+            ->with('staffUser:id,name')
+            ->get(['id', 'staff_user_id', 'total', 'staff_settled_at'])
+            ->groupBy('staff_user_id')
+            ->map(fn ($orders, $userId) => [
+                'user_id' => (int) $userId,
+                'name' => $orders->first()->staffUser?->name ?? 'Funcionário removido',
+                'orders' => $orders->count(),
+                'pending' => round((float) $orders->whereNull('staff_settled_at')->sum('total'), 2),
+                'settled' => round((float) $orders->whereNotNull('staff_settled_at')->sum('total'), 2),
+            ])
+            ->sortByDesc('pending')
+            ->values();
+    }
+
+    private function staffConsumptionQuery()
+    {
+        return Order::query()
+            ->whereNotNull('staff_user_id')
+            ->where('order_type', 'pdv')
+            ->whereNotIn('status', ['cancelled', 'refunded'])
+            ->when($this->dateStart, fn ($q) => $q->whereDate('created_at', '>=', $this->dateStart))
+            ->when($this->dateEnd, fn ($q) => $q->whereDate('created_at', '<=', $this->dateEnd))
+            ->when($this->effectiveBranchFilter(), fn ($q) => $q->where('branch_id', $this->effectiveBranchFilter()));
+    }
+
+    /** Débito acertado (descontado em folha ou pago pelo funcionário): só quem fecha caixa/financeiro. */
+    public function settleStaffConsumption(int $userId): void
+    {
+        $company = app('current.company');
+        abort_unless(! $this->isCaixa && auth()->user()->canManageClosing($company), 403);
+
+        $this->staffConsumptionQuery()
+            ->where('staff_user_id', $userId)
+            ->whereNull('staff_settled_at')
+            ->update(['staff_settled_at' => now()]);
+
+        unset($this->staffConsumption);
+    }
+
     private function effectiveBranchFilter(): string
     {
         return $this->isCaixa ? (string) $this->ownBranchId : $this->branchFilter;
     }
 
+    /**
+     * Cada tabela tem a própria página: sessões de caixa usam SESSIONS_PAGE_NAME, pedidos usam o
+     * padrão 'page'. Filtro novo volta as duas pra página 1.
+     */
     public function updatingDateStart(): void
     {
-        $this->resetPage();
+        $this->resetPages();
     }
 
     public function updatingDateEnd(): void
     {
-        $this->resetPage();
+        $this->resetPages();
     }
 
     public function updatingBranchFilter(): void
     {
+        $this->resetPages();
+    }
+
+    private function resetPages(): void
+    {
         $this->resetPage();
+        $this->resetPage(self::SESSIONS_PAGE_NAME);
     }
 
     private function buildOrderQuery()
     {
-        return Order::with(['customer', 'branch', 'attendant'])
+        return Order::with(['customer', 'branch', 'attendant', 'staffUser:id,name'])
             ->where('order_type', 'pdv')
             ->when($this->dateStart, fn ($q) => $q->whereDate('created_at', '>=', $this->dateStart))
             ->when($this->dateEnd, fn ($q) => $q->whereDate('created_at', '<=', $this->dateEnd))
@@ -125,7 +192,7 @@ class Report extends Component
 
     public function render()
     {
-        $allOrders = (clone $this->buildOrderQuery())->get(['total', 'payment_method', 'status', 'discount', 'manual_discount']);
+        $allOrders = (clone $this->buildOrderQuery())->excludingStaffConsumption()->get(['total', 'payment_method', 'status', 'discount', 'manual_discount']);
 
         $activeOrders = $allOrders->whereNotIn('status', ['cancelled', 'refunded']);
         $totalRevenue = $activeOrders->sum('total');
@@ -179,14 +246,19 @@ class Report extends Component
                     ->when($this->dateStart, fn ($p) => $p->whereDate('created_at', '>=', $this->dateStart))
                     ->when($this->dateEnd, fn ($p) => $p->whereDate('created_at', '<=', $this->dateEnd)))))
             ->orderByRaw('CASE WHEN closed_at IS NULL THEN 0 ELSE 1 END')
-            ->orderBy('created_at', 'desc');
+            ->orderBy('created_at', 'desc')
+            // Desempate por id: sem ele, sessões com o mesmo created_at vêm em ordem arbitrária
+            // entre páginas (LIMIT/OFFSET) e algumas somem ou repetem.
+            ->orderByDesc('id');
 
-        $sessions = $sessionsQuery->get();
+        $sessions = $sessionsQuery->paginate(self::SESSIONS_PER_PAGE, ['*'], self::SESSIONS_PAGE_NAME);
 
         // Esperado parcial dos caixas ainda abertos (só administrador; o caixa fecha às cegas).
+        // Calculado só para a página exibida: cada caixa aberto gera consultas de breakdown.
         $liveExpected = $this->isCaixa
             ? collect()
-            : $sessions->filter(fn (PdvCashSession $session) => $session->isOpen())
+            : $sessions->getCollection()
+                ->filter(fn (PdvCashSession $session) => $session->isOpen())
                 ->mapWithKeys(fn (PdvCashSession $session) => [
                     $session->id => app(CashClosingReportService::class)->breakdown($session)['expected'],
                 ]);

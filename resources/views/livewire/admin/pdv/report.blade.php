@@ -71,6 +71,46 @@
         </div>
     @endunless
 
+    @unless ($isCaixa)
+        @php $staffRows = $this->staffConsumption; @endphp
+        @if ($staffRows->isNotEmpty())
+            <div id="staff-consumption" class="bg-white border rounded-xl shadow-sm dark:bg-zinc-800 dark:border-zinc-700">
+                <div class="px-4 py-3 border-b dark:border-zinc-700">
+                    <h2 class="font-semibold text-neutral-800 dark:text-neutral-100">Consumo de funcionários</h2>
+                    <p class="text-xs text-neutral-500 dark:text-neutral-400">Fora do Total PDV, do caixa e da nota fiscal. Débito de cada funcionário no período.</p>
+                </div>
+                <div class="overflow-x-auto" tabindex="0" role="region" aria-label="Consumo de funcionários no período">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b text-xs text-neutral-500 dark:border-zinc-700 dark:text-neutral-400">
+                                <th class="px-4 py-2 text-left">Funcionário</th>
+                                <th class="px-4 py-2 text-right">Pedidos</th>
+                                <th class="px-4 py-2 text-right">Em aberto</th>
+                                <th class="px-4 py-2 text-right">Acertado</th>
+                                <th class="px-4 py-2 text-center">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y dark:divide-zinc-700">
+                            @foreach ($staffRows as $row)
+                                <tr wire:key="staff-row-{{ $row['user_id'] }}">
+                                    <td class="px-4 py-3 font-medium text-neutral-800 dark:text-neutral-100">{{ $row['name'] }}</td>
+                                    <td class="px-4 py-3 text-right text-neutral-600 dark:text-neutral-300">{{ $row['orders'] }}</td>
+                                    <td class="px-4 py-3 text-right font-semibold {{ $row['pending'] > 0 ? 'text-red-600 dark:text-red-400' : 'text-neutral-400' }}">R$ {{ number_format($row['pending'], 2, ',', '.') }}</td>
+                                    <td class="px-4 py-3 text-right text-neutral-600 dark:text-neutral-300">R$ {{ number_format($row['settled'], 2, ',', '.') }}</td>
+                                    <td class="px-4 py-3 text-center">
+                                        @if ($row['pending'] > 0 && auth()->user()->canManageClosing(app('current.company')))
+                                            <flux:button size="xs" wire:click="settleStaffConsumption({{ $row['user_id'] }})" wire:confirm="Marcar R$ {{ number_format($row['pending'], 2, ',', '.') }} de {{ $row['name'] }} como acertado (descontado/pago)?">Marcar como acertado</flux:button>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        @endif
+    @endunless
+
     {{-- Tabela de sessões de caixa --}}
     <div class="bg-white border rounded-xl shadow-sm dark:bg-zinc-800 dark:border-zinc-700">
         <div class="px-4 py-3 border-b dark:border-zinc-700">
@@ -204,6 +244,9 @@
                     </tbody>
                 </table>
             </div>
+            <div class="px-4 py-3 border-t dark:border-zinc-700">
+                {{ $sessions->links() }}
+            </div>
         @endif
     </div>
 
@@ -248,6 +291,7 @@
                                             'credit_card' => 'Cartão',
                                             'cash' => 'Dinheiro',
                                             'split' => 'Dividido',
+                                            'staff' => 'Funcionário: '.($order->staffUser?->name ?? '—'),
                                             default => $order->payment_method,
                                         };
                                     @endphp

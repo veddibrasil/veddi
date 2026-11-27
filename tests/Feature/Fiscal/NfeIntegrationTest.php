@@ -3,6 +3,7 @@
 use App\Events\OrderStatusUpdated;
 use App\Jobs\IssueFiscalNote;
 use App\Livewire\Admin\Orders\Show;
+use App\Models\Address;
 use App\Models\Branch;
 use App\Models\Company;
 use App\Models\CompanyFiscalConfig;
@@ -32,7 +33,8 @@ function nfeContext(): array
     $config = CompanyFiscalConfig::create(['company_id' => $company->id, 'branch_id' => $branch->id, 'enabled' => true, 'is_default' => true, 'nfe_enabled' => true, 'nfe_serie' => 3, 'environment' => 'homologacao', 'crt' => 1]);
     $recipient = ['document' => '11222333000181', 'name' => 'Destinatário Ltda', 'email' => 'fiscal@example.com', 'street' => 'Rua B', 'number' => '2', 'neighborhood' => 'Centro', 'city' => 'São Paulo', 'state' => 'SP', 'zip' => '01001000', 'ie_indicator' => '9', 'ie' => ''];
     $customer = Customer::create(['company_id' => $company->id, 'name' => 'Contato', 'phone' => '11999990000', 'fiscal_recipient' => $recipient]);
-    $order = Order::create(['company_id' => $company->id, 'customer_id' => $customer->id, 'branch_id' => $branch->id, 'subtotal' => 30, 'total' => 30, 'delivery_fee' => 0, 'fee' => 0, 'net_value' => 30, 'status' => 'paid', 'payment_method' => 'pix', 'order_type' => 'delivery']);
+    $address = Address::create(['line1' => 'Rua da Entrega', 'number' => '7', 'neighborhood' => 'Sé', 'city' => 'São Paulo', 'cep' => '01001000']);
+    $order = Order::create(['company_id' => $company->id, 'customer_id' => $customer->id, 'branch_id' => $branch->id, 'subtotal' => 30, 'total' => 30, 'delivery_fee' => 0, 'fee' => 0, 'net_value' => 30, 'status' => 'paid', 'payment_method' => 'pix', 'order_type' => 'delivery', 'delivery_address_id' => $address->id]);
     $category = ProductCategory::create(['company_id' => $company->id, 'name' => 'Alimentos']);
     $product = Product::create(['company_id' => $company->id, 'product_category_id' => $category->id, 'name' => 'Produto', 'price' => 10, 'active' => true, 'fiscal_data' => ['ncm' => '21069090', 'cfop' => '5102', 'interstate_cfop' => '6102', 'icms_situation' => '400', 'origin' => 0, 'pis_situation' => '07', 'cofins_situation' => '07']]);
     OrderItem::create(['order_id' => $order->id, 'product_id' => $product->id, 'product_name' => 'Produto', 'unit_price' => 10, 'quantity' => 3, 'subtotal' => 30]);
@@ -61,7 +63,8 @@ test('CNPJ seleciona NF-e com série própria e referência persistida antes do 
 
 test('CPF e documento ausente selecionam NFC-e', function (?string $document) {
     ['order' => $order] = nfeContext();
-    $order->update(['fiscal_recipient' => ['document' => $document ?? '']]);
+    // Retirada: a NFC-e de entrega a domicílio exige documento (teste próprio abaixo).
+    $order->update(['fiscal_recipient' => ['document' => $document ?? ''], 'order_type' => 'pickup']);
     Http::fake(['*' => Http::response(['status' => 'autorizado'], 200)]);
     $note = app(FiscalNoteService::class)->issue($order);
     expect($note->model)->toBe('65');

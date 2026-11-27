@@ -34,5 +34,7 @@ readonly class FiscalNoteDTO
         /** Decidido pela FiscalEmissionPolicy; null = regra antiga (UF do destinatário x emitente). */
         public ?bool $interstate = null,
         public ?bool $presential = null,
+        /** Endereço da entrega na NFC-e com presença 4 (FiscalDeliveryAddress); null nas demais. */
+        public ?array $deliveryAddress = null,
     ) {}
 }

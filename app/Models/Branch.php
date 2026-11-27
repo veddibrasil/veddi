@@ -205,7 +205,10 @@ class Branch extends Model
         }
 
         $allowed = array_keys(BranchPaymentMethods::LABELS[$channel]);
-        $configured = $this->payment_methods[$channel][$orderType] ?? $allowed;
+        // Consumo de funcionário não é venda: só no balcão do PDV e só quando a filial liga (padrão desligado).
+        $staffAllowed = $channel === 'pdv' && $orderType === 'balcao';
+        $allowed = $staffAllowed ? $allowed : array_values(array_diff($allowed, [BranchPaymentMethods::STAFF]));
+        $configured = $this->payment_methods[$channel][$orderType] ?? array_values(array_diff($allowed, [BranchPaymentMethods::STAFF]));
 
         return array_values(array_intersect($allowed, $configured));
     }

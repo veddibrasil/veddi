@@ -411,6 +411,10 @@ class KeetaIntegrationSettings extends Component
         $this->availableShops = $this->connectionState === 'pending_mapping' || $this->connectionState === 'error' || $this->connectionState === 'revoked'
             ? array_values($integration->available_shops ?? [])
             : [];
+        // Autorização com uma loja só: já vem marcada (SIT 26/11, "Conectar" sem marcar dava erro).
+        if ($this->connectionState === 'pending_mapping' && count($this->availableShops) === 1) {
+            $this->selectedShopId = (string) ($this->availableShops[0]['id'] ?? '');
+        }
 
         $tz = config('app.timezone');
         $this->integrationData = $integration ? [

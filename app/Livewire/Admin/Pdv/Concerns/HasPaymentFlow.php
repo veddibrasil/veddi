@@ -5,7 +5,9 @@ namespace App\Livewire\Admin\Pdv\Concerns;
 use App\Events\NewOrderPlaced;
 use App\Events\OrderStatusUpdated;
 use App\Models\Branch;
+use App\Models\User;
 use App\Services\Order\OrderService;
+use App\Support\BranchPaymentMethods;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
 
@@ -139,6 +141,23 @@ trait HasPaymentFlow
             }
         }
 
+        $staff = null;
+        if ($this->isStaffConsumption()) {
+            if ($this->isScheduled) {
+                $this->addError('order', 'Consumo de funcionário não pode ser agendado.');
+
+                return;
+            }
+
+            $staff = $this->resolveStaffMember();
+
+            if (! $staff) {
+                $this->addError('order', 'Selecione o funcionário que está consumindo.');
+
+                return;
+            }
+        }
+
         if ($error = $this->manualDiscountError($company)) {
             $this->addError('order', $error);
 
@@ -156,9 +175,9 @@ trait HasPaymentFlow
             ? ($scheduledAt ? 'scheduled' : 'paid')
             : 'awaiting_payment';
 
-        $fiscalRecipient = $this->checkoutFiscalRecipient();
+        $fiscalRecipient = $staff ? null : $this->checkoutFiscalRecipient();
         try {
-            $order = DB::transaction(function () use ($customerId, $orderCart, $status, $scheduledAt, $isPaidOnCreate, $fiscalRecipient) {
+            $order = DB::transaction(function () use ($customerId, $orderCart, $status, $scheduledAt, $isPaidOnCreate, $fiscalRecipient, $staff) {
                 $order = app(OrderService::class)->createOrder(
                     customerId: $customerId,
                     branchId: $this->selectedBranchId,
@@ -176,8 +195,16 @@ trait HasPaymentFlow
                 );
 
                 $order->delivery_type = $this->deliveryType;
-                $order->fiscal_document_preference = $this->checkoutFiscalPreference();
+                $order->fiscal_document_preference = $staff ? null : $this->checkoutFiscalPreference();
                 $order->fill($this->checkoutFiscalAutoAttributes($status));
+
+                if ($staff) {
+                    // Débito do funcionário, não venda: sem taxa da plataforma e sem nota fiscal.
+                    $order->staff_user_id = $staff->id;
+                    $order->fee = 0;
+                    $order->net_value = $order->total;
+                    $order->fiscal_auto_skip = true;
+                }
 
                 // Link order to current cash session
                 if ($this->cashSessionId) {
@@ -206,6 +233,7 @@ trait HasPaymentFlow
                         'payment_method' => $this->effectivePaymentMethod(),
                         'cart_count' => $this->cartCount,
                         'manual_discount' => $this->manualDiscountAmount,
+                        'staff_user_id' => $staff?->id,
                     ],
                 ]);
 
@@ -249,7 +277,7 @@ trait HasPaymentFlow
     /** Pagamento recebido agora no balcão (não "receber na entrega/retirada"). */
     private function checkoutSettlesNow(): bool
     {
-        return ($this->isSplitPayment || in_array($this->paymentMethod, ['cash', 'credit_card', 'pix']))
+        return ($this->isSplitPayment || in_array($this->paymentMethod, ['cash', 'credit_card', 'pix', BranchPaymentMethods::STAFF]))
             && ! ($this->deliveryType === 'entrega' && $this->deliveryPaymentStatus === 'on_delivery')
             && ! ($this->deliveryType === 'retirar' && $this->pickupPaymentStatus === 'on_pickup');
     }
@@ -261,6 +289,39 @@ trait HasPaymentFlow
     #[Computed]
     public function fiscalNoteAvailableOnCheckout(): bool
     {
-        return $this->checkoutSettlesNow() && ! $this->isScheduled;
+        return $this->checkoutSettlesNow() && ! $this->isScheduled && ! $this->isStaffConsumption();
+    }
+
+    private function isStaffConsumption(): bool
+    {
+        return ! $this->isSplitPayment && $this->paymentMethod === BranchPaymentMethods::STAFF;
+    }
+
+    /**
+     * Funcionários da empresa que podem consumir nesta filial: quem não é preso a filial ou é da
+     * filial selecionada. `staffUserId` vem do client, então sempre se confere aqui contra a empresa.
+     *
+     * @return \Illuminate\Support\Collection<int, User>
+     */
+    #[Computed]
+    public function staffMembers(): \Illuminate\Support\Collection
+    {
+        $company = app()->bound('current.company') ? app('current.company') : null;
+
+        if (! $company || ! $this->selectedBranchId) {
+            return collect();
+        }
+
+        return User::query()
+            ->whereHas('companies', fn ($q) => $q->where('companies.id', $company->id)
+                ->where(fn ($b) => $b->whereNull('company_user.branch_id')->orWhere('company_user.branch_id', $this->selectedBranchId)))
+            ->where('is_super_admin', false)
+            ->orderBy('name')
+            ->get(['id', 'name']);
+    }
+
+    private function resolveStaffMember(): ?User
+    {
+        return $this->staffUserId ? $this->staffMembers->firstWhere('id', $this->staffUserId) : null;
     }
 }

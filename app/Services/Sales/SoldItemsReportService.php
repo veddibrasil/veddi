@@ -68,6 +68,7 @@ class SoldItemsReportService
             ->where('o.company_id', $companyId)
             ->whereIn('o.status', Order::CONFIRMED_STATUSES)
             ->where('o.is_open_tab', false)
+            ->whereNull('o.staff_user_id')
             ->whereBetween('o.created_at', [$until->subDays($lookbackDays)->startOfDay(), $until])
             ->when($branchId, fn ($q) => $q->where('o.branch_id', $branchId))
             ->whereNotNull('oi.product_id')
@@ -115,6 +116,7 @@ class SoldItemsReportService
             ->whereIn('o.status', Order::CONFIRMED_STATUSES)
             // Comanda aberta ainda não fechou a venda.
             ->where('o.is_open_tab', false)
+            ->whereNull('o.staff_user_id')
             // whereBetween (e não whereDate) para usar o índice orders(company_id, created_at).
             ->whereBetween('o.created_at', [$filters->start, $filters->end])
             ->when($filters->branchId, fn ($q) => $q->where('o.branch_id', $filters->branchId))

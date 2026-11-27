@@ -273,6 +273,7 @@ class Company extends Model
             "order_count:confirmed:company:{$this->id}:{$reference->year}-{$reference->month}",
             now()->addSeconds(60),
             fn () => $this->orders()
+                ->excludingStaffConsumption()
                 ->whereMonth('created_at', $reference->month)
                 ->whereYear('created_at', $reference->year)
                 ->whereIn('status', Order::CONFIRMED_STATUSES)

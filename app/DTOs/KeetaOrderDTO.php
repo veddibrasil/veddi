@@ -2,6 +2,7 @@
 
 namespace App\DTOs;
 
+use App\Livewire\Admin\Branches\Form;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 
@@ -358,20 +359,40 @@ readonly class KeetaOrderDTO
         }
 
         $coordinates = is_array($address['coordinates'] ?? null) ? $address['coordinates'] : [];
+        // Pedido do app com entrega Keeta vem mascarado ("Proteção de Privacidade" em todo campo):
+        // corta no tamanho das colunas de addresses para o import nunca falhar.
+        $limit = fn (?string $value, int $max) => $value === null ? null : mb_substr($value, 0, $max);
+        $number = $text($address['number'] ?? null);
 
         return [
-            'street' => $street ?? $formatted,
-            'number' => $text($address['number'] ?? null) ?? 'S/N',
-            'complement' => $text($address['complement'] ?? null),
-            'neighborhood' => $text($address['district'] ?? null) ?? '',
-            'city' => $text($address['city'] ?? null) ?? '',
-            'state' => $text($address['state'] ?? null) ?? '',
-            'cep' => preg_replace('/\D/', '', $text($address['postalCode'] ?? null) ?? ''),
+            'street' => $limit($street ?? $formatted, 255),
+            'number' => $number === null || mb_strlen($number) > 20 ? 'S/N' : $number,
+            'complement' => $limit($text($address['complement'] ?? null), 100),
+            'neighborhood' => $limit($text($address['district'] ?? null), 100) ?? '',
+            'city' => $limit($text($address['city'] ?? null), 100) ?? '',
+            'state' => self::stateCode($text($address['state'] ?? null)),
+            'cep' => substr(preg_replace('/\D/', '', $text($address['postalCode'] ?? null) ?? ''), 0, 8),
             'latitude' => is_numeric($coordinates['latitude'] ?? null) ? (float) $coordinates['latitude'] : null,
             'longitude' => is_numeric($coordinates['longitude'] ?? null) ? (float) $coordinates['longitude'] : null,
             'reference' => $text($address['reference'] ?? null),
             'formatted' => $formatted,
         ];
+    }
+
+    /** UF de 2 letras; nome do estado vira a sigla; o resto (fora do Brasil, mascarado) fica vazio. */
+    private static function stateCode(?string $state): string
+    {
+        if ($state === null) {
+            return '';
+        }
+
+        if (preg_match('/^[A-Za-z]{2}$/', $state)) {
+            return strtoupper($state);
+        }
+
+        $code = array_search(mb_strtolower($state), array_map('mb_strtolower', Form::STATES), true);
+
+        return is_string($code) ? $code : '';
     }
 
     /** Price {value, currency} ou número: reais com até 4 casas → 2 casas. */
