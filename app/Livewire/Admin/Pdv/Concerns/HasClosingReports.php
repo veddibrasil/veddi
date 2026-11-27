@@ -7,11 +7,17 @@ use App\Models\Order;
 use App\Models\PdvCashSession;
 use App\Services\Payment\PaymentOrchestrator;
 use App\Services\Pdv\CashClosingReportService;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 
 trait HasClosingReports
 {
+    /** Página da lista de fechamentos (overlay); nome próprio pra não colidir com outras paginações do componente. */
+    private const CLOSED_SESSIONS_PAGE_NAME = 'closedSessionsPage';
+
+    private const CLOSED_SESSIONS_PER_PAGE = 10;
+
     public function showSessionHistory(): void
     {
         abort_unless(! $this->isWaiter, 403);
@@ -57,6 +63,13 @@ trait HasClosingReports
 
         $this->showClosingReports = true;
         $this->viewingClosedSessionId = null;
+        $this->resetClosedSessionsPage();
+    }
+
+    /** Volta a lista de fechamentos para a página 1 (filial trocada ou overlay reaberto). */
+    public function resetClosedSessionsPage(): void
+    {
+        $this->resetPage(self::CLOSED_SESSIONS_PAGE_NAME);
     }
 
     public function backFromClosingReports(): void
@@ -101,8 +114,13 @@ trait HasClosingReports
         ];
     }
 
+    /**
+     * Fechamentos da filial selecionada, do mais recente ao mais antigo, paginados.
+     *
+     * @return LengthAwarePaginator<int, PdvCashSession>|Collection<int, PdvCashSession>
+     */
     #[Computed]
-    public function closedSessions(): Collection
+    public function closedSessions(): LengthAwarePaginator|Collection
     {
         // Caixa não tem a listagem de fechamentos dos outros operadores (ver openClosingReports()).
         if (! $this->selectedBranchId || $this->isCaixa) {
@@ -112,9 +130,10 @@ trait HasClosingReports
         return PdvCashSession::with('user')
             ->where('branch_id', $this->selectedBranchId)
             ->whereNotNull('closed_at')
-            ->latest('closed_at')
-            ->limit(30)
-            ->get();
+            // Desempate por id: closed_at pode empatar e a paginação exige ordem total.
+            ->orderByDesc('closed_at')
+            ->orderByDesc('id')
+            ->paginate(self::CLOSED_SESSIONS_PER_PAGE, ['*'], self::CLOSED_SESSIONS_PAGE_NAME);
     }
 
     /**

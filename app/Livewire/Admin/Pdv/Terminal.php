@@ -20,6 +20,7 @@ use App\Livewire\Admin\Pdv\Concerns\HasSplitPayment;
 use App\Models\PdvAuditLog;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
+use Livewire\WithPagination;
 
 /** Venda direta / balcão. Fluxo de mesa/comanda fica em {@see TabTerminal}. */
 class Terminal extends Component
@@ -39,6 +40,7 @@ class Terminal extends Component
     use HasProductLookup;
     use HasScheduling;
     use HasSplitPayment;
+    use WithPagination;
 
     // ── Estado da interface ──────────────────────────────────────────────────
     public string $step = 'catalog'; // open_cash | catalog | payment | pix | success | close_cash
@@ -264,6 +266,8 @@ class Terminal extends Component
         if ($company) {
             $this->rememberSelectedBranch($company->id);
         }
+
+        $this->resetClosedSessionsPage();
 
         $this->syncFiscalAutoIssueDefault();
         $this->syncCashSession();

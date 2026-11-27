@@ -244,6 +244,9 @@
                     </tbody>
                 </table>
             </div>
+            <div class="px-4 py-3 border-t dark:border-zinc-700">
+                {{ $sessions->links() }}
+            </div>
         @endif
     </div>
 

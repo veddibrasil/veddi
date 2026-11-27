@@ -16,6 +16,10 @@ class Report extends Component
 {
     use WithPagination;
 
+    private const SESSIONS_PAGE_NAME = 'sessionsPage';
+
+    private const SESSIONS_PER_PAGE = 25;
+
     public string $dateStart = '';
 
     public string $dateEnd = '';
@@ -151,19 +155,29 @@ class Report extends Component
         return $this->isCaixa ? (string) $this->ownBranchId : $this->branchFilter;
     }
 
+    /**
+     * Cada tabela tem a própria página: sessões de caixa usam SESSIONS_PAGE_NAME, pedidos usam o
+     * padrão 'page'. Filtro novo volta as duas pra página 1.
+     */
     public function updatingDateStart(): void
     {
-        $this->resetPage();
+        $this->resetPages();
     }
 
     public function updatingDateEnd(): void
     {
-        $this->resetPage();
+        $this->resetPages();
     }
 
     public function updatingBranchFilter(): void
     {
+        $this->resetPages();
+    }
+
+    private function resetPages(): void
+    {
         $this->resetPage();
+        $this->resetPage(self::SESSIONS_PAGE_NAME);
     }
 
     private function buildOrderQuery()
@@ -232,14 +246,19 @@ class Report extends Component
                     ->when($this->dateStart, fn ($p) => $p->whereDate('created_at', '>=', $this->dateStart))
                     ->when($this->dateEnd, fn ($p) => $p->whereDate('created_at', '<=', $this->dateEnd)))))
             ->orderByRaw('CASE WHEN closed_at IS NULL THEN 0 ELSE 1 END')
-            ->orderBy('created_at', 'desc');
+            ->orderBy('created_at', 'desc')
+            // Desempate por id: sem ele, sessões com o mesmo created_at vêm em ordem arbitrária
+            // entre páginas (LIMIT/OFFSET) e algumas somem ou repetem.
+            ->orderByDesc('id');
 
-        $sessions = $sessionsQuery->get();
+        $sessions = $sessionsQuery->paginate(self::SESSIONS_PER_PAGE, ['*'], self::SESSIONS_PAGE_NAME);
 
         // Esperado parcial dos caixas ainda abertos (só administrador; o caixa fecha às cegas).
+        // Calculado só para a página exibida: cada caixa aberto gera consultas de breakdown.
         $liveExpected = $this->isCaixa
             ? collect()
-            : $sessions->filter(fn (PdvCashSession $session) => $session->isOpen())
+            : $sessions->getCollection()
+                ->filter(fn (PdvCashSession $session) => $session->isOpen())
                 ->mapWithKeys(fn (PdvCashSession $session) => [
                     $session->id => app(CashClosingReportService::class)->breakdown($session)['expected'],
                 ]);
