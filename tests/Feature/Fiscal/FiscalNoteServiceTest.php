@@ -3,6 +3,7 @@
 use App\Contracts\FiscalNoteProviderInterface;
 use App\DTOs\FiscalNoteResult;
 use App\Jobs\IssueFiscalNote;
+use App\Models\Address;
 use App\Models\Branch;
 use App\Models\Company;
 use App\Models\CompanyFiscalConfig;
@@ -63,6 +64,9 @@ function fiscalTestContext(): array
         'phone' => '11999990001',
     ]);
 
+    // Entrega como na produção: endereço do chat/iFood sem UF e CPF na nota.
+    $address = Address::create(['line1' => 'Rua das Flores', 'number' => '45', 'neighborhood' => 'Bela Vista', 'city' => 'São Paulo', 'cep' => '01310100']);
+
     $order = Order::withoutGlobalScopes()->create([
         'company_id' => $company->id,
         'branch_id' => $branch->id,
@@ -75,6 +79,8 @@ function fiscalTestContext(): array
         'status' => 'paid',
         'payment_method' => 'PIX',
         'order_type' => 'delivery',
+        'delivery_address_id' => $address->id,
+        'fiscal_recipient' => ['document' => '52998224725'],
     ]);
 
     $category = ProductCategory::withoutGlobalScopes()->create([
@@ -316,7 +322,17 @@ test('FocusNfeService monta payload conforme especificação da API (sem objeto 
             && ($data['serie'] ?? null) === 1
             && ($data['modalidade_frete'] ?? null) === '9'
             && ($data['local_destino'] ?? null) === '1'
-            && ($data['presenca_comprador'] ?? null) === '4';
+            && ($data['presenca_comprador'] ?? null) === '4'
+            // Entrega a domicílio: endereço da entrega no destinatário (senão a SEFAZ rejeita 788),
+            // com a UF da filial porque o endereço do pedido não guarda a UF.
+            && ($data['cpf_destinatario'] ?? null) === '52998224725'
+            && ($data['logradouro_destinatario'] ?? null) === 'Rua das Flores'
+            && ($data['numero_destinatario'] ?? null) === '45'
+            && ($data['bairro_destinatario'] ?? null) === 'Bela Vista'
+            && ($data['municipio_destinatario'] ?? null) === 'São Paulo'
+            && ($data['uf_destinatario'] ?? null) === 'SP'
+            && ($data['cep_destinatario'] ?? null) === '01310100'
+            && ($data['nome_destinatario'] ?? null) === 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL';
     });
 });
 
@@ -437,6 +453,8 @@ test('FiscalNoteService isola CNPJ/token/série entre filiais da mesma empresa',
         'status' => 'paid',
         'payment_method' => 'PIX',
         'order_type' => 'delivery',
+        'delivery_address_id' => $orderA->delivery_address_id,
+        'fiscal_recipient' => $orderA->fiscal_recipient,
     ]);
 
     OrderItem::create([

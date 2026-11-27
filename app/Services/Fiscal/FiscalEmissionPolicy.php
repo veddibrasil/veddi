@@ -21,9 +21,11 @@ use App\Models\Order;
  *   só sai depois que alguém conferir; pedir NFC-e sem conferir bloqueia.
  * - CPF: NFC-e no varejo interno, com opção de NF-e. Operação interestadual, contribuinte
  *   de ICMS ou valor a partir do teto da NFC-e exigem NF-e, também para pessoa física.
- * - Sem documento: NFC-e abaixo do limite de identificação; NF-e exige CPF ou CNPJ.
- * - Venda não presencial com CNPJ segue em NF-e: a NFC-e não presencial exige endereço da
- *   entrega no destinatário (inciso VII, "c"), que ainda não é enviado.
+ * - Sem documento: NFC-e abaixo do limite de identificação; NF-e exige CPF ou CNPJ. Na entrega
+ *   a domicílio (pedido delivery, presença 4) a NFC-e leva o endereço da entrega no grupo do
+ *   destinatário (FiscalDeliveryAddress), e esse grupo só existe com CPF ou CNPJ: sem documento
+ *   a SEFAZ rejeita (788), então a política pede o documento.
+ * - Venda não presencial com CNPJ segue em NF-e (inciso VII, "c").
  *
  * Só venda a consumidor final é suportada (o builder da NF-e fixa consumidor_final = 1).
  */
@@ -75,6 +77,7 @@ class FiscalEmissionPolicy
             // Local da operação: a entrega, quando há endereço; a sede do comprador só na falta dele.
             operationState: $presential ? null : ((($order->delivery_address_id ? $order->deliveryAddressRecord?->state : null) ?: ($recipient['state'] ?? null))),
             preference: $usePreference ? ($preference ?? $order->fiscal_document_preference) : $preference,
+            homeDelivery: $order->order_type === 'delivery',
         );
     }
 
@@ -127,6 +130,7 @@ class FiscalEmissionPolicy
         bool $presential,
         ?string $operationState,
         ?string $preference,
+        bool $homeDelivery = false,
     ): FiscalEmissionDecision {
         $document = FiscalRecipient::normalizeDocument($recipient['document'] ?? '');
         $type = $document === '' ? 'none' : (FiscalRecipient::isValidDocument($document) ? FiscalRecipient::documentType($document) : 'invalid');
@@ -155,6 +159,9 @@ class FiscalEmissionPolicy
             if ($preference === 'nfe' || $nfceBlockers !== []) {
                 return $decision(null, $nfceBlockers === [] ? ['65'] : ['55'],
                     [...$nfceBlockers, 'Informe o CPF ou CNPJ do comprador para emitir NF-e.'], ['document']);
+            }
+            if ($homeDelivery) {
+                return $decision(null, ['65'], ['NFC-e de entrega a domicílio exige o CPF ou CNPJ do comprador: a nota leva o endereço da entrega junto do documento.'], ['document']);
             }
             if ($total >= $threshold) {
                 return $decision(null, [], ['NFC-e a partir de R$ '.self::money($threshold).' exige CPF ou CNPJ do comprador.'], ['document']);

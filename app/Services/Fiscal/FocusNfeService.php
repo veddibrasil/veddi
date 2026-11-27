@@ -372,6 +372,29 @@ class FocusNfeService implements FiscalNoteProviderInterface
             }
         }
 
+        // Entrega a domicílio (presença 4): sem o endereço do destinatário a SEFAZ rejeita (788).
+        // O endereço vive no grupo do destinatário, que só existe com CPF ou CNPJ.
+        $address = $dto->deliveryAddress;
+        if ($payload['presenca_comprador'] === '4' && $type !== null && $address !== null) {
+            if ($type === FiscalRecipient::TYPE_CPF && $dto->environment === 'homologacao') {
+                $payload['nome_destinatario'] = 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL';
+            } elseif ($type === FiscalRecipient::TYPE_CPF && filled($dto->recipient['name'] ?? null)) {
+                $payload['nome_destinatario'] = $dto->recipient['name'];
+            }
+            $payload['indicador_inscricao_estadual_destinatario'] ??= 9;
+            $payload['logradouro_destinatario'] = $address['street'];
+            $payload['numero_destinatario'] = $address['number'] ?: 'S/N';
+            $payload['bairro_destinatario'] = $address['neighborhood'];
+            $payload['municipio_destinatario'] = $address['city'];
+            $payload['uf_destinatario'] = $address['state'];
+            if (filled($address['complement'] ?? null)) {
+                $payload['complemento_destinatario'] = $address['complement'];
+            }
+            if (filled($address['zip'] ?? null)) {
+                $payload['cep_destinatario'] = $address['zip'];
+            }
+        }
+
         return $payload;
     }
 

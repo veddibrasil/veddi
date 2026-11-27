@@ -46,6 +46,7 @@ class FiscalNoteService
         private readonly FiscalNoteProviderInterface $provider,
         private readonly FiscalConfigResolver $resolver,
         private readonly FiscalEmissionPolicy $policy,
+        private readonly FiscalDeliveryAddress $deliveryAddresses,
     ) {}
 
     /**
@@ -70,6 +71,7 @@ class FiscalNoteService
             'model' => $model,
             'items' => $items,
             'decision' => $decision,
+            'delivery_address' => $deliveryAddress,
         ] = $this->prepare($order, $customerDocument, $confirmedModel);
 
         $provider = $this->resolveProvider($companyConfig, $effectiveEnvironment);
@@ -111,6 +113,7 @@ class FiscalNoteService
             ])->all(),
             interstate: $decision->interstate,
             presential: $decision->presential,
+            deliveryAddress: $deliveryAddress,
         );
 
         $fiscalNote = $this->createPendingNoteExclusively($order, $company->id, $order->branch_id, [
@@ -122,6 +125,7 @@ class FiscalNoteService
             'provider_reference' => $reference,
             'data' => [
                 'recipient' => $recipient,
+                'delivery_address' => $deliveryAddress,
                 'requested_by' => $requestedBy ?? auth()->id(),
                 'automatic' => $automatic,
                 // Decisão da política gravada antes do envio: qual versão escolheu o modelo e por quê.
@@ -273,7 +277,7 @@ class FiscalNoteService
      * conferir sem ele); documento, destinatário e produtos são reunidos numa só
      * FiscalPreflightException, para o lojista corrigir tudo de uma vez.
      *
-     * @return array{config: CompanyFiscalConfig, environment: string, branch: ?Branch, recipient: array, model: string, items: array, decision: FiscalEmissionDecision}
+     * @return array{config: CompanyFiscalConfig, environment: string, branch: ?Branch, recipient: array, model: string, items: array, decision: FiscalEmissionDecision, delivery_address: ?array}
      */
     private function prepare(Order $order, ?string $customerDocument = null, ?string $confirmedModel = null, ?FiscalEmissionDecision $decision = null): array
     {
@@ -340,6 +344,23 @@ class FiscalNoteService
             throw FiscalPreflightException::single('issuer', 'Complete o CNPJ e a UF do emitente antes de emitir NF-e.');
         }
 
+        // NFC-e de entrega a domicílio (presença 4): a SEFAZ rejeita sem o endereço do
+        // destinatário (788). Barra aqui, antes de gastar uma tentativa na SEFAZ.
+        $deliveryAddress = null;
+        if (FiscalDeliveryAddress::required($order, $model)) {
+            $orderBranch = $order->branch_id && $order->branch_id !== $branch?->id
+                ? Branch::withoutGlobalScopes()->where('company_id', $company->id)->find($order->branch_id)
+                : null;
+            ['address' => $deliveryAddress, 'missing' => $missing] = $this->deliveryAddresses->resolve($order, $recipient, array_filter([$orderBranch, $branch]));
+            $issuerState = mb_strtoupper(trim((string) $branch?->state));
+            if ($missing !== []) {
+                $issues[] = ['group' => 'order', 'message' => 'NFC-e de entrega a domicílio exige o endereço da entrega, e falta '.implode(', ', $missing)
+                    .'. Preencha o endereço do destinatário nos dados fiscais do pedido ou emita NF-e.'];
+            } elseif ($issuerState !== '' && $deliveryAddress['state'] !== $issuerState) {
+                $issues[] = ['group' => 'order', 'message' => 'Entrega em outra UF ('.$deliveryAddress['state'].'): NFC-e só para operação interna. Emita NF-e.'];
+            }
+        }
+
         $items = [];
         if ($model !== null) {
             try {
@@ -370,6 +391,7 @@ class FiscalNoteService
             'model' => $model,
             'items' => $items,
             'decision' => $decision,
+            'delivery_address' => $deliveryAddress,
         ];
     }
 
