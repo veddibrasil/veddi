@@ -353,6 +353,21 @@ class FocusNfeService implements FiscalNoteProviderInterface
             return NfePayloadBuilder::build($dto, $payload);
         }
 
+        // Sem desconto e taxas nos itens a Focus fecha a NFC-e pela soma dos produtos (vNF) e a
+        // SEFAZ recusa quando o pagamento (o total do pedido) fica menor: "Total dos pagamentos
+        // menor que o total da nota". Rateio igual ao da NF-e; a taxa de entrega vai em outras
+        // despesas porque frete na NFC-e exige modalidade de frete e transportador (753/786).
+        [$discount, $otherExpenses] = $this->nfceAdjustments($dto);
+        foreach ($payload['items'] as $i => &$item) {
+            foreach (['valor_desconto' => $discount, 'valor_outras_despesas' => $otherExpenses] as $field => $amount) {
+                $share = $amount > 0 ? NfePayloadBuilder::allocation($dto->items, $i, $amount) : 0.0;
+                if ($share > 0) {
+                    $item[$field] = $share;
+                }
+            }
+        }
+        unset($item);
+
         // Campos documentados da NFC-e na Focus (cpf_destinatario / cnpj_destinatario): só um
         // identificador por nota. CNPJ (numérico ou alfanumérico) vai com a razão social e o
         // indicador 9, único aceito na NFC-e. Antes iam "CPF"/"CNPJ" no nível superior, nomes que
@@ -396,6 +411,35 @@ class FocusNfeService implements FiscalNoteProviderInterface
         }
 
         return $payload;
+    }
+
+    /**
+     * Desconto e outras despesas (entrega, serviço, couvert) da NFC-e, de modo que
+     * produtos - desconto + despesas = total do pedido = pagamento. Se os campos do pedido não
+     * fecham com o total cobrado, a nota sai pelo total, com a diferença líquida.
+     *
+     * @return array{0: float, 1: float}
+     */
+    private function nfceAdjustments(FiscalNoteDTO $dto): array
+    {
+        $products = (int) round(array_sum(array_column($dto->items, 'subtotal')) * 100);
+        $discount = (int) round($dto->discount * 100);
+        $otherExpenses = (int) round(($dto->freight + $dto->otherExpenses) * 100);
+        $total = (int) round($dto->total * 100);
+
+        if ($products - $discount + $otherExpenses !== $total) {
+            Log::channel('fiscal')->warning('FocusNfeService: totais do pedido não fecham, NFC-e pelo total cobrado', [
+                'order_id' => $dto->orderId,
+                'products' => $products / 100,
+                'discount' => $discount / 100,
+                'other_expenses' => $otherExpenses / 100,
+                'total' => $total / 100,
+            ]);
+            $discount = max(0, $products - $total);
+            $otherExpenses = max(0, $total - $products);
+        }
+
+        return [$discount / 100, $otherExpenses / 100];
     }
 
     private function mapPaymentMethod(string $method): string

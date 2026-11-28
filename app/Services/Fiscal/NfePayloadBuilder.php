@@ -73,18 +73,31 @@ class NfePayloadBuilder
         return $payload;
     }
 
-    private static function allocation(array $items, int $index, float $amount): float
+    /**
+     * Parte de $amount que cabe ao item $index, proporcional ao valor do item. Os centavos de
+     * arredondamento ficam no item de maior valor (nunca num brinde de R$ 0,00), então a soma das
+     * partes é exatamente $amount.
+     */
+    public static function allocation(array $items, int $index, float $amount): float
     {
         $total = array_sum(array_column($items, 'subtotal'));
+        if ($total <= 0) {
+            return 0;
+        }
+        $largest = array_keys(array_column($items, 'subtotal'), max(array_column($items, 'subtotal')))[0];
+        $keys = array_keys($items);
         $remaining = (int) round($amount * 100);
         foreach ($items as $i => $item) {
-            $cents = $i === array_key_last($items) ? $remaining : (int) round($amount * 100 * $item['subtotal'] / $total);
+            if ($i === $keys[$largest]) {
+                continue;
+            }
+            $cents = (int) round($amount * 100 * $item['subtotal'] / $total);
             if ($i === $index) {
                 return $cents / 100;
             }
             $remaining -= $cents;
         }
 
-        return 0;
+        return $index === $keys[$largest] ? $remaining / 100 : 0;
     }
 }
